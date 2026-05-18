@@ -1,0 +1,41 @@
+{
+  "name": "crm_auto",
+  "version": "1.0.0",
+  "description": "TypeScript-based test automation framework using Playwright for Nakivo Partner Portal CRM",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:chromium": "playwright test --project=chromium",
+    "test:firefox": "playwright test --project=firefox",
+    "test:webkit": "playwright test --project=webkit",
+    "test:leads": "playwright test tests/Leads_Assignment --project=chromium",
+    "test:performance": "playwright test tests/SalesReport_Performance --project=chromium",
+    "test:all-suites": "playwright test tests/Leads_Assignment tests/SalesReport_Performance --project=chromium",
+    "codegen": "playwright codegen",
+    "report": "playwright show-report",
+    "clean": "rimraf test-results playwright-report"
+  },
+  "keywords": [
+    "playwright",
+    "typescript",
+    "automation",
+    "testing",
+    "crm"
+  ],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@playwright/test": "^1.56.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "tsconfig-paths": "^4.2.0",
+    "typescript": "^5.0.0"
+  }
+}

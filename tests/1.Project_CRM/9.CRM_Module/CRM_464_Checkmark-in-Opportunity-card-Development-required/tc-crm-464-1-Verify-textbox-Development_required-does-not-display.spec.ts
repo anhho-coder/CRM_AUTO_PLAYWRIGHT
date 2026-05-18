@@ -1,0 +1,180 @@
+﻿import { test, expect } from '@playwright/test';
+import { users, baseUrl } from '@config/users.config';
+import { config } from '@config/test.config';
+import { LoginPage, HomePage, OpportunityPage } from '@pages';
+import { CommonUtils } from '@helpers/common.utils';
+
+/**
+ * CRM-464 - Verify textbox does not display when Development required checkbox is unchecked
+ * Test Case ID: CRM-464_1
+ *
+ * Summary: Verify the textbox does not display when "Development required" checkbox is unchecked
+ *
+ * Command to run:
+ * npx playwright test --grep "CRM-464_1" --project=chromium
+ *
+ * I. Pre-condition:
+ * 1. After login successful, click at "CRM" button
+ *
+ * I. Condition#1 to create Opp#1:
+ * 1. On "CRM" page:
+ *    1.1. Click at "view list" button
+ *    1.2. On "Opps" page, click at "CREATE" button
+ * 2. Enter the following information:
+ *    - Opp name textbox = TEST Opp 1 + current TC ID
+ *    - Email textbox = Company email (with template Test@company + current date + current time.com
+ *      (Remember the created email, called Email_Opp#1)
+ *    - (in the Address section)
+ *      - Company Name textbox = Company Name Opp 1
+ *      - Street dropdown list = 123street
+ *      - Country dropdown list = Belgium
+ *      - State dropdown list = Flanders
+ *    - Sales Team dropdown list is cleared
+ *    - Salesperson dropdown list is cleared
+ *    - Created manually checkbox is TRUE
+ * 3. Click at "CRM Developer" tab at the bottom of page
+ *    - Lead form textbox = Download Free Trial
+ * 4. Press "SAVE" button and wait
+ * 5. Copy URL of Opp#1, called URL_Opp#1
+ *
+ * II. Verification points:
+ * 1. The "Development required" checkbox is UNCHECKED and displays
+ * 2. The "Development required" textbox does not display
+ */
+
+test.describe('CRM-464_1 - Verify textbox does not display when Development required is unchecked', () => {
+
+  test.beforeEach(async ({ page, context }) => {
+    await context.clearCookies();
+    await context.grantPermissions([]);
+    await page.waitForTimeout(CommonUtils.waitTimes.standard);
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
+      console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
+      const loadingSpinner = page.locator('.o_loading, .oe_loading, [class*="loading"]');
+      await loadingSpinner.waitFor({ state: 'hidden', timeout: 5000 }).catch(() => {
+        console.log('  - Loading spinner wait skipped');
+      });
+      await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {
+        console.log('  - Network idle wait skipped');
+      });
+      await page.waitForTimeout(3000);
+      console.log('✓ Page stabilized, Playwright will now capture screenshot');
+    }
+  });
+
+  test('CRM-464_1: Verify the textbox does not display when Development required checkbox is unchecked', async ({ page }, testInfo) => {
+    test.setTimeout(config.timeouts.test);
+
+    await page.setViewportSize({ width: 1920, height: 1080 });
+
+    const loginPage = new LoginPage(page);
+    const homePage = new HomePage(page);
+    const opportunityPage = new OpportunityPage(page);
+
+    const tcId = 'CRM-464_1';
+    let opp1Name: string;
+    let opp1Id: string;
+    let opp1Url: string;
+
+    await test.step('Pre-condition Step 1: Login and navigate to CRM', async () => {
+      console.log(`\n=== PRE-CONDITION ===`);
+      console.log(`Step 1: Logging in as ${users.admin_crm.displayName}`);
+      await loginPage.navigateTo(baseUrl);
+      await loginPage.login(users.admin_crm.username, users.admin_crm.password);
+      await loginPage.dismissLocationPermissionDialog();
+      console.log(`✓ Login successful as ${users.admin_crm.displayName}`);
+    });
+
+    await test.step('Pre-condition Step 2: Navigate to CRM and switch to list view', async () => {
+      await homePage.navigateToCRM();
+      await homePage.waitForPageReady();
+      console.log('✓ Navigated to CRM page');
+      await opportunityPage.switchToListView();
+      console.log('✓ Switched to list view');
+    });
+
+    await test.step('Condition #1 Step 1: Click CREATE button', async () => {
+      console.log('\n=== CONDITION #1: CREATE OPP#1 ===');
+      await opportunityPage.clickCreate();
+      console.log('✓ Opp creation form opened');
+    });
+
+    await test.step('Condition #1 Step 2: Enter Opp#1 information', async () => {
+      opp1Name = `TEST Opp 1 ${tcId}`;
+      const emailOpp1 = opportunityPage.generateEmail('Test@company');
+      await opportunityPage.fillOpportunityName(opp1Name);
+      console.log(`  - Opp Name: ${opp1Name}`);
+      await opportunityPage.fillEmail(emailOpp1);
+      console.log(`  - Email (Email_Opp#1): ${emailOpp1}`);
+      await opportunityPage.fillCompanyName('Company Name Opp 1');
+      console.log(`  - Company Name: Company Name Opp 1`);
+      await opportunityPage.fillStreet('123street');
+      console.log(`  - Street: 123street`);
+      await opportunityPage.selectCountry('Belgium');
+      console.log(`  - Country: Belgium`);
+      await opportunityPage.selectState('Flanders');
+      console.log(`  - State: Flanders`);
+      await opportunityPage.clearSalesTeam();
+      console.log(`  - Sales Team: Cleared`);
+      await opportunityPage.clearSalesperson();
+      console.log(`  - Salesperson: Cleared`);
+      await opportunityPage.checkCreatedManually();
+      console.log(`  - Created Manually: TRUE`);
+    });
+
+    await test.step('Condition #1 Step 3: Click CRM Developer tab and set Lead Form = Download Free Trial', async () => {
+      await opportunityPage.clickCRMDeveloperTab();
+      await opportunityPage.fillLeadForm('Download Free Trial');
+      console.log(`  - Lead Form: Download Free Trial`);
+    });
+
+    await test.step('Condition #1 Step 4: Press SAVE and wait', async () => {
+      await opportunityPage.saveAndWaitForCompletion();
+      opp1Id = await opportunityPage.waitForIdInUrlAndExtract(config.timeouts.urlWait);
+      opp1Url = page.url();
+      console.log(`✓ Opp#1 saved with ID: ${opp1Id}`);
+      console.log(`  URL_Opp#1: ${opp1Url}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Condition #1 - Opp#1 Created (ID: ${opp1Id})`);
+    });
+
+    await test.step('Condition #1 Step 5: Copy URL_Opp#1', async () => {
+      console.log(`✓ URL_Opp#1: ${opp1Url}`);
+    });
+
+  
+
+    // II. VERIFICATION POINTS
+
+    await test.step('II. Verification - Step 1: Open Opp#1 and verify "Development required" checkbox is UNCHECKED and displays', async () => {
+      console.log('\n=== II. VERIFICATION POINTS ===');
+      await page.goto(opp1Url, { waitUntil: 'domcontentloaded' });
+      await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
+      await page.waitForTimeout(CommonUtils.waitTimes.standard);
+      const devRequiredCheckbox = opportunityPage.getDevRequiredCheckbox();
+      await expect(devRequiredCheckbox.first()).toBeVisible({ timeout: 10000 });
+      await expect(devRequiredCheckbox.first()).not.toBeChecked({ timeout: 10000 });
+      console.log('  ✓ II.1: "Development required" checkbox is UNCHECKED and visible');
+    });
+
+    await test.step('II. Verification - Step 2: Verify "Development required" textbox does NOT display', async () => {
+      const devRequiredTextbox = opportunityPage.getDevRequiredTextbox_Readonly();
+      const textboxCount = await devRequiredTextbox.count();
+      const textboxVisible = textboxCount > 0
+        ? await devRequiredTextbox.first().isVisible().catch(() => false)
+        : false;
+      expect(textboxVisible).toBeFalsy();
+      console.log('  ✓ II.2: "Development required" textbox is NOT visible');
+    });
+
+    await test.step('Final Summary', async () => {
+      console.log('\n✅ TEST PASSED: CRM-464_1 verification completed successfully');
+      console.log(`   Opp#1 (${opp1Id}): Created Manually=TRUE, Lead Form=Download Free Trial`);
+      console.log(`   II.1: "Development required" checkbox is UNCHECKED and visible`);
+      console.log(`   II.2: "Development required" textbox is NOT visible`);
+      console.log('==================================================\n');
+    });
+  });
+});

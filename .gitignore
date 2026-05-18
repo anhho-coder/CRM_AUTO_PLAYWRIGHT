@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Test results - organized under playwright-report folder
+playwright-report/
+test-results/
+blob-report/
+
+# Note: Reports are now versioned with timestamps under playwright-report/
+# Each run creates: playwright-report/YYYY-MM-DD-HHMMSS/ (HTML report)
+# Each run creates: playwright-report/test-results-YYYY-MM-DDTHHMMSS.json
+# Each run creates: playwright-report/junit-results-YYYY-MM-DDTHHMMSS.xml
+
+# Playwright cache
+playwright/.cache/
+
+# Screenshots and videos
+screenshots/
+videos/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+build/
+*.log
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+
+# Config with sensitive data (if needed)
+# config/test.config.ts
