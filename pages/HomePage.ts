@@ -150,18 +150,18 @@ export class HomePage extends BasePage {
     
     // Wait for the Leads button to be visible
     await this.leadsButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
-    await this.wait(1000);
+    await this.wait(300);
     
     // Click on the Leads button to open dropdown
     await this.leadsButton().click();
-    await this.wait(500);
+    await this.wait(200);
     
     // Click on the "Leads" menuitem in the dropdown
     await this.leadsMenuItem().click();
     
     // QA: Feb 25, 2026 : Wait for the Leads list view to load
     await this.waitForURL('**/web?*view_type=list*', CommonUtils.waitTimes.pageLoad);
-    await this.wait(2000);
+    await this.wait(500);
   }
 
   /**

@@ -46,7 +46,7 @@ test.describe('CRM-2482_1.1.1 - Create/Edit Activity Type', () => {
     await context.grantPermissions([]);
     
     // Small delay to ensure session cleanup between tests
-    await page.waitForTimeout(CommonUtils.waitTimes.standard);
+    await page.waitForTimeout(CommonUtils.waitTimes.medium);
   });
 
   test.afterEach(async ({ page }, testInfo) => {
@@ -100,7 +100,7 @@ test.describe('CRM-2482_1.1.1 - Create/Edit Activity Type', () => {
 
       // Step 2: Navigate to Investments module
       await homePage.navigateToInvestment();
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
+      await page.waitForTimeout(800);
       
       console.log('✓ Navigated to Investments module');
     });
@@ -140,7 +140,7 @@ test.describe('CRM-2482_1.1.1 - Create/Edit Activity Type', () => {
       console.log('Step 6: Verifying saved Activity Type data');
       
       // After save, the page redirects to list view
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
+      await page.waitForTimeout(CommonUtils.waitTimes.medium);
       
             
       // Verify the Activity Type appears in the list with correct data

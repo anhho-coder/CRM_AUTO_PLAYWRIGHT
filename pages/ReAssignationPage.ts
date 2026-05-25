@@ -158,10 +158,11 @@ export class ReAssignationPage extends BasePage {
 
   /**
    * Get the "Total" count value text (e.g. "0 / 1")
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getTotalValueText(): Promise<string> {
     const el = this.totalValueText();
-    await el.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await el.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     const tagName = await el.evaluate((node) => node.tagName.toLowerCase());
     if (tagName === 'input') {
       return (await el.inputValue()).trim();
@@ -426,33 +427,37 @@ export class ReAssignationPage extends BasePage {
 
   /**
    * Get the value of "Stage of process" on the result page after confirming re-assignation
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getStageOfProcessText(): Promise<string> {
-    await this.stageOfProcessValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.stageOfProcessValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     return (await this.stageOfProcessValue().innerText()).trim();
   }
 
   /**
    * Get the value of "Selected Re-assignment to" on the Confirmed Re-assignation page
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getSelectedReAssignmentToText(): Promise<string> {
-    await this.selectedReAssignmentToValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.selectedReAssignmentToValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     return (await this.selectedReAssignmentToValue().innerText()).trim();
   }
 
   /**
    * Get the value of "Selected Salesperson" on the Confirmed Re-assignation page
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getSelectedSalespersonText(): Promise<string> {
-    await this.selectedSalespersonValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.selectedSalespersonValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     return (await this.selectedSalespersonValue().innerText()).trim();
   }
 
   /**
    * Get the value of "Selected States" on the Confirmed Re-assignation page
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getSelectedStatesText(): Promise<string> {
-    await this.selectedStatesValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.selectedStatesValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     const raw = await this.selectedStatesValue().evaluate(el => el.textContent ?? '');
     return [...raw]
       .filter(ch => /[\p{L}\p{N}\s\-]/u.test(ch))
@@ -463,9 +468,10 @@ export class ReAssignationPage extends BasePage {
 
   /**
    * Get the value of "Selected Countries" on the Confirmed Re-assignation page
+   * Uses longer timeout for slow Odoo backend operations
    */
   async getSelectedCountriesText(): Promise<string> {
-    await this.selectedCountriesValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.selectedCountriesValue().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.reAssignationWait });
     const raw = await this.selectedCountriesValue().evaluate(el => el.textContent ?? '');
     // Spread into Unicode code points (not UTF-16 units) so each emoji counts as one entry.
     // Keep only Unicode letters, numbers, spaces, hyphens and apostrophes — strips flag emoji, surrogates, variation selectors, etc.

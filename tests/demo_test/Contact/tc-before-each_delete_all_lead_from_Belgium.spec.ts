@@ -6,12 +6,12 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-457 - Verify Re-assign Leads
- * Test Case ID: CRM-457_2.1.10
+ * Test Case ID: tc-before-each_delete_all_lead_from_Belgium.spec
  *
  * Summary: Verify the qualified Leads with Stage = Interested have been transfered to another Salesperson correctly
  *
  * Command to run:
- * npx playwright test --grep CRM-457_2\.1\.10: --project=chromium
+ * npx playwright test "tests/demo_test/Contact/tc-before-each_delete_all_lead_from_Belgium.spec.ts" --project=chromium
  *
  * I. Pre-condition - Create Lead#1:
  * 1. Click at "CRM" button and wait:
@@ -63,7 +63,7 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 
 
-test.describe('CRM-457_2.1.10 - Verify qualified Leads with Stage=Interested transfered to another Salesperson', () => {
+test.describe('tc-before-each_delete_all_lead_from_Belgium - Delete all qualified Leads from Belgium for Thomas Semerich', () => {
 
   let url_Lead1 = '';
 

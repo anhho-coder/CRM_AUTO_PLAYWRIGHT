@@ -298,8 +298,12 @@ export class CommonUtils {
     extraLong: 3000,
     /** Search opportunity wait - 5 seconds (for complex operations) */
     searchOppWait: 5000,
-    /** Abnormal wait - 10 seconds (for complex operations) */
-    abnormalWait: 10000,
+    /** Abnormal wait - 30 seconds (for complex operations that need longer than standard wait) */
+    abnormalWait: 30000,
+    /** Re-assignation page operations - 60 seconds (for slow Odoo backend operations) */
+    reAssignationWait: 60000,
+    /** Element visibility wait - 30 seconds (for element visibility checks with retry) */
+    elementVisibility: 30000,
     /** Element appear wait - 3 minutes (for complex operations) */
     elementAppear: 180000,
     /** Import Audience wait - 2 minutes */
@@ -310,10 +314,10 @@ export class CommonUtils {
     savingPage: 30000,
     /** Page load wait - 4 minutes (for complex operations) */
     pageLoad: 240000,
-    /** Contact showing wait - 10 seconds (for complex operations) */
-    contactShowing: 10000,
-    /** Linking partner wait - 10 seconds (for complex operations) */
-    linkingPartner: 10000,
+    /** Contact showing wait - 30 seconds (for complex operations - increased from 10s) */
+    contactShowing: 30000,
+    /** Linking partner wait - 30 seconds (for complex operations - increased from 10s) */
+    linkingPartner: 30000,
      /** Check on Chater Log wait - 30 seconds (for complex operations) */
     checkingChatterLog: 30000,
     /** Saving Deal Element long wait - 4 minutes (for complex operations) */
@@ -344,8 +348,54 @@ export class CommonUtils {
     locator: any,
     options: { timeout?: number; state?: 'visible' | 'attached' | 'detached' | 'hidden' } = {}
   ): Promise<void> {
-    const { timeout = 10000, state = 'visible' } = options;
+    const { timeout = CommonUtils.waitTimes.abnormalWait, state = 'visible' } = options;
     await locator.waitFor({ state, timeout });
+  }
+
+  /**
+   * Waits for an element with retry logic for flaky elements.
+   * Useful for elements that may not appear immediately due to server response times.
+   * @param locator - Playwright locator for the element
+   * @param options - Configuration for wait and retry
+   * @param options.timeout - Timeout per attempt in ms (default: abnormalWait)
+   * @param options.state - Element state to wait for (default: 'visible')
+   * @param options.retries - Number of retry attempts (default: 3)
+   * @param options.retryDelay - Delay between retries in ms (default: 2000)
+   * @returns Promise that resolves when element reaches the desired state
+   */
+  static async waitForElementWithRetry(
+    locator: any,
+    options: {
+      timeout?: number;
+      state?: 'visible' | 'attached' | 'detached' | 'hidden';
+      retries?: number;
+      retryDelay?: number;
+    } = {}
+  ): Promise<void> {
+    const {
+      timeout = CommonUtils.waitTimes.abnormalWait,
+      state = 'visible',
+      retries = 3,
+      retryDelay = 2000
+    } = options;
+
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= retries + 1; attempt++) {
+      try {
+        await locator.waitFor({ state, timeout });
+        if (attempt > 1) {
+          console.log(`  ✓ Element found on attempt ${attempt}`);
+        }
+        return;
+      } catch (error) {
+        lastError = error as Error;
+        if (attempt <= retries) {
+          console.log(`  ⚠ Element wait attempt ${attempt} failed, retrying in ${retryDelay}ms...`);
+          await CommonUtils.wait(retryDelay);
+        }
+      }
+    }
+    throw lastError;
   }
 
   /**

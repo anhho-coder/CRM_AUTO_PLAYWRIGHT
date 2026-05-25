@@ -41,13 +41,9 @@ import { CommonUtils } from '@helpers/common.utils';
 test.describe('TC.Performance.1.1.2.2 - Edit CRM Opportunity Performance', () => {
   const PERFORMANCE_THRESHOLD = 60000; // 1 minute in milliseconds
   
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     // Clear cookies to ensure fresh state
     await context.clearCookies();
-    // Grant permissions
-    await context.grantPermissions([]);
-    // Small delay to ensure session cleanup between tests
-    await page.waitForTimeout(CommonUtils.waitTimes.standard);
   });
 
   test.afterEach(async ({ page }, testInfo) => {
@@ -55,22 +51,22 @@ test.describe('TC.Performance.1.1.2.2 - Edit CRM Opportunity Performance', () =>
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       
-      // Wait for any loading spinners to disappear
+      // Check if any loading spinners exist before waiting
       const spinnerLocator = page.locator('.o_loading, .oe_loading, [class*="loading"]');
-      console.log('  ℹ️ Found loading spinners, waiting for them to disappear...');
+      const spinnerCount = await spinnerLocator.count().catch(() => 0);
       
-      // Wait for all spinners to hide
-      await page.waitForTimeout(3000);
-      
-      try {
-        await spinnerLocator.first().waitFor({ state: 'hidden', timeout: 10000 });
-        console.log('  ✓ Loading spinners have disappeared');
-      } catch (e) {
-        console.log('  ⚠️ Timeout waiting for spinners (10s), proceeding to screenshot anyway');
+      if (spinnerCount > 0) {
+        console.log('  ℹ️ Loading spinners detected, waiting for them to disappear...');
+        try {
+          await spinnerLocator.first().waitFor({ state: 'hidden', timeout: 10000 });
+          console.log('  ✓ Loading spinners have disappeared');
+        } catch (e) {
+          console.log('  ⚠️ Timeout waiting for spinners (10s), proceeding to screenshot anyway');
+        }
       }
       
-      // Additional wait for page to fully stabilize
-      await page.waitForTimeout(2000);
+      // Brief wait for page to fully stabilize
+      await page.waitForTimeout(1000);
       console.log('  ✓ Page stabilized for screenshot capture');
     }
   });

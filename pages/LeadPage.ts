@@ -82,7 +82,10 @@ export class LeadPage extends BasePage {
   private readonly actionMenuButton = () =>
     this.page.locator('xpath=//button[normalize-space()="Action" or normalize-space()="ACTION"] | //span[normalize-space()="Action" or normalize-space()="ACTION"]/parent::button | //div[contains(@class,"o_cp_action_menus")]//button').first();
   private readonly actionMenuDeleteOption = () =>
-    this.page.locator('xpath=//a[normalize-space()="Delete" or normalize-space()="DELETE"] | //span[normalize-space()="Delete" or normalize-space()="DELETE"]/parent::a | //li[contains(@class,"o_menu_item")]//a[normalize-space()="Delete"]').first();
+    this.page.locator('xpath=//div[contains(@class,"dropdown-menu") and contains(@class,"show")]//a[normalize-space()="Delete" or normalize-space()="DELETE"] | //ul[contains(@class,"dropdown-menu") and contains(@class,"show")]//a[normalize-space()="Delete"]').first();
+  private readonly actionMenuDeleteOptionFallback = () =>
+    this.page.locator('.dropdown-menu.show a.dropdown-item, .o_dropdown_menu.show a, [role="menu"]:visible a[role="menuitem"]')
+      .filter({ hasText: /^Delete$/i }).first();
   private readonly confirmDeleteOkButton = () =>
     this.page.locator('xpath=//button[normalize-space()="Ok" or normalize-space()="OK"] | //button[contains(@class,"btn-primary")][normalize-space()="Ok" or normalize-space()="OK"]').first();
 
@@ -152,7 +155,7 @@ export class LeadPage extends BasePage {
   async clickCreate() {
     await this.createButton().click();
     await this.waitForURL('**/web?*view_type=form*', CommonUtils.waitTimes.elementAppear);
-    await this.wait(1000);
+    await this.wait(300);
   }
 
   /**
@@ -199,9 +202,9 @@ export class LeadPage extends BasePage {
     const input = this.countryInput();
     await input.click();
     await input.fill('');
-    await this.wait(300);
+    await this.wait(150);
     await input.fill(country);
-    await this.wait(800);
+    await this.wait(500);
     
     // Define countries with known partial match issues and their exclusion patterns
     const partialMatchExclusions: Record<string, string> = {
@@ -227,7 +230,7 @@ export class LeadPage extends BasePage {
     });
     
     // Verify the correct country was selected (for all countries, not just India)
-    await this.wait(500);
+    await this.wait(200);
     const selectedValue = await input.inputValue().catch(() => '');
     
     // Check if wrong country was selected (doesn't match expected or is excluded pattern)
@@ -270,13 +273,13 @@ export class LeadPage extends BasePage {
    * Select state from dropdown
    */
   async selectState(state: string) {
-    await this.wait(500);
+    await this.wait(150);
     const input = this.stateInput();
     await input.click();
     await input.fill('');
-    await this.wait(300);
+    await this.wait(150);
     await input.fill(state);
-    await this.wait(800);
+    await this.wait(500);
     
     const option = this.dropdownMenuItem().filter({ hasText: state }).first();
     await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear }).catch(() => {});
@@ -289,7 +292,7 @@ export class LeadPage extends BasePage {
    * Clear sales team selection
    */
   async clearSalesTeam() {
-    await this.wait(500);
+    await this.wait(150);
     const select = this.salesTeamSelect();
     const exists = await select.count() > 0;
     if (exists) {
@@ -313,15 +316,15 @@ export class LeadPage extends BasePage {
    * Clear salesperson field
    */
   async clearSalesperson() {
-    await this.wait(500);
+    await this.wait(150);
     const input = this.salespersonInput();
     const exists = await input.count() > 0;
     if (exists) {
       await input.click();
       await input.fill('');
-      await this.wait(300);
+      await this.wait(100);
       await this.page.locator('td:has-text("Sales Team")').click();
-      await this.wait(300);
+      await this.wait(100);
       return true;
     }
     return false;
@@ -391,7 +394,7 @@ export class LeadPage extends BasePage {
    * Uncheck "Created Manually" checkbox
    */
   async uncheckCreatedManually() {
-    await this.wait(500);
+    await this.wait(150);
     const row = this.createdManuallyRow();
     const exists = await row.count() > 0;
     if (exists) {
@@ -399,7 +402,7 @@ export class LeadPage extends BasePage {
       const isChecked = await checkbox.isChecked();
       if (isChecked) {
         await row.locator('label, .custom-control').first().click({ force: true });
-        await this.wait(300);
+        await this.wait(100);
         const nowUnchecked = await checkbox.isChecked() === false;
         return nowUnchecked;
       }
@@ -489,7 +492,7 @@ export class LeadPage extends BasePage {
    * Handles case where tab is already active by clicking main tab first
    */
   async clickCRMDeveloperTab() {
-    await this.wait(500);
+    await this.wait(150);
     
     // Check if CRM Developer tab is already active
     const isActive = await this.crmDeveloperTab().first().evaluate((el) => {
@@ -503,7 +506,7 @@ export class LeadPage extends BasePage {
     }
     
     await this.crmDeveloperTab().first().click();
-    await this.wait(500);
+    await this.wait(300);
   }
 
   /**
@@ -717,9 +720,9 @@ export class LeadPage extends BasePage {
     if (exists) {
       await input.click();
       await input.fill('');
-      await this.wait(300);
+      await this.wait(150);
       await input.fill(value);
-      await this.wait(800);
+      await this.wait(500);
       
       const option = this.page.locator(`xpath=//*[contains(@class, 'ui-menu-item') or contains(@class, 'o_m2o_dropdown_option')][contains(., '${value}')]`).first();
       const optionVisible = await option.isVisible().catch(() => false);
@@ -1123,7 +1126,7 @@ export class LeadPage extends BasePage {
   async clickSave() {
     // Dismiss any open autocomplete dropdowns that might block the save button
     await this.page.keyboard.press('Escape').catch(() => {});
-    await this.wait(300);
+    await this.wait(100);
     
     await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.saveButton().click();
@@ -2120,11 +2123,41 @@ export class LeadPage extends BasePage {
 
   /**
    * Click Delete option in the Action dropdown menu
+   * Uses retry logic with XPath as primary and CSS as fallback for flaky dropdown elements
    */
   async clickActionDeleteOption(): Promise<void> {
-    await this.actionMenuDeleteOption().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.actionMenuDeleteOption().click();
-    await this.wait(500);
+    // First, ensure the dropdown is open by checking for visible menu
+    await this.wait(CommonUtils.waitTimes.medium);
+    
+    // Try primary locator first (XPath-based, aligns with page object locator convention)
+    try {
+      const primaryLocator = this.actionMenuDeleteOption();
+      await primaryLocator.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await primaryLocator.click();
+      console.log('  ✓ Delete option clicked (primary XPath locator)');
+      await this.wait(CommonUtils.waitTimes.medium);
+      return;
+    } catch (e) {
+      console.log('  ⚠ Primary XPath Delete locator failed, trying CSS fallback...');
+    }
+    
+    // Try fallback locator (CSS-based, targets visible dropdown menus)
+    try {
+      const fallbackLocator = this.actionMenuDeleteOptionFallback();
+      await fallbackLocator.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await fallbackLocator.click();
+      console.log('  ✓ Delete option clicked (CSS fallback locator)');
+      await this.wait(CommonUtils.waitTimes.medium);
+      return;
+    } catch (e) {
+      console.log('  ⚠ Fallback Delete locator failed, trying force click...');
+    }
+    
+    // Last resort: find any visible Delete link and force click
+    const lastResort = this.page.locator('a:visible').filter({ hasText: /^Delete$/i }).first();
+    await lastResort.click({ force: true });
+    console.log('  ✓ Delete option clicked (force click)');
+    await this.wait(CommonUtils.waitTimes.medium);
   }
 
   /**

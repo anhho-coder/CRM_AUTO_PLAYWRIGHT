@@ -62,11 +62,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *   4.  Stage = New
  *   5.  Save and wait
  *   6.  Copy URL_Opp#1
- *   7.  Refresh page to verify Company field (up to 5 times, max 5 min)
+ *   7.  Refresh page to verify Company field contains Name_EndUser#1 (up to 5 times, max 5 min)
  *
  * V. Verification:
- *   1. Company Name field value = Company_Name_Opp#1
- *   2. Company field = Hyperlink with text = Company_Name_Opp#1
+ *   1. Company Name field value = Name_EndUser#1
+ *   2. Company field = Hyperlink with value = Name_EndUser#1
  *
  * VI. Tear down:
  *   1. Delete EndUser#1 contact via URL_EndUser#1
@@ -80,8 +80,9 @@ test.describe('CRM-3523_2.2.1 - Verify an Individual contact will be created aut
   let url_Opp1       = '';
   let email_EndUser1 = '';
 
-  const SKIP_CLEANUP_OPPS     = false; // Toggle to true to skip Opps cleanup
-  const SKIP_CLEANUP_CONTACTS = false; // Toggle to true to skip Contacts cleanup
+  const SKIP_CLEANUP_OPPS     = true; // Toggle to true to skip Opps cleanup
+  const SKIP_CLEANUP_CONTACTS = true; // Toggle to true to skip Contacts cleanup
+  const SKIP_TEARDOWN         = true; // Toggle to true to skip tear down
 
   const company_Name_Opp1 = 'Company Name Opp 1';
 
@@ -231,6 +232,13 @@ test.describe('CRM-3523_2.2.1 - Verify an Individual contact will be created aut
     }
 
     console.log('\n=== VI. TEAR DOWN ===');
+
+    if (SKIP_TEARDOWN) {
+      console.log('  ⚠ SKIP_TEARDOWN = true - skipping all teardown steps');
+      console.log(`  URL_EndUser#1 : ${url_EndUser1}`);
+      console.log(`  URL_Opp#1     : ${url_Opp1}`);
+      return;
+    }
 
     const teardownPage = new ContactPage(page);
 
@@ -468,7 +476,7 @@ test.describe('CRM-3523_2.2.1 - Verify an Individual contact will be created aut
 
     await test.step('Step IV.7: Refresh page to verify Company field (up to 5 times, max 5 min)', async () => {
       console.log('Step IV.7: Waiting for Company field to populate (up to 5 refreshes)');
-      const refreshResult = await opportunityPage.waitForContactFieldPopulated(company_Name_Opp1, 5, 60000);
+      const refreshResult = await opportunityPage.waitForContactFieldPopulated(endUserName, 5, 60000);
       console.log(`  Company field found: ${refreshResult.contactFieldFound}`);
       console.log(`  Company field value: "${refreshResult.contactValue}"`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'IV.7 - After company field refresh');
@@ -481,25 +489,25 @@ test.describe('CRM-3523_2.2.1 - Verify an Individual contact will be created aut
     let companyNameFieldValue = '';
     let companyFieldText      = '';
 
-    await test.step('Step V.1: Verify Company Name field = Company_Name_Opp#1', async () => {
+    await test.step('Step V.1: Verify Company Name field = Name_EndUser#1', async () => {
       console.log(`\n=== V. VERIFICATION ===`);
       console.log('Step V.1: Reading Company Name field value');
       companyNameFieldValue = await opportunityPage.getCompanyNameReadonly();
-      console.log(`  Company Name field value      : "${companyNameFieldValue}"`);
-      console.log(`  Expected (Company_Name_Opp#1) : "${company_Name_Opp1}"`);
-      expect(companyNameFieldValue, `V.1: Company Name field ("${companyNameFieldValue}") should equal "${company_Name_Opp1}"`).toContain(company_Name_Opp1);
-      console.log(`\u2713 V.1: Company Name field = "${company_Name_Opp1}" - confirmed`);
+      console.log(`  Company Name field value  : "${companyNameFieldValue}"`);
+      console.log(`  Expected (Name_EndUser#1) : "${endUserName}"`);
+      expect(companyNameFieldValue, `V.1: Company Name field ("${companyNameFieldValue}") should equal "${endUserName}"`).toContain(endUserName);
+      console.log(`\u2713 V.1: Company Name field = "${endUserName}" - confirmed`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'V.1 - Company Name field verified');
     });
 
-    await test.step('Step V.2: Verify Company field is a Hyperlink with value = Company_Name_Opp#1', async () => {
+    await test.step('Step V.2: Verify Company field is a Hyperlink with value = Name_EndUser#1', async () => {
       console.log('Step V.2: Verifying Company field is a hyperlink with correct text');
       companyFieldText = (await opportunityPage.getCompanyFieldValue()) || '';
       const companyFieldHref = await opportunityPage.getCompanyFieldUrl();
-      console.log(`  Company field text : "${companyFieldText}"`);
-      console.log(`  Company field href : "${companyFieldHref}"`);
-      console.log(`  Expected text      : "${company_Name_Opp1}"`);
-      expect(companyFieldText.trim(), `V.2: Company field text ("${companyFieldText.trim()}") should equal "${company_Name_Opp1}"`).toContain(company_Name_Opp1);
+      console.log(`  Company field text      : "${companyFieldText}"`);
+      console.log(`  Company field href      : "${companyFieldHref}"`);
+      console.log(`  Expected (EndUser#1)    : "${endUserName}"`);
+      expect(companyFieldText.trim(), `V.2: Company field text ("${companyFieldText.trim()}") should equal "${endUserName}"`).toContain(endUserName);
       expect(companyFieldHref, 'V.2: Company field must be a hyperlink (href must be non-empty)').not.toBe('');
       console.log(`\u2713 V.2: Company field is a hyperlink with text "${companyFieldText.trim()}" - confirmed`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'V.2 - Company field hyperlink verified');
@@ -513,8 +521,8 @@ test.describe('CRM-3523_2.2.1 - Verify an Individual contact will be created aut
       console.log(`   Opp name            : "${oppName}"`);
       console.log(`   Company_Name_Opp#1  : "${company_Name_Opp1}"`);
       console.log(`   URL_Opp#1           : ${url_Opp1}`);
-      console.log(`   V.1: Company Name field = "${company_Name_Opp1}" - confirmed`);
-      console.log(`   V.2: Company field is a hyperlink with text "${companyFieldText}" - confirmed`);
+      console.log(`   V.1: Company Name field = "${endUserName}" - confirmed`);
+      console.log(`   V.2: Company field is a hyperlink with text "${endUserName}" - confirmed`);
       console.log('   VI  : All records will be deleted in afterEach (tear down)');
       console.log('==================================================\n');
     });

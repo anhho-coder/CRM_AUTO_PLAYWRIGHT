@@ -142,12 +142,12 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     // Click Configuration submenu
     await this.configurationMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.configurationMenu().click();
-    await this.wait(2000);
+    await this.wait(1500);
 
     // Click Activity Type
     await this.activityTypeMenuItem().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.activityTypeMenuItem().click();
-    await this.wait(3000);
+    await this.wait(2500);
   }
 
   /**
@@ -156,7 +156,7 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   async clickCreateButton() {
     await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.createButton().click();
-    await this.wait(3000);
+    await this.wait(2500);
   }
 
   /**
@@ -167,11 +167,11 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   async fillActivityTypeForm(name: string, code: string) {
     await this.nameInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.nameInput().fill(name);
-    await this.wait(1000);
+    await this.wait(200);
 
     await this.codeInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.codeInput().fill(code);
-    await this.wait(1000);
+    await this.wait(200);
   }
 
   /**
@@ -180,7 +180,7 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   async clickSaveButton() {
     await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.saveButton().click();
-    await this.wait(3000);
+    await this.wait(2000);
   }
 
   /**
@@ -308,7 +308,7 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     // Click on the label or custom-control wrapper instead of checkbox directly
     const checkboxWrapper = row.locator('label, .custom-control').first();
     await checkboxWrapper.click({ force: true });
-    await this.wait(500);
+    await this.wait(200);
     
     // Verify checkbox is checked
     const checkbox = this.getActivityTypeCheckbox(name);
@@ -325,17 +325,17 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     // Click Action dropdown
     await this.actionDropdown().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.actionDropdown().click();
-    await this.wait(1000);
+    await this.wait(500);
 
     // Click Delete option
     await this.deleteMenuItem().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.deleteMenuItem().click();
-    await this.wait(2000);
+    await this.wait(800);
 
     // Confirm deletion
     await this.confirmOkButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.confirmOkButton().click();
-    await this.wait(3000);
+    await this.wait(1500);
   }
 
   /**

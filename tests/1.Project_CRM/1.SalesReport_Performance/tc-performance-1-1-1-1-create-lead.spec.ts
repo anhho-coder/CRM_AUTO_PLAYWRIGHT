@@ -27,13 +27,9 @@ import { CommonUtils } from '@helpers/common.utils';
 test.describe('TC.Performance.1.1.1.1 - Create CRM Lead Performance', () => {
   const PERFORMANCE_THRESHOLD = 60000; // 1 minute in milliseconds
   
-  test.beforeEach(async ({ page, context }) => {
+  test.beforeEach(async ({ context }) => {
     // Clear cookies to ensure fresh state
     await context.clearCookies();
-    // Grant permissions
-    await context.grantPermissions([]);
-    // Small delay to ensure session cleanup between tests
-    await page.waitForTimeout(CommonUtils.waitTimes.standard);
   });
 
   test.afterEach(async ({ page }, testInfo) => {
@@ -41,22 +37,22 @@ test.describe('TC.Performance.1.1.1.1 - Create CRM Lead Performance', () => {
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       
-      // Wait for any loading spinners to disappear
+      // Check if any loading spinners exist before waiting
       const spinnerLocator = page.locator('.o_loading, .oe_loading, [class*="loading"]');
-      console.log('  ℹ️ Found loading spinners, waiting for them to disappear...');
+      const spinnerCount = await spinnerLocator.count().catch(() => 0);
       
-      // Wait for all spinners to hide
-      await page.waitForTimeout(3000);
-      
-      try {
-        await spinnerLocator.first().waitFor({ state: 'hidden', timeout: 10000 });
-        console.log('  ✓ Loading spinners have disappeared');
-      } catch (e) {
-        console.log('  ⚠️ Timeout waiting for spinners (10s), proceeding to screenshot anyway');
+      if (spinnerCount > 0) {
+        console.log('  ℹ️ Loading spinners detected, waiting for them to disappear...');
+        try {
+          await spinnerLocator.first().waitFor({ state: 'hidden', timeout: 10000 });
+          console.log('  ✓ Loading spinners have disappeared');
+        } catch (e) {
+          console.log('  ⚠️ Timeout waiting for spinners (10s), proceeding to screenshot anyway');
+        }
       }
       
-      // Additional wait for page to fully stabilize
-      await page.waitForTimeout(2000);
+      // Brief wait for page to fully stabilize
+      await page.waitForTimeout(1000);
       console.log('  ✓ Page stabilized for screenshot capture');
     }
   });
@@ -90,9 +86,9 @@ test.describe('TC.Performance.1.1.1.1 - Create CRM Lead Performance', () => {
     // Step 2: Navigate to CRM > Leads
     await test.step('Step 2: Navigating to CRM > Leads', async () => {
       stepStartTime = Date.now();
-      console.log('Step 1: Click at CRM');
+      console.log('Step 2.1: Click at CRM');
       await homePage.navigateToCRM();
-      console.log('Step 2: Navigating to CRM > Leads');
+      console.log('Step 2.2: Navigating to CRM > Leads');
       
       await homePage.navigateToLeads();
       performanceMetrics['Navigate to Leads'] = Date.now() - stepStartTime;
@@ -202,17 +198,8 @@ test.describe('TC.Performance.1.1.1.1 - Create CRM Lead Performance', () => {
       });
       console.log('━'.repeat(50));
       console.log(`${'TOTAL'.padEnd(25)} ${elapsedSeconds.padStart(8)}s  (100.0%)`);
+      console.log(`   Margin: ${(60 - parseFloat(saveSeconds)).toFixed(2)}s under threshold  |  ${((parseFloat(saveSeconds) / 60) * 100).toFixed(2)}% of threshold`);
       console.log('━'.repeat(50));
-      
-      // Additional reporting
-      console.log('\n📊 Performance Summary (Save Operation):');
-      console.log(`   - Save Time: ${saveSeconds} seconds`);
-      console.log(`   - Threshold: 60 seconds`);
-      console.log(`   - Margin: ${(60 - parseFloat(saveSeconds)).toFixed(2)} seconds under threshold`);
-      console.log(`   - Performance: ${((parseFloat(saveSeconds) / 60) * 100).toFixed(2)}% of threshold`);
-      
-      // Additional wait for page to fully load after save
-      await leadPage.wait(1000);
     });
 
     // Step 6: Verify saved data (not included in performance measurement)

@@ -1,5 +1,6 @@
 import { Page } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * License Page Object

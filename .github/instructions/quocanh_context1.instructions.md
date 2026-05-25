@@ -35,10 +35,25 @@ When utility functions are needed (e.g., string handling, date, random, etc.), i
 Always import and use configuration variables from test.config.ts (and other files in config as needed) for any environment values, timeouts, URLs, or test data.
 Do not hardcode values such as timeouts, URLs, or credentials; always reference them from the config files.
 New Locators
-If you need to define a new locator for an element, always use XPath.
-Define the locator as a private/protected variable in the Page class.
+If you need to define a new locator for an element in any Page Object, you MUST use a multi-layer locator strategy.
+Define the locator(s) as private/protected variables in the Page class.
+For **all new locators in all Page files**, use this mandatory order:
+- **Primary locator = XPath**
+- **Fallback locator = CSS selector**
 When Copilot generates a new scenario that introduces new elements/locators, you MUST add those new locators into the top locator group of the corresponding Page file.
 **MANDATORY:** If there is no existing method to interact with this element, you MUST create a new method in the Page class before using it in tests.
+
+Locator Fallback Strategy
+- The layered strategy is **required by default for all newly created locators in all Page Objects**, not only for known flaky elements.
+- **Primary locator must be XPath** to match the project convention.
+- **Fallback locator must be CSS** so dynamic UI states can still be targeted when XPath is less resilient.
+- Required pattern for every new locator implementation:
+  - define the primary XPath locator first
+  - define the CSS fallback locator second
+  - try primary first, then fallback inside the Page Object method
+- Do NOT put fallback locator logic in test files; keep it inside Page Objects only.
+- Apply this rule across all Page files such as `LoginPage.ts`, `HomePage.ts`, `LeadPage.ts`, `ContactPage.ts`, `OpportunityPage.ts`, `InvestmentPage.ts`, `ReAssignationPage.ts`, and any future Page Object.
+- Example use cases: buttons, inputs, dropdown items, action menus, delete menu items, floating dialogs, overlays, popovers, and lazy-rendered elements.
 Creating New Methods When Needed
 If a new action does not have a suitable method in the Page, you MUST create a new method with clear and sufficient parameters.
 Name the method according to the action and target, e.g., clickLoginButton(), enterUsername(username: string), selectSalesTeam(teamName: string), fillCompanyName(name: string), ...

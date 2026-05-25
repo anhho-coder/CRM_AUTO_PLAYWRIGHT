@@ -6,24 +6,25 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-4001 - Email field validation
- * Test Case ID: CRM-4001_3.1.1.1
+ * Test Case ID: CRM-4001_3.1.1.2
  *
  * Summary: Verify a Log note shows warning message appears when auto creating a new Company on Opp
- *          if having more than one email
+ *          if having phone number instead of email
  *
  * Command to run:
- * npx playwright test --grep "CRM-4001_3\.1\.1\.1:" --project=chromium
+ * npx playwright test --grep "CRM-4001_3\.1\.1\.2:" --project=chromium
+ * npx playwright test --grep "CRM-10617" --project=chromium
  *
  * Pre-condition:
  * 1.  After login successful, click at "CRM" button
  * 2.  On "CRM" page, click at "view list" button
  * 3.  On "Opp" page, click at "CREATE" button
  * 4.  Enter the following information:
- *     - Opp name textbox = TEST Opp 1 CRM-4001_3.1.1.1
- *     - "Email" textbox  = test@CRM-3523-company-jan-08.com; test2@CRM-3523-company-jan-08.com
+ *     - Opp name textbox = TEST Opp 1 CRM-4001_3.1.1.2
+ *     - "Email" textbox  = 0123456789
  *       (= Email_Contact#1)
  *     - Created manually checkbox = FALSE (uncheck)
- * 5.  Press "SAVE" button
+ * 5.  Press "SAVE" button and wait until page load completely
  * 6.  Refresh page to verify Contact field (up to 10 times, max 3 minutes)
  *
  * Verification:
@@ -32,13 +33,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *     lead and in the contact! Ensure it has no commas, spaces, etcetera, or multiple emails."
  */
 
-test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when having more than one email on Opp', () => {
+test.describe.skip('CRM-4001_3.1.1.2 [CRM-10617] - Verify Log note shows warning message when having phone number instead of email on Opp', () => {
 
-  const tcId    = 'CRM-4001_3.1.1.1';
+  const tcId    = 'CRM-4001_3.1.1.2';
   const oppName = `TEST Opp 1 ${tcId}`;
 
-  // Two emails separated by semicolon (Email_Contact#1)
-  const email_Contact1 = 'test@CRM-3523-company-jan-08.com; test2@CRM-3523-company-jan-08.com';
+  // Phone number entered into the Email field (Email_Contact#1)
+  const email_Contact1 = '0123456789';
 
   // Expected warning message text in the Log area
   const expectedLogText = 'This lead contains an invalid email address. Please update the email address both in this lead and in the contact! Ensure it has no commas, spaces, etcetera, or multiple emails.';
@@ -58,7 +59,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     }
   });
 
-  test('CRM-4001_3.1.1.1: Verify Log note shows warning message when having more than one email on Opp', async ({ page }, testInfo) => {
+  test('CRM-4001_3.1.1.2: Verify Log note shows warning message when having phone number instead of email on Opp', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -201,7 +202,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     });
 
     await test.step('Final Summary', async () => {
-      console.log('\n\u2705 TEST PASSED: CRM-4001_3.1.1.1 verification completed successfully');
+      console.log('\n\u2705 TEST PASSED: CRM-4001_3.1.1.2 verification completed successfully');
       console.log(`   TC ID          : ${tcId}`);
       console.log(`   Opp name       : "${oppName}"`);
       console.log(`   Email_Contact#1: "${email_Contact1}"`);

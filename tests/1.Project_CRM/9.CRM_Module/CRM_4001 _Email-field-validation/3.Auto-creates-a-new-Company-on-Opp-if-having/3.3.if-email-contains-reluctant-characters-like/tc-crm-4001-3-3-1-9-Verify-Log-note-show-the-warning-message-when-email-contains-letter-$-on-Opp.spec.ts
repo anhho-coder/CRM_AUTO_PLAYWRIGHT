@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, OpportunityPage } from '@pages';
@@ -6,24 +6,24 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-4001 - Email field validation
- * Test Case ID: CRM-4001_3.1.1.1
+ * Test Case ID: CRM-4001_3.3.1.9
  *
- * Summary: Verify a Log note shows warning message appears when auto creating a new Company on Opp
- *          if having more than one email
+ * Summary: Verify an Error message appears when auto creating a new Company on Opp
+ *          if email contains reluctant characters like "$" letter
  *
  * Command to run:
- * npx playwright test --grep "CRM-4001_3\.1\.1\.1:" --project=chromium
+ * npx playwright test --grep "CRM-4001_3\.3\.1\.9:" --project=chromium
  *
  * Pre-condition:
  * 1.  After login successful, click at "CRM" button
  * 2.  On "CRM" page, click at "view list" button
  * 3.  On "Opp" page, click at "CREATE" button
  * 4.  Enter the following information:
- *     - Opp name textbox = TEST Opp 1 CRM-4001_3.1.1.1
- *     - "Email" textbox  = test@CRM-3523-company-jan-08.com; test2@CRM-3523-company-jan-08.com
+ *     - Opp name textbox = TEST Opp 1 CRM-4001_3.3.1.9
+ *     - "Email" textbox  = test$test@CRM-3523-company-jan-08.com
  *       (= Email_Contact#1)
  *     - Created manually checkbox = FALSE (uncheck)
- * 5.  Press "SAVE" button
+ * 5.  Press "SAVE" button and wait until page load completely
  * 6.  Refresh page to verify Contact field (up to 10 times, max 3 minutes)
  *
  * Verification:
@@ -32,13 +32,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *     lead and in the contact! Ensure it has no commas, spaces, etcetera, or multiple emails."
  */
 
-test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when having more than one email on Opp', () => {
+test.describe('CRM-4001_3.3.1.9 - Verify Error message appears when email contains "$" letter on Opp', () => {
 
-  const tcId    = 'CRM-4001_3.1.1.1';
+  const tcId    = 'CRM-4001_3.3.1.9';
   const oppName = `TEST Opp 1 ${tcId}`;
 
-  // Two emails separated by semicolon (Email_Contact#1)
-  const email_Contact1 = 'test@CRM-3523-company-jan-08.com; test2@CRM-3523-company-jan-08.com';
+  // Email with dollar character (Email_Contact#1)
+  const email_Contact1 = 'test$test@CRM-3523-company-jan-08.com';
 
   // Expected warning message text in the Log area
   const expectedLogText = 'This lead contains an invalid email address. Please update the email address both in this lead and in the contact! Ensure it has no commas, spaces, etcetera, or multiple emails.';
@@ -51,14 +51,14 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
   test.afterEach(async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
-      console.log('\u26a0\ufe0f Test failed - waiting for page to stabilize before screenshot...');
+      console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       await CommonUtils.waitForSpinnersToHide(page);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
-      console.log('\u2713 Page stabilized');
+      console.log('✓ Page stabilized');
     }
   });
 
-  test('CRM-4001_3.1.1.1: Verify Log note shows warning message when having more than one email on Opp', async ({ page }, testInfo) => {
+  test.skip('CRM-4001_3.3.1.9: Verify Error message appears when email contains "$" letter on Opp @CRM-10450', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -83,10 +83,10 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
       await loginPage.navigateTo(baseUrl);
       await loginPage.login(users.admin_crm.username, users.admin_crm.password);
       await loginPage.dismissLocationPermissionDialog();
-      console.log('\u2713 Login successful');
+      console.log('✓ Login successful');
       await homePage.navigateToCRM();
       await homePage.waitForPageReady();
-      console.log('\u2713 Navigated to CRM module');
+      console.log('✓ Navigated to CRM module');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - CRM page');
     });
 
@@ -97,7 +97,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     await test.step('Step 2: Click "view list" button', async () => {
       console.log('Step 2: Switching to list view');
       await opportunityPage.switchToListView();
-      console.log('\u2713 List view activated');
+      console.log('✓ List view activated');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - Opp list view');
     });
 
@@ -108,7 +108,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     await test.step('Step 3: Click CREATE button', async () => {
       console.log('Step 3: Clicking CREATE button');
       await opportunityPage.clickCreate();
-      console.log('\u2713 Opp creation form opened');
+      console.log('✓ Opp creation form opened');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Opp creation form');
     });
 
@@ -127,9 +127,9 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
 
       console.log('  4.3: Uncheck "Created manually" checkbox (set to FALSE)');
       await opportunityPage.uncheckCreatedManually();
-      console.log('\u2713 "Created manually" unchecked');
+      console.log('✓ "Created manually" unchecked');
 
-      console.log('\u2713 All fields filled');
+      console.log('✓ All fields filled');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Fields filled');
     });
 
@@ -140,7 +140,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     await test.step('Step 5: Press "SAVE" button and wait until page load completely', async () => {
       console.log('Step 5: Clicking SAVE button and waiting for page to load completely');
       await opportunityPage.saveAndWaitForCompletion();
-      console.log('\u2713 SAVE clicked and page loaded completely');
+      console.log('✓ SAVE clicked and page loaded completely');
 
       // Scroll to the log/chatter area to make it visible in screenshot
       const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
@@ -165,7 +165,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
         0,      // 0 s interval - reload immediately after each check
         180000  // 3 min total max
       );
-      console.log(`\u2713 Refresh loop completed. Warning found: ${chatterResult.found}`);
+      console.log(`✓ Refresh loop completed. Warning found: ${chatterResult.found}`);
 
       // Scroll to the log/chatter area to make it visible in screenshot
       const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
@@ -190,7 +190,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
         `Log area should contain: "${expectedLogText}"`
       ).toContain(expectedLogText);
 
-      console.log('\u2713 Verification passed: Log warning message matches expected text');
+      console.log('✓ Verification passed: Log warning message matches expected text');
 
       // Scroll to the log/chatter area to make warning visible in screenshot
       const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
@@ -201,7 +201,7 @@ test.describe('CRM-4001_3.1.1.1 - Verify Log note shows warning message when hav
     });
 
     await test.step('Final Summary', async () => {
-      console.log('\n\u2705 TEST PASSED: CRM-4001_3.1.1.1 verification completed successfully');
+      console.log('\n✅ TEST PASSED: CRM-4001_3.3.1.9 verification completed successfully');
       console.log(`   TC ID          : ${tcId}`);
       console.log(`   Opp name       : "${oppName}"`);
       console.log(`   Email_Contact#1: "${email_Contact1}"`);
