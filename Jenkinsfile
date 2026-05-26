@@ -32,7 +32,7 @@ pipeline {
 
         stage('Run Playwright tests') {
             steps {
-                bat 'npx playwright test'
+                bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts"'
             }
         }
     }
