@@ -8,34 +8,31 @@ pipeline {
     options {
         timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
-        ansiColor('xterm')
     }
 
     stages {
-        stage('Check Docker') {
+        stage('Info') {
             steps {
-                sh 'docker --version || echo "Docker NOT installed"'
-                sh 'docker ps || echo "Cannot access Docker daemon"'
+                bat 'node --version'
+                bat 'npm --version'
             }
         }
-        
+
         stage('Install dependencies') {
             steps {
-                sh 'node --version'
-                sh 'npm --version'
-                sh 'npm ci'
+                bat 'npm ci'
             }
         }
 
         stage('Install Playwright browsers') {
             steps {
-                sh 'npx playwright install --with-deps'
+                bat 'npx playwright install'
             }
         }
 
         stage('Run Playwright tests') {
             steps {
-                sh 'npx playwright test'
+                bat 'npx playwright test'
             }
         }
     }
@@ -53,10 +50,10 @@ pipeline {
             archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
         }
         success {
-            echo '✅ Tests passed!'
+            echo 'Tests passed!'
         }
         failure {
-            echo '❌ Tests failed. Check the report for details.'
+            echo 'Tests failed. Check the report for details.'
         }
     }
 }
