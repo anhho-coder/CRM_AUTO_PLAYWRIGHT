@@ -1,6 +1,3 @@
-import * as path from 'path';
-import * as fs from 'fs';
-
 /**
  * Global setup - environment variables are already set in playwright.config.ts
  * This is kept for any future global setup tasks

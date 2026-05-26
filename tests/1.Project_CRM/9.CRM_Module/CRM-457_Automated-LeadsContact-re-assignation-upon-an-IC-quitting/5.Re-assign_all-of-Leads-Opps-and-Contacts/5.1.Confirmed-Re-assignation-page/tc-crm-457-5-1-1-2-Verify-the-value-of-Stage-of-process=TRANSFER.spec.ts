@@ -351,6 +351,8 @@ test.describe('CRM-457_5.1.1.2 - Verify Stage of process = "TRANSFER" after conf
   });
 
   test.afterEach(async ({ page }, testInfo) => {
+    test.setTimeout(config.timeouts.test);
+
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       console.log('\u26a0\ufe0f Test failed - waiting for page to stabilize before screenshot...');
       await CommonUtils.waitForSpinnersToHide(page);
@@ -365,28 +367,40 @@ test.describe('CRM-457_5.1.1.2 - Verify Stage of process = "TRANSFER" after conf
 
     if (url_Contact1) {
       await test.step('VIII. Tear down - Step 1: Delete Contact#1', async () => {
-        console.log(`Step VIII.1: Deleting Contact#1 at ${url_Contact1}`);
-        await CommonUtils.deleteRecordByUrl(page, url_Contact1, testInfo);
-        url_Contact1 = '';
-        console.log('\u2713 VIII.1: Contact#1 deleted');
+        try {
+          console.log(`Step VIII.1: Deleting Contact#1 at ${url_Contact1}`);
+          await CommonUtils.deleteRecordByUrl(page, url_Contact1, testInfo);
+          url_Contact1 = '';
+          console.log('\u2713 VIII.1: Contact#1 deleted');
+        } catch (e) {
+          console.log(`\u26a0\ufe0f VIII.1: Failed to delete Contact#1 - ${(e as Error).message}`);
+        }
       });
     }
 
     if (url_Lead1) {
       await test.step('VIII. Tear down - Step 2: Delete Lead#1', async () => {
-        console.log(`Step VIII.2: Deleting Lead#1 at ${url_Lead1}`);
-        await CommonUtils.deleteRecordByUrl(page, url_Lead1, testInfo);
-        url_Lead1 = '';
-        console.log('\u2713 VIII.2: Lead#1 deleted');
+        try {
+          console.log(`Step VIII.2: Deleting Lead#1 at ${url_Lead1}`);
+          await CommonUtils.deleteRecordByUrl(page, url_Lead1, testInfo);
+          url_Lead1 = '';
+          console.log('\u2713 VIII.2: Lead#1 deleted');
+        } catch (e) {
+          console.log(`\u26a0\ufe0f VIII.2: Failed to delete Lead#1 - ${(e as Error).message}`);
+        }
       });
     }
 
     if (url_Opp1) {
       await test.step('VIII. Tear down - Step 3: Delete Opp#1', async () => {
-        console.log(`Step VIII.3: Deleting Opp#1 at ${url_Opp1}`);
-        await CommonUtils.deleteRecordByUrl(page, url_Opp1, testInfo);
-        url_Opp1 = '';
-        console.log('\u2713 VIII.3: Opp#1 deleted');
+        try {
+          console.log(`Step VIII.3: Deleting Opp#1 at ${url_Opp1}`);
+          await CommonUtils.deleteRecordByUrl(page, url_Opp1, testInfo);
+          url_Opp1 = '';
+          console.log('\u2713 VIII.3: Opp#1 deleted');
+        } catch (e) {
+          console.log(`\u26a0\ufe0f VIII.3: Failed to delete Opp#1 - ${(e as Error).message}`);
+        }
       });
     }
 

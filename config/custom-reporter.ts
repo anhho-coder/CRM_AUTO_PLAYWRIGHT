@@ -18,7 +18,6 @@ class CustomReporter implements Reporter {
 
   onBegin(config: FullConfig, suite: Suite) {
     console.log('\n========== CUSTOM REPORTER STARTED ==========');
-    // Get timestamp and folder name from environment
     this.timestamp = process.env.TEST_START_TIMESTAMP || '';
     this.folderName = process.env.TEST_FOLDER_NAME || 'tests';
     this.workerCount = process.env.WORKER_COUNT || '1';
@@ -29,11 +28,9 @@ class CustomReporter implements Reporter {
   }
 
   onTestBegin(test: TestCase) {
-    // Extract TC ID from test title (e.g. "CRM-3374_1.16:" → "CRM-3374_1\.16:")
     const tcIdMatch = test.title.match(/^([A-Z]+-\d+_[\d.]+):/);
     if (tcIdMatch) {
       const tcId = tcIdMatch[1];
-      // Escape dots for use as a grep pattern
       const grepPattern = tcId.replace(/\./g, '\\.');
       console.log('\n===============================================================');
       console.log(`  Command to run this test:`);
@@ -47,11 +44,10 @@ class CustomReporter implements Reporter {
       this.hasFailures = true;
       this.totalFailures++;
       console.log(`[Custom Reporter] Test failed: ${test.title}`);
-      
-      // Check if failure occurred during login step (Step 1) or navigation (Step 2)
+
       const errorMessage = result.error?.message || '';
       const stepTitle = result.steps.find(step => step.error)?.title || '';
-      
+
       if (stepTitle.includes('Step 1') || stepTitle.toLowerCase().includes('login') ||
           errorMessage.includes('Login') || errorMessage.includes('login')) {
         this.loginFailures++;
@@ -63,7 +59,7 @@ class CustomReporter implements Reporter {
     }
   }
 
-  onEnd(result: FullResult) {
+  async onEnd(result: FullResult) {
     console.log('\n========== CUSTOM REPORTER ENDING ==========');
     console.log(`Has Failures: ${this.hasFailures}`);
     console.log(`Result Status: ${result.status}`);
@@ -74,19 +70,10 @@ class CustomReporter implements Reporter {
     console.log(`   Step 2 Failures (Navigate to CRM): ${this.step2Failures}`);
     console.log(`   Other Failures: ${this.totalFailures - this.loginFailures - this.step2Failures}`);
     console.log('');
-    
-    // Force flush console output
-    if (process.stdout.write('')) {
-      // Output flushed
-    }
-    
-    // Wait 3 seconds before renaming
-    console.log('Waiting 3 seconds before rename...');
-    const waitUntil = Date.now() + 3000;
-    while (Date.now() < waitUntil) {
-      // Busy wait
-    }
-    
+
+    // Wait for other reporters to finish writing files
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     console.log('Starting folder rename...');
     this.renameReportFolder();
     console.log('Folder rename completed');
@@ -98,7 +85,7 @@ class CustomReporter implements Reporter {
     console.log(`[Custom Reporter] Timestamp: ${this.timestamp}`);
     console.log(`[Custom Reporter] Folder Name: ${this.folderName}`);
     console.log(`[Custom Reporter] Has Failures: ${this.hasFailures}`);
-    
+
     if (!this.timestamp) {
       console.log('[Custom Reporter] Warning: No timestamp found, skipping report folder rename');
       return;
@@ -112,33 +99,9 @@ class CustomReporter implements Reporter {
     const finalFolder = path.join(reportDir, finalFolderName);
 
     console.log(`[Custom Reporter] Looking for folder: ${tempFolderName}`);
-    console.log(`[Custom Reporter] Source path: ${tempFolder}`);
-    console.log(`[Custom Reporter] Target path: ${finalFolder}`);
-    console.log(`[Custom Reporter] Folder exists: ${fs.existsSync(tempFolder)}`);
+    console.log(`[Custom Reporter] Target folder: ${finalFolderName}`);
 
-    if (fs.existsSync(tempFolder)) {
-      try {
-        // Create new folder with correct name
-        console.log(`[Custom Reporter] Creating new folder: ${finalFolderName}`);
-        fs.mkdirSync(finalFolder, { recursive: true });
-        
-        // Copy all files from old folder to new folder
-        console.log(`[Custom Reporter] Copying files from ${tempFolderName} to ${finalFolderName}`);
-        this.copyFolderRecursive(tempFolder, finalFolder);
-        
-        // Inject statistics into index.html
-        console.log(`[Custom Reporter] Injecting statistics into index.html...`);
-        this.injectStatisticsIntoIndexHtml(finalFolder);
-        
-        // Delete old folder
-        console.log(`[Custom Reporter] Deleting old folder: ${tempFolderName}`);
-        this.deleteFolderRecursive(tempFolder);
-        
-        console.log(`\n✓ Report folder renamed to: ${finalFolderName}`);
-      } catch (error) {
-        console.error(`[Custom Reporter] Error renaming report folder:`, error);
-      }
-    } else {
+    if (!fs.existsSync(tempFolder)) {
       console.log(`[Custom Reporter] Warning: Report folder not found: ${tempFolderName}`);
       console.log(`[Custom Reporter] Checking what folders exist in ${reportDir}:`);
       try {
@@ -147,20 +110,42 @@ class CustomReporter implements Reporter {
       } catch (error) {
         console.error(`[Custom Reporter] Error listing folders:`, error);
       }
+      return;
     }
+
+    try {
+      fs.renameSync(tempFolder, finalFolder);
+      console.log(`\n✓ Report folder renamed to: ${finalFolderName}`);
+    } catch (renameError) {
+      // Fallback to copy+delete if rename fails (e.g. cross-device move)
+      console.log(`[Custom Reporter] renameSync failed, falling back to copy+delete: ${(renameError as Error).message}`);
+      try {
+        fs.mkdirSync(finalFolder, { recursive: true });
+        this.copyFolderRecursive(tempFolder, finalFolder);
+        this.injectStatisticsIntoIndexHtml(finalFolder);
+        fs.rmSync(tempFolder, { recursive: true, force: true });
+        console.log(`\n✓ Report folder copied to: ${finalFolderName}`);
+      } catch (copyError) {
+        console.error(`[Custom Reporter] Error during copy+delete fallback:`, copyError);
+      }
+      return;
+    }
+
+    // Inject statistics into the renamed folder
+    this.injectStatisticsIntoIndexHtml(finalFolder);
   }
 
   private injectStatisticsIntoIndexHtml(folderPath: string) {
     const indexPath = path.join(folderPath, 'index.html');
-    
+
     if (!fs.existsSync(indexPath)) {
-      console.log('[Custom Reporter] Warning: index.html not found');
+      console.log('[Custom Reporter] Warning: index.html not found, skipping statistics injection');
       return;
     }
 
     try {
       let htmlContent = fs.readFileSync(indexPath, 'utf8');
-      
+
       const statisticsBanner = `
   <style>
     .custom-stats-banner {
@@ -226,10 +211,9 @@ class CustomReporter implements Reporter {
     </div>
   </div>
 `;
-      
-      // Inject after opening <body> tag
+
       htmlContent = htmlContent.replace(/<body[^>]*>/, (match) => match + statisticsBanner);
-      
+
       fs.writeFileSync(indexPath, htmlContent, 'utf8');
       console.log('[Custom Reporter] ✓ Statistics injected into index.html');
     } catch (error) {
@@ -239,11 +223,11 @@ class CustomReporter implements Reporter {
 
   private copyFolderRecursive(source: string, target: string) {
     const files = fs.readdirSync(source);
-    
+
     files.forEach(file => {
       const sourcePath = path.join(source, file);
       const targetPath = path.join(target, file);
-      
+
       if (fs.statSync(sourcePath).isDirectory()) {
         fs.mkdirSync(targetPath, { recursive: true });
         this.copyFolderRecursive(sourcePath, targetPath);
@@ -251,20 +235,6 @@ class CustomReporter implements Reporter {
         fs.copyFileSync(sourcePath, targetPath);
       }
     });
-  }
-
-  private deleteFolderRecursive(folderPath: string) {
-    if (fs.existsSync(folderPath)) {
-      fs.readdirSync(folderPath).forEach(file => {
-        const filePath = path.join(folderPath, file);
-        if (fs.statSync(filePath).isDirectory()) {
-          this.deleteFolderRecursive(filePath);
-        } else {
-          fs.unlinkSync(filePath);
-        }
-      });
-      fs.rmdirSync(folderPath);
-    }
   }
 }
 

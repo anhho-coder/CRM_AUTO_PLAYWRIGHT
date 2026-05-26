@@ -23,6 +23,9 @@
   },
   "include": [
     "tests/**/*.ts",
+    "config/**/*.ts",
+    "helpers/**/*.ts",
+    "pages/**/*.ts",
     "playwright.config.ts"
   ],
   "exclude": [
