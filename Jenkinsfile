@@ -12,6 +12,13 @@ pipeline {
     }
 
     stages {
+        stage('Check Docker') {
+            steps {
+                sh 'docker --version || echo "Docker NOT installed"'
+                sh 'docker ps || echo "Cannot access Docker daemon"'
+            }
+        }
+        
         stage('Install dependencies') {
             steps {
                 sh 'node --version'
