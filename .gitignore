@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-package-lock.json
 
 # Test results - organized under playwright-report folder
 playwright-report/
