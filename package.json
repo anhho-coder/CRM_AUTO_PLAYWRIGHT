@@ -16,7 +16,10 @@
     "test:all-suites": "playwright test tests/Leads_Assignment tests/SalesReport_Performance --project=chromium",
     "codegen": "playwright codegen",
     "report": "playwright show-report",
-    "clean": "rimraf test-results playwright-report"
+    "clean": "rimraf test-results playwright-report",
+    "metrics:anchor": "node scripts/metrics/anchor.js",
+    "metrics:report": "node scripts/metrics/aggregate.js && node scripts/metrics/build-report.js",
+    "metrics:daily": "node scripts/metrics/run-daily.js"
   },
   "keywords": [
     "playwright",

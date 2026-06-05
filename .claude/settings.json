@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node scripts/metrics/anchor.js",
+            "timeout": 60,
+            "statusMessage": "Capturing daily automation-metrics anchor"
+          }
+        ]
+      }
+    ]
+  }
+}

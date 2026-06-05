@@ -137,6 +137,21 @@ Every spec must include a header comment with the rerun command(s):
 
 If the test is linked to a known bug, include **both** grep commands (one for the case ID, one for the bug ID) — see the next section.
 
+### Required header `Automation-Type` / `Automation-Date` tags (metrics)
+
+Every spec you **create or refactor** must carry two header tags right under `Test Case ID:`, consumed by the daily automation-metrics report (`scripts/metrics/`, output `metrics/master-report.html`):
+
+```typescript
+/**
+ * Test Case ID: TC.-A.7.3
+ * Automation-Type: new            // 'new' = newly-created TC | 'refactored' = updated existing TC
+ * Automation-Date: 2026-06-05     // date created/refactored (YYYY-MM-DD)
+ * ...
+ */
+```
+
+`new` = a brand-new test case; `refactored` = an existing test you updated/fixed. The aggregator buckets every tagged spec into the report's two categories (New vs Updated/Refactored) and reports per-category count / run-time / fail count; untagged specs are not counted. When you meaningfully refactor an existing spec, set `Automation-Type: refactored` and bump `Automation-Date` to today. Run `npm run metrics:report` to refresh the report locally; the nightly 9pm job (`run-metrics-daily.bat`) runs the day's changed specs and regenerates it.
+
 ## Known defects & skipping
 
 For a test expected to fail because of a tracked bug, use `test.fail()` plus an annotation, and embed the bug ID in the test title so `--grep "<BUG-ID>"` finds it. `--grep` only matches the title, not annotation metadata — the annotation alone is not enough.
