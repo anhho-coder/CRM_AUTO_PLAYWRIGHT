@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to Marketing - BDEU team with Country = Romania if Lead Form contains "Investment:"
  * 
  * Command to run:
- * npx playwright test --grep "TC.MBDEU_2.2.10" --project=chromium
+ * npx playwright test --grep "TC\.MBDEU_2\.2\.10 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

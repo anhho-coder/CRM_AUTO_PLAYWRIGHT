@@ -20,7 +20,16 @@ export class InvoicePage extends BasePage {
   private readonly createAndViewInvoicesButton = () => this.page.locator("//button[@context=\"{'open_invoices': True}\"]").first();
   private readonly validateButton              = () => this.page.locator("xpath=//button/span[contains(text(),'Validate')]");
   private readonly validateButton_RegisterPayment = () => this.page.locator("xpath=(//button/span[contains(text(),'Validate')])[2]");
-  private readonly registerPaymentButton       = () => this.page.locator("xpath=//button/span[contains(text(),'Register Payment')]");
+  private readonly registerPaymentButton       = () => this.page.locator("xpath=//button/span[contains(text(),'Register Payment')]").filter({ visible: true }).first();
+  // "Register Payment" rendered as any visible control (header button OR an item inside the "Action" cog menu)
+  private readonly registerPaymentAnyVisible   = () => this.page.locator("xpath=//a[contains(normalize-space(),'Register Payment')] | //button[contains(normalize-space(),'Register Payment')] | //span[contains(normalize-space(),'Register Payment')]").filter({ visible: true }).first();
+  private readonly actionMenuButton            = () => this.page.getByRole('button', { name: /^Action$/i }).first();
+  // Invoice CANCEL header button (XPath by action name, with role-name fallbacks)
+  private readonly cancelInvoiceButton         = () => this.page.locator("xpath=//button[@name='action_invoice_cancel']").or(this.page.getByRole('button', { name: /^CANCEL$/i })).or(this.page.getByRole('button', { name: /^Cancel$/i })).first();
+  // "Set to Draft" / "Reset to Draft" button (appears after an invoice is cancelled)
+  private readonly setToDraftButton            = () => this.page.locator("xpath=//button[@name='action_invoice_draft' or @name='button_draft']").or(this.page.getByRole('button', { name: /Set to Draft/i })).or(this.page.getByRole('button', { name: /Reset to Draft/i })).first();
+  // "OK" button on the "Are you sure you want to cancel this invoice?" confirmation dialog
+  private readonly cancelConfirmOkButton       = () => this.page.locator('.modal, .o_dialog').filter({ hasText: /cancel this invoice|are you sure/i }).getByRole('button', { name: /^OK$/i }).first();
   private readonly sendAndPrintButton          = () => this.page.getByRole('button', { name: /SEND & PRINT/i }).or(this.page.getByRole('button', { name: /Send & Print/i })).first();
   private readonly sendButton                  = () => this.page.locator("xpath=(//button/span[contains(text(),'Send')])[4]");
   private readonly createLicenseButton         = () => this.page.getByRole('button', { name: 'CREATE LICENSE' }).or(this.page.getByRole('button', { name: 'Create License' })).first();
@@ -221,9 +230,46 @@ export class InvoicePage extends BasePage {
     
     await validateButton.click();
     console.log('  - Clicked "VALIDATE" button');
-    
+
     // Wait for validation to complete
     await this.wait(5000);
+  }
+
+  /**
+   * Click the invoice CANCEL button (cancels the posted invoice).
+   * @param timeout - max time to wait for the button (default: abnormalWait)
+   */
+  async clickCancelInvoice(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log('  - Looking for the CANCEL button');
+    const button = this.cancelInvoiceButton();
+    await button.waitFor({ state: 'visible', timeout });
+    console.log('  - Found CANCEL button');
+    await button.click();
+    console.log('  - Clicked "CANCEL" button');
+    // A "Confirmation" dialog appears ("Are you sure you want to cancel this invoice?") - press OK to confirm.
+    const ok = this.cancelConfirmOkButton();
+    const okVisible = await ok.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (okVisible) {
+      await ok.click();
+      console.log('  - Confirmed cancellation (clicked OK on the confirmation dialog)');
+    } else {
+      console.log('  ⚠ Cancel confirmation dialog not found (no OK to press)');
+    }
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Click "Set to Draft" / "Reset to Draft" (recovers a cancelled invoice back to Draft).
+   * @param timeout - max time to wait for the button (default: abnormalWait)
+   */
+  async clickSetToDraft(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log('  - Looking for the "Set to Draft" button');
+    const button = this.setToDraftButton();
+    await button.waitFor({ state: 'visible', timeout });
+    console.log('  - Found "Set to Draft" button');
+    await button.click();
+    console.log('  - Clicked "Set to Draft" button');
+    await this.wait(CommonUtils.waitTimes.standard);
   }
 
   /**
@@ -297,12 +343,23 @@ export class InvoicePage extends BasePage {
    * @param timeout - Maximum time to wait (default: 20000ms)
    */
   async clickRegisterPayment(timeout: number = 20000): Promise<void> {
-    const registerPaymentButton = this.registerPaymentButton();
-    await registerPaymentButton.waitFor({ state: 'visible', timeout });
-    console.log('  - Found REGISTER PAYMENT button');
-    await registerPaymentButton.click();
-    console.log('  - Clicked "REGISTER PAYMENT" button');
-    await this.wait(1000);
+    // Try the visible "Register Payment" control (header button) first.
+    let target = this.registerPaymentAnyVisible();
+    const directVisible = await target.isVisible().catch(() => false);
+    if (!directVisible) {
+      // In some invoice layouts (e.g. the O12_CE License-invoice flow) Register Payment is not a
+      // header button - it lives under the "Action" cog menu. Open it, then click the item.
+      console.log('  - REGISTER PAYMENT not visible in header; opening the "Action" menu');
+      await this.actionMenuButton().waitFor({ state: 'visible', timeout });
+      await this.actionMenuButton().click();
+      await this.wait(CommonUtils.waitTimes.short);
+      target = this.registerPaymentAnyVisible();
+      await target.waitFor({ state: 'visible', timeout });
+    }
+    console.log('  - Found "Register Payment" control');
+    await target.click();
+    console.log('  - Clicked "Register Payment"');
+    await this.wait(CommonUtils.waitTimes.standard);
   }
 
   /**
@@ -312,6 +369,19 @@ export class InvoicePage extends BasePage {
     const amountInput = this.paymentAmountInput();
     await amountInput.waitFor({ state: 'visible', timeout });
     return await amountInput.inputValue();
+  }
+
+  /**
+   * Set the "Amount" field in the Register Payment dialog (e.g. to register a partial payment).
+   * @param amount - the payment amount to set (string)
+   */
+  async fillPaymentAmount(amount: string, timeout: number = 10000): Promise<void> {
+    const amountInput = this.paymentAmountInput();
+    await amountInput.waitFor({ state: 'visible', timeout });
+    await amountInput.click();
+    await amountInput.fill('');
+    await amountInput.fill(amount);
+    console.log(`  - Payment "Amount" set to: ${amount}`);
   }
 
   /**

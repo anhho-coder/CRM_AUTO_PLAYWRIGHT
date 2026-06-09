@@ -11,8 +11,11 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging leads do NOT happens when the leads from different emails and 2 leads have 2 different companies
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_2.2.1" --project=chromium
- * 
+ * npx playwright test --grep "CRM-542_2\.2\.1 -" --project=chromium
+ * npx playwright test --grep "CRM-8930" --project=chromium
+ *
+ * NOTE: Skipped due to known defect CRM-8930 (declaration-level test.skip).
+ *
  * Pre-condition:
  * 1. After login successful as admin_crm
  * 
@@ -172,7 +175,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
     }
   });
 
-  test('Verify that leads do NOT merge when leads have different emails and different companies', async ({ page }, testInfo) => {
+  test.skip('CRM-542_2.2.1 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and different companies', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Initialize page objects

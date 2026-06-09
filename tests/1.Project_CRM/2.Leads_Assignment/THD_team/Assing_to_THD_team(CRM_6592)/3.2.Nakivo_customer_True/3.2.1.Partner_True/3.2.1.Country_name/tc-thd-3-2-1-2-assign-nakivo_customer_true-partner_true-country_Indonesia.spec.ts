@@ -13,7 +13,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Tags: @smoke-test
  *
  * Command to run:
- * npx playwright test --grep "TC.THD_3.2.1.2" --project=chromium
+ * npx playwright test --grep "TC\.THD_3\.2\.1\.2 -" --project=chromium
  *
  * Run all Smoke tests:
  * npx playwright test --grep "@smoke-test" --project=chromium

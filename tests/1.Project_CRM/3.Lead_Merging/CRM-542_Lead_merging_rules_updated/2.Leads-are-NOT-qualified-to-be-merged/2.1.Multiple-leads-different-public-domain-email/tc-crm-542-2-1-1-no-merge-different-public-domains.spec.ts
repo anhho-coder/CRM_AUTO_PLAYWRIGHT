@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging leads do NOT happens when the leads from the different public domain email
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_2.1.1" --project=chromium
+ * npx playwright test --grep "CRM-542_2\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

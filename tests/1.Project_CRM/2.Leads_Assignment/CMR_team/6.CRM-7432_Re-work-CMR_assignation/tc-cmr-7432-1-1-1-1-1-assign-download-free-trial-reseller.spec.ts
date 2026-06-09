@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Nakivo Customer is not set; Reseller is selected at Lead
  * 
  * Command to run:
- * npx playwright test --grep "TC\.CMR-7432_1\.1\.1\.1\.1:" --project=chromium
+ * npx playwright test --grep "TC\.CMR-7432_1\.1\.1\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "Contacts" button

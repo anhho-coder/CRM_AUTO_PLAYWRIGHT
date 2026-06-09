@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging opp happens successfully when target has IB renewal lead form but lower stage
  * 
  * Command to run:
- * npx playwright test --grep "LeadMerging-Exploratory_3.2" --project=chromium
+ * npx playwright test --grep "LeadMerging-Exploratory_3\.2 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

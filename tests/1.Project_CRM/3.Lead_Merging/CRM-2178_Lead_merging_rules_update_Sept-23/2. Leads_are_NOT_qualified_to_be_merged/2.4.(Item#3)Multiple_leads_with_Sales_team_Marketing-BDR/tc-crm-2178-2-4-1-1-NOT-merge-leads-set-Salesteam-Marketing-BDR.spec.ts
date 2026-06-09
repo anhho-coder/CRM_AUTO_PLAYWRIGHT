@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and associated Contact.Level is NOT set
  * 
  * Command to run:
- * npx playwright test --grep "CRM-2178_2.4.1.1" --project=chromium
+ * npx playwright test --grep "CRM-2178_2\.4\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

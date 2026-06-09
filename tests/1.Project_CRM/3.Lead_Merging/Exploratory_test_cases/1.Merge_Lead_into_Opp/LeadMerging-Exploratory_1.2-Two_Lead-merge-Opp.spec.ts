@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * company domain email but different priority if an opp is IB renewal lead
  * 
  * Command to run:
- * npx playwright test --grep "LeadMerging-Exploratory_1.2" --project=chromium
+ * npx playwright test --grep "LeadMerging-Exploratory_1\.2 -" --project=chromium
  * 
   * Pre-condition:
  * 1. After login successful, click at "CRM" button

@@ -282,6 +282,8 @@ export class CommonUtils {
     ibsaTeamAssignment: 300000,
     /** Default wait time for sales team assignment (5 minutes) */
     salesTeamAssignment: 300000,
+    /** Wait time for lead Salesperson/Sales-Team auto-assignment poll loop (4 minutes) */
+    leadAssignmentWait: 240000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
     /** Wait time for lead merging process (5 minutes) */
@@ -318,6 +320,10 @@ export class CommonUtils {
     contactShowing: 30000,
     /** Linking partner wait - 30 seconds (for complex operations - increased from 10s) */
     linkingPartner: 30000,
+    /** Contact creation wait - 60 seconds (wait after saving a Lead for the async Contact/partner creation to complete) */
+    contactCreationWait: 60000,
+    /** Contact refresh total wait - 5 minutes (hard cap for the refresh-and-check loop while the async Contact/partner is created) */
+    contactRefreshTotalWait: 300000,
      /** Check on Chater Log wait - 30 seconds (for complex operations) */
     checkingChatterLog: 30000,
     /** Saving Deal Element long wait - 4 minutes (for complex operations) */

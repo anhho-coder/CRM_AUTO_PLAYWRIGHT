@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that Leads with Active = False, Is won = Pending, One of the messages contains "This lead has been merged into"
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_3.1.1" --project=chromium
+ * npx playwright test --grep "CRM-542_3\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

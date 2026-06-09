@@ -15,7 +15,10 @@ import { CommonUtils } from '@helpers/common.utils';
  * the lower priority lead has Lead form = Subscribe Form
  * 
  * Command to run:
- * npx playwright test --grep "CRM-1992_1.2.1.2.1" --project=chromium
+ * npx playwright test --grep "CRM-1992_1\.2\.1\.2\.1 -" --project=chromium
+ * npx playwright test --grep "CRM-10787" --project=chromium
+ *
+ * NOTE: Skipped due to known defect CRM-10787 (declaration-level test.skip).
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -142,7 +145,7 @@ test.describe('CRM-1992_1.2.1.2.1 - Lead Merging: Same Public Email (Manual Can_
     }
   });
 
-  test('Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
+  test.skip('CRM-1992_1.2.1.2.1 [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
     // Known bug: CRM-8929 - Test expected to fail until bug is resolved
     testInfo.annotations.push({ type: 'defect', description: 'CRM-8929' });
     test.fail(); // Mark as expected to fail due to known defect

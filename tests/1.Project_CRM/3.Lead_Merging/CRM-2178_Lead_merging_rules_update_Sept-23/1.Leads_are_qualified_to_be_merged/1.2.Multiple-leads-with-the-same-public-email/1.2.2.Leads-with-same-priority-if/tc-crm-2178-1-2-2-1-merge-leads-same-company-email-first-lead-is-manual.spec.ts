@@ -14,7 +14,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * public email and same priority if a first created lead is created manually and has tag "can_merge"
  * 
  * Command to run:
- * npx playwright test --grep "CRM-2178_1.2.2.1" --project=chromium
+ * npx playwright test --grep "CRM-2178_1\.2\.2\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

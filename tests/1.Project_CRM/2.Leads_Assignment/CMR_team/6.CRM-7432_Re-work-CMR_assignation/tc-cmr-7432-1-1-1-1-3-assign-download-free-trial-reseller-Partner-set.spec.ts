@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to CMR team if Lead form = Download Free Trial ; Nakvio Customer is not set; Partner is set
  * 
  * Command to run:
- * npx playwright test --grep "TC\.CMR-7432_1\.1\.1\.1\.3:" --project=chromium
+ * npx playwright test --grep "TC\.CMR-7432_1\.1\.1\.1\.3 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "Contacts" button

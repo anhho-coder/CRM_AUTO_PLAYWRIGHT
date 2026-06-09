@@ -1,8 +1,10 @@
 @echo off
 REM ============================================================================
-REM CRM Automation - nightly metrics job (Windows Task Scheduler @ 21:00)
+REM CRM Automation - daily metrics job (Windows Task Scheduler @ 06:00, reports the prior day -
+REM collected each morning). Pair with the "Anchor" task @ 06:15 which resets the baseline
+REM AFTER this 06:00 run has read it.
 REM Register once:
-REM   schtasks /Create /SC DAILY /ST 21:00 /TN "CRM Automation Metrics" ^
+REM   schtasks /Create /SC DAILY /ST 06:00 /TN "CRM Automation Metrics" ^
 REM     /TR "\"D:\II. Automation\CRM_AUTO\run-metrics-daily.bat\""
 REM ============================================================================
 setlocal
@@ -19,7 +21,9 @@ if errorlevel 1 (
 )
 
 REM 2) Run today's created/updated specs, then aggregate + rebuild the HTML master report.
-call npm run metrics:daily
+REM    Output is logged to metrics\last-run.log so watch-metrics-progress.bat can show a live bar.
+call npm run metrics:daily > "%~dp0metrics\last-run.log" 2>&1
+type "%~dp0metrics\last-run.log"
 
 :openreport
 echo [%date% %time%] Opening master report

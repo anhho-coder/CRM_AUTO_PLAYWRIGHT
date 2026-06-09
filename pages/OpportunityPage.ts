@@ -19,6 +19,9 @@ export class OpportunityPage extends BasePage {
   private readonly opportunityNameInput = () => this.page.getByRole('textbox', { name: 'Opportunity' }).or(this.page.locator('input[name="name"]')).first();
   private readonly emailInput = () => this.page.locator('tr').filter({ hasText: 'Email' }).filter({ hasNotText: 'Email Templates' }).locator('input:visible').first();
   private readonly companyNameInput = () => this.page.locator('xpath=(//input[@name="partner_name"])[3]');
+  // Contact Name input (XPath primary, CSS fallback) - the visible editable field on the Opp form
+  private readonly contactNameInputXPath = () => this.page.locator("xpath=//input[@name='contact_name']").filter({ visible: true }).first();
+  private readonly contactNameInputCss = () => this.page.locator('input[name="contact_name"]').filter({ visible: true }).first();
   private readonly streetInput = () => this.page.locator('xpath=(//input[@name="street"])[2]');
   private readonly countryInputXPath = () => this.page.locator("xpath=(//div[contains(@class,'address_country')])[2]/div/input");
   private readonly stateInputXPath = () => this.page.locator("xpath=(//div[contains(@class,'address_state')])[2]/div/input");
@@ -53,6 +56,8 @@ export class OpportunityPage extends BasePage {
   private readonly devRequiredTextbox_Readonly = () => this.page.locator("xpath=//span[@name='development_detail']");
 //Stage:
 private readonly stageNew = () => this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]//button[normalize-space()='New']");
+// Stage "New" indicator tolerant of statusbar button OR link/field rendering (a converted Opp shows it as a crm.stage link)
+private readonly stageNewIndicator = () => this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]//button[normalize-space()='New'] | //div[contains(@class,'o_statusbar_status')]//a[normalize-space()='New'] | //a[contains(@href,'model=crm.stage') and normalize-space()='New']").first();
 private readonly stageHotDeal = () => this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]//button[normalize-space()='Hot Deal']");
 private readonly stageByName = (stageName: string) => this.page.locator(`xpath=//div[contains(@class,'o_statusbar_status')]//button[normalize-space()='${stageName}']`);
 private readonly stageMoreButton = () => this.page.locator("xpath=//div[contains(@name,'stage_id')]/button[normalize-space()='MORE' or normalize-space()='More']");
@@ -238,6 +243,28 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   async fillCompanyName(name: string) {
     await this.companyNameInput().fill(name);
     await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Fill the "Contact Name" field on the Opportunity form.
+   * XPath primary, CSS fallback. Returns true if the field was found and filled.
+   * @param name - the contact name to enter
+   */
+  async fillContactName(name: string): Promise<boolean> {
+    let target = this.contactNameInputXPath();
+    const visibleByXPath = await target.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) {
+      target = this.contactNameInputCss();
+      const visibleByCss = await target.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+      if (!visibleByCss) {
+        console.log('  ⚠ Contact Name field not found on the Opportunity form');
+        return false;
+      }
+    }
+    await target.fill('');
+    await target.fill(name);
+    await this.wait(CommonUtils.waitTimes.short);
+    return true;
   }
 
   /**
@@ -496,6 +523,20 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Verify the "New" stage is present on the Opportunity status bar - used as the
+   * signal that a Lead was converted to an Opportunity successfully.
+   * @returns true if the New stage button becomes visible within the wait budget.
+   */
+  async isStageNewVisible(): Promise<boolean> {
+    try {
+      await this.stageNewIndicator().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Select any Stage by name on Opp page
    * @param stageName - The exact stage name as displayed on the stage bar (e.g., 'New', 'Hot Deal', 'Qualified')
    */
@@ -680,6 +721,23 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       return null;
     }
   }
+
+  /**
+   * Get the Contact field value (contact_partner_id).
+   * Returns the text content of the Contact hyperlink on the Opp form, or null if absent.
+   */
+  async getContactFieldValue(): Promise<string | null> {
+    try {
+      const contactField = this.contactFieldXPath();
+      const exists = await contactField.count() > 0;
+      if (exists) {
+        return (await contactField.textContent().catch(() => ''))?.trim() ?? '';
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
   /**
    * Get the URL (href) of the Company field hyperlink (partner_id)
    * Returns the full URL of the partner_id anchor element.
@@ -722,7 +780,8 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     expectedText: string = 'test',
     maxAttempts: number = 5,
     refreshInterval: number = 60000,
-    totalMaxTime: number = 300000
+    totalMaxTime: number = 300000,
+    field: 'company' | 'contact' = 'company'
   ): Promise<{ contactFieldFound: boolean; contactValue: string | null }> {
     let contactFieldFound = false;
     let contactValue: string | null = '';
@@ -750,9 +809,11 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       // Wait for the Contact <a> element to be rendered (form data loads via AJAX after nav)
       await this.getContactField().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
 
-      // Verify Contact field contains expected text
+      // Verify the target field contains expected text (Company field by default; Contact field when field='contact')
       try {
-        contactValue = await this.getCompanyFieldValue();
+        contactValue = field === 'contact'
+          ? await this.getContactFieldValue()
+          : await this.getCompanyFieldValue();
 
         if (contactValue && contactValue.toLowerCase().includes(expectedText.toLowerCase())) {
           console.log(`  ✓ Contact field verified: "${contactValue}"`);
@@ -780,6 +841,25 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     }
 
     return { contactFieldFound, contactValue };
+  }
+
+  /**
+   * Refresh the Opp form until the "Contact" field (contact_partner_id) contains the
+   * expected contact name (case-insensitive). Use this after saving an Opp that set a
+   * "Contact Name", to confirm the async-created Contact is linked with that name.
+   * @param expectedName - the Contact name expected in the Contact field
+   * @param maxAttempts - number of refresh attempts (default: 5)
+   * @param refreshInterval - wait between refreshes (default: contactCreationWait = 60s)
+   * @param totalMaxTime - hard cap for all attempts (default: contactRefreshTotalWait = 5 min)
+   * @returns { contactFieldFound, contactValue }
+   */
+  async waitForContactFieldEquals(
+    expectedName: string,
+    maxAttempts: number = 5,
+    refreshInterval: number = CommonUtils.waitTimes.contactCreationWait,
+    totalMaxTime: number = CommonUtils.waitTimes.contactRefreshTotalWait
+  ): Promise<{ contactFieldFound: boolean; contactValue: string | null }> {
+    return this.waitForContactFieldPopulated(expectedName, maxAttempts, refreshInterval, totalMaxTime, 'contact');
   }
 
   /**
@@ -928,6 +1008,34 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       }
     } catch (error) {
       console.error(`Error getting Sales Team value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Get the current Salesperson value on the Opportunity form.
+   * Handles both edit mode (Many2one input) and readonly mode (text).
+   * @returns The Salesperson value as a string, or empty string if not found
+   */
+  async getSalespersonValue(): Promise<string> {
+    try {
+      const salesperson_saved_row = this.page.locator('xpath=//tr[td[contains(text(), "Salesperson")] or td/label[contains(text(), "Salesperson")]]').first();
+      const salespersonCell = salesperson_saved_row.locator('xpath=./td[2]').first();
+      const salespersonInputElement = salespersonCell.locator('xpath=.//input[@type="text"] | .//input[@role="textbox"]');
+
+      const hasInput = await salespersonInputElement.count() > 0;
+
+      if (hasInput) {
+        // Editable mode (unsaved) - get from input value
+        const value = await salespersonInputElement.first().inputValue().catch(() => '') || '';
+        return value.trim();
+      } else {
+        // Readonly mode (saved) - get from cell text
+        const value = await salespersonCell.textContent().catch(() => '') || '';
+        return value.trim();
+      }
+    } catch (error) {
+      console.error(`Error getting Salesperson value: ${error instanceof Error ? error.message : String(error)}`);
       return '';
     }
   }

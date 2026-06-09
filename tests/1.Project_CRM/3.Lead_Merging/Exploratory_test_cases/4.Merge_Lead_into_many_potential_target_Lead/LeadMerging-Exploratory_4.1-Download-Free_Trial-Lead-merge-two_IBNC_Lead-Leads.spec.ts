@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and one of them is earlier lead
  * 
  * Command to run:
- * npx playwright test --grep "LeadMerging-Exploratory_4.1" --project=chromium
+ * npx playwright test --grep "LeadMerging-Exploratory_4\.1 -" --project=chromium
  * 
   * Pre-condition:
  * 1. After login successful, click at "CRM" button

@@ -11,7 +11,7 @@ import { CommonUtils } from '@/helpers/common.utils';
  * Summary: Verify the lead is NOT assigned to Sergey Y belong to BDEU team if Lead form = WHITE PAPER
  * 
  * Command to run:
- npx playwright test --grep "TC.BDEU.2.1.1.5" --project=chromium
+ npx playwright test --grep "TC\.BDEU\.2\.1\.1\.5 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

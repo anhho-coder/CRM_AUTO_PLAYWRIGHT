@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * company domain email but different priority if a lead of them is created manually
  * 
  * Command to run:
- * npx playwright test --grep "CRM-671_1.1.2" --project=chromium
+ * npx playwright test --grep "CRM-671_1\.1\.2 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

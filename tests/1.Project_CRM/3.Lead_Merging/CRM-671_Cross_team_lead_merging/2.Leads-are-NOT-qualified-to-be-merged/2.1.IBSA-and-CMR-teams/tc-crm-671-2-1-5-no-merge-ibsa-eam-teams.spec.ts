@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * but a lead assigned to Install Base team, and another lead is assigned to EAM team (except Marketing)
  * 
  * Command to run:
- * npx playwright test --grep "CRM-671_2.1.5" --project=chromium
+ * npx playwright test --grep "CRM-671_2\.1\.5 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

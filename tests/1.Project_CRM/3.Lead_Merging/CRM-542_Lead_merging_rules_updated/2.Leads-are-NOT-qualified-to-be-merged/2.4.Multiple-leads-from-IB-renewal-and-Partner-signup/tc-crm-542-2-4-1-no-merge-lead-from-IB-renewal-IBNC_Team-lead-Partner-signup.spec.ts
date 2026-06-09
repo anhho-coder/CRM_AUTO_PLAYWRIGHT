@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging lead do NOT happens successfully when the leads from IB renewal leads - team IBNC and Partner sign up leads
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_2.4.1" --project=chromium
+ * npx playwright test --grep "CRM-542_2\.4\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm

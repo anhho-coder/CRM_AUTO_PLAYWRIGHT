@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = India and State is blank
  * 
  * Command to run:
- * npx playwright test --grep "TC.THD_3.1.1.5.2" --project=chromium
+ * npx playwright test --grep "TC\.THD_3\.1\.1\.5\.2 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

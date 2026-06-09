@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging lead does NOT happen when the leads with the same Contact domain email
  * 
  * Command to run:
- * npx playwright test --grep "CRM-2178_2.5.1.1" --project=chromium
+ * npx playwright test --grep "CRM-2178_2\.5\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * I. Condition to create Contact#1:

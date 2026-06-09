@@ -39,6 +39,11 @@ export class DealElementPage extends BasePage {
   // Breadcrumb link back to the parent Opportunity from within a Sale Order form
   private readonly breadcrumbOppLinkXPath = () =>
     this.page.locator("xpath=//li[contains(@class,'breadcrumb-item o_back_button')]/a").first();
+  // Chatter / log thread on the Deal Element form (XPath primary, CSS fallback)
+  private readonly chatterThread = () =>
+    this.page
+      .locator("xpath=//*[contains(@class,'o_mail_thread') or contains(@class,'o-mail-Thread') or contains(@class,'o_thread_message_content')]")
+      .or(this.page.locator('.o_mail_thread, .o-mail-Thread, .o_thread_message_content'));
 
   constructor(page: Page) {
     super(page);
@@ -212,6 +217,23 @@ export class DealElementPage extends BasePage {
     await input.fill(String(quantity));
     await this.page.keyboard.press('Tab');
     console.log(`  - Last row Ordered Qty: ${quantity}`);
+  }
+
+  /**
+   * Set the Discount (%) on the last order line row.
+   * Targets the discount input on the active edit row directly (no product-name span lookup), so it
+   * works while the just-added row is in edit mode - unlike changeDiscountInRow (which needs the
+   * readonly product span).
+   * @param discount - Discount percentage to set
+   */
+  async setLastRowDiscount(discount: number): Promise<void> {
+    console.log(`  - Setting last row Discount % to ${discount}...`);
+    const input = this.orderLineRows().last().locator('xpath=//input[@name="discount"]').first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ clickCount: 3 });
+    await input.fill(String(discount));
+    await this.page.keyboard.press('Tab');
+    console.log(`  - Last row Discount %: ${discount}`);
   }
 
   /**
@@ -1147,5 +1169,45 @@ export class DealElementPage extends BasePage {
       console.log('  \u26a0 No validation error notification found');
       return '';
     }
+  }
+
+  /**
+   * Read the full chatter / log thread text on the Deal Element form.
+   * XPath primary, CSS fallback. Whitespace is normalised so multi-line log
+   * messages match a single-space expected substring.
+   */
+  async getChatterText(): Promise<string> {
+    const chatter = this.chatterThread();
+    await chatter.first().waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const texts = await chatter.allTextContents().catch(() => [] as string[]);
+    return texts.join(' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Verify the Quotation (Sale Order) was created after pressing "New quotation".
+   *
+   * On the Deal Element, "New quotation" creates the Sale Order in-place and logs it
+   * in the chatter ("Sale Order created" plus the new record's "Status: Quotation")
+   * instead of navigating to a separate page. Polls the chatter (no reload) until the
+   * creation is logged or the timeout elapses.
+   *
+   * @param timeout - hard cap in ms for the polling (default: savingPage = 30s)
+   * @returns { found, chatterText } - found=true once the creation is logged
+   */
+  async waitForQuotationCreatedInChatter(
+    timeout: number = CommonUtils.waitTimes.savingPage
+  ): Promise<{ found: boolean; chatterText: string }> {
+    const attempts = Math.max(1, Math.floor(timeout / CommonUtils.waitTimes.standard));
+    let chatterText = '';
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      chatterText = await this.getChatterText();
+      if (/Sale Order created/i.test(chatterText) || /Status:\s*Quotation/i.test(chatterText)) {
+        console.log(`  \u2713 Quotation creation logged in chatter after attempt ${attempt}`);
+        return { found: true, chatterText };
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    console.log('  \u26a0 Quotation creation not found in chatter within the timeout');
+    return { found: false, chatterText };
   }
 }

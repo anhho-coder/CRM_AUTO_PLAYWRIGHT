@@ -8,6 +8,11 @@ export interface UserCredentials {
 }
 
 export const users = {
+  reseller_1: {
+    username: 'Test-Reseller@Reseller-company2026-05-26-001321.com',
+    password: 'Test-Reseller@0123456789012',
+    displayName: 'TEST-Reseller#1_Automation_Test',
+  },
   sale_ic_thomas: {
     username: 'thomas.semerich@nakivo.com',
     password: 'TSUaT@123456789012',

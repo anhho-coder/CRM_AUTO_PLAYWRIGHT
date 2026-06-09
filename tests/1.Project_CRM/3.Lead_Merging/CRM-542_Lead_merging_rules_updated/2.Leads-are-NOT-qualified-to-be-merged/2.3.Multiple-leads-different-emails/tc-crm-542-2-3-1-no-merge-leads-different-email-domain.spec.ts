@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and 2 leads are not belong to a domain of an existing partner
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_2.3.1" --project=chromium
+ * npx playwright test --grep "CRM-542_2\.3\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm

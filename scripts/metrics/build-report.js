@@ -45,7 +45,10 @@ function card(label, value, sub) {
 }
 
 function statusBadge(s) {
-  const cls = (s === 'passed') ? 'ok' : (s === 'failed' || s === 'timedOut') ? 'bad' : (s === 'skipped') ? 'skip' : 'na';
+  const cls = (s === 'passed') ? 'ok'
+    : (s === 'failed' || s === 'timedOut') ? 'bad'
+    : (s === 'known-defect') ? 'known'
+    : (s === 'skipped') ? 'skip' : 'na';
   return `<span class="badge ${cls}">${esc(s)}</span>`;
 }
 
@@ -58,35 +61,12 @@ function categoryTable(title, cat) {
       <td class="num">${r.durationMs ? (r.durationMs / 1000).toFixed(1) + 's' : '-'}</td>
       <td class="err">${esc(r.error || '')}</td>
     </tr>`).join('');
-  return `<h3>${esc(title)} <span class="muted">(${cat.count} TCs · ${cat.failed} fail · ${cat.totalDurMin} min · pass ${cat.passRate == null ? 'n/a' : cat.passRate + '%'})</span></h3>
+  return `<h3>${esc(title)} <span class="muted">(${cat.count} TCs · ${cat.failed} fail${cat.knownDefects ? ' · ' + cat.knownDefects + ' known-defect' : ''} · ${cat.totalDurMin} min · pass ${cat.passRate == null ? 'n/a' : cat.passRate + '%'})</span></h3>
     <table><thead><tr><th>TC ID</th><th>File</th><th>Status</th><th>Duration</th><th>Failure</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function trendSvg(history) {
-  if (history.length < 2) return '';
-  const W = 720, H = 160, pad = 28;
-  const xs = history.map((_, i) => pad + (i * (W - 2 * pad)) / (history.length - 1));
-  const maxFail = Math.max(1, ...history.map((h) => (+h.newFails || 0) + (+h.updatedFails || 0)));
-  const yFail = (f) => H - pad - (f / maxFail) * (H - 2 * pad);
-  const failPts = history.map((h, i) => `${xs[i].toFixed(0)},${yFail((+h.newFails || 0) + (+h.updatedFails || 0)).toFixed(0)}`).join(' ');
-  const dots = history.map((h, i) => `<circle cx="${xs[i].toFixed(0)}" cy="${yFail((+h.newFails || 0) + (+h.updatedFails || 0)).toFixed(0)}" r="3" fill="#c0392b"/>`).join('');
-  const labels = history.map((h, i) => `<text x="${xs[i].toFixed(0)}" y="${H - 6}" font-size="9" text-anchor="middle" fill="#888">${esc(h.date.slice(5))}</text>`).join('');
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="max-width:720px">
-    <polyline fill="none" stroke="#c0392b" stroke-width="2" points="${failPts}"/>${dots}${labels}
-    <text x="${pad}" y="14" font-size="10" fill="#888">Total fails over time (max ${maxFail})</text></svg>`;
-}
-
-function trendTable(history) {
-  if (!history.length) return '<p class="muted">No history yet - run the daily job at least once.</p>';
-  const rows = history.map((h) => `<tr>
-      <td>${esc(h.date)}</td><td class="num">${esc(h.newCount)}</td><td class="num">${esc(h.updatedCount)}</td>
-      <td class="num">${esc(h.newFails)}</td><td class="num">${esc(h.updatedFails)}</td>
-      <td class="num">${esc(h.newDurMin)}</td><td class="num">${esc(h.updatedDurMin)}</td>
-      <td class="num">${h.passRate ? esc(h.passRate) + '%' : '-'}</td>
-      <td class="num">${esc(h.newToday)}</td><td class="num">${esc(h.updatedToday)}</td>
-    </tr>`).join('');
-  return `<table><thead><tr><th>Date</th><th>New (total)</th><th>Refactored (total)</th><th>New fails</th><th>Refactored fails</th><th>New min</th><th>Refactored min</th><th>Pass %</th><th>+New today</th><th>~Updated today</th></tr></thead><tbody>${rows}</tbody></table>`;
-}
+// Trend is rendered CLIENT-SIDE with a Day/Week/Month selector - the full daily history is
+// embedded as JSON and re-bucketed in the browser. See the inline <script> built in main().
 
 function main() {
   const baseline = readJson(path.join(METRICS_DIR, 'baseline.json'), null);
@@ -94,12 +74,17 @@ function main() {
   const history = readHistory();
   const newC = snap && snap.new ? snap.new : { count: 0, failed: 0, totalDurMin: 0, rows: [], passRate: null };
   const refC = snap && snap.refactored ? snap.refactored : { count: 0, failed: 0, totalDurMin: 0, rows: [], passRate: null };
-  const overall = snap && snap.overall ? snap.overall : { tracked: 0, fails: 0, passRate: null };
+  const overall = snap && snap.overall ? snap.overall : { tracked: 0, fails: 0, knownDefects: 0, passRate: null };
   const totalMin = (newC.totalDurMin || 0) + (refC.totalDurMin || 0);
   const genDate = snap ? snap.date : new Date().toISOString().slice(0, 10);
 
   const baselineRow = baseline ? `<div class="note">Baseline: <b>${esc(baseline.date)}</b> · starting inventory <b>${esc(baseline.totalSpecInventory)}</b> specs · tracked since: <b>${esc(overall.tracked)}</b> (New ${esc(newC.count)} + Refactored ${esc(refC.count)}).</div>` : '';
-  const todayDelta = snap && snap.today ? `<div class="note">Today (${esc(snap.today.anchorDate || genDate)}): <b>+${esc(snap.today.created.length)}</b> created, <b>~${esc(snap.today.updated.length)}</b> updated since the session-start anchor.</div>` : '';
+  const todayDelta = snap && snap.today ? `<div class="note">Spec <b>files</b> changed since the baseline (${esc(snap.today.anchorDate || genDate)}): <b>${esc(snap.today.created.length)}</b> added, <b>${esc(snap.today.updated.length)}</b> modified. <span class="muted">(file-level diff that drives which specs re-run; the tagged-TC counts are the cards & tables below)</span></div>` : '';
+
+  // Trend data: one entry per tracked spec, bucketed client-side by Automation-Date so the trend
+  // stays consistent with the headline tag counts (sum of "created" across periods === New card).
+  const trendSpecs = [].concat((newC.rows || []), (refC.rows || []))
+    .map((r) => ({ type: r.type, date: r.date || '', status: r.status, durationMs: r.durationMs || 0 }));
 
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CRM Automation - Master Metrics Report</title>
@@ -120,7 +105,11 @@ function main() {
   td.num{text-align:right;font-variant-numeric:tabular-nums} td.file{color:#777;font-size:11px} td.err{color:#c0392b;font-size:11px;max-width:340px}
   tr.rowbad td{background:#fff5f5}
   .badge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
-  .badge.ok{background:#e6f7ec;color:#1e7e34} .badge.bad{background:#fdecea;color:#c0392b} .badge.skip{background:#eef0f2;color:#777} .badge.na{background:#f3eefc;color:#8e44ad}
+  .badge.ok{background:#e6f7ec;color:#1e7e34} .badge.bad{background:#fdecea;color:#c0392b} .badge.known{background:#fff4e0;color:#b9770e} .badge.skip{background:#eef0f2;color:#777} .badge.na{background:#f3eefc;color:#8e44ad}
+  .controls{display:flex;align-items:center;gap:12px;margin:12px 0 6px}
+  .controls label{font-size:13px;color:#555;font-weight:600;display:flex;align-items:center;gap:6px}
+  .controls select{font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid #ccc;background:#fff;color:#333;cursor:pointer}
+  #chart{margin:6px 0 14px}
   .foot{margin-top:30px;color:#999;font-size:11px}
 </style></head><body>
 <div class="hero"><h1>CRM Automation — Master Metrics Report</h1>
@@ -132,8 +121,9 @@ function main() {
     ${card('New (created)', newC.count, `${newC.failed} fail`)}
     ${card('Updated / Refactored', refC.count, `${refC.failed} fail`)}
     ${card('Total run-time', totalMin + ' min', `${(newC.totalDurMin||0)}+${(refC.totalDurMin||0)}`)}
-    ${card('Total fails', overall.fails, 'across tracked')}
-    ${card('Pass rate', overall.passRate == null ? 'n/a' : overall.passRate + '%', 'excl. skipped')}
+    ${card('Real fails', overall.fails, 'excl. known defects')}
+    ${card('Known defects', overall.knownDefects || 0, 'test.fail (expected)')}
+    ${card('Pass rate', overall.passRate == null ? 'n/a' : overall.passRate + '%', 'excl. skipped & known')}
   </div>
 
   <h2>1. Updated / Refactored automation TCs</h2>
@@ -142,11 +132,86 @@ function main() {
   <h2>2. Newly-created automation TCs</h2>
   ${categoryTable('New', newC)}
 
-  <h2>Trend (daily)</h2>
-  ${trendSvg(history)}
-  ${trendTable(history)}
+  <h2>Trend</h2>
+  <div class="controls">
+    <label>View by
+      <select id="period">
+        <option value="day" selected>Day</option>
+        <option value="week">Week</option>
+        <option value="month">Month</option>
+      </select>
+    </label>
+    <span id="psummary" class="muted"></span>
+  </div>
+  <div id="chart"></div>
+  <div id="ptable"></div>
+  <script>
+  var SPECS = ${JSON.stringify(trendSpecs)};
+  function num(v){ var n = parseFloat(v); return isNaN(n) ? 0 : n; }
+  function bk(date, period){
+    if (period === 'day') return date;
+    if (period === 'month') return date.slice(0,7);
+    var p = date.split('-'); var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+    var off = (d.getUTCDay()+6) % 7; d.setUTCDate(d.getUTCDate()-off);
+    var mm = ('0'+(d.getUTCMonth()+1)).slice(-2); var dd = ('0'+d.getUTCDate()).slice(-2);
+    return d.getUTCFullYear()+'-'+mm+'-'+dd;
+  }
+  // bucket each tracked spec by its Automation-Date; count new (created) vs refactored (updated),
+  // plus the current run-time / fails / pass-rate of the specs authored in that period.
+  function agg(period){
+    var map = {}, order = [];
+    SPECS.forEach(function(s){
+      var k = s.date ? bk(s.date, period) : 'undated';
+      if (!map[k]) { map[k] = {key:k, created:0, updated:0, ran:0, fails:0, known:0, durMs:0, passDen:0, passed:0}; order.push(k); }
+      var b = map[k];
+      if (s.type === 'new') b.created++; else if (s.type === 'refactored') b.updated++;
+      if (s.status && s.status !== 'not-run') {
+        b.ran++; b.durMs += num(s.durationMs);
+        if (s.status === 'failed') b.fails++;
+        else if (s.status === 'known-defect') b.known++;
+        if (s.status !== 'skipped' && s.status !== 'known-defect') { b.passDen++; if (s.status === 'passed') b.passed++; }
+      }
+    });
+    return order.sort().map(function(k){ var b = map[k]; b.durMin = Math.round(b.durMs/60000*10)/10; b.passRate = b.passDen ? Math.round(b.passed/b.passDen*1000)/10 : null; return b; });
+  }
+  function lbl(key, period){ return (key === 'undated') ? 'undated' : (period === 'month' ? key : key.slice(5)); }
+  function chart(b, period){
+    if (!b.length) return '<p class="muted">No data yet.</p>';
+    var W=720, H=190, pad=30, n=b.length, maxV=1;
+    b.forEach(function(x){ if (x.created+x.updated > maxV) maxV = x.created+x.updated; });
+    var step=(W-2*pad)/n, bw=Math.max(6, Math.min(46, step-8));
+    var s = '<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:720px">';
+    s += '<text x="'+pad+'" y="14" font-size="10" fill="#888">TCs created (purple) + refactored (orange) per '+period+', by Automation-Date</text>';
+    b.forEach(function(x,i){
+      var bx=pad+i*step+(step-bw)/2, base=H-pad;
+      var cH=x.created/maxV*(H-2*pad), uH=x.updated/maxV*(H-2*pad);
+      s += '<rect x="'+bx.toFixed(1)+'" y="'+(base-cH).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+cH.toFixed(1)+'" fill="#6a3093"/>';
+      s += '<rect x="'+bx.toFixed(1)+'" y="'+(base-cH-uH).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+uH.toFixed(1)+'" fill="#f0a030"/>';
+      if (x.created+x.updated > 0) s += '<text x="'+(bx+bw/2).toFixed(1)+'" y="'+(base-cH-uH-4).toFixed(1)+'" font-size="9" text-anchor="middle" fill="#555">'+(x.created+x.updated)+'</text>';
+      s += '<text x="'+(bx+bw/2).toFixed(1)+'" y="'+(H-8)+'" font-size="8" text-anchor="middle" fill="#888">'+lbl(x.key, period)+'</text>';
+    });
+    return s + '</svg>';
+  }
+  function table(b){
+    if (!b.length) return '<p class="muted">No tagged specs yet.</p>';
+    var rows = b.map(function(x){
+      return '<tr><td>'+x.key+'</td><td class="num">'+x.created+'</td><td class="num">'+x.updated+'</td><td class="num">'+x.durMin+'</td><td class="num">'+x.fails+'</td><td class="num">'+x.known+'</td><td class="num">'+(x.passRate != null ? x.passRate+'%' : '-')+'</td></tr>';
+    }).join('');
+    return '<table><thead><tr><th>Period</th><th>Created (new)</th><th>Updated (refactored)</th><th>Run-time (min)</th><th>Fails</th><th>Known-defect</th><th>Pass %</th></tr></thead><tbody>'+rows+'</tbody></table>';
+  }
+  function render(){
+    var period = document.getElementById('period').value;
+    var b = agg(period);
+    document.getElementById('chart').innerHTML = chart(b, period);
+    document.getElementById('ptable').innerHTML = table(b);
+    var tc=0, tu=0; b.forEach(function(x){ tc+=x.created; tu+=x.updated; });
+    document.getElementById('psummary').textContent = b.length+' '+period+'(s) with activity - '+tc+' created, '+tu+' updated (by Automation-Date)';
+  }
+  document.getElementById('period').addEventListener('change', render);
+  render();
+  </script>
 
-  <div class="foot">Self-contained report · regenerated nightly at 21:00 · open directly in any browser.</div>
+  <div class="foot">Self-contained report · regenerated daily at 06:00 · open directly in any browser.</div>
 </div></body></html>`;
 
   fs.mkdirSync(METRICS_DIR, { recursive: true });

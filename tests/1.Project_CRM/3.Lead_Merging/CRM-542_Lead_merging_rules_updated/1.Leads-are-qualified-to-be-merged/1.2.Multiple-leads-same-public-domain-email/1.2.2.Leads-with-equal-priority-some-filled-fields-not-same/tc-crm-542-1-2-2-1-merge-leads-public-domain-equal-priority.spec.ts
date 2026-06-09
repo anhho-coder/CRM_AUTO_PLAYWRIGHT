@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * but equal priority if some of filled-in fields at Source and Target leads are NOT the same
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_1.2.2.1" --project=chromium
+ * npx playwright test --grep "CRM-542_1\.2\.2\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

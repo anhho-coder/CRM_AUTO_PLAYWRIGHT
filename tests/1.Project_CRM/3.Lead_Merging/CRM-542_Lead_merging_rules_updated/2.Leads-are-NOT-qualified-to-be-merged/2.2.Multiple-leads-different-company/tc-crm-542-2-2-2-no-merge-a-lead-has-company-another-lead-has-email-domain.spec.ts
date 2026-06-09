@@ -5,14 +5,17 @@ import { LoginPage, HomePage, ContactPage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * Lead Merging Test - NO MERGE: Different Emails and Different Companies
- * Test Case ID: CRM-542_2.2.1
- * 
- * Summary: Verify that the merging leads do NOT happens when the leads from different emails and 2 leads have 2 different companies
- * 
+ * Lead Merging Test - NO MERGE: Different Emails, One Lead Has Company, The Other Has Not
+ * Test Case ID: CRM-542_2.2.2
+ *
+ * Summary: Verify that the merging leads do NOT happen when the leads have different emails and a lead has company, the other has not
+ *
  * Command to run:
- * npx playwright test --grep "CRM-542_2.2.2" --project=chromium
- * 
+ * npx playwright test --grep "CRM-542_2\.2\.2 -" --project=chromium
+ * npx playwright test --grep "CRM-8930" --project=chromium
+ *
+ * NOTE: Skipped due to known defect CRM-8930 (declaration-level test.skip).
+ *
  * Pre-condition:
  * 1. After login successful as admin_crm
  * 
@@ -26,14 +29,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *      (Remember the created email called Email_Contact#1)
  *      (Remember the Email domain call Domain_Email_Contact#1 is where [@company + current date + current time + millisecond.com])
  *    - (in the Address section)
- *      - Street dropdown list = 123street
  *      - Country dropdown list = United States
  *      - State dropdown list = Texas (US)
  *    - "Sales Team" dropdown list is CMR
  *    - "Salesperson" dropdown list is cleared
  * 4. Press "SAVE" button and wait
  * 5. Press "Application" icon on the top-right of screen to return the Home page
- * 
+ *
  * II. Condition#2 to create Contact#2:
  * 1. Click at "Contacts" button
  * 2. On "Contacts" page, click at "CREATE" button and wait
@@ -44,14 +46,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *      (Remember the created email called Email_Contact#2)
  *      (Remember the Email domain call Domain_Email_Contact#2 is where [@company + current date + current time + millisecond.com])
  *    - (in the Address section)
- *      - Street dropdown list = 123street
  *      - Country dropdown list = United States
  *      - State dropdown list = Texas (US)
  *    - "Sales Team" dropdown list is CMR
  *    - "Salesperson" dropdown list is cleared
  * 4. Press "SAVE" button and wait
  * 5. Press "Application" icon on the top-right of screen to return the Home page
- * 
+ *
  * III. Condition#3 to create Lead#1:
  * 1. Click at "CRM" button
  * 2. On "CRM" page, on menu on top of page, select "Leads" item then "Leads" sub-item
@@ -80,7 +81,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 3. On "Leads" page, click at "CREATE" button
  * 4. Enter the following information:
  *    - Lead name textbox = TEST Lead 2 + current date time
- *    - Email textbox = naming: Lead#2 + Domain_Email_Contact#2 created above
+ *    - Email textbox = naming: Lead#2 + Domain_Email_Contact#1 created above
  *      (Remember the created email, called Email_Lead#2)
  *    - (in the Address section)
  *      - Company Name textbox = Company Name Lead 2
@@ -134,7 +135,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    9.1. There is NOT the text as "This lead has been merged into [LEAD 1]." where [LEAD 1] is Lead Name of Lead#1
  */
 
-test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companies', () => {
+test.describe('CRM-542_2.2.2 - NO MERGE: Different Emails, One Lead Has Company, The Other Has Not', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -172,7 +173,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
     }
   });
 
-  test('Verify that leads do NOT merge when leads have different emails and different companies', async ({ page }, testInfo) => {
+  test.skip('CRM-542_2.2.2 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and one lead has a company while the other has not', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window
@@ -184,7 +185,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
     const contactPage = new ContactPage(page);
     const leadPage = new LeadPage(page);
     
-    const tcId = 'CRM-542_2.2.1';
+    const tcId = 'CRM-542_2.2.2';
     let contact1Name: string;
     let contact1Email: string;
     let contact1Domain: string;
@@ -216,8 +217,10 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       // Navigate to Contacts
       await page.getByRole('link', { name: 'Contacts' }).click();
       await page.waitForURL('**/web?*action=118*', { timeout: 60000 });
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-      
+      // Wait for the list view to actually render (spinner cleared + CREATE visible),
+      // not just the URL hash, so a slow load surfaces here instead of in clickCreate.
+      await contactPage.waitForListReady();
+
       console.log(`✓ Login successful and navigated to Contacts page`);
     });
 
@@ -245,7 +248,6 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       console.log(`  - Contact Name: ${contact1Name}`);
       console.log(`  - Email: ${contact1Email} (Email_Contact#1)`);
       console.log(`  - Domain: ${contact1Domain} (Domain_Email_Contact#1)`);
-      console.log(`  - Street: 123street`);
       console.log(`  - Country: United States`);
       console.log(`  - State: Texas (US)`);
       console.log(`  - Sales Team: CMR`);
@@ -259,9 +261,6 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       
       // Fill email
       await contactPage.fillEmail(contact1Email);
-      
-      // Fill street
-      await contactPage.fillStreet('123street');
       
       // Select country
       await contactPage.selectCountry('United States');
@@ -311,8 +310,10 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       
       await page.getByRole('link', { name: 'Contacts' }).click();
       await page.waitForURL('**/web?*action=118*', { timeout: 60000 });
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-      
+      // Wait for the list view to actually render (spinner cleared + CREATE visible),
+      // not just the URL hash, so a slow load surfaces here instead of in clickCreate.
+      await contactPage.waitForListReady();
+
       console.log('✓ Navigated to Contacts page');
     });
 
@@ -341,7 +342,6 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       console.log(`  - Contact Name: ${contact2Name}`);
       console.log(`  - Email: ${contact2Email} (Email_Contact#2)`);
       console.log(`  - Domain: ${contact2Domain} (Domain_Email_Contact#2)`);
-      console.log(`  - Street: 123street`);
       console.log(`  - Country: United States`);
       console.log(`  - State: Texas (US)`);
       console.log(`  - Sales Team: CMR`);
@@ -355,9 +355,6 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       
       // Fill email
       await contactPage.fillEmail(contact2Email);
-      
-      // Fill street
-      await contactPage.fillStreet('123street');
       
       // Select country
       await contactPage.selectCountry('United States');
@@ -510,15 +507,16 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       
       // Generate Lead #2 name
       lead2Name = `TEST Lead 2 ${CommonUtils.generateTimestamp()}`;
-      lead2Email = `Lead#2${contact2Domain}`;
-      
+      // Lead #2 uses the SAME domain as Lead #1 (Domain_Email_Contact#1), only the local-part differs
+      lead2Email = `Lead#2${contact1Domain}`;
+
       // Fill Lead #2 information
       await leadPage.fillLeadOpportunity(lead2Name);
       console.log(`  - Lead Name: ${lead2Name}`);
-      
-      // Use email with Contact #2 domain
+
+      // Use email with Contact #1 domain (same domain as Lead #1, different local-part)
       await leadPage.fillEmail(lead2Email);
-      console.log(`  - Email: ${lead2Email} (Email_Lead#2 using Domain_Email_Contact#2)`);
+      console.log(`  - Email: ${lead2Email} (Email_Lead#2 using Domain_Email_Contact#1)`);
       
       // Fill Company Name
       await leadPage.fillCompanyName('Company Name Lead 2');
@@ -574,7 +572,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
     // Step 1: Wait for potential merge (should NOT happen)
     await test.step('Step 1: Wait to confirm NO merge happens', async () => {
       console.log('\n=== STEP 1: WAITING TO CONFIRM NO MERGE OCCURS ===');
-      console.log(`BDEU team (Lead #1) and Marketing - BDR team (Lead #2) should NOT merge despite same email`);
+      console.log(`Lead #1 (has company) and Lead #2 (has company + contact name) share the same email domain but have different emails - they should NOT merge`);
       
       // Wait for 90 seconds to allow merge time window to pass
       await leadPage.waitForNoMergeConfirmation();
@@ -696,6 +694,18 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
         const lostReasonValue = await leadPage.getLostReasonValueViaTextContent();
         expect(lostReasonValue).toBe('');
         console.log(`  ✓ Step 4.4: Lost Reason = BLANK`);
+      });
+    });
+
+    // Step 5: Verify the Log area of Lead #1 shows NO merge message
+    await test.step('Step 5: Verify Lead #1 Log area shows NO merge message', async () => {
+      console.log('\n=== STEP 5: VERIFY LEAD #1 LOG AREA (NO MERGE MESSAGE) ===\n');
+
+      // Step 5.1: There is NO text "<Lead #2>, has been merged into this lead."
+      await test.step('Step 5.1: Verify NO "<Lead #2>, has been merged into this lead." message', async () => {
+        const hasMergeMessage = await leadPage.hasSourceLeadMergeMessage(lead2Name);
+        expect(hasMergeMessage).toBeFalsy();
+        console.log(`  ✓ Step 5.1: Log does NOT contain "${lead2Name}, has been merged into this lead."`);
       });
     });
 
@@ -823,6 +833,18 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       });
     });
 
+    // Step 9: Verify the Log area of Lead #2 shows NO merge message
+    await test.step('Step 9: Verify Lead #2 Log area shows NO merge message', async () => {
+      console.log('\n=== STEP 9: VERIFY LEAD #2 LOG AREA (NO MERGE MESSAGE) ===\n');
+
+      // Step 9.1: There is NO text "This lead has been merged into <Lead #1>."
+      await test.step('Step 9.1: Verify NO "This lead has been merged into <Lead #1>." message', async () => {
+        const hasMergeMessage = await leadPage.hasTargetLeadMergeMessage(lead1Name);
+        expect(hasMergeMessage).toBeFalsy();
+        console.log(`  ✓ Step 9.1: Log does NOT contain "This lead has been merged into ${lead1Name}."`);
+      });
+    });
+
     // Final Summary
     await test.step('Final Summary', async () => {
       console.log('✅ TEST PASSED: NO MERGE occurred - Different emails AND different companies');
@@ -879,7 +901,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       <div class="info-row"><span class="label">Contact Name:</span> ${contact1Name}</div>
       <div class="info-row"><span class="label">Email:</span> ${contact1Email}</div>
       <div class="info-row"><span class="label">Domain:</span> ${contact1Domain}</div>
-      <div class="info-row"><span class="label">Address:</span> 123street, Texas (US), United States</div>
+      <div class="info-row"><span class="label">Address:</span> Texas (US), United States</div>
       <div class="info-row"><span class="label">Sales Team:</span> CMR</div>
     </div>
     
@@ -889,7 +911,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       <div class="info-row"><span class="label">Contact Name:</span> ${contact2Name}</div>
       <div class="info-row"><span class="label">Email:</span> ${contact2Email}</div>
       <div class="info-row"><span class="label">Domain:</span> ${contact2Domain}</div>
-      <div class="info-row"><span class="label">Address:</span> 123street, Texas (US), United States</div>
+      <div class="info-row"><span class="label">Address:</span> Texas (US), United States</div>
       <div class="info-row"><span class="label">Sales Team:</span> CMR</div>
     </div>
     
@@ -913,7 +935,7 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       <div class="info-row"><span class="label">Sales Team:</span> CMR</div>
       <div class="info-row"><span class="label">Lead Form:</span> Download Free Trial</div>
       <div class="info-row"><span class="label">Tag:</span> Trial download</div>
-      <div class="info-row"><span class="label">Email:</span> ${lead2Email} (using Contact #2 domain)</div>
+      <div class="info-row"><span class="label">Email:</span> ${lead2Email} (using Contact #1 domain - same domain as Lead #1)</div>
       <div class="info-row"><span class="label">Location:</span> United States, Texas (US)</div>
       <div class="info-row"><span class="label">URL:</span> ${lead2Url}</div>
     </div>

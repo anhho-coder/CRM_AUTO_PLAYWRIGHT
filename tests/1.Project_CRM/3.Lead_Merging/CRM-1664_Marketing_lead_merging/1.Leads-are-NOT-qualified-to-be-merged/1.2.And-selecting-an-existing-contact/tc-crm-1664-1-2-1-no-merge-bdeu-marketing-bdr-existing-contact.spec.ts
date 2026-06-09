@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and selecting an existing Company contact
  * 
  * Command to run:
- * npx playwright test --grep "CRM-1664_1.2.1" --project=chromium
+ * npx playwright test --grep "CRM-1664_1\.2\.1 -" --project=chromium
  * 
  * Pre-condition:
  * I. Condition to create Contact#1:

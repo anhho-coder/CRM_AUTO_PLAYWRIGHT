@@ -14,6 +14,7 @@
     "test:leads": "playwright test tests/Leads_Assignment --project=chromium",
     "test:performance": "playwright test tests/SalesReport_Performance --project=chromium",
     "test:all-suites": "playwright test tests/Leads_Assignment tests/SalesReport_Performance --project=chromium",
+    "test:assign-parallel": "playwright test \"tests/1.Project_CRM/O12_CE_to_O12_CC/UC-A.4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign_this_opportunity_to-section\" --project=chromium-headless --workers=4",
     "codegen": "playwright codegen",
     "report": "playwright show-report",
     "clean": "rimraf test-results playwright-report",

@@ -63,10 +63,15 @@ export class BasePage {
   }
 
   /**
-   * Locator for error dialog (Odoo Client Error or similar)
+   * Locator for error dialog. Matches both the "Odoo Client Error" popup ("An error occurred")
+   * and the "Odoo Server Error - Missing Record" popup ("Record does not exist or has been
+   * deleted", e.g. a stale mail.followers chatter record). Both carry an OK button and must be
+   * dismissed so they do not intercept clicks on the underlying form.
    */
   private errorDialog() {
-    return this.page.locator('.modal, .o_dialog').filter({ hasText: /error occurred/i });
+    return this.page
+      .locator('.modal, .o_dialog')
+      .filter({ hasText: /error occurred|has been deleted|does not exist|Server Error|Missing Record/i });
   }
 
   /**
@@ -275,8 +280,37 @@ await newPage.close();
       await this.page.waitForTimeout(waitAfterDismiss);
       return true;
     }
-    
+
     return false;
+  }
+
+  /**
+   * Robustly clear the "Odoo Client Error" popup, which can appear with a DELAY (or reappear)
+   * after navigating to / acting on a record. Polls up to `maxAttempts` times, dismissing the
+   * dialog each time it is found and waiting `interval` ms between checks, so a late-appearing
+   * popup is still caught (a single dismissErrorDialog() can run before the popup renders).
+   * @param maxAttempts - number of dismiss checks (default: 4)
+   * @param interval - wait between checks (default: waitTimes.long)
+   * @returns the number of error dialogs dismissed
+   */
+  async dismissErrorDialogWithRetry(
+    maxAttempts: number = 4,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<number> {
+    let dismissed = 0;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const wasDismissed = await this.dismissErrorDialog();
+      if (wasDismissed) {
+        dismissed++;
+      }
+      if (attempt < maxAttempts) {
+        await this.wait(interval);
+      }
+    }
+    if (dismissed > 0) {
+      console.log(`  ✓ Cleared ${dismissed} "Odoo Client Error" dialog(s) over ${maxAttempts} checks`);
+    }
+    return dismissed;
   }
 
   /**

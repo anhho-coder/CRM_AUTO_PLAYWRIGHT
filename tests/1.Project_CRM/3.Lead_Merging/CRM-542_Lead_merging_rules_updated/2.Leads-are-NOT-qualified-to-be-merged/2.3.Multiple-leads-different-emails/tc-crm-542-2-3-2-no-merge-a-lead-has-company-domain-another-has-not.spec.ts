@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging leads do NOT happens when the leads from different emails and a lead belong to an existing domain, the other is not
  * 
  * Command to run:
- * npx playwright test --grep "CRM-542_2.3.2" --project=chromium
+ * npx playwright test --grep "CRM-542_2\.3\.2 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm

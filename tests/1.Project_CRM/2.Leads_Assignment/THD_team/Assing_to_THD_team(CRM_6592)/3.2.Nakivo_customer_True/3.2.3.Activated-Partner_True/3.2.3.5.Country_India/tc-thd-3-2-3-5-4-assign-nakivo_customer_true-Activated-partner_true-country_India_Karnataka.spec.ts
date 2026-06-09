@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Activated Partner = TRUE, Country = India and State is Karnataka (IN list: Andhra Pradesh, Karnataka, Kerala, Tamil Nadu, Telangana, West Bengal)
  * 
  * Command to run:
- * npx playwright test --grep "TC.THD_3.2.3.5.4" --project=chromium
+ * npx playwright test --grep "TC\.THD_3\.2\.3\.5\.4 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

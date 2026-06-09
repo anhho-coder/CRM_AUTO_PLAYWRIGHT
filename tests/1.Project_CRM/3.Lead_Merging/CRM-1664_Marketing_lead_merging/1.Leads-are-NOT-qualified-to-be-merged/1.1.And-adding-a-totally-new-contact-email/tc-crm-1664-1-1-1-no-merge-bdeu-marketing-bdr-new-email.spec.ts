@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and adding a totally new contact email
  * 
  * Command to run:
- * npx playwright test --grep "CRM-1664_1.1.1" --project=chromium
+ * npx playwright test --grep "CRM-1664_1\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

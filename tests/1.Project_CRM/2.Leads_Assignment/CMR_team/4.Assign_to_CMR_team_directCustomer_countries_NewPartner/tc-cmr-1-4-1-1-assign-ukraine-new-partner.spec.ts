@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and New Partner is set and Nakivo Customer is not set if Country Group = CMR_directCustomer_countries
  * 
  * Command to run:
- npx playwright test --grep "TC.CMR_1.4.1.1" --project=chromium
+ npx playwright test --grep "TC\.CMR_1\.4\.1\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

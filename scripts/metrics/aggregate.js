@@ -26,7 +26,23 @@ const HISTORY_CSV = path.join(METRICS_DIR, 'history.csv');
 const TESTS_DIR = path.join(REPO_ROOT, 'tests');
 const PROJECT_FILTER = 'chromium-headless';
 
-const isFail = (s) => s === 'failed' || s === 'timedOut';
+const isFail = (s) => s === 'failed';
+
+/**
+ * Map a Playwright test's outcome to a metrics status, honoring test.fail() known-defects.
+ * Playwright exposes test-level `status` (outcome: expected|unexpected|flaky|skipped) and
+ * `expectedStatus` (passed|failed). A test.fail() that fails as expected has
+ * expectedStatus='failed' + outcome='expected' -> it's a KNOWN DEFECT, not a real failure.
+ * @returns {'passed'|'failed'|'skipped'|'known-defect'}
+ */
+function metricsStatus(test, rawResultStatus) {
+  const outcome = test.status;              // expected | unexpected | flaky | skipped
+  const expected = test.expectedStatus;     // passed | failed
+  if (rawResultStatus === 'skipped' || outcome === 'skipped') return 'skipped';
+  if (expected === 'failed' && outcome === 'expected') return 'known-defect'; // test.fail, failed as expected
+  if (outcome === 'unexpected') return 'failed'; // real fail (incl. a test.fail that unexpectedly passed)
+  return 'passed';                          // expected pass, or flaky that recovered on retry
+}
 
 /** Read header tags for every spec file -> { relPath: {type,date} } (only tagged specs are "tracked"). */
 function readTrackedSpecs() {
@@ -89,11 +105,13 @@ function readLatestRun(trackedRel) {
           if (t.projectName && t.projectName !== PROJECT_FILTER) continue;
           const last = (t.results || [])[t.results.length - 1];
           if (!last) continue;
-          const errMsg = last.error && last.error.message ? String(last.error.message).split('\n')[0] : '';
+          const status = metricsStatus(t, last.status);
+          const firstErr = (last.errors && last.errors[0]) || last.error || null; // PW uses errors[]; older runs used error
+          const errMsg = firstErr && firstErr.message ? String(firstErr.message).split('\n')[0] : '';
           local[relFile] = {
-            status: last.status,
+            status,
             durationMs: last.duration || 0,
-            error: isFail(last.status) ? errMsg : '',
+            error: status === 'failed' ? errMsg : '',
             id: extractTcId(spec.title, relFile),
           };
         }
@@ -172,7 +190,9 @@ function main() {
     const withResult = rows.filter((r) => r.status !== 'not-run');
     const fails = withResult.filter((r) => isFail(r.status));
     const skipped = withResult.filter((r) => r.status === 'skipped');
-    const ranForRate = withResult.filter((r) => r.status !== 'skipped');
+    const knownDefects = withResult.filter((r) => r.status === 'known-defect');
+    // pass-rate denominator excludes skipped AND known-defects (test.fail) - both are "expected"
+    const ranForRate = withResult.filter((r) => r.status !== 'skipped' && r.status !== 'known-defect');
     const passed = ranForRate.filter((r) => r.status === 'passed');
     const totalDurMs = withResult.reduce((a, r) => a + (r.durationMs || 0), 0);
     return {
@@ -180,6 +200,7 @@ function main() {
       ran: withResult.length,
       failed: fails.length,
       skipped: skipped.length,
+      knownDefects: knownDefects.length,
       passRate: ranForRate.length ? +(100 * passed.length / ranForRate.length).toFixed(1) : null,
       totalDurMin: +(totalDurMs / 60000).toFixed(1),
       avgDurSec: withResult.length ? +(totalDurMs / withResult.length / 1000).toFixed(1) : 0,
@@ -193,7 +214,9 @@ function main() {
 
   const overallRan = created.ran + refactored.ran;
   const overallFails = created.failed + refactored.failed;
-  const overallPassDenom = (created.ran - created.skipped) + (refactored.ran - refactored.skipped);
+  const overallKnown = created.knownDefects + refactored.knownDefects;
+  const overallPassDenom = (created.ran - created.skipped - created.knownDefects)
+    + (refactored.ran - refactored.skipped - refactored.knownDefects);
   const overallPassed = overallPassDenom - overallFails;
   const overallPassRate = overallPassDenom ? +(100 * overallPassed / overallPassDenom).toFixed(1) : null;
 
@@ -203,7 +226,7 @@ function main() {
     new: created,
     refactored,
     today: { created: delta.created, updated: delta.updated, anchorDate: delta.anchorDate },
-    overall: { tracked: created.count + refactored.count, ran: overallRan, fails: overallFails, passRate: overallPassRate },
+    overall: { tracked: created.count + refactored.count, ran: overallRan, fails: overallFails, knownDefects: overallKnown, passRate: overallPassRate },
   };
 
   fs.writeFileSync(path.join(HISTORY_DIR, `${today}.json`), JSON.stringify(snapshot, null, 2));
@@ -225,7 +248,7 @@ function main() {
   fs.writeFileSync(HISTORY_CSV, [header, ...data].join('\n') + '\n');
 
   console.log('[aggregate] Runs parsed:', runFolders.length ? runFolders.join(', ') : '(none found)');
-  console.log(`[aggregate] New: ${created.count} (fails ${created.failed}, ${created.totalDurMin}min) | Refactored: ${refactored.count} (fails ${refactored.failed}, ${refactored.totalDurMin}min)`);
+  console.log(`[aggregate] New: ${created.count} (fails ${created.failed}, known-defect ${created.knownDefects}, ${created.totalDurMin}min) | Refactored: ${refactored.count} (fails ${refactored.failed}, known-defect ${refactored.knownDefects}, ${refactored.totalDurMin}min)`);
   console.log(`[aggregate] Today's delta: +${delta.created.length} created, ~${delta.updated.length} updated. Overall pass-rate: ${overallPassRate == null ? 'n/a' : overallPassRate + '%'}`);
   console.log(`[aggregate] Wrote ${path.join('metrics', 'history', today + '.json')} and updated history.csv`);
 }

@@ -113,9 +113,29 @@ export class ContactPage extends BasePage {
    * Click CREATE button to open contact creation form
    */
   async clickCreate() {
+    // Bounded wait for the list/kanban Create button so a failed upstream navigation surfaces
+    // quickly with a clear error instead of hanging until the test timeout.
+    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
     await this.createButton().click();
-    await this.page.waitForURL('**/web?*view_type=form*', { timeout: 60000 });
-    await this.wait(1000);
+    await this.page.waitForURL('**/web?*view_type=form*', { timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Wait for the Contacts list/kanban view to finish rendering after navigation.
+   *
+   * The breadcrumb/URL hash flips to `action=118` before the view actually paints, so a
+   * URL-only wait can pass while Odoo is still showing the "Loading" overlay. On a slow
+   * Pre-Production backend this lets the test march on to clickCreate() and time out there
+   * with a misleading "CREATE button not visible" error. This method first lets the Loading
+   * spinner clear, then waits for the CREATE button - the definitive signal the list view
+   * has rendered - surfacing a genuinely slow/stuck load with a clear error at the nav step.
+   */
+  async waitForListReady() {
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {
+      console.log('  ⚠️ "Loading" overlay still present after wait - continuing to check for CREATE button');
+    });
+    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
   }
 
   /**

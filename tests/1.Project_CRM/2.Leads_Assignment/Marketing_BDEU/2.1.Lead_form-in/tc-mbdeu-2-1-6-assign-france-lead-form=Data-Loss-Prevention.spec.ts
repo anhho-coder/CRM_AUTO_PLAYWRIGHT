@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to Marketing - BDEU team with Country = Afghanistan if Lead Form = "Data Loss Prevention"
  * 
  * Command to run:
- * npx playwright test --grep "TC.MBDEU_2.1.6" --project=chromium
+ * npx playwright test --grep "TC\.MBDEU_2\.1\.6 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

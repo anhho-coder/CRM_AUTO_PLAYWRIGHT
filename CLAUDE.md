@@ -144,13 +144,13 @@ Every spec you **create or refactor** must carry two header tags right under `Te
 ```typescript
 /**
  * Test Case ID: TC.-A.7.3
- * Automation-Type: new            // 'new' = newly-created TC | 'refactored' = updated existing TC
+ * Automation-Type: new            // 'new' = just-created OR never-run-yet TC | 'refactored' = code change to an already-run TC
  * Automation-Date: 2026-06-05     // date created/refactored (YYYY-MM-DD)
  * ...
  */
 ```
 
-`new` = a brand-new test case; `refactored` = an existing test you updated/fixed. The aggregator buckets every tagged spec into the report's two categories (New vs Updated/Refactored) and reports per-category count / run-time / fail count; untagged specs are not counted. When you meaningfully refactor an existing spec, set `Automation-Type: refactored` and bump `Automation-Date` to today. Run `npm run metrics:report` to refresh the report locally; the nightly 9pm job (`run-metrics-daily.bat`) runs the day's changed specs and regenerates it.
+**`new`** = a test you just created, or one that has **never run yet** (still being built to its first pass) — code edits made *before* its first run keep it `new`. **`refactored`** = an **already-established test (it has run before)** whose **code you later change**. The aggregator buckets every tagged spec into the report's two categories (New vs Updated/Refactored) and reports per-category count / run-time / fail count; untagged specs are not counted. When you change the code of a spec that has already run, set `Automation-Type: refactored` and bump `Automation-Date` to today. Run `npm run metrics:report` to refresh the report locally; the nightly 9pm job (`run-metrics-daily.bat`) runs the day's changed specs and regenerates it.
 
 ## Known defects & skipping
 

@@ -598,6 +598,127 @@ export class QuotationPage extends BasePage {
   }
 
   /**
+   * Verify a manager approval was successful (call after clickApprove()).
+   *
+   * After a successful APPROVE the pending-approval buttons ("TO APPROVE" / "APPROVE")
+   * disappear and a post-approval action becomes available (CONFIRM and/or SEND BY EMAIL).
+   * Waits for the post-approval action to appear, then checks the pending-approval buttons
+   * are gone. Returns the individual signals plus an overall `approved` verdict and logs them.
+   *
+   * @param timeout - how long to wait for the post-approval action to appear (default: abnormalWait)
+   */
+  async verifyApprovalSuccess(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    approved: boolean;
+    approveButtonGone: boolean;
+    toApproveButtonGone: boolean;
+    confirmVisible: boolean;
+    sendByEmailVisible: boolean;
+  }> {
+    // Positive signal: a post-approval action (CONFIRM or SEND BY EMAIL) becomes available.
+    const postApproval = this.confirmButton().or(this.sendByEmailButton()).first();
+    const postApprovalVisible = await postApproval
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+
+    const confirmVisible = await this.confirmButton().isVisible().catch(() => false);
+    const sendByEmailVisible = await this.sendByEmailButton().isVisible().catch(() => false);
+    const approveStillVisible = await this.approveButton().isVisible().catch(() => false);
+    const toApproveStillVisible = await this.toApproveButton().isVisible().catch(() => false);
+
+    const approveButtonGone = !approveStillVisible;
+    const toApproveButtonGone = !toApproveStillVisible;
+    // Approval is successful when the APPROVE button is consumed AND a forward action is available.
+    const approved = approveButtonGone && postApprovalVisible;
+
+    console.log(`  - APPROVE button gone: ${approveButtonGone}`);
+    console.log(`  - TO APPROVE button gone: ${toApproveButtonGone}`);
+    console.log(`  - CONFIRM button visible: ${confirmVisible}`);
+    console.log(`  - SEND BY EMAIL button visible: ${sendByEmailVisible}`);
+    console.log(`  ${approved ? '✓' : '⚠'} Approval ${approved ? 'successful' : 'NOT confirmed'}`);
+
+    return { approved, approveButtonGone, toApproveButtonGone, confirmVisible, sendByEmailVisible };
+  }
+
+  /**
+   * Verify a manager rejection was successful (call after clickReject()).
+   *
+   * After a successful REJECT the pending-approval buttons ("APPROVE" / "REJECT") disappear and
+   * the Quotation returns to an editable/readonly state (the Edit button is visible) so the
+   * Salesperson can revise/resubmit. Returns the individual signals plus an overall `rejected`
+   * verdict and logs them.
+   *
+   * @param timeout - how long to wait for the Edit button to reappear (default: abnormalWait)
+   */
+  async verifyRejectionSuccess(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    rejected: boolean;
+    approveButtonGone: boolean;
+    rejectButtonGone: boolean;
+    editButtonVisible: boolean;
+  }> {
+    const editButtonVisible = await this.editButtonLoc()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+
+    const approveStillVisible = await this.approveButton().isVisible().catch(() => false);
+    const rejectStillVisible = await this.rejectButton().isVisible().catch(() => false);
+
+    const approveButtonGone = !approveStillVisible;
+    const rejectButtonGone = !rejectStillVisible;
+    // Rejection is successful when the pending-approval buttons are consumed (order no longer pending).
+    const rejected = approveButtonGone && rejectButtonGone;
+
+    console.log(`  - APPROVE button gone: ${approveButtonGone}`);
+    console.log(`  - REJECT button gone: ${rejectButtonGone}`);
+    console.log(`  - Edit button visible (back to editable Quotation): ${editButtonVisible}`);
+    console.log(`  ${rejected ? '✓' : '⚠'} Rejection ${rejected ? 'successful' : 'NOT confirmed'}`);
+
+    return { rejected, approveButtonGone, rejectButtonGone, editButtonVisible };
+  }
+
+  /**
+   * Verify the Quotation was confirmed into a Sales Order (call after clickConfirm()).
+   *
+   * After a successful CONFIRM the status becomes "Sales Order", the CONFIRM button disappears
+   * and the LOCK button appears. Reads the statusbar (falling back to the CONFIRM-gone + LOCK-visible
+   * signals if the statusbar cannot be read). Returns the signals + an overall `confirmed` verdict.
+   *
+   * @param timeout - how long to wait for the LOCK button to appear (default: abnormalWait)
+   */
+  async verifyConfirmedToSalesOrder(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    confirmed: boolean;
+    status: string;
+    confirmButtonGone: boolean;
+    lockVisible: boolean;
+  }> {
+    const lockVisible = await this.lockButton()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+
+    const confirmStillVisible = await this.confirmButton().isVisible().catch(() => false);
+    const confirmButtonGone = !confirmStillVisible;
+
+    let status = '';
+    try {
+      status = await this.getQuotationStatus(CommonUtils.waitTimes.elementVisibility);
+    } catch {
+      status = '';
+    }
+
+    // Confirmed when the statusbar reads "Sales Order", or (fallback) CONFIRM is gone and LOCK is visible.
+    const confirmed = /sales order/i.test(status) || (confirmButtonGone && lockVisible);
+
+    console.log(`  - Status: "${status}"`);
+    console.log(`  - CONFIRM button gone: ${confirmButtonGone}`);
+    console.log(`  - LOCK button visible: ${lockVisible}`);
+    console.log(`  ${confirmed ? '✓' : '⚠'} Confirmed to Sales Order: ${confirmed}`);
+
+    return { confirmed, status, confirmButtonGone, lockVisible };
+  }
+
+  /**
    * Wait until the "SEND BY EMAIL" button disappears from the page.
    * Useful for confirming the email was sent and the quotation state has changed.
    * @param timeout - Maximum time to wait for the button to disappear (default: 30000ms)

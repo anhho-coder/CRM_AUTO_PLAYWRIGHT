@@ -13,7 +13,10 @@ import { CommonUtils } from '@helpers/common.utils';
  * and the higher priority lead has Lead form = Storage Certification
  * 
  * Command to run:
- * npx playwright test --grep "CRM-1992_1.1.1.2.9" --project=chromium
+ * npx playwright test --grep "CRM-1992_1\.1\.1\.2\.9 -" --project=chromium
+ * npx playwright test --grep "CRM-10787" --project=chromium
+ *
+ * NOTE: Skipped due to known defect CRM-10787 (declaration-level test.skip).
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -142,7 +145,7 @@ test.describe('CRM-1992_1.1.1.2.9 - Lead Merging: Same Company Email with Deal R
     }
   });
 
-  test('Verify merging leads with same company email (Created Manually = TRUE, Tag = Can_Merge, Storage Certification)', async ({ page }, testInfo) => {
+  test.skip('CRM-1992_1.1.1.2.9 [CRM-10787]: Verify merging leads with same company email (Created Manually = TRUE, Tag = Can_Merge, Storage Certification)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window

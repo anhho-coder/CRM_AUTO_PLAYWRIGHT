@@ -1,0 +1,1 @@
+npx playwright test "tests/1.Project_CRM" --project=chromium-headless

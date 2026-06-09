@@ -129,8 +129,25 @@ export class HomePage extends BasePage {
   async navigateToContactsFromHome() {
     await this.contactsLink().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
     await this.contactsLink().click();
-    await this.waitForURL('**/web?*action=118*', CommonUtils.waitTimes.pageLoad);
-    //await this.wait(CommonUtils.waitTimes.long);
+
+    // Odoo's "Applications" link is href="#", so returning Home does NOT clear the URL hash.
+    // A previously-opened Contact form leaves a stale "action=118&view_type=form" hash. Because that
+    // action (118) is already "loaded", clicking the Contacts tile is a no-op and the page stays on
+    // the apps-home. Wait for a positive signal that the Contacts list rendered (its Create button);
+    // if it does not, replace the whole hash with the Contacts menu link and reload to force a fresh
+    // load of the LIST view (this wipes the stale id/view_type=form that made the click a no-op).
+    const contactsCreateButton = this.page.getByRole('button', { name: /CREATE/i }).first();
+    try {
+      await contactsCreateButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    } catch {
+      console.log('  ⚠ Contacts list did not render via tile click - forcing the Contacts action via URL hash...');
+      const href = await this.contactsLink().getAttribute('href').catch(() => null);
+      const contactsHash = href && href.startsWith('#') ? href : '#menu_id=94&action_id=118';
+      await this.page.evaluate((h) => { window.location.hash = h; }, contactsHash);
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      await contactsCreateButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    }
+    await this.wait(CommonUtils.waitTimes.medium);
   }
 
   /**

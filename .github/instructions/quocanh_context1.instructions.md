@@ -1,5 +1,16 @@
 Context for Creating New Test Cases Using the Page Object Model
 
+HOW TO ADDRESS THE USER
+- Whenever you need the user's decision, confirmation, or input, address the user by the name configured in Git `user.name` (run `git config user.name`).
+- In this repository that name is currently `anh.ho`, so prompts should call the user "anh.ho" (e.g. "anh.ho, which Sales Team should this test assign?").
+- Always read the current Git `user.name` rather than hardcoding the name, so the correct name is used if it changes.
+
+AUTOMATION METRICS HEADER TAGS (mandatory on every spec you create/refactor)
+- Right under `Test Case ID:` in the spec header add: `Automation-Type: new` or `Automation-Type: refactored`, plus `Automation-Date: YYYY-MM-DD` (today).
+- `new` = a just-created TC, or one that has NEVER run yet (still being built to its first pass); edits before the first run keep it `new`. `refactored` = code change to a TC that has ALREADY run before.
+- These feed the daily automation-metrics report (`scripts/metrics/`, output `metrics/master-report.html`) which buckets tagged specs into New vs Updated/Refactored with count / run-time / fail count. Untagged specs are not counted.
+- When you change the code of a spec that has already run, set `Automation-Type: refactored` and bump `Automation-Date` to today.
+
 CRITICAL RULE: STRICT PAGE OBJECT MODEL ENFORCEMENT
 **ABSOLUTELY NO HARDCODED LOCATORS IN TEST FILES**
 - ALL locators MUST be defined in Page Object classes (e.g., LoginPage.ts, HomePage.ts, LeadPage.ts, ContactPage.ts)
@@ -34,6 +45,14 @@ Using Helpers and Config
 When utility functions are needed (e.g., string handling, date, random, etc.), import and use them from common.utils.ts.
 Always import and use configuration variables from test.config.ts (and other files in config as needed) for any environment values, timeouts, URLs, or test data.
 Do not hardcode values such as timeouts, URLs, or credentials; always reference them from the config files.
+
+**MANDATORY SALESPERSON / SALES TEAM TEST DATA**
+- The canonical list of Salespersons and their Sales Teams is declared in `test-data/sales-team/salesteam.users.ts` (the `salesTeamUsers` map; each entry has `email`, `displayName`, and `team`, e.g. `sale_ic_bdeu_thomas` -> displayName "Thomas Semerich", team "BDEU").
+- Whenever you create or update a test that assigns or verifies a Salesperson and/or a Sales Team, you MUST take the values from `salesteam.users` - import `salesTeamUsers` and reference its entries (e.g. `salesTeamUsers.sale_ic_bdeu_thomas.displayName` for the Salesperson and `salesTeamUsers.sale_ic_bdeu_thomas.team` for the Sales Team). Do NOT hardcode Salesperson names or Sales Team labels as inline string literals in the test or Page Object.
+- A Salesperson and its Sales Team must stay paired: use the `displayName` and `team` from the SAME `salesTeamUsers` entry so the pairing matches the data declared in `salesteam.users`.
+- If a required Salesperson/Sales Team pairing is missing from `salesteam.users`, add the new entry to that file FIRST, then reference it from the test.
+- This keeps Salesperson/Sales Team values consistent, correct, and maintainable across all tests.
+
 New Locators
 If you need to define a new locator for an element in any Page Object, you MUST use a multi-layer locator strategy.
 Define the locator(s) as private/protected variables in the Page class.

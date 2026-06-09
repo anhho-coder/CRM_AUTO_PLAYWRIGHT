@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * domain but different email if created contact before
  * 
  * Command to run:
- * npx playwright test --grep "CRM-2178_2.1.1.2" --project=chromium
+ * npx playwright test --grep "CRM-2178_2\.1\.1\.2 -" --project=chromium
  * 
  * Pre-condition:
  * I. Condition to create Contact#1:

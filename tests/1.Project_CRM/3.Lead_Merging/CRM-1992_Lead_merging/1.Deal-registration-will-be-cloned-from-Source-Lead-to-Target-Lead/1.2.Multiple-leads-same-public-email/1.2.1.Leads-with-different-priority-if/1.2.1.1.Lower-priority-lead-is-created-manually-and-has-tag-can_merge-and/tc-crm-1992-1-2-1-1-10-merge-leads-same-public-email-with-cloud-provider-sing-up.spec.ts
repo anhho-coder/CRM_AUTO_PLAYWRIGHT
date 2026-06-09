@@ -15,7 +15,11 @@ import { CommonUtils } from '@helpers/common.utils';
  * and the higher priority lead has Lead form = Cloud Provider Sing Up
  * 
  * Command to run:
- * npx playwright test --grep "CRM-1992_1.2.1.1.10" --project=chromium
+ * npx playwright test --grep "CRM-1992_1\.2\.1\.1\.10 -" --project=chromium
+ * npx playwright test --grep "CRM-8929" --project=chromium
+ * npx playwright test --grep "CRM-10787" --project=chromium
+ *
+ * NOTE: Skipped due to known defects CRM-8929 and CRM-10787 (declaration-level test.skip).
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -128,8 +132,7 @@ test.describe('CRM-1992_1.2.1.1.10 - Lead Merging: Same Public Email with Deal R
     }
   });
 
-  test('Verify merging leads with same public email (Created Manually = TRUE, Deal Registration, Cloud Provider Sing Up)', async ({ page }, testInfo) => {
-    test.skip(true, 'Test failing due to bug CRM-8929');
+  test.skip('CRM-1992_1.2.1.1.10 [CRM-8929] [CRM-10787]: Verify merging leads with same public email (Created Manually = TRUE, Deal Registration, Cloud Provider Sing Up)', async ({ page }, testInfo) => {
     
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });

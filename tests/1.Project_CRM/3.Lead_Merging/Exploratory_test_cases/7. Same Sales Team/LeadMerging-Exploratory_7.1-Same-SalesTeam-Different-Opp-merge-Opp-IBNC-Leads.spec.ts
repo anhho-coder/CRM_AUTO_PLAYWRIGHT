@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify that the merging lead happens successfully when leads have same sales Team but different salesperson
  * 
  * Command to run:
- * npx playwright test --grep "LeadMerging-Exploratory_7.1" --project=chromium
+ * npx playwright test --grep "LeadMerging-Exploratory_7\.1 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

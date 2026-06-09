@@ -89,6 +89,61 @@ export class LeadPage extends BasePage {
   private readonly confirmDeleteOkButton = () =>
     this.page.locator('xpath=//button[normalize-space()="Ok" or normalize-space()="OK"] | //button[contains(@class,"btn-primary")][normalize-space()="Ok" or normalize-space()="OK"]').first();
 
+  // Convert-to-Opportunity wizard locators (XPath primary, CSS fallback)
+  private readonly convertToOpportunityButton = () =>
+    this.page.locator('xpath=//button[normalize-space()="Convert to Opportunity"]')
+      .or(this.page.locator('button[name="convert_opportunity"]')).first();
+  private readonly convertWizardDialog = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content") or contains(@class,"o_dialog")]')
+      .or(this.page.locator('.modal-content, .o_dialog')).first();
+  private readonly convertActionConvertLabel = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//label[contains(normalize-space(),"Convert to opportunity")]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="convert"]')).first();
+  private readonly convertSalesTeamSelect = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//select[@name="team_id"] | //div[contains(@class,"modal-content")]//div[@name="team_id"]//select')
+      .or(this.page.locator('.modal-content select[name="team_id"], .o_dialog select[name="team_id"]')).first();
+  private readonly convertSalespersonInput = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//div[@name="user_id"]//input')
+      .or(this.page.locator('.modal-content div[name="user_id"] input'))
+      .or(this.page.locator('xpath=//div[contains(@class,"modal-content")]//tr[.//*[normalize-space()="Salesperson"]]//input[@type="text"]')).first();
+  private readonly linkExistingCustomerLabel = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//label[contains(normalize-space(),"Link to an existing customer")]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="exist"]')).first();
+  private readonly createNewCustomerLabel = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//label[contains(normalize-space(),"Create a new customer")]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="create"]')).first();
+  private readonly doNotLinkCustomerLabel = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//label[contains(normalize-space(),"Do not link to a customer")]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="nothing"]')).first();
+  private readonly convertActionMergeLabel = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//label[contains(normalize-space(),"Merge with existing opportunities")]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="merge"]')).first();
+  private readonly convertActionMergeRadio = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//input[@type="radio"][following-sibling::label[contains(normalize-space(),"Merge with existing opportunities")] or @data-value="merge"]')
+      .or(this.page.locator('.modal-content input[type="radio"][data-value="merge"]')).first();
+  private readonly createOpportunityButton = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//button[normalize-space()="Create Opportunity"]')
+      .or(this.page.locator('.modal-content button[name="action_apply"]')).first();
+  // Merge sub-flow: "Add a line" in the wizard Opportunities section + the "Add: Opportunities" picker dialog
+  private readonly mergeAddLineLink = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content") or contains(@class,"o_dialog")]//a[normalize-space()="Add a line"] | //div[contains(@class,"modal-content") or contains(@class,"o_dialog")]//button[normalize-space()="Add a line"]')
+      .or(this.page.locator('.modal-content .o_field_x2many_list_row_add a, .o_dialog .o_field_x2many_list_row_add a')).first();
+  // Picker dialog scoped by its "Add: Opportunities" heading (more reliable than indexing the topmost modal)
+  private readonly mergePickerDialog = () =>
+    this.page.locator('xpath=//div[(contains(@class,"modal-content") or contains(@class,"o_dialog")) and .//*[contains(normalize-space(),"Add: Opportunities")]]').first();
+  private readonly mergePickerSearchInput = () =>
+    this.mergePickerDialog().locator("xpath=.//div[contains(@class,'o_searchview')]//input[contains(@class,'o_searchview_input')]")
+      .or(this.mergePickerDialog().locator('input.o_searchview_input'))
+      .or(this.mergePickerDialog().locator('xpath=.//input[contains(@placeholder,"Search")]')).first();
+  private readonly mergePickerFirstRow = () =>
+    this.mergePickerDialog().locator('xpath=.//tr[contains(@class,"o_data_row")][1]').first();
+  // A picker data row whose cells contain both the given Salesperson and Sales Team (matches Lead#1's assignment)
+  private readonly mergePickerRowByPersonAndTeam = (salesperson: string, salesTeam: string) =>
+    this.mergePickerDialog().locator(`xpath=.//tr[contains(@class,"o_data_row")][.//td[contains(normalize-space(),"${salesperson}")] and .//td[contains(normalize-space(),"${salesTeam}")]]`).first();
+  private readonly mergePickerSelectButton = () =>
+    this.mergePickerDialog().locator('xpath=.//button[normalize-space()="Select" or normalize-space()="SELECT"]')
+      .or(this.mergePickerDialog().locator('xpath=.//footer//button[contains(@class,"btn-primary")]')).first();
+
   constructor(page: Page) {
     super(page);
   }
@@ -156,6 +211,218 @@ export class LeadPage extends BasePage {
     await this.createButton().click();
     await this.waitForURL('**/web?*view_type=form*', CommonUtils.waitTimes.elementAppear);
     await this.wait(300);
+  }
+
+  /**
+   * Click the "Convert to Opportunity" header button on a saved Lead and wait for
+   * the conversion wizard dialog to appear.
+   */
+  async clickConvertToOpportunity() {
+    const btn = this.convertToOpportunityButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await btn.scrollIntoViewIfNeeded();
+    await btn.click();
+    await this.convertWizardDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * In the conversion wizard, select the "Convert to opportunity" radio option
+   * (default option; clicked defensively to guarantee state).
+   */
+  async selectConversionActionConvert() {
+    const label = this.convertActionConvertLabel();
+    const visible = await label.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (visible) {
+      await label.click({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * Select the Sales Team in the conversion wizard (Many2one input inside the modal).
+   * @param teamName - e.g. 'CMR'
+   */
+  async selectConvertSalesTeam(teamName: string) {
+    // Sales Team in the conversion wizard is a native <select>, not a Many2one input.
+    // selectOption auto-waits for the <select> to be actionable - no extra fixed buffer needed.
+    const select = this.convertSalesTeamSelect();
+    await select.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await select.selectOption({ label: teamName });
+  }
+
+  /**
+   * Select the Salesperson in the conversion wizard (Many2one input inside the modal).
+   * @param personName - e.g. 'Sergey Karachin'
+   */
+  async selectConvertSalesperson(personName: string) {
+    const input = this.convertSalespersonInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await input.fill(personName);
+    // Sync on the autocomplete option appearing instead of fixed wait buffers (faster, still robust:
+    // waitFor blocks only as long as the dropdown needs, up to abnormalWait).
+    const option = this.dropdownMenuItem().filter({ hasText: personName }).first();
+    const optionVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (optionVisible) {
+      // Bound the click so it cannot hang for the whole test timeout if the option never becomes
+      // actionable; fall back to selecting the highlighted autocomplete entry via Enter.
+      await option.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
+        await this.page.keyboard.press('Enter').catch(() => {});
+      });
+    } else {
+      // Autocomplete option did not render - select the highlighted entry via keyboard.
+      await this.page.keyboard.press('Enter').catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * Clear the Salesperson Many2one in the conversion wizard (leave it blank).
+   * Note: Odoo may auto-repopulate this field with a default - callers should verify the outcome.
+   */
+  async clearConvertSalesperson() {
+    const input = this.convertSalespersonInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    // Commit the empty value and dismiss the autocomplete with Tab (blur).
+    // Do NOT press Escape - in Odoo that closes the whole conversion wizard modal.
+    await this.page.keyboard.press('Tab').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * In the conversion wizard "Customers" section, select the
+   * "Link to an existing customer" radio option.
+   */
+  async selectLinkToExistingCustomer() {
+    const label = this.linkExistingCustomerLabel();
+    await label.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await label.click({ force: true }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * In the conversion wizard "Customers" section, select the "Create a new customer" radio option.
+   */
+  async selectCreateNewCustomer() {
+    const label = this.createNewCustomerLabel();
+    await label.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await label.click({ force: true }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * In the conversion wizard "Customers" section, select the "Do not link to a customer" radio option.
+   */
+  async selectDoNotLinkCustomer() {
+    const label = this.doNotLinkCustomerLabel();
+    await label.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await label.click({ force: true }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * In the conversion wizard "Conversion Action" section, select "Merge with existing opportunities".
+   * This radio only appears when Odoo detects duplicate leads/opportunities (same email/customer).
+   */
+  async selectConversionActionMerge() {
+    const t = CommonUtils.waitTimes.elementVisibility;
+    // The merge radio click can fail to register; verify merge mode actually rendered
+    // (the Opportunities "Add a line" appears) and retry, clicking the radio input then the label.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const radio = this.convertActionMergeRadio();
+      if (await radio.count().catch(() => 0) > 0) {
+        await radio.click({ force: true, timeout: t }).catch(() => {});
+      } else {
+        await this.convertActionMergeLabel().click({ force: true, timeout: t }).catch(() => {});
+      }
+      await this.wait(CommonUtils.waitTimes.medium);
+      if (await this.mergeAddLineLink().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+        console.log(`  - Merge mode active (Opportunities section rendered) on attempt ${attempt}`);
+        return;
+      }
+      console.log(`  ⚠ Merge mode not active yet (attempt ${attempt}/3); retrying`);
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * Whether the conversion wizard offers "Merge with existing opportunities" (only shown when
+   * Odoo detects a duplicate lead/opportunity). Used to assert the merge precondition worked.
+   */
+  async isMergeOptionAvailable(): Promise<boolean> {
+    return await this.convertActionMergeLabel().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+  }
+
+  /**
+   * Merge sub-flow: in the conversion wizard "Opportunities" section, click "Add a line",
+   * search the "Add: Opportunities" picker by email, select the opportunity whose Salesperson
+   * and Sales Team match Lead#1's assignment, and confirm so it is added to the merge list
+   * (required before "Create Opportunity").
+   * @param email - the Company email shared with the existing Opportunity to merge into
+   * @param salesperson - Lead#1's Salesperson, used to pick the correct picker row (e.g. 'Sergey Karachin')
+   * @param salesTeam - Lead#1's Sales Team, used to pick the correct picker row (e.g. 'CMR')
+   */
+  async addOpportunityToMergeByEmail(email: string, salesperson: string, salesTeam: string) {
+    const t = CommonUtils.waitTimes.elementVisibility; // bound each interaction to 30s so a mislocate fails fast (not at the test timeout)
+
+    // 1. Open the "Add: Opportunities" picker via the "Add a line" link in the Opportunities section
+    const addLine = this.mergeAddLineLink();
+    await addLine.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await addLine.click({ timeout: t });
+    await this.mergePickerDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // 2. Filter the picker by email. Odoo's searchview only reacts to real key events,
+    //    so use pressSequentially + Enter (fill() does not trigger the search).
+    const search = this.mergePickerSearchInput();
+    await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await search.click({ timeout: t });
+    await search.clear({ timeout: t }).catch(() => {});
+    await search.pressSequentially(email, { delay: 10 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await search.press('Enter');
+    await this.wait(CommonUtils.waitTimes.searchOppWait);
+
+    // 3. Select the opportunity whose Salesperson and Sales Team match Lead#1 (fall back to the first row)
+    let target = this.mergePickerRowByPersonAndTeam(salesperson, salesTeam);
+    const matched = await target.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    if (!matched) {
+      console.log(`  ⚠ No picker row matched Salesperson="${salesperson}" & Sales Team="${salesTeam}"; selecting the first row`);
+      target = this.mergePickerFirstRow();
+      await target.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    }
+    await target.scrollIntoViewIfNeeded({ timeout: t }).catch(() => {});
+
+    // Tick the row's checkbox (use check() so it reliably toggles and enables the "Select" button),
+    // falling back to clicking the row's selector cell if the input is not a standard checkbox.
+    const checkbox = target.locator('input[type="checkbox"]').first();
+    await checkbox.check({ force: true, timeout: t }).catch(async () => {
+      await target.locator('td').first().click({ timeout: t, force: true }).catch(() => {});
+    });
+    await this.wait(CommonUtils.waitTimes.short);
+
+    // Confirm the selection; the picker MUST close (no silent catch) so a stuck picker
+    // surfaces here instead of blocking the later "Create Opportunity" click.
+    await this.mergePickerSelectButton().click({ timeout: t }).catch(() => {});
+    await this.mergePickerDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Click the "Create Opportunity" button to finish the conversion wizard and
+   * wait for the resulting Opportunity form to load.
+   */
+  async clickCreateOpportunity() {
+    const btn = this.createOpportunityButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    // Bound the click so a blocked/covered button fails fast instead of hanging until the test timeout
+    await btn.click({ timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.convertWizardDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
   }
 
   /**
