@@ -118,16 +118,26 @@ pipeline {
             // single run folder to a fixed 'pw-report' dir so the published
             // "Playwright Report" link opens THIS run's report directly, instead of
             // a chooser page listing folders.
+            // NB: the run folder name contains [Worker-N]; PowerShell treats [ ] as
+            // wildcards, so use -LiteralPath everywhere. Wrapped in try/catch so a
+            // report-publish hiccup can never fail an otherwise-passing build.
             powershell '''
-              if (Test-Path playwright-report) {
-                $latest = Get-ChildItem playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-                if ($latest) {
-                  if (Test-Path pw-report) { Remove-Item pw-report -Recurse -Force }
-                  New-Item -ItemType Directory -Path pw-report | Out-Null
-                  Copy-Item -Path (Join-Path $latest.FullName '*') -Destination pw-report -Recurse -Force
-                  Write-Host "Published Playwright report from $($latest.Name)"
-                } else { Write-Host 'No per-run report folder found to publish.' }
-              } else { Write-Host 'No playwright-report directory found.' }
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
             '''
             publishHTML([
                 allowMissing: true,
