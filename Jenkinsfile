@@ -76,27 +76,26 @@ pipeline {
             }
         }
 
-        stage('Install Playwright browser (headless shell)') {
+        stage('Ensure Google Chrome') {
             steps {
-                // We only ever run the `chromium-headless` project, so install the
-                // lightweight chromium-headless-shell (Playwright's recommended CI
-                // browser for headless runs). It is far smaller than full Chromium,
-                // which was downloading slowly and hanging during extraction on
-                // this agent. timeout+retry guard against a transient CDN stall so a
-                // hang can never wedge the whole 60-min pipeline.
+                // Run on the agent's Google Chrome (channel:'chrome' in the
+                // chrome-headless project) instead of Playwright's bundled Chromium.
+                // This avoids the Playwright-CDN zip download+extraction that was
+                // hanging on this agent. `playwright install chrome` uses Google's
+                // own signed installer (from dl.google.com) and is a no-op if Chrome
+                // is already present. Guarded so it can never wedge the pipeline.
                 retry(2) {
                     timeout(time: 10, unit: 'MINUTES') {
-                        bat 'npx playwright install chromium-headless-shell'
+                        bat 'npx playwright install chrome'
                     }
                 }
             }
         }
 
-        stage('Run Playwright test (headless)') {
+        stage('Run Playwright test (headless on Chrome)') {
             steps {
-                // Pin chromium-headless. WITHOUT this, the default run also executes
-                // the headed "chromium" project, which fails on a headless CI agent.
-                bat 'npx playwright test "%SPEC%" --project=chromium-headless'
+                // chrome-headless project = installed Google Chrome, headless, no download.
+                bat 'npx playwright test "%SPEC%" --project=chrome-headless'
             }
         }
     }
