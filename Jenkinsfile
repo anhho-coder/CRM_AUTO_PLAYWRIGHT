@@ -18,9 +18,22 @@ pipeline {
     options {
         timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        // Do our own checkout in the 'Checkout' stage so we can enable
+        // git core.longpaths FIRST. The repo has deeply-nested test paths that,
+        // combined with the Jenkins workspace path, exceed the Windows MAX_PATH
+        // (260) limit and break the default checkout with "Filename too long".
+        skipDefaultCheckout(true)
     }
 
     stages {
+        stage('Checkout (long-path safe)') {
+            steps {
+                // Let git create paths > 260 chars on Windows, then check out.
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
         stage('Info') {
             steps {
                 bat 'node --version'
