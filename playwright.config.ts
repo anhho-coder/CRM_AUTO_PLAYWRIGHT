@@ -107,8 +107,19 @@ export default defineConfig({
     }},
     {
       name: 'chromium-headless',
-      use: { ...devices['Desktop Chrome'], 
+      use: { ...devices['Desktop Chrome'],
         headless: true,  // Runs browser in headless mode
+      },
+    },
+    {
+      // CI project: runs on the agent's installed Google Chrome (channel:'chrome')
+      // so no Playwright browser is downloaded/extracted. video:'off' also avoids
+      // the ffmpeg download. Use with: --project=chrome-headless
+      name: 'chrome-headless',
+      use: { ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        headless: true,
+        video: 'off',
       },
     },
 
