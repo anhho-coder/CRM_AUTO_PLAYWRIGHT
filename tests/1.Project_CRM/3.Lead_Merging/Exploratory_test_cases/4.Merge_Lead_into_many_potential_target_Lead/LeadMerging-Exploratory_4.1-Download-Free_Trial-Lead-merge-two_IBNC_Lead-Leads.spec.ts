@@ -7,6 +7,8 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead Merging to Opp Test - Two Leads Merging with Same Company Email
  * Test Case ID: LeadMerging-Exploratory_4.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-15
  * 
  * Summary: Verify that the merging lead happens successfully when there are 2 potential target leads 
  * and one of them is earlier lead
@@ -172,7 +174,7 @@ test.describe('LeadMerging-Exploratory_4.1 - Two Leads Merging to Opp: Earlier L
   });
 
   test('Verify merging lead when there are 2 potential target leads and one is earlier', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(config.timeouts.test); // 15-min budget: headroom for worst-case ~10-min queue-job merge latency plus the verification steps
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -449,8 +451,16 @@ test.describe('LeadMerging-Exploratory_4.1 - Two Leads Merging to Opp: Earlier L
       console.log('\n=== STEP 1: WAIT FOR LEAD MERGING ===');
       console.log('⏳ Waiting for lead merging to occur...');
       
-      // Wait for lead merging to happen (stays at Source Lead page - Lead #3)
-      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen(opp1Name, 6, 30000);
+      // Wait for lead merging to happen (stays at Source Lead page - Lead #3).
+      // The auto-merge is an OCA queue.job: normally ~3-4 min, but up to ~10 min when the first job
+      // attempt fails and is requeued by the 10-min retry cron. Use the team's intended 10-attempt
+      // budget (~9.5-min poll window) instead of the previous 6 attempts (~5.7 min), which
+      // under-covered the worst case and produced the transient 2026-06-12 failure.
+      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen(
+        opp1Name,
+        CommonUtils.leadMergingRetry.maxAttempts,
+        CommonUtils.waitTimes.checkingChatterLog
+      );
       
       // Assert that merge notification was found
       expect(mergeNotificationFound).toBeTruthy();

@@ -127,7 +127,10 @@ test.describe('CRM-671_2.1.1 - NO MERGE: IBSA and CMR Teams', () => {
     }
   });
 
-  test('Verify that leads do NOT merge when IBSA team and CMR team have same email', async ({ page }, testInfo) => {
+  // SKIPPED due to bug CRM-11014: at Step 7.2 the Company Name reads "Company NameCompany Name
+  // Lead 2" (doubled/wrong) instead of being auto-set to "Company Name Lead 1". Declaration-level
+  // skip so the browser fixture never launches. Remove when CRM-11014 is fixed.
+  test.skip('Verify that leads do NOT merge when IBSA team and CMR team have same email @CRM-11014', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window

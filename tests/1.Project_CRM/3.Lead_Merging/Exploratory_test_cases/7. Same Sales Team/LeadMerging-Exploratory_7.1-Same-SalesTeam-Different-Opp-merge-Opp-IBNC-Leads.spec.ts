@@ -341,7 +341,7 @@ test.describe('LeadMerging-Exploratory_7.1 - Opp Merging to Opp: Same Sales Team
       // Navigate to merged opp
       await page.goto(opp2Url, { waitUntil: 'domcontentloaded' });
       await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
-      await page.waitForTimeout(CommonUtils.waitTimes.pageLoad);
+      await page.waitForTimeout(CommonUtils.waitTimes.extraLong); // was pageLoad (4min) blind sleep - redundant after the spinner-hide above; trimmed so the test fits its 10-min budget
       
       // Take screenshot for verification
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Step 2 - Opp #2 Opened (ID: ${opp2Id})`);
@@ -471,7 +471,7 @@ test.describe('LeadMerging-Exploratory_7.1 - Opp Merging to Opp: Same Sales Team
       
       await page.goto(opp1Url, { waitUntil: 'domcontentloaded' });
       await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
-      await page.waitForTimeout(CommonUtils.waitTimes.pageLoad);
+      await page.waitForTimeout(CommonUtils.waitTimes.extraLong); // was pageLoad (4min) blind sleep - redundant after the spinner-hide above; trimmed so the test fits its 10-min budget
       
       console.log('✓ Opp #1 opened successfully\n');
     });
