@@ -7,12 +7,21 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
+    parameters {
+        // Which spec to run. Override per-build via "Build with Parameters" in the
+        // UI, or POST /job/.../buildWithParameters?SPEC=<repo-relative/path.spec.ts>.
+        string(
+            name: 'SPEC',
+            defaultValue: 'tests/1.Project_CRM/O12_CE_to_O12_CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/BDEU_team/tc-a-3-1-BDEU-assign-salesperson-thomas-semerich-bdeu.spec.ts',
+            description: 'Repo-relative path of the Playwright spec to run (use forward slashes).'
+        )
+    }
+
     environment {
         // Enables Playwright CI behaviour from playwright.config.ts:
         //   retries: 2, forbidOnly: true
         CI = 'true'
-        // The single spec we run first to prove the whole setup works.
-        SPEC = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
+        // The spec to run is the SPEC build parameter (params.SPEC), see above.
         // Cache Playwright browsers OUTSIDE the workspace so they are downloaded
         // once and reused across builds (and survive `npm ci`). Add a Windows
         // Defender exclusion for this folder on the agent to avoid extraction stalls.
@@ -91,7 +100,8 @@ pipeline {
         stage('Run Playwright test (headless on Chrome)') {
             steps {
                 // chrome-headless project = installed Google Chrome, headless, no download.
-                bat 'npx playwright test "%SPEC%" --project=chrome-headless'
+                echo "Running spec: ${params.SPEC}"
+                bat "npx playwright test \"${params.SPEC}\" --project=chrome-headless"
             }
         }
     }
