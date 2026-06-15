@@ -101,6 +101,11 @@ pipeline {
             steps {
                 // chrome-headless project = installed Google Chrome, headless, no download.
                 echo "Running spec: ${params.SPEC}"
+                // Start each build with empty report/results dirs (the workspace
+                // persists between builds) so the published report is ONLY this run.
+                bat 'if exist playwright-report rmdir /s /q playwright-report'
+                bat 'if exist test-results rmdir /s /q test-results'
+                bat 'if exist pw-report rmdir /s /q pw-report'
                 bat "npx playwright test \"${params.SPEC}\" --project=chrome-headless"
             }
         }
@@ -108,15 +113,28 @@ pipeline {
 
     post {
         always {
-            // The HTML report is written to a timestamped sub-folder
-            // (playwright-report/<TS>_<folder>_[Worker-N]_<status>/index.html),
-            // so match it with a wildcard rather than a fixed file name.
+            // Playwright writes the HTML report into a timestamped sub-folder
+            // (playwright-report/<TS>_<folder>_[Worker-N]_<status>/). Flatten that
+            // single run folder to a fixed 'pw-report' dir so the published
+            // "Playwright Report" link opens THIS run's report directly, instead of
+            // a chooser page listing folders.
+            powershell '''
+              if (Test-Path playwright-report) {
+                $latest = Get-ChildItem playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                if ($latest) {
+                  if (Test-Path pw-report) { Remove-Item pw-report -Recurse -Force }
+                  New-Item -ItemType Directory -Path pw-report | Out-Null
+                  Copy-Item -Path (Join-Path $latest.FullName '*') -Destination pw-report -Recurse -Force
+                  Write-Host "Published Playwright report from $($latest.Name)"
+                } else { Write-Host 'No per-run report folder found to publish.' }
+              } else { Write-Host 'No playwright-report directory found.' }
+            '''
             publishHTML([
                 allowMissing: true,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
-                reportDir: 'playwright-report',
-                reportFiles: '**/index.html',
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
                 reportName: 'Playwright Report'
             ])
             junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
