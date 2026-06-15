@@ -13,6 +13,10 @@ pipeline {
         CI = 'true'
         // The single spec we run first to prove the whole setup works.
         SPEC = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
+        // Cache Playwright browsers OUTSIDE the workspace so they are downloaded
+        // once and reused across builds (and survive `npm ci`). Add a Windows
+        // Defender exclusion for this folder on the agent to avoid extraction stalls.
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
     }
 
     options {
@@ -72,10 +76,19 @@ pipeline {
             }
         }
 
-        stage('Install Playwright browser (chromium)') {
+        stage('Install Playwright browser (headless shell)') {
             steps {
-                // Only chromium is needed; the config uses the chromium-headless project.
-                bat 'npx playwright install chromium'
+                // We only ever run the `chromium-headless` project, so install the
+                // lightweight chromium-headless-shell (Playwright's recommended CI
+                // browser for headless runs). It is far smaller than full Chromium,
+                // which was downloading slowly and hanging during extraction on
+                // this agent. timeout+retry guard against a transient CDN stall so a
+                // hang can never wedge the whole 60-min pipeline.
+                retry(2) {
+                    timeout(time: 10, unit: 'MINUTES') {
+                        bat 'npx playwright install chromium-headless-shell'
+                    }
+                }
             }
         }
 
