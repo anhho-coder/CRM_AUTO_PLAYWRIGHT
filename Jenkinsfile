@@ -76,19 +76,15 @@ pipeline {
             }
         }
 
-        stage('Ensure Google Chrome') {
+        stage('Verify Google Chrome present') {
             steps {
-                // Run on the agent's Google Chrome (channel:'chrome' in the
-                // chrome-headless project) instead of Playwright's bundled Chromium.
-                // This avoids the Playwright-CDN zip download+extraction that was
-                // hanging on this agent. `playwright install chrome` uses Google's
-                // own signed installer (from dl.google.com) and is a no-op if Chrome
-                // is already present. Guarded so it can never wedge the pipeline.
-                retry(2) {
-                    timeout(time: 10, unit: 'MINUTES') {
-                        bat 'npx playwright install chrome'
-                    }
-                }
+                // Google Chrome is already installed on this agent
+                // (C:\Program Files\Google\Chrome). We do NOT run
+                // `npx playwright install chrome` because Google's installer
+                // spawns background processes that hold the console open and hang
+                // the step. The chrome-headless project resolves Chrome from this
+                // standard path via channel:'chrome'. Fail fast if it's missing.
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
             }
         }
 
