@@ -333,6 +333,7 @@ test.describe('CRM-3902_1.1.1 - Verify value of Investment field from Source Lea
         company:        `TEST_company_name_${timestamp}`,
         tags:           'Test',
         createManually: 'FALSE',
+        investmentId:   investmentID1,
         outputFileName: 'CSV-Audience-copy1.csv',
       });
       csvCopy1Path = csvData1.outputPath;
@@ -449,6 +450,7 @@ test.describe('CRM-3902_1.1.1 - Verify value of Investment field from Source Lea
         email:          csvData1.emailContact1,
         tags:           'Test',
         createManually: 'FALSE',
+        investmentId:   investmentID2,
         outputFileName: 'CSV-Audience-copy2.csv',
       });
       csvCopy2Path = csvData2.outputPath;

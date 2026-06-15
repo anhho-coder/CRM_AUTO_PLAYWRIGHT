@@ -8,7 +8,12 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 export class LeadPage extends BasePage {
   // List view locators
-  private readonly createButton = () => this.page.getByRole('button', { name: /CREATE/i });
+  // Primary: the list view's canonical "New/CREATE" button (o_list_button_add). Fallback: a
+  // CREATE/Create button that is NOT inside a modal — avoids the strict-mode violation where an
+  // open dialog (e.g. #modal_*) also exposes a "Create" button (root cause of CRM-671_1.1.2).
+  private readonly createButton = () => this.page.locator(
+    'xpath=//button[contains(@class,"o_list_button_add")] | //button[(normalize-space()="CREATE" or normalize-space()="Create") and not(ancestor::div[contains(@class,"modal")])]'
+  ).first();
   
   // Form view locators
   private readonly leadOpportunityInput = () => this.page.getByRole('textbox', { name: 'Lead Opportunity' }).or(this.page.locator('input[name="name"]')).first();
@@ -25,7 +30,7 @@ export class LeadPage extends BasePage {
   private readonly createdManuallyCheckbox = () => this.createdManuallyRow().locator('input[type="checkbox"]').first();
   private readonly tagsInput = () => this.page.locator('xpath=(//tr[td/label[contains(text(), "Tags")] or td[contains(text(), "Tags")]]//input)[2]').first();
   private readonly crmDeveloperTab = () => this.page.locator('xpath=(//a[@class="nav-link"][normalize-space()="CRM Developer"])');
-  private readonly crmDeveloperTab_targetLead = () => this.page.locator('xpath=(//a[@class="nav-link"][normalize-space()="CRM Developer"])[2]');
+  private readonly crmDeveloperTab_targetLead = () => this.page.locator('xpath=//a[contains(@class,"nav-link") and normalize-space()="CRM Developer"]').last();
   private readonly dealRegistrationTab = () => this.page.getByRole('tab', { name: 'Deal registration' });
   private readonly registeredDealCheckbox = () => this.page.locator('xpath=(//div[@name="registered_deal"]/input)[1]');
   private readonly dealRegistrationStartDateInput = () => this.page.locator('xpath=//input[@name="deal_registration_start_date"]');
@@ -750,9 +755,12 @@ export class LeadPage extends BasePage {
    * Click CRM Developer tab on target lead page
    */
   async clickCRMDeveloperTab_targetLead() {
-    await this.wait(500);
+    await this.wait(CommonUtils.waitTimes.medium);
+    // Bounded wait so a missing "CRM Developer" tab fails fast (abnormalWait) instead of the click
+    // auto-waiting up to the 15-min test timeout (root cause of CRM-671_2.1.9's hang).
+    await this.crmDeveloperTab_targetLead().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.crmDeveloperTab_targetLead().click();
-    await this.wait(500);
+    await this.wait(CommonUtils.waitTimes.medium);
   }
 /**
    * Click CRM Developer tab

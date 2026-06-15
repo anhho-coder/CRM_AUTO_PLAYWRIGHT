@@ -151,12 +151,24 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   }
 
   /**
-   * Click CREATE button to open new Activity Type form
+   * Click CREATE button to open a new record form (Investment / Activity Type).
+   *
+   * The Investment create form is a heavy module form (many fields + ROI table + ~14 tabs)
+   * that can take 40-60s to render on a loaded pre-prod. The old blind `wait(2500)` returned
+   * long before the form was ready, so the downstream field check (30s `abnormalWait`) timed
+   * out — this was the root cause of the 4.Investments mass-timeouts. We now wait for the
+   * form's Discard button (only present on an open, unsaved record form) using the `pageLoad`
+   * timeout for heavy modules, so this returns only once the create form is actually ready.
    */
   async clickCreateButton() {
-    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // The Investment LIST view can be slow to (re-)render its New/CREATE button — especially the
+    // 2nd+ create in a test, right after saving a record and navigating back to the list. Allow up
+    // to pageLoad (heavy-module) for the button to appear, not the 30s abnormalWait (root cause of
+    // CRM-3902_1.1.1's "CREATE button not visible in 30s" on the second investment creation).
+    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
     await this.createButton().click();
-    await this.wait(2500);
+    await this.discardButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.extraLong);
   }
 
   /**
