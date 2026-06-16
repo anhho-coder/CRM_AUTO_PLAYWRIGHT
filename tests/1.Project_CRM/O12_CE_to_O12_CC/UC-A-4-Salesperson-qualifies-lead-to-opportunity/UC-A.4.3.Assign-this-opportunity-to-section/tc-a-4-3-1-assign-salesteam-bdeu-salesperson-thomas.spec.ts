@@ -8,8 +8,8 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
 /**
  * Lead-to-Opportunity Conversion Test - "Assign this opportunity to" (Sales Team + Salesperson)
  * Test Case ID: TC.-A.4.3.1
- * Automation-Type: new
- * Automation-Date: 2026-06-05
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-15
  *
  * Summary: Verify converting a qualified lead to Opportunity while assigning the BDEU team's
  *          Salesperson/Sales Team (from salesteam.users -> sale_ic_bdeu_thomas: Thomas Semerich / BDEU)
@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   declared for BDEU in salesteam.users (Sales Team = BDEU, Salesperson = Thomas Semerich).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // BDEU team Salesperson/Sales Team pairing - sourced from salesteam.users (do not hardcode)
 const sp = salesTeamUsers.sale_ic_bdeu_thomas;

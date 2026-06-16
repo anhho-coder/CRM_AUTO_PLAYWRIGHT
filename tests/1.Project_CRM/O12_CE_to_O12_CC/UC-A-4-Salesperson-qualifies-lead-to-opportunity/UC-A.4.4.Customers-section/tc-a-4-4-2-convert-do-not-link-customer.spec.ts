@@ -41,7 +41,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * - Stage "New" appears on the Opportunity form, signalling the Lead was converted successfully.
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 test.describe('TC.-A.4.4.2 - Convert qualified Lead to Opportunity without linking a customer', () => {
 

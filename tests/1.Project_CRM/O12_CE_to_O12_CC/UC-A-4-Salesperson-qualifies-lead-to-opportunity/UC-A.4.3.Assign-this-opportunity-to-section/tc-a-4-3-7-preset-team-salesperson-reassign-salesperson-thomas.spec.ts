@@ -46,7 +46,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   reassigned Salesperson's team depending on Odoo behavior).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // Lead pre-assignment (set on the Lead form) and wizard reassignment - both sourced from salesteam.users
 const leadAssign = salesTeamUsers.sale_ic_marketing_bdeu_stiblin; // Lead: Marketing - BDEU / Sergey Stiblin

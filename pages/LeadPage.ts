@@ -264,23 +264,24 @@ export class LeadPage extends BasePage {
     const input = this.convertSalespersonInput();
     await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await input.click();
-    await input.fill('');
     await input.fill(personName);
+    await this.wait(CommonUtils.waitTimes.short);
+    
     // Sync on the autocomplete option appearing instead of fixed wait buffers (faster, still robust:
     // waitFor blocks only as long as the dropdown needs, up to abnormalWait).
-    const option = this.dropdownMenuItem().filter({ hasText: personName }).first();
-    const optionVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
-    if (optionVisible) {
-      // Bound the click so it cannot hang for the whole test timeout if the option never becomes
-      // actionable; fall back to selecting the highlighted autocomplete entry via Enter.
-      await option.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
-        await this.page.keyboard.press('Enter').catch(() => {});
-      });
-    } else {
-      // Autocomplete option did not render - select the highlighted entry via keyboard.
-      await this.page.keyboard.press('Enter').catch(() => {});
-    }
-    await this.wait(CommonUtils.waitTimes.short);
+    // const option = this.dropdownMenuItem().filter({ hasText: personName }).first();
+    // const optionVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    // if (optionVisible) {
+    //   // Bound the click so it cannot hang for the whole test timeout if the option never becomes
+    //   // actionable; fall back to selecting the highlighted autocomplete entry via Enter.
+    //   await option.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
+    //     await this.page.keyboard.press('Enter').catch(() => {});
+    //   });
+    // } else {
+    //   // Autocomplete option did not render - select the highlighted entry via keyboard.
+    //   await this.page.keyboard.press('Enter').catch(() => {});
+    // }
+    // await this.wait(CommonUtils.waitTimes.short);
   }
 
   /**

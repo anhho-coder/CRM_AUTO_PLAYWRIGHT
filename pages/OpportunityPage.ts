@@ -131,6 +131,41 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   private readonly serverErrorDialog = () =>
     this.page.locator("xpath=//div[contains(@class,'o_dialog_warning modal-body')]");
 
+  // Mass Mark as Lost/Duplicate - list row selection, Action menu option, wizard & approval (CRM-10733)
+  // A single list row identified by the (unique) Opportunity name in any data cell.
+  private readonly oppRowByName = (name: string) =>
+    this.page.locator(`xpath=//tr[contains(@class,'o_data_row')][.//td[contains(@class,'o_data_cell') and contains(normalize-space(.),"${name}")]]`);
+  private readonly oppRowCheckboxByName = (name: string) =>
+    this.oppRowByName(name).locator("xpath=.//td[contains(@class,'o_list_record_selector')]//input[@type='checkbox']").first();
+  // The selection-dependent Action dropdown toggle - hidden until >=1 row is selected (unambiguous
+  // signal that a row selection registered). Primary: the o_dropdown_toggler_btn; fallback: any
+  // "Action" button inside the control-panel action-menus container.
+  private readonly listSelectionActionToggle = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_dropdown_toggler_btn') and (normalize-space()='Action' or normalize-space()='ACTION')] | //div[contains(@class,'o_cp_action_menus')]//button[normalize-space()='Action' or normalize-space()='ACTION']").first();
+  // An Action-dropdown menu item by exact visible text (exact match avoids "... and Deactivate").
+  private readonly actionMenuOptionByText = (text: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'dropdown-menu') and contains(@class,'show')]//a[@role='menuitem' and normalize-space()="${text}"] | //a[@role='menuitem' and normalize-space()="${text}"]`).first();
+  // Mass Mark wizard (modal): title, lead count, required Lost Reason combobox, Confirm button.
+  private readonly massMarkWizardTitle = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//h4[contains(@class,'modal-title')]").first();
+  private readonly massMarkWizardLeadCount = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//span[@name='lead_count']").first();
+  private readonly massMarkLostReasonInput = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//div[@name='lost_reason_id']//input[contains(@class,'o_input')]").first();
+  private readonly massMarkConfirmButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//button[@name='action_apply']").first();
+  // Approval Status (state) field on the Opportunity form (CRM Developer tab).
+  private readonly approvalStatusField = () =>
+    this.page.locator("xpath=//tr[td/label[normalize-space()='Approval Status']]//span[@name='state'] | //span[@name='state']").first();
+  // Mass Mark wizard: Cancel button, Lost Reason autocomplete options, and the error popup.
+  private readonly massMarkCancelButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//footer//button[@special='cancel'] | //div[contains(@class,'modal') and contains(@class,'show')]//footer//button[normalize-space()='Cancel'] | //div[contains(@class,'modal') and contains(@class,'show')]//button[normalize-space()='Cancel']").first();
+  private readonly massMarkLostReasonOptions = () =>
+    this.page.locator(".ui-menu-item, .o_m2o_dropdown_option, li[role='option']");
+  // Error/validation popup shown when a Mass Mark is invalid (e.g. a Won lead is selected).
+  private readonly massMarkErrorDialog = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_error_dialog')] | //div[contains(@class,'modal') and contains(@class,'show')][.//h4[contains(.,'Error') or contains(.,'Warning') or contains(.,'Invalid') or contains(.,'User Error')] or .//div[contains(@class,'o_dialog_warning')]]//div[contains(@class,'modal-body')]").first();
+
   // Qualification info tab & fields
   private readonly qualificationInfoTab = () => this.page.getByRole('tab', { name: 'Qualification info' }).first();
   private readonly qualEnvSocketInput    = () => this.page.locator("xpath=//tr[td[normalize-space()='Number of socket']]//input").first();
@@ -1482,6 +1517,365 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await btn.click();
     await this.wait(CommonUtils.waitTimes.long);
     console.log('  ✓ Delete confirmed');
+  }
+
+  /**
+   * Fast teardown helper: delete several Opportunities by (unique) name in ONE list operation
+   * (select the matching rows -> Action > Delete > Ok), instead of deleting them one-by-one in
+   * separate tabs. Tolerant: silently skips names with no matching row (already deleted/lost).
+   * Far faster than per-URL deletion, so cleanup of many-opp tests fits inside the per-test timeout.
+   * @param names - the unique Opportunity names to delete
+   */
+  async deleteOpportunitiesByNames(names: string[]): Promise<void> {
+    if (!names || names.length === 0) return;
+    await this.clickCRMMenuLink();
+    await this.switchToListView();
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    let selectedAny = false;
+    for (const name of names) {
+      const count = await this.oppRowByName(name).count();
+      if (count === 1) {
+        await this.dispatchSelectRow(name).catch(() => {});
+        selectedAny = true;
+      }
+    }
+    if (!selectedAny) {
+      console.log('  ℹ️ No matching Opportunity rows to delete (already cleaned).');
+      return;
+    }
+    const actionVisible = await this.listSelectionActionToggle().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!actionVisible) {
+      console.log('  ⚠ Selection did not register - skipping bulk delete.');
+      return;
+    }
+    await this.clickListActionMenu();
+    await this.clickListActionDelete();
+    await this.confirmDeleteDialog();
+    console.log(`  ✓ Bulk-deleted matching Opportunities (${names.length} requested) in one operation`);
+  }
+
+  /**
+   * Select exactly ONE Opportunity row in the list by its (unique) name, ticking its row checkbox.
+   * Odoo's Bootstrap custom-control checkbox is visually hidden and the row re-renders on click, so a
+   * normal/force click does not register selection; instead we set `checked` and dispatch the
+   * click/change events the ListRenderer listens for, then confirm selection by waiting for the
+   * toolbar "Action" button to appear. Throws if zero or more than one row matches (safety: never
+   * mass-act on the wrong records).
+   * @param name - the unique Opportunity name to select
+   */
+  /**
+   * Internal: tick a single list row's checkbox by its (unique) name. Odoo's Bootstrap custom-control
+   * checkbox is hidden and the row re-renders on click, so we set `checked` and dispatch the
+   * click/change events the ListRenderer listens for. Asserts exactly one matching row (safety).
+   */
+  private async dispatchSelectRow(name: string): Promise<void> {
+    const row = this.oppRowByName(name);
+    await row.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const count = await row.count();
+    if (count !== 1) {
+      throw new Error(`Expected exactly 1 Opportunity row matching "${name}", found ${count} - refusing to select to avoid acting on the wrong records.`);
+    }
+    await row.first().scrollIntoViewIfNeeded();
+    const checkbox = this.oppRowCheckboxByName(name);
+    await checkbox.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait });
+    await checkbox.evaluate((el: HTMLInputElement) => {
+      el.checked = true;
+      el.dispatchEvent(new Event('click', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Select exactly ONE Opportunity row in the list by its (unique) name. Selection is confirmed by
+   * the selection-dependent Action dropdown toggle becoming visible (hidden until >=1 row selected),
+   * retried for stability. Throws if zero/more than one row matches.
+   * @param name - the unique Opportunity name to select
+   */
+  async selectOpportunityRowByName(name: string): Promise<void> {
+    // Let the list finish loading/re-rendering before reading rows (avoids selecting a stale node).
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    const actionToggle = this.listSelectionActionToggle();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      await this.dispatchSelectRow(name);
+      const registered = await actionToggle.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+      if (registered) {
+        console.log(`  ✓ Selected Opportunity row: "${name}" (attempt ${attempt})`);
+        return;
+      }
+      console.log(`  ⚠ Selection not registered yet for "${name}" (attempt ${attempt}/5) - retrying...`);
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    throw new Error(`Could not register selection of Opportunity row "${name}" (the "Action" toolbar button never became visible).`);
+  }
+
+  /**
+   * Select MULTIPLE Opportunity rows in the list by their (unique) names (for mass actions on >1
+   * record). Selections accumulate; confirmed by the Action toolbar toggle appearing. The caller
+   * should corroborate the count via the wizard's lead_count (getMassMarkLeadCount).
+   * @param names - the unique Opportunity names to select
+   */
+  async selectOpportunityRowsByNames(names: string[]): Promise<void> {
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    for (const name of names) {
+      await this.dispatchSelectRow(name);
+    }
+    await this.listSelectionActionToggle().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log(`  ✓ Selected ${names.length} Opportunity rows`);
+  }
+
+  /**
+   * Search the Opportunities list by typing text into the search box with REAL keystrokes
+   * (pressSequentially) so Odoo's search handler fires, then Enter to create a name filter facet.
+   * Use after removeMyPipelineFilter() to surface records the "My Pipeline" favorite hides
+   * (e.g. opps already in a pending-lost state, which keep active=true but probability=0).
+   * @param text - text to search for (matches the Opportunity name)
+   */
+  async searchByName(text: string): Promise<void> {
+    const input = this.searchViewInputXPath();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await input.pressSequentially(text, { delay: 10 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await input.press('Enter');
+    await this.wait(CommonUtils.waitTimes.searchOppWait);
+    console.log(`  ✓ Searched Opportunities by name: "${text}"`);
+  }
+
+  /**
+   * Click an option in the (already open) list Action dropdown menu by its exact visible text.
+   * @param optionText - exact menu item text, e.g. "Mass Mark as Duplicate"
+   */
+  async selectActionMenuOption(optionText: string): Promise<void> {
+    const opt = this.actionMenuOptionByText(optionText);
+    await opt.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await opt.scrollIntoViewIfNeeded().catch(() => {});
+    await opt.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Action menu option selected: "${optionText}"`);
+  }
+
+  /**
+   * Wait for the Mass Mark wizard modal and return its title (e.g. "Mass Mark as Duplicate").
+   */
+  async waitForMassMarkWizard(): Promise<string> {
+    await this.massMarkWizardTitle().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const title = ((await this.massMarkWizardTitle().textContent()) ?? '').trim();
+    console.log(`  ✓ Mass Mark wizard opened: "${title}"`);
+    return title;
+  }
+
+  /**
+   * Read the number of leads the Mass Mark wizard will affect (the wizard's lead_count field).
+   * @returns the lead count, or 0 if it cannot be read
+   */
+  async getMassMarkLeadCount(): Promise<number> {
+    const txt = await this.massMarkWizardLeadCount().textContent().catch(() => '');
+    return parseInt((txt ?? '').trim(), 10) || 0;
+  }
+
+  /**
+   * Select a Lost Reason in the Mass Mark wizard (required Many2one combobox).
+   * @param reason - the Lost Reason label, e.g. "Duplicate"
+   */
+  async selectMassMarkLostReason(reason: string): Promise<void> {
+    const input = this.massMarkLostReasonInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(reason);
+    await this.wait(CommonUtils.waitTimes.long);
+    const option = this.dropdownOption().filter({ hasText: reason }).first();
+    const visible = await option.isVisible().catch(() => false);
+    if (visible) {
+      await option.click();
+    } else {
+      await this.page.keyboard.press('Enter');
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    console.log(`  ✓ Mass Mark Lost Reason set: "${reason}"`);
+  }
+
+  /**
+   * Click the "Confirm" button on the Mass Mark wizard and wait for it to close.
+   */
+  async confirmMassMarkWizard(): Promise<void> {
+    const btn = this.massMarkConfirmButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.massMarkWizardTitle().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await CommonUtils.waitForSpinnersToHide(this.page).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Mass Mark wizard confirmed');
+  }
+
+  /**
+   * Read the Approval Status (state) value on the Opportunity form (CRM Developer tab).
+   * @returns the approval status text (e.g. "None", "Pending Approval", "Approved"), or '' if not found
+   */
+  async getApprovalStatus(): Promise<string> {
+    try {
+      const el = this.approvalStatusField();
+      const exists = await el.count() > 0;
+      if (!exists) return '';
+      return (((await el.textContent().catch(() => '')) ?? '')).trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * Create a simple Opportunity from the list view: CREATE -> set name -> ensure Stage = New -> SAVE.
+   * Returns the saved Opportunity's URL (leaves the browser on the saved form).
+   * @param name - the unique Opportunity name
+   */
+  async createSimpleOpportunityFromList(name: string): Promise<string> {
+    await this.clickCreate();
+    await this.fillOpportunityName(name);
+    await this.selectStageNew().catch(() => {});
+    await this.saveAndWaitForCompletion();
+    const url = this.page.url();
+    console.log(`  ✓ Created Opportunity "${name}" at ${url}`);
+    return url;
+  }
+
+  /**
+   * Create an Opportunity and move it to the WON stage (via the status-bar MORE dropdown, which
+   * handles the "Mark as Won" confirmation). Enough to make the server treat it as Won for the
+   * "Mass Mark as Duplicate" validation (which rejects Won leads). Returns the saved URL.
+   * @param name - the unique Opportunity name
+   */
+  async createWonOpportunityFromList(name: string): Promise<string> {
+    const url = await this.createSimpleOpportunityFromList(name);
+    await this.selectStageViaMore('Won');
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  ✓ Moved Opportunity "${name}" to WON stage`);
+    return url;
+  }
+
+  /**
+   * Create several simple Opportunities (Stage = New), one per supplied name. Navigates back to the
+   * Opportunities list before each CREATE. Returns the saved URLs in the same order as `names`.
+   * @param names - unique Opportunity names (caller guarantees uniqueness, e.g. shared stamp + index)
+   */
+  async createSimpleOpportunities(names: string[]): Promise<string[]> {
+    const urls: string[] = [];
+    for (let i = 0; i < names.length; i++) {
+      await this.clickCRMMenuLink();
+      await this.switchToListView();
+      const url = await this.createSimpleOpportunityFromList(names[i]);
+      urls.push(url);
+      console.log(`  ✓ Created Opportunity ${i + 1}/${names.length}`);
+    }
+    return urls;
+  }
+
+  /**
+   * Create several simple Opportunities (Stage = New) each set to a specific Sales Team, keeping the
+   * current user as Salesperson so they remain in the user's pipeline. Navigates to the list before
+   * each CREATE. Returns saved URLs in order.
+   * @param items - {name, team} per Opportunity (name unique; team is the Sales Team label)
+   */
+  async createSimpleOpportunitiesWithTeams(items: { name: string; team: string }[]): Promise<string[]> {
+    const urls: string[] = [];
+    for (let i = 0; i < items.length; i++) {
+      await this.clickCRMMenuLink();
+      await this.switchToListView();
+      await this.clickCreate();
+      await this.fillOpportunityName(items[i].name);
+      await this.selectStageNew().catch(() => {});
+      const set = await this.selectSalesTeam(items[i].team);
+      if (!set) console.log(`  ⚠ Could not set Sales Team "${items[i].team}" for "${items[i].name}" - left as default`);
+      await this.saveAndWaitForCompletion();
+      urls.push(this.page.url());
+      console.log(`  ✓ Created Opportunity ${i + 1}/${items.length} "${items[i].name}" (team ${items[i].team})`);
+    }
+    return urls;
+  }
+
+  /**
+   * Read the Sales Team currently shown on the Opportunity form (readonly or edit).
+   * Thin wrapper over getSalesTeamValue() for symmetry in multi-team tests.
+   */
+  async getSalesTeam(): Promise<string> {
+    return this.getSalesTeamValue();
+  }
+
+  /**
+   * Click "Cancel" on the Mass Mark wizard and wait for the modal to close.
+   */
+  async cancelMassMarkWizard(): Promise<void> {
+    const btn = this.massMarkCancelButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.massMarkWizardTitle().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Mass Mark wizard cancelled');
+  }
+
+  /**
+   * @returns true if the Mass Mark wizard modal is currently open.
+   */
+  async isMassMarkWizardOpen(): Promise<boolean> {
+    return this.massMarkWizardTitle().isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+  }
+
+  /**
+   * Read the Lost Reason currently populated in the Mass Mark wizard (the combobox input value).
+   * Use to verify the wizard's default Lost Reason.
+   * @returns the current Lost Reason text, or '' if empty
+   */
+  async getMassMarkLostReasonValue(): Promise<string> {
+    const input = this.massMarkLostReasonInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return ((await input.inputValue().catch(() => '')) ?? '').trim();
+  }
+
+  /**
+   * Type a query into the wizard's Lost Reason combobox and return the visible dropdown option texts.
+   * Use to verify the Lost Reason field is searchable.
+   * @param query - text to type
+   * @returns the list of matching option labels
+   */
+  async searchMassMarkLostReasonOptions(query: string): Promise<string[]> {
+    const input = this.massMarkLostReasonInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(query);
+    await this.wait(CommonUtils.waitTimes.long);
+    const opts = this.massMarkLostReasonOptions();
+    await opts.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const texts = (await opts.allTextContents()).map((t) => t.trim()).filter(Boolean);
+    console.log(`  ✓ Lost Reason search "${query}" -> ${texts.length} option(s): ${JSON.stringify(texts.slice(0, 10))}`);
+    return texts;
+  }
+
+  /**
+   * Read the error/validation popup shown after an invalid Mass Mark (e.g. a Won lead selected).
+   * @returns the popup text (whitespace-normalised), or '' if no error popup appears in the wait budget
+   */
+  async getMassMarkErrorText(): Promise<string> {
+    const dlg = this.massMarkErrorDialog();
+    const visible = await dlg.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visible) return '';
+    return ((await dlg.textContent().catch(() => '')) ?? '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Dismiss the Mass Mark error/warning popup by clicking its "Ok" button (best-effort).
+   */
+  async dismissMassMarkError(): Promise<void> {
+    const ok = this.page.locator(
+      "xpath=//div[contains(@class,'modal') and contains(@class,'show')]//footer//button[normalize-space()='Ok' or normalize-space()='OK'] | //div[contains(@class,'modal') and contains(@class,'show')]//button[normalize-space()='Ok' or normalize-space()='OK']"
+    ).first();
+    if (await ok.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+      await ok.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
   }
 
   /**

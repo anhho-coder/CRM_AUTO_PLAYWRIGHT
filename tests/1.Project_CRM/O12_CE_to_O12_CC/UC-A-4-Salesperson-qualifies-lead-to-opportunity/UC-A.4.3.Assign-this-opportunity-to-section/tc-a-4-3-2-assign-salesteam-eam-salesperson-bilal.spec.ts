@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   declared for EAM in salesteam.users (Sales Team = EAM, Salesperson = Bilal Saab).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // EAM team Salesperson/Sales Team pairing - sourced from salesteam.users (do not hardcode)
 const sp = salesTeamUsers.sale_ic_eam_bilal;

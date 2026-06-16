@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   declared for Marketing - BDEU in salesteam.users (Sales Team = Marketing - BDEU, Salesperson = Sergey Stiblin).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // Marketing - BDEU team Salesperson/Sales Team pairing - sourced from salesteam.users (do not hardcode)
 const sp = salesTeamUsers.sale_ic_marketing_bdeu_stiblin;

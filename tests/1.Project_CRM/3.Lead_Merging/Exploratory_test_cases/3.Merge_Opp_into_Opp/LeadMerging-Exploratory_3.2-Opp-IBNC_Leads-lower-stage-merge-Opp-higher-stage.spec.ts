@@ -7,7 +7,9 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Opp Merging to Opp Test - IB Renewal Opp with Lower Stage
  * Test Case ID: LeadMerging-Exploratory_3.2
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-16
+ *
  * Summary: Verify that the merging opp happens successfully when target has IB renewal lead form but lower stage
  * 
  * Command to run:
@@ -133,10 +135,7 @@ test.describe('LeadMerging-Exploratory_3.2 - Opp Merging to Opp: IB Renewal with
     }
   });
 
-  // SKIPPED due to bug CRM-11014: at Step 7.2 the Company Name reads "Company Name Opp 2"
-  // (wrong) instead of being auto-set to "Company Name Opp 1". Declaration-level skip so the
-  // browser fixture never launches. Remove when CRM-11014 is fixed.
-  test.skip('Verify merging opp to opp when target has IB renewal lead form but lower stage @CRM-11014', async ({ page }, testInfo) => {
+  test('Verify merging opp to opp when target has IB renewal lead form but lower stage', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
     
     // Maximize browser window

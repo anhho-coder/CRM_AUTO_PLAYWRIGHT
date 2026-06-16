@@ -43,7 +43,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * - Sales Team = CMR, Salesperson = Sergey Karachin, Lead form = License, Email is preserved.
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 test.describe('TC.-A.4.4.3 - Convert qualified Lead to Opportunity and verify assigned fields', () => {
 

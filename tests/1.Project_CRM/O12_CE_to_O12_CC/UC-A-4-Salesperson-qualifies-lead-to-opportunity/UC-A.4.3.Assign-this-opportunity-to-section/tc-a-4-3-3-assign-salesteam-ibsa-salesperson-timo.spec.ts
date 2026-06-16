@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   declared for IBSA in salesteam.users (Sales Team = IBSA, Salesperson = Timo Tran).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // IBSA team Salesperson/Sales Team pairing - sourced from salesteam.users (do not hardcode)
 const ibsa = salesTeamUsers.sale_ic_ibsa_timo;

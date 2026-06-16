@@ -9,7 +9,7 @@ export interface UserCredentials {
 
 export const users = {
   reseller_1: {
-    username: 'Test-Reseller@Reseller-company2026-05-26-001321.com',
+    username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
     password: 'Test-Reseller@0123456789012',
     displayName: 'TEST-Reseller#1_Automation_Test',
   },

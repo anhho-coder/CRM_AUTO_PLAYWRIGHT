@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   (Salesperson is only logged - it keeps whatever default the wizard had.)
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // Sales Team sourced from salesteam.users (do not hardcode)
 const sp = salesTeamUsers.sale_ic_bdeu_thomas;

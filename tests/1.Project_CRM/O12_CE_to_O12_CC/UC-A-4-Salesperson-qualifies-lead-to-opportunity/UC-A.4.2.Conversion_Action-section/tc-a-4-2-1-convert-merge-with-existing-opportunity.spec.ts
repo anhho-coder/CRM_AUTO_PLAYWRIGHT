@@ -32,7 +32,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * - Stage "New" appears on the resulting (merged) Opportunity, signalling success.
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunities
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunities
 
 test.describe('TC.-A.4.2.1 - Convert qualified Lead to Opportunity by merging with an existing opportunity', () => {
 

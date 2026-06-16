@@ -44,7 +44,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *   declared for CMR in salesteam.users (Sales Team = CMR, Salesperson = Sergey Karachin).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 // CMR team Salesperson/Sales Team pairing - sourced from salesteam.users (do not hardcode)
 const sp = salesTeamUsers.sale_ic_cmr_karachin;

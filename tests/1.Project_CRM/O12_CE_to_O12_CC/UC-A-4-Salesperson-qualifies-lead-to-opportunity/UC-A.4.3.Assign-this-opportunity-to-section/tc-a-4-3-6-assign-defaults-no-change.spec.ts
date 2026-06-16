@@ -42,7 +42,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *   so the Salesperson / Sales Team values are logged but not asserted).
  */
 
-const SKIP_CLEANUP_OPP = false; // Toggle to true to skip deleting the created Opportunity
+const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
 
 test.describe('TC.-A.4.3.6 - Convert Lead to Opportunity leaving the Assign section at defaults', () => {
 
