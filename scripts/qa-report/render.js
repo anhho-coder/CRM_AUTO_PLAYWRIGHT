@@ -70,6 +70,32 @@ function sourceBanner(sources) {
     bad.map(([k, v]) => `${esc(k)} (${esc(v.message || 'error')})`).join('; ') + '</div>';
 }
 
+// External stylesheet — Jenkins' HTML Publisher CSP blocks inline <style> but
+// allows same-origin CSS files (style-src 'self'), so the page renders styled.
+const CSS = `:root{font-family:Segoe UI,Arial,sans-serif;color:#222}
+body{margin:0;background:#f4f5f7}
+.hero{background:linear-gradient(135deg,#6a3093,#a044ff);color:#fff;padding:22px 28px}
+.hero h1{margin:0;font-size:22px}.hero .sub{opacity:.92;font-size:13px;margin-top:6px}
+.wrap{max-width:1000px;margin:0 auto;padding:18px 28px 60px}
+.warn{background:#fff4e0;border-left:4px solid #f0a030;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px;color:#8a5a00}
+section.metric{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:16px 0}
+section.metric.lead{border:2px solid #a044ff}
+h2{margin:0 0 12px;font-size:17px}
+.muted{color:#999;font-weight:400;font-size:12px}
+.pill{background:#f3eefc;color:#8e44ad;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;vertical-align:middle}
+.grid{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
+.bignum{min-width:140px}.bignum .v{font-size:44px;font-weight:800;color:#6a3093;line-height:1}.bignum .l{font-size:12px;color:#777;margin-top:4px}
+.bycol{flex:1;min-width:240px}
+.subh{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;font-weight:700}
+.emps{display:flex;flex-direction:column;gap:6px}
+.emp{display:flex;align-items:center;gap:10px}
+.empname{width:110px;font-size:13px;color:#444}
+.track{flex:1;background:#eee;border-radius:6px;height:14px;overflow:hidden}
+.fill{height:100%;border-radius:6px}
+.empval{width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.foot{margin-top:24px;color:#999;font-size:11px}
+`;
+
 function main() {
   const dataPath = path.join(cfg.DATA_DIR, 'latest.json');
   const data = JSON.parse(fs.readFileSync(dataPath, 'utf8'));
@@ -81,30 +107,8 @@ function main() {
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>CRM QA Report</title>
-<style>
-  :root{font-family:Segoe UI,Arial,sans-serif;color:#222}
-  body{margin:0;background:#f4f5f7}
-  .hero{background:linear-gradient(135deg,#6a3093,#a044ff);color:#fff;padding:22px 28px}
-  .hero h1{margin:0;font-size:22px}.hero .sub{opacity:.92;font-size:13px;margin-top:6px}
-  .wrap{max-width:1000px;margin:0 auto;padding:18px 28px 60px}
-  .warn{background:#fff4e0;border-left:4px solid #f0a030;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px;color:#8a5a00}
-  section.metric{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:16px 0}
-  section.metric.lead{border:2px solid #a044ff}
-  h2{margin:0 0 12px;font-size:17px}
-  .muted{color:#999;font-weight:400;font-size:12px}
-  .pill{background:#f3eefc;color:#8e44ad;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;vertical-align:middle}
-  .grid{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
-  .bignum{min-width:140px}.bignum .v{font-size:44px;font-weight:800;color:#6a3093;line-height:1}.bignum .l{font-size:12px;color:#777;margin-top:4px}
-  .bycol{flex:1;min-width:240px}
-  .subh{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;font-weight:700}
-  .emps{display:flex;flex-direction:column;gap:6px}
-  .emp{display:flex;align-items:center;gap:10px}
-  .empname{width:110px;font-size:13px;color:#444}
-  .track{flex:1;background:#eee;border-radius:6px;height:14px;overflow:hidden}
-  .fill{height:100%;border-radius:6px}
-  .empval{width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
-  .foot{margin-top:24px;color:#999;font-size:11px}
-</style></head><body>
+<link rel="stylesheet" href="styles.css">
+</head><body>
 <div class="hero">
   <h1>CRM QA Team — Weekly Report</h1>
   <div class="sub">Window <b>${esc(data.window.from)} → ${esc(data.window.to)}</b> (${esc(data.window.label)})
@@ -120,9 +124,10 @@ function main() {
 </body></html>`;
 
   fs.mkdirSync(cfg.OUT_DIR, { recursive: true });
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'styles.css'), CSS);
   const out = path.join(cfg.OUT_DIR, 'index.html');
   fs.writeFileSync(out, html);
-  console.log(`[render] Wrote ${out}`);
+  console.log(`[render] Wrote ${out} (+ styles.css)`);
 }
 
 main();

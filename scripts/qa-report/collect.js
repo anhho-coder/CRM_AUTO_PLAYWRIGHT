@@ -12,19 +12,25 @@ const cfg = require('./config');
 const { collectKpiMetrics } = require('./sources/kpi');
 
 const isoDate = (d) => d.toISOString().slice(0, 10);
-function daysAgo(n) {
-  const d = new Date();
-  d.setUTCDate(d.getUTCDate() - n);
-  return d;
+
+/** Report window: previous completed Mon–Sun week (default) or rolling N days. */
+function computeWindow() {
+  const now = new Date();
+  if (cfg.WINDOW_MODE === 'rolling') {
+    const from = new Date(now);
+    from.setUTCDate(from.getUTCDate() - cfg.WINDOW_DAYS);
+    return { mode: 'rolling', label: `Last ${cfg.WINDOW_DAYS} days`, from: isoDate(from), to: isoDate(now) };
+  }
+  const sinceMonday = (now.getUTCDay() + 6) % 7; // 0=Sun..6=Sat -> days since Monday
+  const thisMonday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - sinceMonday));
+  const prevMonday = new Date(thisMonday); prevMonday.setUTCDate(thisMonday.getUTCDate() - 7);
+  const prevSunday = new Date(prevMonday); prevSunday.setUTCDate(prevMonday.getUTCDate() + 6);
+  return { mode: 'calendar', label: 'Last week (Mon–Sun)', from: isoDate(prevMonday), to: isoDate(prevSunday) };
 }
 
 async function main() {
   const today = new Date();
-  const window = {
-    label: `Last ${cfg.WINDOW_DAYS} days`,
-    from: isoDate(daysAgo(cfg.WINDOW_DAYS)),
-    to: isoDate(today),
-  };
+  const window = computeWindow();
 
   const data = {
     generatedAt: new Date().toISOString(),

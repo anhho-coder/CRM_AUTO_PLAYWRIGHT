@@ -67,10 +67,11 @@ const KPI_METRICS = [
 const MODEL_KPI = 'nakivo.kpi.database';
 
 // --- Reporting window --------------------------------------------------------
-// "Last week" = rolling N days ending today (the KPI rows are stamped daily).
+// 'calendar' = the previous completed Mon–Sun week (default); 'rolling' = last N days.
+const WINDOW_MODE = process.env.QA_REPORT_WINDOW_MODE || 'calendar';
 const WINDOW_DAYS = Number(process.env.QA_REPORT_WINDOW_DAYS || 7);
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI, WINDOW_DAYS,
+  loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI, WINDOW_MODE, WINDOW_DAYS,
 };
