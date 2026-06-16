@@ -56,8 +56,8 @@ no setup.
    credential ID, change it in `Jenkinsfile.qa-report`.
 2. New **Pipeline** job → *Pipeline script from SCM* → this repo →
    **Script Path: `Jenkinsfile.qa-report`**.
-3. Build. The report appears as **QA Report** on the job page
-   (`http://10.8.81.44:8080/job/<job>/QA_Report/`). It rebuilds daily (weekdays ~07:00).
+3. Build. The report appears as **CRM_QA_Report** on the job page
+   (`http://10.8.81.44:8080/job/crm-qa-report/CRM_QA_Report/`). It rebuilds daily (weekdays ~07:00).
 
 `ODOO_URL` / `ODOO_DB` are set in the Jenkinsfile `environment` block (non-secret);
 only the username/password come from the credential.
