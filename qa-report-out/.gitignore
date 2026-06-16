@@ -1,0 +1,5 @@
+# Generated QA-report artifacts (machine-local / per-build, regenerated daily).
+# The pipeline scripts live in scripts/qa-report/ and ARE version-controlled;
+# the data + rendered HTML below would only create churn if committed.
+*
+!.gitignore

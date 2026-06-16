@@ -20,7 +20,10 @@
     "clean": "rimraf test-results playwright-report",
     "metrics:anchor": "node scripts/metrics/anchor.js",
     "metrics:report": "node scripts/metrics/aggregate.js && node scripts/metrics/build-report.js",
-    "metrics:daily": "node scripts/metrics/run-daily.js"
+    "metrics:daily": "node scripts/metrics/run-daily.js",
+    "qa-report:collect": "node scripts/qa-report/collect.js",
+    "qa-report:render": "node scripts/qa-report/render.js",
+    "qa-report": "node scripts/qa-report/collect.js && node scripts/qa-report/render.js"
   },
   "keywords": [
     "playwright",

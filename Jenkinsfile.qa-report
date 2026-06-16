@@ -1,0 +1,67 @@
+// CRM QA Team — weekly metrics report.
+// Collects KPI data from Odoo (nakivo.kpi.database) and publishes a self-contained
+// HTML dashboard via the HTML Publisher plugin. Runs daily on a Windows agent.
+//
+// Point a Jenkins Pipeline job at this file (Pipeline script from SCM ->
+// Script Path: Jenkinsfile.qa-report).
+//
+// Required Jenkins credential (Manage Jenkins -> Credentials):
+//   id 'odoo-crm-kpi'  type "Username with password"  = Odoo login / password
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+    }
+
+    triggers {
+        // Daily on weekdays, ~07:00 (Jenkins picks the exact minute via H).
+        cron('H 7 * * 1-5')
+    }
+
+    environment {
+        ODOO_URL = 'https://crm.nakivo.com'
+        ODOO_DB  = 'Nakivo01'
+        // QA_REPORT_WINDOW_DAYS = '7'   // uncomment to override the rolling window
+    }
+
+    stages {
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+        stage('Collect KPI data') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'odoo-crm-kpi',
+                        usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD')]) {
+                    bat 'node scripts/qa-report/collect.js'
+                }
+            }
+        }
+        stage('Render report') {
+            steps {
+                bat 'node scripts/qa-report/render.js'
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: false,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'qa-report-out',
+                reportFiles: 'index.html',
+                reportName: 'QA Report'
+            ])
+            archiveArtifacts artifacts: 'qa-report-out/**', allowEmptyArchive: true
+        }
+    }
+}
