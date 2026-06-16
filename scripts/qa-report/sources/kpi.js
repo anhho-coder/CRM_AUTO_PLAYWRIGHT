@@ -1,26 +1,25 @@
 'use strict';
 /**
  * Source: Odoo `nakivo.kpi.database` — the team's authoritative, daily-computed
- * KPI table (one row per day × employee × KPI). Each row's `result_count` is the
- * value measured for that day (e.g. "Bugs - Valid reported" = bugs the employee
- * filed in the date_from..date_to window). We sum result_count over the report
- * window to get the weekly figure, and keep the daily series for the trend.
+ * KPI table (one row per day × employee × KPI). We fetch the full per-day,
+ * per-employee series from the start of the year; the collector then aggregates
+ * it into the selectable ranges (last week / this month / quarter / year).
  *
- * The KPI definitions themselves (the JQL behind each number) live in Odoo, so
- * this stays the single source of truth — we only read it.
+ * The KPI definitions (the JQL behind each number) live in Odoo, so this stays
+ * the single source of truth — we only read it.
  */
 const { OdooClient } = require('../lib/odoo');
 const { loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI } = require('../config');
 
 const EMP_IDS = MEMBERS.map((m) => m.employeeId);
 const NAME_BY_ID = Object.fromEntries(MEMBERS.map((m) => [m.employeeId, m.name]));
-const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 /**
- * @param {{from:string,to:string}} window  ISO dates (inclusive) on the row's `date`.
- * @returns {Promise<Object>} keyed by metric.key -> summarized metric.
+ * @param {string} fetchFrom ISO date (inclusive) — earliest row to fetch.
+ * @param {string} today     ISO date (inclusive) — latest row to fetch.
+ * @returns per metric.key -> { label, kpiName, daily:[{date, byEmp:{name:val}}] }
  */
-async function collectKpiMetrics(window) {
+async function collectKpiMetrics(fetchFrom, today) {
   const client = new OdooClient(loadOdoo());
   await client.login();
 
@@ -31,37 +30,29 @@ async function collectKpiMetrics(window) {
       [
         ['name', '=', metric.kpiName],
         ['employee_id', 'in', EMP_IDS],
-        ['date', '>=', window.from],
-        ['date', '<=', window.to],
+        ['date', '>=', fetchFrom],
+        ['date', '<=', today],
       ],
-      { fields: ['date', 'employee_id', 'result_count', 'group'], order: 'date asc' }
+      { fields: ['date', 'employee_id', 'result_count'], order: 'date asc' }
     );
-    out[metric.key] = summarize(metric, rows);
+    out[metric.key] = buildDaily(metric, rows);
   }
   return out;
 }
 
-function summarize(metric, rows) {
-  const byEmp = {};
-  MEMBERS.forEach((m) => (byEmp[m.name] = 0));
-  const dailyMap = {};
-  let total = 0;
-
+function buildDaily(metric, rows) {
+  const map = {};
   for (const r of rows) {
     const name = NAME_BY_ID[r.employee_id && r.employee_id[0]] ||
       String((r.employee_id && r.employee_id[1]) || 'Unknown').split(' | ')[0];
     const v = Number(r.result_count) || 0;
-    total += v;
-    byEmp[name] = (byEmp[name] || 0) + v;
-    dailyMap[r.date] = (dailyMap[r.date] || 0) + v;
+    if (!map[r.date]) map[r.date] = {};
+    map[r.date][name] = (map[r.date][name] || 0) + v;
   }
-
   return {
     label: metric.label,
     kpiName: metric.kpiName,
-    total: round(total),
-    byEmployee: MEMBERS.map((m) => ({ name: m.name, value: round(byEmp[m.name] || 0) })),
-    daily: Object.keys(dailyMap).sort().map((d) => ({ date: d, value: round(dailyMap[d]) })),
+    daily: Object.keys(map).sort().map((d) => ({ date: d, byEmp: map[d] })),
   };
 }
 
