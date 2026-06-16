@@ -49,9 +49,11 @@ no setup.
 
 ## Run on Jenkins
 
-1. Use a **Username with password** credential holding your **prod** Odoo login / password
-   (portal.nakivo.com / crm.nakivo.com). The pipeline references credential ID
-   `31873d32-5111-4c43-8601-2618fd3dfc0e`; change it in `Jenkinsfile.qa-report` if yours differs.
+1. Create a **Username with password** credential, **ID `odoo-crm-kpi`**, username
+   `anh.ho@nakivo.com`, password = the Odoo 12 **RPC** password (the value in
+   `~/.claude/mcp-odoo/credentials.json` → `hosts.default.password`). This is the dedicated
+   RPC/API password and may differ from the interactive web/SSO login. To use a different
+   credential ID, change it in `Jenkinsfile.qa-report`.
 2. New **Pipeline** job → *Pipeline script from SCM* → this repo →
    **Script Path: `Jenkinsfile.qa-report`**.
 3. Build. The report appears as **QA Report** on the job page
