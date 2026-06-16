@@ -75,7 +75,7 @@ pipeline {
                 keepAll: true,
                 reportDir: 'qa-report-out',
                 reportFiles: 'index.html',
-                reportName: 'CRM_QA_Report'
+                reportName: 'CRMQAReport'
             ])
             archiveArtifacts artifacts: 'qa-report-out/**', allowEmptyArchive: true
         }
