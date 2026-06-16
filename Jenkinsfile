@@ -7,15 +7,12 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
-    parameters {
-        // Which spec to run. Override per-build via "Build with Parameters" in the
-        // UI, or POST /job/.../buildWithParameters?SPEC=<repo-relative/path.spec.ts>.
-        string(
-            name: 'SPEC',
-            defaultValue: 'tests/1.Project_CRM/O12_CE_to_O12_CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/BDEU_team/tc-a-3-1-BDEU-assign-salesperson-thomas-semerich-bdeu.spec.ts',
-            description: 'Repo-relative path of the Playwright spec to run (use forward slashes).'
-        )
-    }
+    // NOTE: the spec/folder to run comes from a `SPEC` parameter defined in EACH
+    // job's own config (so per-folder jobs keep their own default). We intentionally
+    // do NOT declare a `parameters{}` block here: a declarative parameters{} block
+    // overwrites every job's parameter default with this file's value on each build,
+    // which would make all jobs run the same thing. The run stage reads params.SPEC
+    // (file, folder, or glob) and falls back to a fast smoke spec if unset.
 
     environment {
         // Enables Playwright CI behaviour from playwright.config.ts:
@@ -29,7 +26,10 @@ pipeline {
     }
 
     options {
-        timeout(time: 60, unit: 'MINUTES')
+        // Generous cap so whole-folder jobs (e.g. 4.Investments has 150+ specs, run
+        // sequentially with workers:1) are not cut off. Single-spec jobs finish in
+        // minutes regardless. Scope a job to a sub-folder to keep runs short.
+        timeout(time: 480, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // Do our own checkout in the 'Checkout' stage so we can enable
         // git core.longpaths FIRST. The repo has deeply-nested test paths that,
@@ -100,13 +100,18 @@ pipeline {
         stage('Run Playwright test (headless on Chrome)') {
             steps {
                 // chrome-headless project = installed Google Chrome, headless, no download.
-                echo "Running spec: ${params.SPEC}"
-                // Start each build with empty report/results dirs (the workspace
-                // persists between builds) so the published report is ONLY this run.
-                bat 'if exist playwright-report rmdir /s /q playwright-report'
-                bat 'if exist test-results rmdir /s /q test-results'
-                bat 'if exist pw-report rmdir /s /q pw-report'
-                bat "npx playwright test \"${params.SPEC}\" --project=chrome-headless"
+                // Target = this job's SPEC param (a file, folder, or glob); fall back
+                // to a fast smoke spec if a job has no SPEC defined.
+                script {
+                    def target = params.SPEC?.trim() ? params.SPEC.trim() : 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
+                    echo "Running: ${target}"
+                    // Start each build with empty report/results dirs (the workspace
+                    // persists between builds) so the published report is ONLY this run.
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat "npx playwright test \"${target}\" --project=chrome-headless"
+                }
             }
         }
     }
