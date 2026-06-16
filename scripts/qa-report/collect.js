@@ -11,6 +11,7 @@ const fs = require('fs');
 const path = require('path');
 const cfg = require('./config');
 const { collectKpiMetrics } = require('./sources/kpi');
+const { collectQuarterly } = require('./sources/quarterly');
 const { computeRanges, fetchStart, aggregate, isoDate } = require('./lib/ranges');
 
 async function main() {
@@ -23,12 +24,14 @@ async function main() {
     team: 'CRM QA Team',
     members,
     ranges,
+    defaultView: 'quarterly',
     defaultRange: 'lastWeek',
     sources: {},
     metrics: {},
+    quarterly: {},
   };
 
-  // --- Odoo KPI database (Bugs reported/verified, Test cases created) ---------
+  // --- Odoo KPI data: quarterly (Actual/Forecast/Goal) + daily range view -----
   try {
     const daily = await collectKpiMetrics(fetchStart(now), isoDate(now));
     for (const m of cfg.KPI_METRICS) {
@@ -37,6 +40,7 @@ async function main() {
       for (const r of Object.values(ranges)) perRange[r.key] = aggregate(d.daily, members, r);
       data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
     }
+    data.quarterly = await collectQuarterly(now);
     data.sources.odooKpi = { status: 'ok', model: cfg.MODEL_KPI };
   } catch (e) {
     data.sources.odooKpi = { status: 'error', message: String(e.message || e) };

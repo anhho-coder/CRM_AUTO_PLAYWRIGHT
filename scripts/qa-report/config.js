@@ -64,11 +64,13 @@ const KPI_METRICS = [
   { key: 'testCasesNewCreated', kpiName: 'Test Cases - New Created', label: 'Test cases created' },
 ];
 
-const MODEL_KPI = 'nakivo.kpi.database';
+const MODEL_KPI = 'nakivo.kpi.database';            // daily KPI rows (range view)
+const MODEL_QUARTERLY = 'nakivo.quarterly.kpi.detail'; // per-quarter Actual/Forecast/Goal
+const KPI_GROUP = 'CRM Team';                        // the team's `group` value in both models
 
 // Selectable ranges (last week / this month / quarter / year) are defined in lib/ranges.js.
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI,
+  loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
 };
