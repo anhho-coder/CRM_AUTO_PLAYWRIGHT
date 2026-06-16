@@ -51,6 +51,19 @@ pipeline {
                 bat 'node scripts/qa-report/render.js'
             }
         }
+        stage('Check data status') {
+            steps {
+                script {
+                    def st = readFile(file: 'qa-report-out/data/status.txt').trim()
+                    echo "QA report data status: ${st}"
+                    if (st == 'failed') {
+                        currentBuild.result = 'FAILURE'   // no data at all -> red
+                    } else if (st == 'degraded') {
+                        currentBuild.result = 'UNSTABLE'  // some sources failed -> yellow
+                    }
+                }
+            }
+        }
     }
 
     post {

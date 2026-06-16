@@ -53,6 +53,14 @@ async function main() {
   fs.mkdirSync(cfg.HISTORY_DIR, { recursive: true });
   fs.writeFileSync(path.join(cfg.DATA_DIR, 'latest.json'), JSON.stringify(data, null, 2));
   fs.writeFileSync(path.join(cfg.HISTORY_DIR, `${isoDate(today)}.json`), JSON.stringify(data));
+
+  // Overall status drives the Jenkins build colour (see Jenkinsfile.qa-report):
+  // ok=green, degraded=yellow (some sources failed), failed=red (no data).
+  const statuses = Object.values(data.sources).map((s) => s.status);
+  const overall = statuses.length && statuses.every((s) => s === 'ok') ? 'ok'
+    : statuses.some((s) => s === 'ok') ? 'degraded' : 'failed';
+  fs.writeFileSync(path.join(cfg.DATA_DIR, 'status.txt'), overall);
+  console.log(`[collect] status: ${overall}`);
   console.log(`[collect] window ${window.from}..${window.to}`);
   for (const m of cfg.KPI_METRICS) {
     const v = data.metrics[m.key];

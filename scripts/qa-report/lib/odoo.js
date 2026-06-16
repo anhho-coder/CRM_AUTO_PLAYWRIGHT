@@ -37,7 +37,12 @@ class OdooClient {
       service: 'common', method: 'login',
       args: [this.cfg.db, this.cfg.user, this.cfg.password],
     });
-    if (!this.uid) throw new Error('Odoo login failed — check ODOO_USER / ODOO_PASSWORD.');
+    if (!this.uid) {
+      throw new Error(`Odoo login failed for "${this.cfg.user}" @ ${this.cfg.url} (db "${this.cfg.db}") ` +
+        '— the server rejected the username/password. Verify the credential holds the PROD ' +
+        '(portal.nakivo.com) password and the username is the full email.');
+    }
+    console.log(`[odoo] login OK as ${this.cfg.user} (uid ${this.uid}) @ ${this.cfg.url}`);
     return this.uid;
   }
 
