@@ -5,8 +5,10 @@
 // Point a Jenkins Pipeline job at this file (Pipeline script from SCM ->
 // Script Path: Jenkinsfile.qa-report).
 //
-// Required Jenkins credential (Manage Jenkins -> Credentials):
-//   id 'odoo-crm-kpi'  type "Username with password"  = Odoo login / password
+// Jenkins credential used (Manage Jenkins -> Credentials), "Username with password":
+//   id '31873d32-5111-4c43-8601-2618fd3dfc0e'  = Odoo login / password.
+//   IMPORTANT: its password must be the PROD Odoo password (portal.nakivo.com /
+//   crm.nakivo.com), not the pre-production one.
 pipeline {
     agent any
 
@@ -38,7 +40,7 @@ pipeline {
         }
         stage('Collect KPI data') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'odoo-crm-kpi',
+                withCredentials([usernamePassword(credentialsId: '31873d32-5111-4c43-8601-2618fd3dfc0e',
                         usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD')]) {
                     bat 'node scripts/qa-report/collect.js'
                 }
