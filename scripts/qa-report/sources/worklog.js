@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, DATA_DIR } = require('../config');
+const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, DATA_DIR } = require('../config');
 const { isoDate } = require('../lib/ranges');
 
 const FETCH_CONCURRENCY = 8;       // simultaneous per-issue worklog reads
@@ -29,6 +29,10 @@ const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const NAME_BY_USER = Object.fromEntries(MEMBERS.map((m) => [m.jira, m.name]));
 const TEAM_USERS = new Set(MEMBERS.map((m) => m.jira));
 const MATCHERS = WORKLOG_COLUMNS.filter((c) => c.match);                 // label-driven columns, in priority order
+const EXCLUDE = new Set(WORKLOG_EXCLUDE_LABELS || []);                    // issues with any of these labels are dropped
+// Signature of the bucketing config; a change forces a full re-seed so cached
+// rows are re-bucketed under the new columns/excludes (not left in old buckets).
+const CFG_SIG = JSON.stringify({ m: MATCHERS.map((c) => [c.key, c.match]), x: [...EXCLUDE].sort() });
 const OTHER = (WORKLOG_COLUMNS.find((c) => c.kind === 'other') || {}).key; // catch-all column key
 const TOTAL = (WORKLOG_COLUMNS.find((c) => c.kind === 'total') || {}).key;  // grand-total column key
 const LEAVE_KEY = (WORKLOG_COLUMNS.find((c) => c.kind === 'leave') || {}).key; // Odoo leave column key
@@ -87,7 +91,7 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
   //    otherwise seed a full-year fetch.
   const refreshDays = Number(WORKLOG_REFRESH_DAYS) || 35;
   const cache = loadCache();
-  const useCache = !!(cache && cache.year === year);
+  const useCache = !!(cache && cache.year === year && cache.cfgSig === CFG_SIG);
   const fetchFrom = useCache
     ? maxIso(yearStartIso, minIso(addDaysIso(toIso, -refreshDays), cache.fetchedThrough || yearStartIso))
     : yearStartIso;
@@ -103,7 +107,9 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
   // 3) Read each issue's in-window worklogs; keep this team's, route by label.
   const startedAfterMs = Date.parse(fetchFrom + 'T00:00:00Z') - 2 * MS_DAY; // buffer; date string below is authoritative
   const perIssue = await mapLimit(issues, FETCH_CONCURRENCY, async (it) => {
-    const col = columnFor(it.fields && it.fields.labels);
+    const labels = (it.fields && it.fields.labels) || [];
+    if (labels.some((l) => EXCLUDE.has(l))) return [];   // drop excluded-label issues (e.g. QA-FTO/SL) entirely
+    const col = columnFor(labels);
     const logs = await jira.issueWorklogs(it.key, startedAfterMs);
     const rows = [];
     for (const w of logs) {
@@ -120,7 +126,7 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
 
   // 4) Merge fresh window with the cached older days, then persist the year store.
   const jiraEntries = collapse([...keptOld, ...perIssue.flat()]);
-  saveCache({ year, fetchedThrough: toIso, entries: jiraEntries });
+  saveCache({ year, cfgSig: CFG_SIG, fetchedThrough: toIso, entries: jiraEntries });
 
   // 5) Fold in FTO/Sick-Leave + holiday hours (already {date, tester, hours}),
   //    routed to the dedicated 'leave' column.

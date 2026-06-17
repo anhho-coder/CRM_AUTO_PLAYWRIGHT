@@ -27,6 +27,8 @@ const BAR_COLORS = { actual: '#1f4e96', forecast: '#1f4e96', current: '#27ae9a',
 const WL_COLORS = {
   featureVerif: '#e0413a', ticketVerif: '#f2b705', admin: '#2e9e5b', regression: '#6aaef0',
   smoke: '#8e7cc3', featureMaint: '#4a90d9', training: '#16a085', automation: '#f6d34a',
+  frdSpec: '#7e57c2', supportNbr: '#26a69a', odoo12Migration: '#ef6c00', crmBaas: '#5c6bc0',
+  claude: '#d81b60', crmSupportTicket: '#9e9d24',
   ftoSlHoliday: '#e8843c', nonCrm: '#ed7d31',
 };
 const WL_PALETTE = ['#6a3093', '#2c7be5', '#1e7e34', '#c0392b', '#f39c12', '#16a085', '#8e44ad', '#d35400'];

@@ -109,23 +109,27 @@ into one column by the **issue's Jira label**. Columns are defined in
 `WORKLOG_COLUMNS` (`config.js`), in priority order. Each column is one of:
 
 - a **Jira-label bucket** — `match` is the exact Jira label that routes a worklog
-  into it. Matching is **first-wins**, so an issue carrying several labels lands in
-  the earliest matching column (no double counting).
+  into it.
 - `kind: 'other'` (**Non-CRM Project**) — the catch-all: any worklog whose issue
-  carries none of the matched labels is summed here.
+  matches none of the label columns is summed here.
 - `kind: 'leave'` (**QA-FTO/SL/Holiday**) — *not Jira*. FTO + Sick-Leave hours from
   Odoo `hr.leave` **plus** VN public-holiday hours (see below). Shown alongside the
   Jira columns but **excluded** from "All Jira logged time".
 - `kind: 'total'` (**All Jira logged time**) — the per-tester grand total of the
   Jira buckets only (the 'leave' column is not counted in it).
 
-Labels not currently mapped to a column (e.g. `QA-FRD/I2L/Spec`,
-`QA-Odoo12-Migration`, `QA-Claude`, `QA-CRM-Support-NBR`, `QA-CRM-BaaS`) fall into
-**Non-CRM Project**. To break one out, add a column:
+**Bucketing rule.** Only labels that match a column are considered; any other label
+on the issue is ignored. An issue matching **0** columns → Non-CRM Project; **1** →
+that column; **2+** → the earliest column in `WORKLOG_COLUMNS` wins (first-match
+priority). Conflicts are rare (4 of ~1860 issues YTD); confirmed resolutions are
+documented in `config.js`. To re-rank a conflict, reorder its column.
 
-```js
-{ key: 'specReview', label: 'QA-FRD/I2L/Spec', match: 'QA-FRD/I2L/Spec' },
-```
+**Excluded labels.** `WORKLOG_EXCLUDE_LABELS` (default `['QA-FTO/SL']`): a worklog
+on an issue carrying any of these labels is **dropped entirely** — not bucketed and
+not in "All Jira logged time" — because that leave time already comes from Odoo
+`hr.leave`. To add a column or change the exclude/priority, edit `config.js`; the
+incremental cache auto-invalidates on any such change (a config signature is stored
+in the cache and a full re-seed runs when it differs).
 
 Jira worklogs are read per issue (scoped to the issues the team logged on,
 `startedAfter`-bounded) and aggregated into all four ranges in one pass.
