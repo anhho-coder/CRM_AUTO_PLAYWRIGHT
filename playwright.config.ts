@@ -123,6 +123,39 @@ export default defineConfig({
       },
     },
 
+    // --- Per-section suites: run with --project=<Section> (each = its folder, on Chrome).
+    //     A Jenkins job declares its section here via the PROJECT parameter. ---
+    {
+      name: 'SalesReport_Performance',
+      testDir: './tests/1.Project_CRM/1.SalesReport_Performance',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+    {
+      name: 'Leads_Assignment',
+      testDir: './tests/1.Project_CRM/2.Leads_Assignment',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+    {
+      name: 'Lead_Merging',
+      testDir: './tests/1.Project_CRM/3.Lead_Merging',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+    {
+      name: 'Investments',
+      testDir: './tests/1.Project_CRM/4.Investments',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+    {
+      name: 'CRM_Module',
+      testDir: './tests/1.Project_CRM/9.CRM_Module',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+    {
+      name: 'O12',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+    },
+
     // {
     //   name: 'firefox',
     //   use: { ...devices['Desktop Firefox'] },

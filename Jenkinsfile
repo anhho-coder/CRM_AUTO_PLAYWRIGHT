@@ -101,19 +101,31 @@ pipeline {
 
         stage('Run Playwright test (headless on Chrome)') {
             steps {
-                // chrome-headless project = installed Google Chrome, headless, no download.
                 script {
-                    // Target = the job's SPEC parameter (set in the job config: a file,
-                    // folder, or glob). Falls back to a fast smoke spec if SPEC is empty.
-                    def fallback = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
-                    def target = params.SPEC?.trim() ? params.SPEC.trim() : fallback
-                    echo "Job '${env.JOB_BASE_NAME}' | SPEC: '${params.SPEC}' | Running: ${target}"
+                    // Both params come from the job's own config (visible/editable):
+                    //   PROJECT = the section to run (a Playwright project in
+                    //             playwright.config.ts, e.g. Investments). This is the
+                    //             normal per-section job knob.
+                    //   SPEC    = optional ad-hoc path/glob; if set it wins (runs that
+                    //             path on the chrome-headless project) - used by the
+                    //             free-form job. If both empty -> fast smoke spec.
+                    def project = params.PROJECT?.trim()
+                    def spec    = params.SPEC?.trim()
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
                     bat 'if exist playwright-report rmdir /s /q playwright-report'
                     bat 'if exist test-results rmdir /s /q test-results'
                     bat 'if exist pw-report rmdir /s /q pw-report'
-                    bat "npx playwright test \"${target}\" --project=chrome-headless"
+                    if (spec) {
+                        echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec}"
+                        bat "npx playwright test \"${spec}\" --project=chrome-headless"
+                    } else if (project) {
+                        echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project}"
+                        bat "npx playwright test --project=${project}"
+                    } else {
+                        echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
+                        bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless'
+                    }
                 }
             }
         }
