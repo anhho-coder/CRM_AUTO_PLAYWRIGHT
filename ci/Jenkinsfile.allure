@@ -1,0 +1,92 @@
+// Combined Allure report across all section jobs.
+// Each section job stashes its raw Allure results to C:\allure\results\<JOB_NAME>\
+// (see the post block in the main Jenkinsfile). This job merges them all and
+// generates ONE Allure HTML report, carrying history from the previous run for trends.
+// Used by the CRM_Allure_Report job (Pipeline -> Script Path: ci/Jenkinsfile.allure).
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    options {
+        timeout(time: 30, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install deps (allure-commandline)') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Merge section results + history') {
+            steps {
+                powershell '''
+                  $ErrorActionPreference = 'Stop'
+                  $shared = 'C:\\allure\\results'
+                  $merged = Join-Path $env:WORKSPACE 'allure-merged'
+                  if (Test-Path -LiteralPath $merged) { Remove-Item -LiteralPath $merged -Recurse -Force }
+                  New-Item -ItemType Directory -Path $merged | Out-Null
+                  if (Test-Path -LiteralPath $shared) {
+                    Get-ChildItem -LiteralPath $shared -Directory | ForEach-Object {
+                      Write-Host "Merging section: $($_.Name)"
+                      Get-ChildItem -LiteralPath $_.FullName -Force | ForEach-Object {
+                        Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
+                      }
+                    }
+                  } else { Write-Host 'No shared results dir yet (run some section jobs first).' }
+                  # Carry history from the last combined report so trends accumulate.
+                  $prevHist = 'C:\\allure\\report\\history'
+                  if (Test-Path -LiteralPath $prevHist) {
+                    Copy-Item -LiteralPath $prevHist -Destination (Join-Path $merged 'history') -Recurse -Force
+                    Write-Host 'Restored history for trends.'
+                  }
+                  $count = (Get-ChildItem -LiteralPath $merged -File -ErrorAction SilentlyContinue | Measure-Object).Count
+                  Write-Host "Merged Allure result files: $count"
+                '''
+            }
+        }
+
+        stage('Generate combined Allure report') {
+            steps {
+                bat 'npx allure generate allure-merged --clean -o allure-report'
+                powershell '''
+                  $ErrorActionPreference = 'Stop'
+                  # Persist this report so its history seeds the next run.
+                  if (Test-Path -LiteralPath 'C:\\allure\\report') { Remove-Item -LiteralPath 'C:\\allure\\report' -Recurse -Force }
+                  New-Item -ItemType Directory -Path 'C:\\allure\\report' -Force | Out-Null
+                  Get-ChildItem -LiteralPath 'allure-report' -Force | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination 'C:\\allure\\report' -Recurse -Force
+                  }
+                  Write-Host 'Persisted combined report to C:\\allure\\report.'
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'allure-report',
+                reportFiles: 'index.html',
+                reportName: 'Allure Report'
+            ])
+            archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+        }
+    }
+}

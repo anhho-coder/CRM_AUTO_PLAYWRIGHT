@@ -131,6 +131,7 @@ pipeline {
                     bat 'if exist playwright-report rmdir /s /q playwright-report'
                     bat 'if exist test-results rmdir /s /q test-results'
                     bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
                     if (spec) {
                         echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec}"
                         bat "npx playwright test \"${spec}\" --project=chrome-headless"
@@ -184,6 +185,23 @@ pipeline {
             ])
             junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
             archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
+            // Stash THIS job's Allure raw results into a shared per-job folder so the
+            // CRM_Allure_Report job can merge all sections into one combined report.
+            powershell '''
+              try {
+                $dest = Join-Path 'C:\\allure\\results' $env:JOB_BASE_NAME
+                if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                if (Test-Path allure-results) {
+                  Get-ChildItem -LiteralPath allure-results -Force | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+                  }
+                  Write-Host "Stashed Allure results -> $dest"
+                } else { Write-Host 'No allure-results to stash.' }
+              } catch {
+                Write-Host "WARNING: could not stash Allure results: $($_.Exception.Message)"
+              }
+            '''
         }
         success {
             echo 'Tests passed!'

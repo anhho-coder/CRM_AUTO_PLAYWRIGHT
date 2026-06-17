@@ -73,9 +73,11 @@ export default defineConfig({
     ['junit', { 
       outputFile: `playwright-report/${getReportFolderName()}/junit-results.xml` 
     }],
-    ['list', { 
-      printSteps: true 
+    ['list', {
+      printSteps: true
     }],
+    // Allure raw results (consumed by the combined CRM_Allure_Report job).
+    ['allure-playwright', { resultsDir: 'allure-results' }],
     [customReporterPath], // Custom reporter runs last to rename folder after all reports are done
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
