@@ -1,15 +1,20 @@
 // CRM QA Team — weekly metrics report.
-// Collects KPI data from Odoo (nakivo.kpi.database) and publishes a self-contained
-// HTML dashboard via the HTML Publisher plugin. Runs daily on a Windows agent.
+// Collects KPI data from Odoo (nakivo.kpi.database) + worklog data from Jira and
+// publishes a two-page self-contained HTML dashboard (Metrics Report +
+// Worklog allocation) via the HTML Publisher plugin. Runs daily on a Windows agent.
 //
 // Point a Jenkins Pipeline job at this file (Pipeline script from SCM ->
 // Script Path: Jenkinsfile.qa-report).
 //
-// Jenkins credential used (Manage Jenkins -> Credentials), "Username with password":
-//   id 'odoo-crm-kpi'  username = anh.ho@nakivo.com
-//   password = the Odoo 12 RPC password (the value in ~/.claude/mcp-odoo/
-//   credentials.json -> hosts.default.password). NOTE: this is the dedicated
-//   RPC/API password, which may differ from the interactive web/SSO login.
+// Jenkins credentials used (Manage Jenkins -> Credentials):
+//   1) "Username with password", id 'odoo-crm-kpi'  username = anh.ho@nakivo.com
+//      password = the Odoo 12 RPC password (the value in ~/.claude/mcp-odoo/
+//      credentials.json -> hosts.default.password). NOTE: this is the dedicated
+//      RPC/API password, which may differ from the interactive web/SSO login.
+//   2) "Secret text", id 'jira-crm-qa'  = a Jira Personal Access Token
+//      (Jira -> Profile -> Personal Access Tokens) for reading worklogs.
+//      To use Basic auth instead, swap the binding below for a usernamePassword
+//      credential exposing JIRA_USER / JIRA_PASSWORD.
 pipeline {
     agent any
 
@@ -30,6 +35,7 @@ pipeline {
     environment {
         ODOO_URL = 'https://crm.nakivo.com'
         ODOO_DB  = 'Nakivo01'
+        JIRA_URL = 'http://jira.nakivo.com'
         // QA_REPORT_WINDOW_DAYS = '7'   // uncomment to override the rolling window
     }
 
@@ -41,8 +47,11 @@ pipeline {
         }
         stage('Collect KPI data') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'odoo-crm-kpi',
-                        usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD')]) {
+                withCredentials([
+                    usernamePassword(credentialsId: 'odoo-crm-kpi',
+                        usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD'),
+                    string(credentialsId: 'jira-crm-qa', variable: 'JIRA_TOKEN')
+                ]) {
                     bat 'node scripts/qa-report/collect.js'
                 }
             }

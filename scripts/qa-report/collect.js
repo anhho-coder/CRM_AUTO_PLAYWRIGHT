@@ -12,6 +12,9 @@ const path = require('path');
 const cfg = require('./config');
 const { collectKpiMetrics } = require('./sources/kpi');
 const { collectQuarterly } = require('./sources/quarterly');
+const { collectWorklog } = require('./sources/worklog');
+const { collectLeave } = require('./sources/leave');
+const { collectHolidays } = require('./sources/holidays');
 const { computeRanges, fetchStart, aggregate, isoDate } = require('./lib/ranges');
 
 async function main() {
@@ -29,6 +32,7 @@ async function main() {
     sources: {},
     metrics: {},
     quarterly: {},
+    worklog: null,
   };
 
   // --- Odoo KPI data: quarterly (Actual/Forecast/Goal) + daily range view -----
@@ -45,6 +49,34 @@ async function main() {
   } catch (e) {
     data.sources.odooKpi = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Odoo KPI source failed:', e.message || e);
+  }
+
+  // --- Worklog allocation page: Jira worklogs (label columns) + the
+  //     FTO/SL/Holiday column = Odoo hr.leave (FTO/SL) + VN public holidays.
+  //     Each source is wrapped independently so one failure never blocks the rest.
+  let leaveEntries = [];
+  try {
+    leaveEntries = await collectLeave(now);
+    data.sources.odooLeave = { status: 'ok', model: cfg.MODEL_LEAVE };
+  } catch (e) {
+    data.sources.odooLeave = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Odoo leave source failed:', e.message || e);
+  }
+  let holidayEntries = [];
+  try {
+    holidayEntries = await collectHolidays(now);
+    data.sources.vnHolidays = { status: 'ok', source: 'google vietnamese holidays ics' };
+  } catch (e) {
+    data.sources.vnHolidays = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] VN holidays source failed:', e.message || e);
+  }
+  try {
+    // leave + holidays both feed the FTO/SL/Holiday (leave) column.
+    data.worklog = await collectWorklog(ranges, now, [...leaveEntries, ...holidayEntries]);
+    data.sources.jiraWorklog = { status: 'ok', source: 'jira worklogs' };
+  } catch (e) {
+    data.sources.jiraWorklog = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira worklog source failed:', e.message || e);
   }
 
   fs.mkdirSync(cfg.HISTORY_DIR, { recursive: true });
@@ -65,6 +97,11 @@ async function main() {
     const lw = v.ranges.lastWeek;
     console.log(`[collect]   ${m.label} (last week): ${lw.total} (` +
       lw.byEmployee.map((e) => `${e.name} ${e.value}`).join(', ') + ')');
+  }
+  if (data.worklog) {
+    const lw = data.worklog.ranges.lastWeek;
+    console.log(`[collect]   Worklog hrs (last week): ${lw.grandTotal} (` +
+      lw.byTester.map((t) => `${t.name} ${t.total}`).join(', ') + ')');
   }
   console.log(`[collect] Wrote ${path.join(cfg.DATA_DIR, 'latest.json')}`);
 }
