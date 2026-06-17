@@ -7,12 +7,18 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
-    // NOTE: the spec/folder to run comes from a `SPEC` parameter defined in EACH
-    // job's own config (so per-folder jobs keep their own default). We intentionally
-    // do NOT declare a `parameters{}` block here: a declarative parameters{} block
-    // overwrites every job's parameter default with this file's value on each build,
-    // which would make all jobs run the same thing. The run stage reads params.SPEC
-    // (file, folder, or glob) and falls back to a fast smoke spec if unset.
+    parameters {
+        // OPTIONAL override: a spec file, folder, or glob to run. Declared here (not
+        // only in job config) so params.SPEC binds reliably on EVERY trigger incl.
+        // "Build Now" - a job-config-only param does not bind on plain UI builds.
+        // Leave EMPTY and the job runs its default suite, chosen by job name in the
+        // suiteByJob map in the run stage below.
+        string(
+            name: 'SPEC',
+            defaultValue: '',
+            description: 'Optional: spec file/folder/glob (forward slashes). Leave EMPTY to run this job default suite (mapped from the job name). Example override: tests/1.Project_CRM/4.Investments'
+        )
+    }
 
     environment {
         // Enables Playwright CI behaviour from playwright.config.ts:
@@ -31,6 +37,9 @@ pipeline {
         // minutes regardless. Scope a job to a sub-folder to keep runs short.
         timeout(time: 480, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
+        // One run per job at a time: clicking Build twice queues rather than running
+        // two concurrent builds that fight for executors / spawn @2 workspaces.
+        disableConcurrentBuilds()
         // Do our own checkout in the 'Checkout' stage so we can enable
         // git core.longpaths FIRST. The repo has deeply-nested test paths that,
         // combined with the Jenkins workspace path, exceed the Windows MAX_PATH
@@ -100,11 +109,22 @@ pipeline {
         stage('Run Playwright test (headless on Chrome)') {
             steps {
                 // chrome-headless project = installed Google Chrome, headless, no download.
-                // Target = this job's SPEC param (a file, folder, or glob); fall back
-                // to a fast smoke spec if a job has no SPEC defined.
                 script {
-                    def target = params.SPEC?.trim() ? params.SPEC.trim() : 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
-                    echo "Running: ${target}"
+                    // Per-folder jobs: an explicit SPEC override wins; otherwise the
+                    // target is chosen by JOB NAME. To add a folder job, create a Jenkins
+                    // job named with one of these keys (no code change needed), or pass
+                    // SPEC explicitly. Unknown job + empty SPEC -> fast smoke spec.
+                    def suiteByJob = [
+                        'CRM_Investments'      : 'tests/1.Project_CRM/4.Investments',
+                        'CRM_Lead_Merging'     : 'tests/1.Project_CRM/3.Lead_Merging',
+                        'CRM_Leads_Assignment' : 'tests/1.Project_CRM/2.Leads_Assignment',
+                        'CRM_SalesReport_Perf' : 'tests/1.Project_CRM/1.SalesReport_Performance',
+                        'CRM_CRM_Module'       : 'tests/1.Project_CRM/9.CRM_Module',
+                        'CRM_O12'              : 'tests/1.Project_CRM/O12_CE_to_O12_CC',
+                    ]
+                    def fallback = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
+                    def target = params.SPEC?.trim() ? params.SPEC.trim() : (suiteByJob[env.JOB_BASE_NAME] ?: fallback)
+                    echo "Job '${env.JOB_BASE_NAME}' | SPEC override: '${params.SPEC}' | Running: ${target}"
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
                     bat 'if exist playwright-report rmdir /s /q playwright-report'
