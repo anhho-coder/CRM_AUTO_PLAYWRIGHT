@@ -79,7 +79,7 @@ function testerTable(byTester, total, currentLabel) {
 function quarterlySection(meta, q, lead) {
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(q.kpiName)}</span></h2>
-    ${kpiBoxes(q.kpis)}
+    ${q.kpis ? kpiBoxes(q.kpis) : ''}
     <div class="qgrid">
       <div class="qchart">${quarterChart(q.bars)}</div>
       <div class="qside">
@@ -106,7 +106,7 @@ function seriesChart(series) {
     const baseY = H - pad;
     s += `<rect x="${bx.toFixed(1)}" y="${(baseY - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="#a044ff"/>`;
     if (d.value > 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${(baseY - h - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="#555">${fmt(d.value)}</text>`;
-    if (i % labelEvery === 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${H - 8}" font-size="8" text-anchor="middle" fill="#999">${esc(d.label)}</text>`;
+    if (i % labelEvery === 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${H - 6}" font-size="11" font-weight="700" text-anchor="middle" fill="#555">${esc(d.label)}</text>`;
   });
   return s + '</svg>';
 }
@@ -510,7 +510,10 @@ function main() {
   const data = JSON.parse(fs.readFileSync(path.join(cfg.DATA_DIR, 'latest.json'), 'utf8'));
   const defView = data.defaultView || 'quarterly';
   const defRange = data.defaultRange || 'lastWeek';
-  const metrics = cfg.KPI_METRICS;
+  // Odoo KPI metrics + Jira-sourced metrics. The quarterly view filters to those
+  // with Odoo quarterly Forecast/Goal data (Jira metrics have none, so they fall
+  // out automatically); the "By range" view shows every metric with range data.
+  const metrics = [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS];
 
   const quarterlySections = metrics.filter((meta) => data.quarterly && data.quarterly[meta.key])
     .map((meta, i) => quarterlySection(meta, data.quarterly[meta.key], i === 0)).join('\n');
@@ -548,7 +551,7 @@ function main() {
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 
-  <div class="foot">Source: Odoo <code>nakivo.quarterly.kpi.detail</code> + <code>nakivo.kpi.database</code> · regenerated daily · self-contained page.</div>
+  <div class="foot">Source: Odoo <code>nakivo.quarterly.kpi.detail</code> + <code>nakivo.kpi.database</code>; Support Ticket created &amp; Bugs found by automation test (by reporter) &amp; Manual Test cases executed (by worklog) &amp; Automation Test cases created (by status transition) from <code>Jira</code> · regenerated daily · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;

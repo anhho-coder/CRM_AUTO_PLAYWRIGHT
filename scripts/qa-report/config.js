@@ -95,6 +95,95 @@ const MODEL_KPI = 'nakivo.kpi.database';            // daily KPI rows (range vie
 const MODEL_QUARTERLY = 'nakivo.quarterly.kpi.detail'; // per-quarter Actual/Forecast/Goal
 const KPI_GROUP = 'CRM Team';                        // the team's `group` value in both models
 
+// --- Jira-sourced metrics (Metrics Report page) ------------------------------
+// Metrics that do NOT live in nakivo.kpi.database are computed from Jira instead.
+// Each is counted per DAY by the issue's `created` date and split per tester by
+// `reporter`, then aggregated into the same selectable ranges as the KPI metrics
+// (see sources/support-ticket.js + collect.js), so the page renders both the same
+// way. They appear in the "By range" view; add `quarterly: true` to also show an
+// actual-only card in the "Quarterly KPI" view (no Odoo Forecast/Goal exists for
+// a Jira metric, so there are no QoQ/QvG/QvQY boxes).
+//
+// sources/support-ticket.js assembles the JQL from the pieces below:
+//   type in (<types>)
+//   [AND labels = <each of `labels`>]                       (optional)
+//   [AND (resolution is EMPTY OR resolution not in (<excludeResolutions>))] (optional)
+//   AND createdDate >= "<range start>" AND reporter in (<team Jira users>)
+// `labels` (optional) AND-s a `labels = <label>` clause per entry. The
+// resolution clause is added only when `excludeResolutions` is set — it keeps every
+// UNRESOLVED ticket (any active status: Open / In Progress / Reopened / …) plus
+// resolved ones whose resolution isn't junk, dropping only the "junk" resolutions
+// (Duplicate / Not a bug / Won't Do / Won't Fix). `resolution is EMPTY` is used (not
+// `status = open`, which would miss In Progress/Reopened) because `resolution not in`
+// alone is FALSE for unresolved issues. `kpiName` is just the subtitle on the card.
+// `quarterly: true` (optional) ALSO surfaces the metric in the "Quarterly KPI"
+// view as an actual-only card (a bar per quarter + current-quarter per-tester
+// split, no QoQ/QvG/QvQY boxes). Without it the metric shows in "By range" only.
+const JIRA_METRICS = [
+  {
+    key: 'supportTicketCreated',
+    label: 'Support Ticket created',
+    kpiName: 'Jira · Post-EA Support Tickets created (by reporter)',
+    types: ['Post-EA - Support Ticket - Investigation', 'Post-EA - Support Ticket'],
+    excludeResolutions: ['Duplicate', 'Not a bug', "Won't Do", "Won't Fix"],
+    quarterly: true, // also show in the Quarterly KPI view (actual-only card)
+  },
+  {
+    // Bugs the team found via automated tests: Bug + Bug [Maintenance] carrying the
+    // QA-CRM_Automation label, counted by `created` day + reporter. No resolution
+    // filter (every such bug counts, matching the team's JQL).
+    key: 'bugsFoundByAutomation',
+    label: 'Bugs found by automation test',
+    kpiName: 'Jira · Bugs (incl. Maintenance) labelled QA-CRM_Automation (by reporter)',
+    types: ['Bug', 'Bug [Maintenance]'],
+    labels: ['QA-CRM_Automation'],
+  },
+];
+
+// --- Jira worklog-based metrics (Metrics Report page, BOTH views) ------------
+// Counted from WORKLOGS, not `created`: for each day × tester, the count of
+// DISTINCT issues of `issueType` that tester logged work on that day (the team's
+// JQL — see sources/testexec.js). The per-day counts are summed into the same
+// selectable ranges as the KPI metrics AND summed per quarter for an actual-only
+// Quarterly chart (Jira has no Forecast/Goal, so no QoQ/QvG/QvQY boxes). Kept in
+// a separate list from JIRA_METRICS because the counting (worklog per day) and
+// the source module (testexec.js) differ from the `created`-by-reporter metrics.
+const JIRA_WORKLOG_METRICS = [
+  {
+    key: 'manualTcExecuted',
+    label: 'Manual Test cases executed',
+    issueType: 'Post-EA - Test Case',
+    kpiName: 'Jira · Post-EA - Test Case worklogs (per day)',
+  },
+];
+
+// --- Jira STATUS-TRANSITION metrics (Metrics Report page, BOTH views) ---------
+// Counted by a status TRANSITION, per day × tester, by running the team's exact
+// per-day JQL once per (day, tester) as a cheap maxResults=0 count — the same
+// approach as JIRA_WORKLOG_METRICS, but the JQL is a status change rather than a
+// worklog (see sources/automation-tc.js). For one day D and one tester the JQL is:
+//   <scopeJql> AND status changed to (<changedToStatus>)
+//     during ("<D> 00:00", "<D> 23:59") BY <tester>
+// Running the team's own JQL per day guarantees the page matches what they see in
+// Jira exactly (no changelog re-derivation needed). The per-day counts are summed
+// into the selectable ranges AND per quarter for the Quarterly view, exactly like
+// JIRA_WORKLOG_METRICS. Kept in a separate list because the JQL shape and source
+// module differ.
+//
+// "Automation Test cases created": CRM automation test cases (in the Test
+// Repository folder "CRM automation" with Automation scope = yes) counted on the
+// day their status changed to Resolved, by the tester who resolved them. `scopeJql`
+// is the folder + automation-scope filter; `kpiName` is the metric card subtitle.
+const JIRA_TRANSITION_METRICS = [
+  {
+    key: 'automationTcCreated',
+    label: 'Automation Test cases created',
+    kpiName: 'Jira · CRM automation tests resolved per day (by tester)',
+    scopeJql: 'issue in TestRepositoryFolderTests(CRM, "CRM automation", "true") AND "Automation scope" = yes',
+    changedToStatus: 'resolved',
+  },
+];
+
 // --- Worklog allocation page (Jira worklogs) ---------------------------------
 // Each column is one of:
 //   - a Jira-label bucket: `match` is the exact Jira issue label that routes a
@@ -195,7 +284,8 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, MEMBERS, KPI_METRICS, MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
+  loadOdoo, loadJira, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_TRANSITION_METRICS,
+  MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,
   HOLIDAY_ICS_URL, HOLIDAY_WORKDAY_HOURS, HOLIDAY_INCLUDE, HOLIDAY_EXCLUDE,

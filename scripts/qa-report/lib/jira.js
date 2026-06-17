@@ -74,6 +74,14 @@ class JiraClient {
     return out;
   }
 
+  /** Total number of issues matching `jql` — a cheap maxResults=0 search. */
+  async count(jql) {
+    const page = await this._req('POST', '/rest/api/2/search', {
+      body: { jql, fields: [], startAt: 0, maxResults: 0 },
+    });
+    return page.total || 0;
+  }
+
   /** All worklogs on one issue with `started` at/after `startedAfterMs` (epoch ms). */
   async issueWorklogs(issueKey, startedAfterMs) {
     const out = [];

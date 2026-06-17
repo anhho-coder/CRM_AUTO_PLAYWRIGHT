@@ -8,7 +8,11 @@ Playwright report is.
 Two pages, linked by the top nav:
 
 - **Metrics Report** (`index.html`) — KPI metrics from Odoo (`nakivo.kpi.database`
-  + `nakivo.quarterly.kpi.detail`).
+  + `nakivo.quarterly.kpi.detail`), plus metrics that don't live in the Odoo KPI DB
+  computed from **Jira** (e.g. *Support Ticket created*, by reporter). The two
+  views: **Quarterly KPI** (Odoo Forecast/Actual/Goal — Jira metrics are absent
+  here, they have no quarterly goal) and **By range** (Last week / month / quarter
+  / year — shows every metric, Odoo and Jira alike).
 - **Worklog allocation** (`worklog.html`) — each tester's Jira-logged hours, split
   across activity columns by the issue's Jira label, for the selected range, with a
   per-tester pie chart. The **FTO/SL/Holiday** column is the exception: it is *not*
@@ -26,14 +30,67 @@ Implemented (sourced from Odoo `nakivo.kpi.database`, the team's daily KPI table
 | **Bugs reported (valid)** | `Bugs - Valid reported` | Odoo KPI DB |
 | Bugs fix-verified | `Bugs - Fix verified` | Odoo KPI DB |
 | Test cases created | `Test Cases - New Created` | Odoo KPI DB |
+| Support Ticket created | *(Jira — see below)* | Jira (`createdDate` × `reporter`) |
+| Automation Test cases created | *(Jira — see below)* | Jira (status → Resolved transition × tester) |
 
-Scope = QA team members **Anh Ho** (employee 1051) and **Thuat Phung** (1333),
-over a rolling **7-day** window. Each KPI shows the period total, a per-tester
-split, and a daily trend.
+Scope = QA team members **Anh Ho** (employee 1051) and **Thuat Phung** (1333).
+Each metric shows the period total, a per-tester split, and a daily trend across
+the four ranges.
+
+**Support Ticket created** (`JIRA_METRICS` in `config.js`, `sources/support-ticket.js`)
+counts the Post-EA Support Tickets a tester opened, by the issue's **created day**
+and **reporter**. JQL (assembled per build, fetched once for the year then bucketed
+per day):
+
+```
+type in ("Post-EA - Support Ticket - Investigation", "Post-EA - Support Ticket")
+AND (resolution is EMPTY OR resolution not in ("Duplicate", "Not a bug", "Won't Do", "Won't Fix"))
+AND createdDate >= "<year start>" AND reporter in (anh.ho, thuat.phung)
+```
+
+The `resolution is EMPTY OR resolution not in (…)` clause keeps every **unresolved**
+ticket (any active status — Open / In Progress / Reopened / …) **plus** resolved ones
+with a meaningful resolution, dropping only the junk resolutions. `resolution is EMPTY`
+is used, not `status = open`: in JQL `resolution not in (…)` is FALSE for unresolved
+issues (so it would drop them all), and `status = open` only matches the literal "Open"
+status — it would miss In Progress / Reopened tickets (4 such YTD-2026; verified
+294 in-scope, not 290).
+The `created` timestamp is bucketed by its date in the Jira server timezone — the
+same convention the Worklog page uses for `worklog.started`. It shows in **both**
+views: **By range**, and **Quarterly KPI** as an *actual-only* card (a bar per
+quarter + the current-quarter per-tester split, via `quarterlyActualFromDaily` in
+`sources/testexec.js`) — no QoQ/QvG/QvQY boxes, since a Jira metric has no Odoo
+Forecast/Goal. Because only the current year is fetched, the quarterly card shows
+this year's quarters only.
+
+**Automation Test cases created** (`JIRA_TRANSITION_METRICS` in `config.js`,
+`sources/automation-tc.js`) counts CRM automation test cases on the day their
+status changed to **Resolved**, split per tester (the tester who made the
+transition). Unlike the `created`-by-reporter metrics, the transition day isn't a
+returnable field, so — like *Manual Test cases executed* — the collector runs the
+team's **exact per-day JQL** once per (day, tester) as a cheap `maxResults=0`
+count. For one day `D` and one tester:
+
+```
+issue in TestRepositoryFolderTests(CRM, "CRM automation", "true")
+AND "Automation scope" = yes
+AND status changed to (resolved) during ("<D> 00:00", "<D> 23:59") BY <tester>
+```
+
+Running the team's own JQL per day means the page matches what they see in Jira
+exactly — no changelog re-derivation, no timezone re-projection (Jira evaluates the
+`during` window in the querying user's timezone, as the team does). The per-day
+counts are summed into the selectable ranges (range total = sum of the day/week/
+month bars; a test case resolved on N different days counts N times). A tester with
+no hits over the whole year is detected with one count and skipped, so an inactive
+tester costs 1 query instead of 365. It shows in the **By range** view; add
+`quarterly: true` to the metric to also surface the actual-only Quarterly card.
+*(Verified 2026-06-17 against Jira: 394 YTD for Anh Ho — Jan 13, Feb 13, Mar 209,
+Apr 71, May 88 — and 0 for Thuat Phung.)*
 
 Planned (see the approved plan / `scripts/qa-report/sources/`): Features in test,
-FRD/Specs, TCs executed, Support tickets, AI/automation activity (from Jira,
-Confluence and the Playwright suite).
+FRD/Specs, TCs executed, AI/automation activity (from Jira, Confluence and the
+Playwright suite).
 
 ## How it works
 
@@ -99,8 +156,19 @@ in `config.js`:
 { key: 'tcExecuted', kpiName: 'Test Cases - Executed', label: 'Test cases executed' },
 ```
 
-For metrics not in the KPI DB (features, FRD, support tickets), add a new module
-under `sources/` and merge its output in `collect.js`.
+For metrics not in the KPI DB (features, FRD, support tickets), add an entry to
+`JIRA_METRICS` (counted by `created` × `reporter`) or `JIRA_WORKLOG_METRICS`
+(counted from worklogs) in `config.js` and produce the same per-day shape from a
+`sources/` module. **Support Ticket created** is the worked example: add to
+`JIRA_METRICS` (`{ key, label, kpiName, types, excludeResolutions }`), build the
+daily series in `sources/support-ticket.js` (`buildDaily` → `[{ date, byEmp:{ name:
+count } }]`); `collect.js` then aggregates it into the ranges exactly like the Odoo
+KPI metrics. Add `quarterly: true` to a `JIRA_METRICS` entry to ALSO show it in the
+Quarterly view — `collect.js` then calls `quarterlyActualFromDaily` to fill
+`data.quarterly[key]` (an actual-only card: `kpis: null`, so no QoQ/QvG/QvQY boxes).
+`JIRA_WORKLOG_METRICS` always fill `data.quarterly`. `render.js` lists `KPI_METRICS`
++ `JIRA_METRICS` + `JIRA_WORKLOG_METRICS` together and the Quarterly view shows only
+the metrics that have a `data.quarterly` entry.
 
 ## Worklog allocation page
 

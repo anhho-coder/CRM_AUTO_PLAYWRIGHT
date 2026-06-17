@@ -11,6 +11,9 @@ const fs = require('fs');
 const path = require('path');
 const cfg = require('./config');
 const { collectKpiMetrics } = require('./sources/kpi');
+const { collectJiraMetrics } = require('./sources/support-ticket');
+const { collectTestExecMetrics, quarterlyActualFromDaily } = require('./sources/testexec');
+const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { collectQuarterly } = require('./sources/quarterly');
 const { collectWorklog } = require('./sources/worklog');
 const { collectLeave } = require('./sources/leave');
@@ -49,6 +52,69 @@ async function main() {
   } catch (e) {
     data.sources.odooKpi = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Odoo KPI source failed:', e.message || e);
+  }
+
+  // --- Jira-sourced metrics (Support tickets created): counted per day by the
+  //     issue's `created` date and split per reporter, then aggregated into the
+  //     same ranges as the KPI metrics. Shown in the Metrics Report "By range"
+  //     view. Wrapped independently so a Jira failure never blocks the rest.
+  try {
+    const jiraDaily = await collectJiraMetrics(fetchStart(now), isoDate(now));
+    for (const m of cfg.JIRA_METRICS) {
+      const d = jiraDaily[m.key];
+      const perRange = {};
+      for (const r of Object.values(ranges)) perRange[r.key] = aggregate(d.daily, members, r);
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
+      // Opt-in (`quarterly: true`): also surface an actual-only Quarterly card (no
+      // Odoo Forecast/Goal exists for a Jira metric), same shape as the worklog
+      // metrics. Otherwise the metric stays "By range" only.
+      if (m.quarterly) data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, members, now);
+    }
+    data.sources.jiraMetrics = { status: 'ok', source: 'jira support tickets' };
+  } catch (e) {
+    data.sources.jiraMetrics = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira metrics source failed:', e.message || e);
+  }
+
+  // --- Jira worklog-based metric(s) (Manual Test cases executed): for each day ×
+  //     tester, the count of DISTINCT test cases that tester logged work on that
+  //     day, summed into the ranges (like the KPI metrics) AND per quarter for an
+  //     actual-only Quarterly chart. Wrapped independently so a Jira failure here
+  //     never blocks the rest of the report.
+  try {
+    const teDaily = await collectTestExecMetrics(fetchStart(now), isoDate(now));
+    for (const m of cfg.JIRA_WORKLOG_METRICS) {
+      const d = teDaily[m.key];
+      const perRange = {};
+      for (const r of Object.values(ranges)) perRange[r.key] = aggregate(d.daily, members, r);
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
+      data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, members, now);
+    }
+    data.sources.jiraTestExec = { status: 'ok', source: 'jira test-case worklogs' };
+  } catch (e) {
+    data.sources.jiraTestExec = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira test-exec source failed:', e.message || e);
+  }
+
+  // --- Jira status-transition metric(s) (Automation Test cases created): for each
+  //     day × tester, the count of automation test cases whose status changed to
+  //     Resolved that day (the team's exact per-day JQL), summed into the selectable
+  //     ranges. Shown in the "By range" view; a metric opts into an actual-only
+  //     Quarterly card with `quarterly: true`. Wrapped independently so a Jira
+  //     failure here never blocks the rest of the report.
+  try {
+    const atDaily = await collectTransitionMetrics(fetchStart(now), isoDate(now));
+    for (const m of cfg.JIRA_TRANSITION_METRICS) {
+      const d = atDaily[m.key];
+      const perRange = {};
+      for (const r of Object.values(ranges)) perRange[r.key] = aggregate(d.daily, members, r);
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
+      if (m.quarterly) data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, members, now);
+    }
+    data.sources.jiraAutomationTc = { status: 'ok', source: 'jira automation test-case transitions' };
+  } catch (e) {
+    data.sources.jiraAutomationTc = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira automation test-case source failed:', e.message || e);
   }
 
   // --- Worklog allocation page: Jira worklogs (label columns) + the
@@ -91,7 +157,7 @@ async function main() {
   fs.writeFileSync(path.join(cfg.DATA_DIR, 'status.txt'), overall);
 
   console.log(`[collect] status=${overall}; default range lastWeek ${ranges.lastWeek.from}..${ranges.lastWeek.to}`);
-  for (const m of cfg.KPI_METRICS) {
+  for (const m of [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS]) {
     const v = data.metrics[m.key];
     if (!v) continue;
     const lw = v.ranges.lastWeek;
