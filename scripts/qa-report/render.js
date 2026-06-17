@@ -161,9 +161,13 @@ function pageNav(active) {
     `${tab('worklog.html', 'worklog', 'Worklog allocation')}</div>`;
 }
 
+// Allow header wrapping only after '_' and '/' (and spaces) so multi-word labels
+// like "QA-Feature_verification" break cleanly into segments, never mid-word.
+const wbrLabel = (s) => esc(s).replace(/([_/])/g, '$1<wbr>');
+
 function worklogTable(wl, agg) {
   const cell = (c, v) => `<td class="num ${c.kind} ${c.key}">${fmt(v)}</td>`;
-  const head = wl.columns.map((c) => `<th class="${c.kind} ${c.key}">${esc(c.label)}</th>`).join('');
+  const head = wl.columns.map((c) => `<th class="${c.kind} ${c.key}">${wbrLabel(c.label)}</th>`).join('');
   const body = agg.byTester.map((t) =>
     `<tr><td class="wname">${esc(t.name)}</td>${wl.columns.map((c) => cell(c, t.cols[c.key])).join('')}</tr>`).join('');
   const totalRow = `<tr class="wtotal"><td class="wname">Total</td>` +
@@ -286,7 +290,7 @@ h2{margin:0 0 12px;font-size:17px}
 .wtblwrap{overflow-x:auto}
 .wtbl{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 4px;table-layout:fixed}
 .wtbl th,.wtbl td{padding:6px 7px;border-bottom:1px solid #eee;text-align:right;white-space:nowrap}
-.wtbl th{white-space:normal;word-break:break-word}
+.wtbl th{white-space:normal;word-break:normal;overflow-wrap:normal;line-height:1.25}
 .wtbl th.wname,.wtbl td.wname{text-align:left;font-weight:600;color:#444;width:104px}
 .wtbl thead th{color:#555;font-size:11px;font-weight:700;background:#f3eefc;border-bottom:2px solid #d9c9ee;vertical-align:bottom}
 .wtbl td.num{font-variant-numeric:tabular-nums}
