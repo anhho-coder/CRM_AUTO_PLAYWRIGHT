@@ -111,6 +111,15 @@ const KPI_GROUP = 'CRM Team';                        // the team's `group` value
 // To re-categorise, edit this list. Labels currently NOT mapped (e.g.
 // QA-FRD/I2L/Spec, QA-Odoo12-Migration, QA-Claude, QA-CRM-Support-NBR,
 // QA-CRM-BaaS) fall into "Non-CRM Project" until a column is added for them.
+// Incremental fetch: each build re-reads only the last WORKLOG_REFRESH_DAYS days
+// of Jira worklogs and merges them with the cached older days (qa-report-out/
+// data/worklog-cache.json), so "This quarter"/"This year" stay complete without
+// re-fetching the whole year every build. A full-year fetch is used to seed the
+// cache (first build / new node / new year / missing cache). The window also
+// catches back-dated worklogs; edits/deletions OLDER than the window aren't
+// re-synced until the next full seed.
+const WORKLOG_REFRESH_DAYS = 35;
+
 const WORKLOG_COLUMNS = [
   { key: 'featureVerif', label: 'QA-Feature_verification', match: 'QA-Feature_verification' },
   { key: 'ticketVerif', label: 'QA-Ticket_verification', match: 'QA-Ticket_verification' },
@@ -154,6 +163,6 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
   loadOdoo, loadJira, MEMBERS, KPI_METRICS, MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
-  WORKLOG_COLUMNS, MODEL_LEAVE, LEAVE_TYPES,
+  WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, MODEL_LEAVE, LEAVE_TYPES,
   HOLIDAY_ICS_URL, HOLIDAY_WORKDAY_HOURS, HOLIDAY_INCLUDE, HOLIDAY_EXCLUDE,
 };

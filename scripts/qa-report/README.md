@@ -127,6 +127,16 @@ Labels not currently mapped to a column (e.g. `QA-FRD/I2L/Spec`,
 Jira worklogs are read per issue (scoped to the issues the team logged on,
 `startedAfter`-bounded) and aggregated into all four ranges in one pass.
 
+**Incremental fetch (speed).** To avoid re-reading the whole year every build, the
+Jira worklog daily totals are cached in `qa-report-out/data/worklog-cache.json`.
+Each build re-fetches only the last `WORKLOG_REFRESH_DAYS` (default 35) days and
+merges them with the cached older days, so "This quarter"/"This year" stay
+complete while most builds touch only a few hundred issues. A **full-year seed**
+runs when there's no usable cache (first build, a fresh Jenkins node, a new year,
+or a corrupt cache). The window also catches back-dated worklogs; worklog
+edits/deletions **older** than the window aren't re-synced until the next full
+seed. Leave (Odoo) and holidays (ICS) are cheap and always fetched fresh.
+
 ### FTO/SL/Holiday column (Odoo `hr.leave`)
 
 `sources/leave.js` reads Odoo `hr.leave` (model in `MODEL_LEAVE`) for the two ICs,

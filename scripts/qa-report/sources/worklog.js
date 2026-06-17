@@ -12,11 +12,18 @@
  * /worklog/list) and then aggregated into each selectable range, so the heavy
  * Jira traffic happens once per build regardless of how many ranges we show.
  */
+const fs = require('fs');
+const path = require('path');
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORKLOG_COLUMNS } = require('../config');
+const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, DATA_DIR } = require('../config');
 const { isoDate } = require('../lib/ranges');
 
-const FETCH_CONCURRENCY = 8; // simultaneous per-issue worklog reads
+const FETCH_CONCURRENCY = 8;       // simultaneous per-issue worklog reads
+const CACHE_FILE = path.join(DATA_DIR, 'worklog-cache.json');
+const MS_DAY = 86400000;
+const addDaysIso = (iso, n) => isoDate(new Date(Date.parse(iso + 'T00:00:00Z') + n * MS_DAY));
+const minIso = (a, b) => (a <= b ? a : b);
+const maxIso = (a, b) => (a >= b ? a : b);
 
 const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 const NAME_BY_USER = Object.fromEntries(MEMBERS.map((m) => [m.jira, m.name]));
@@ -37,6 +44,32 @@ function columnFor(labels) {
   return OTHER;
 }
 
+/** Collapse raw entries to one row per (date, tester, col), summing hours. */
+function collapse(entries) {
+  const m = new Map();
+  for (const e of entries) {
+    const k = `${e.date}|${e.tester}|${e.col}`;
+    m.set(k, (m.get(k) || 0) + e.hours);
+  }
+  return [...m.entries()].map(([k, hours]) => {
+    const [date, tester, col] = k.split('|');
+    return { date, tester, col, hours: round(hours) };
+  });
+}
+
+function loadCache() {
+  try {
+    const c = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+    if (c && Array.isArray(c.entries)) return c;
+  } catch (_) { /* missing/corrupt -> full seed */ }
+  return null;
+}
+
+function saveCache(obj) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(CACHE_FILE, JSON.stringify(obj)); }
+  catch (e) { console.error('[worklog] cache write failed:', e.message || e); }
+}
+
 /**
  * @param ranges  the four selectable windows from lib/ranges.computeRanges()
  * @param now     Date
@@ -45,45 +78,60 @@ function columnFor(labels) {
 async function collectWorklog(ranges, now, leaveEntries = []) {
   const jira = new JiraClient(loadJira());
   const year = now.getUTCFullYear();
-  const yearStartMs = Date.UTC(year, 0, 1);
-  const fromIso = isoDate(new Date(yearStartMs));
+  const yearStartIso = isoDate(new Date(Date.UTC(year, 0, 1)));
   const toIso = isoDate(now);
   const authors = MEMBERS.map((m) => m.jira).join(', ');
 
-  // 1) Every issue the team logged work on this year, with the label that routes
-  //    its worklogs into a column. Bounded by team activity (~hundreds/year).
+  // 1) Decide the fetch window. With a usable cache (same year) re-fetch only the
+  //    recent window (also catches back-dated logs) and keep older cached days;
+  //    otherwise seed a full-year fetch.
+  const refreshDays = Number(WORKLOG_REFRESH_DAYS) || 35;
+  const cache = loadCache();
+  const useCache = !!(cache && cache.year === year);
+  const fetchFrom = useCache
+    ? maxIso(yearStartIso, minIso(addDaysIso(toIso, -refreshDays), cache.fetchedThrough || yearStartIso))
+    : yearStartIso;
+  const keptOld = useCache ? cache.entries.filter((e) => e.date < fetchFrom) : [];
+  console.log(`[worklog] ${useCache ? 'incremental' : 'full'} fetch ${fetchFrom}..${toIso}` +
+    (useCache ? ` (cache through ${cache.fetchedThrough}, ${keptOld.length} cached rows kept)` : ''));
+
+  // 2) Issues the team logged on within the window, with the routing label.
   const issues = await jira.searchAll(
-    `worklogAuthor in (${authors}) AND worklogDate >= "${fromIso}" ORDER BY updated DESC`,
+    `worklogAuthor in (${authors}) AND worklogDate >= "${fetchFrom}" ORDER BY updated DESC`,
     ['labels'], 100);
 
-  // 2) Read each issue's worklogs (this year only), keep this team's entries.
+  // 3) Read each issue's in-window worklogs; keep this team's, route by label.
+  const startedAfterMs = Date.parse(fetchFrom + 'T00:00:00Z') - 2 * MS_DAY; // buffer; date string below is authoritative
   const perIssue = await mapLimit(issues, FETCH_CONCURRENCY, async (it) => {
     const col = columnFor(it.fields && it.fields.labels);
-    const logs = await jira.issueWorklogs(it.key, yearStartMs);
+    const logs = await jira.issueWorklogs(it.key, startedAfterMs);
     const rows = [];
     for (const w of logs) {
       const user = w.author && w.author.name;
       if (!TEAM_USERS.has(user)) continue;
       const date = String(w.started || '').slice(0, 10);
-      if (!date || date < fromIso || date > toIso) continue;
+      if (!date || date < fetchFrom || date > toIso) continue;
       const hours = (Number(w.timeSpentSeconds) || 0) / 3600;
       if (!hours) continue;
       rows.push({ date, tester: NAME_BY_USER[user], col, hours });
     }
     return rows;
   });
-  const jiraEntries = perIssue.flat();
 
-  // 3) Fold in FTO/Sick-Leave hours from Odoo (already {date, tester, hours}),
+  // 4) Merge fresh window with the cached older days, then persist the year store.
+  const jiraEntries = collapse([...keptOld, ...perIssue.flat()]);
+  saveCache({ year, fetchedThrough: toIso, entries: jiraEntries });
+
+  // 5) Fold in FTO/Sick-Leave + holiday hours (already {date, tester, hours}),
   //    routed to the dedicated 'leave' column.
   const leaveMapped = LEAVE_KEY
     ? leaveEntries
-        .filter((e) => e && e.date >= fromIso && e.date <= toIso && byName(e.tester))
+        .filter((e) => e && e.date >= yearStartIso && e.date <= toIso && byName(e.tester))
         .map((e) => ({ date: e.date, tester: e.tester, col: LEAVE_KEY, hours: Number(e.hours) || 0 }))
     : [];
   const entries = [...jiraEntries, ...leaveMapped];
 
-  // 4) Aggregate into each selectable range.
+  // 6) Aggregate into each selectable range.
   const out = {};
   for (const r of Object.values(ranges)) out[r.key] = aggregateRange(entries, r);
   return {
