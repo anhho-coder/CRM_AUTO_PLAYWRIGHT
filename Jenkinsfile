@@ -7,11 +7,23 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
-    // SPEC (which file/folder/glob to run) is defined PER JOB in the job's own config
-    // ("This project is parameterized" -> String Parameter SPEC -> Default Value), so it
-    // is visible and editable in Jenkins. We deliberately do NOT declare parameters{}
-    // here: a declarative parameters{} block would overwrite every job's SPEC default
-    // on each build. The run stage reads params.SPEC and falls back to a smoke spec.
+    // A declarative pipeline REWRITES the job's parameters from this block on every
+    // build, so params must be declared here (they can't live only in job config).
+    // PROJECT = which section to run (a Playwright project from playwright.config.ts);
+    // 'auto' picks the section by job name (see jobToProject map in the run stage).
+    // SPEC = optional ad-hoc path/glob that overrides PROJECT.
+    parameters {
+        choice(
+            name: 'PROJECT',
+            choices: ['auto', 'Investments', 'Lead_Merging', 'Leads_Assignment', 'SalesReport_Performance', 'CRM_Module', 'O12'],
+            description: 'Section to run. "auto" = pick by job name (e.g. CRM_Investments -> Investments).'
+        )
+        string(
+            name: 'SPEC',
+            defaultValue: '',
+            description: 'Optional ad-hoc spec/folder/glob to run instead of the section (overrides PROJECT). Forward slashes.'
+        )
+    }
 
     environment {
         // Enables Playwright CI behaviour from playwright.config.ts:
@@ -102,15 +114,18 @@ pipeline {
         stage('Run Playwright test (headless on Chrome)') {
             steps {
                 script {
-                    // Both params come from the job's own config (visible/editable):
-                    //   PROJECT = the section to run (a Playwright project in
-                    //             playwright.config.ts, e.g. Investments). This is the
-                    //             normal per-section job knob.
-                    //   SPEC    = optional ad-hoc path/glob; if set it wins (runs that
-                    //             path on the chrome-headless project) - used by the
-                    //             free-form job. If both empty -> fast smoke spec.
-                    def project = params.PROJECT?.trim()
-                    def spec    = params.SPEC?.trim()
+                    // SPEC (ad-hoc path) wins; else the section PROJECT; 'auto' maps the
+                    // section from the job name. If nothing resolves -> fast smoke spec.
+                    def jobToProject = [
+                        'CRM_Investments'      : 'Investments',
+                        'CRM_Lead_Merging'     : 'Lead_Merging',
+                        'CRM_Leads_Assignment' : 'Leads_Assignment',
+                        'CRM_SalesReport_Perf' : 'SalesReport_Performance',
+                        'CRM_CRM_Module'       : 'CRM_Module',
+                        'CRM_O12'              : 'O12',
+                    ]
+                    def spec = params.SPEC?.trim()
+                    def project = (params.PROJECT && params.PROJECT != 'auto') ? params.PROJECT : (jobToProject[env.JOB_BASE_NAME] ?: '')
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
                     bat 'if exist playwright-report rmdir /s /q playwright-report'
