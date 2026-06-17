@@ -15,7 +15,7 @@
 const fs = require('fs');
 const path = require('path');
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, DATA_DIR } = require('../config');
+const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES, DATA_DIR } = require('../config');
 const { isoDate } = require('../lib/ranges');
 
 const FETCH_CONCURRENCY = 8;       // simultaneous per-issue worklog reads
@@ -30,9 +30,10 @@ const NAME_BY_USER = Object.fromEntries(MEMBERS.map((m) => [m.jira, m.name]));
 const TEAM_USERS = new Set(MEMBERS.map((m) => m.jira));
 const MATCHERS = WORKLOG_COLUMNS.filter((c) => c.match);                 // label-driven columns, in priority order
 const EXCLUDE = new Set(WORKLOG_EXCLUDE_LABELS || []);                    // issues with any of these labels are dropped
+const COMMENT_RULES = (WORKLOG_COMMENT_RULES || []).map((r) => ({ needle: String(r.contains).toLowerCase(), col: r.column }));
 // Signature of the bucketing config; a change forces a full re-seed so cached
-// rows are re-bucketed under the new columns/excludes (not left in old buckets).
-const CFG_SIG = JSON.stringify({ m: MATCHERS.map((c) => [c.key, c.match]), x: [...EXCLUDE].sort() });
+// rows are re-bucketed under the new columns/excludes/comment-rules.
+const CFG_SIG = JSON.stringify({ m: MATCHERS.map((c) => [c.key, c.match]), x: [...EXCLUDE].sort(), c: COMMENT_RULES });
 const OTHER = (WORKLOG_COLUMNS.find((c) => c.kind === 'other') || {}).key; // catch-all column key
 const TOTAL = (WORKLOG_COLUMNS.find((c) => c.kind === 'total') || {}).key;  // grand-total column key
 const LEAVE_KEY = (WORKLOG_COLUMNS.find((c) => c.kind === 'leave') || {}).key; // Odoo leave column key
@@ -46,6 +47,13 @@ function columnFor(labels) {
   const set = new Set(labels || []);
   for (const c of MATCHERS) if (set.has(c.match)) return c.key;
   return OTHER;
+}
+
+/** Column from a worklog comment (first matching rule), or null to fall back to label. */
+function commentColumn(comment) {
+  const s = String(comment || '').toLowerCase();
+  for (const r of COMMENT_RULES) if (r.needle && s.includes(r.needle)) return r.col;
+  return null;
 }
 
 /** Collapse raw entries to one row per (date, tester, col), summing hours. */
@@ -109,7 +117,7 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
   const perIssue = await mapLimit(issues, FETCH_CONCURRENCY, async (it) => {
     const labels = (it.fields && it.fields.labels) || [];
     if (labels.some((l) => EXCLUDE.has(l))) return [];   // drop excluded-label issues (e.g. QA-FTO/SL) entirely
-    const col = columnFor(labels);
+    const labelCol = columnFor(labels);
     const logs = await jira.issueWorklogs(it.key, startedAfterMs);
     const rows = [];
     for (const w of logs) {
@@ -119,6 +127,7 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
       if (!date || date < fetchFrom || date > toIso) continue;
       const hours = (Number(w.timeSpentSeconds) || 0) / 3600;
       if (!hours) continue;
+      const col = commentColumn(w.comment) || labelCol;   // comment rule wins, else label
       rows.push({ date, tester: NAME_BY_USER[user], col, hours });
     }
     return rows;

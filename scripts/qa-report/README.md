@@ -118,11 +118,18 @@ into one column by the **issue's Jira label**. Columns are defined in
 - `kind: 'total'` (**All Jira logged time**) — the per-tester grand total of the
   Jira buckets only (the 'leave' column is not counted in it).
 
-**Bucketing rule.** Only labels that match a column are considered; any other label
-on the issue is ignored. An issue matching **0** columns → Non-CRM Project; **1** →
-that column; **2+** → the earliest column in `WORKLOG_COLUMNS` wins (first-match
-priority). Conflicts are rare (4 of ~1860 issues YTD); confirmed resolutions are
-documented in `config.js`. To re-rank a conflict, reorder its column.
+**Bucketing rule.** Each worklog's column is decided by, in order:
+1. **`WORKLOG_COMMENT_RULES`** — if the worklog **comment** contains a configured
+   substring (default: `Smoke` → QA-Smoke_Test, `Regression` → QA-Regression_test,
+   case-insensitive, first match wins) it goes to that column regardless of label.
+   This mirrors the team spreadsheet, where Smoke/Regression testing is logged under
+   the QA-Feature_verification label and told apart by the comment — so
+   **QA-Feature_verification = its label total minus the Smoke/Regression comments**.
+2. otherwise the issue's **labels**: only labels matching a column count (others
+   ignored); **0** matches → Non-CRM Project, **1** → that column, **2+** → the
+   earliest column in `WORKLOG_COLUMNS` wins (first-match priority). Conflicts are
+   rare (4 of ~1860 issues YTD); confirmed resolutions are documented in `config.js`.
+   To re-rank a conflict, reorder its column.
 
 **Excluded labels.** `WORKLOG_EXCLUDE_LABELS` (default `['QA-FTO/SL']`): a worklog
 on an issue carrying any of these labels is **dropped entirely** — not bucketed and

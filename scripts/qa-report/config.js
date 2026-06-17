@@ -146,8 +146,22 @@ const WORKLOG_COLUMNS = [
 // double-count leave.
 const WORKLOG_EXCLUDE_LABELS = ['QA-FTO/SL'];
 
-// Bucketing rule: only labels that match a column above ("in the report") are
-// considered; any other label on the issue is ignored. If the issue matches:
+// Comment-based reclassification (matches the team's spreadsheet "2. Worklog"):
+// a worklog whose COMMENT contains one of these substrings (case-insensitive) is
+// counted in the given column INSTEAD of its label column. Checked in order
+// (first match wins) BEFORE the label rule below. Rationale: Smoke/Regression
+// testing is logged under the QA-Feature_verification label and told apart by the
+// worklog comment — so QA-Feature_verification effectively = its label total minus
+// the Smoke/Regression comments carved out here (the spreadsheet's "B - E - F").
+const WORKLOG_COMMENT_RULES = [
+  { contains: 'Smoke', column: 'smoke' },
+  { contains: 'Regression', column: 'regression' },
+];
+
+// Bucketing rule: a worklog's column is decided by (1) WORKLOG_COMMENT_RULES on its
+// comment, else (2) the issue's labels. For labels, only those that match a column
+// above ("in the report") are considered; any other label on the issue is ignored.
+// If the issue matches:
 //   0 columns -> "Non-CRM Project";  1 column -> that column;
 //   2+ columns -> the EARLIER column in this list wins (first-match priority).
 // Confirmed multi-label resolutions (2026-06-17): Feature_verification+Ticket
@@ -185,6 +199,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
   loadOdoo, loadJira, MEMBERS, KPI_METRICS, MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
-  WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, MODEL_LEAVE, LEAVE_TYPES,
+  WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
+  MODEL_LEAVE, LEAVE_TYPES,
   HOLIDAY_ICS_URL, HOLIDAY_WORKDAY_HOURS, HOLIDAY_INCLUDE, HOLIDAY_EXCLUDE,
 };
