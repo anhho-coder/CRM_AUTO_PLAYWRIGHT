@@ -138,6 +138,10 @@ not in "All Jira logged time" — because that leave time already comes from Odo
 incremental cache auto-invalidates on any such change (a config signature is stored
 in the cache and a full re-seed runs when it differs).
 
+The page shows an **ℹ️ Cách tính các cột** note (hover to reveal each column's
+calculation in plain language) and a hover tooltip on every column header — both
+generated from this config so they always match the logic.
+
 Jira worklogs are read per issue (scoped to the issues the team logged on,
 `startedAfter`-bounded) and aggregated into all four ranges in one pass.
 

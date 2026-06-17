@@ -167,9 +167,39 @@ function pageNav(active) {
 // like "QA-Feature_verification" break cleanly into segments, never mid-word.
 const wbrLabel = (s) => esc(s).replace(/([_/])/g, '$1<wbr>');
 
-function worklogTable(wl, agg) {
+// Natural-language explanation of how each column is computed, derived from the
+// live config (labels + comment rules + excludes) so it always matches the logic.
+function worklogHelp(columns) {
+  const rules = cfg.WORKLOG_COMMENT_RULES || [];
+  const byCol = {};
+  rules.forEach((r) => { (byCol[r.column] = byCol[r.column] || []).push(r.contains); });
+  const map = {};
+  for (const c of columns) {
+    if (c.kind === 'total') map[c.key] = 'Tổng giờ tất cả các cột Jira (KHÔNG gồm QA-FTO/SL/Holiday).';
+    else if (c.kind === 'leave') map[c.key] = 'Giờ nghỉ FTO + Sick Leave từ Odoo hr.leave (chỉ đơn đã duyệt, tính theo ngày bắt đầu) + ngày lễ VN rơi vào T2–T6 (8h/ngày). Không phải worklog Jira.';
+    else if (c.kind === 'other') map[c.key] = 'Worklog trên issue không khớp cột label nào ở trên (catch-all).';
+    else if (byCol[c.key]) map[c.key] = `Worklog có comment chứa ${byCol[c.key].map((k) => '“' + k + '”').join(' hoặc ')} (xét trước label, không phân biệt hoa/thường), hoặc issue gắn label ${c.label}.`;
+    else {
+      let d = `Giờ worklog trên issue gắn label ${c.label}.`;
+      if (rules.length && /Feature_verification/.test(c.label)) d += ' Đã trừ phần comment chứa “Smoke”/“Regression” (được tách sang 2 cột tương ứng).';
+      map[c.key] = d;
+    }
+  }
+  const notes = [
+    'Mỗi worklog được tính vào đúng 1 cột.',
+    'Comment chứa “Smoke”/“Regression” được xét TRƯỚC label → tách khỏi cột theo label (thường là khỏi QA-Feature_verification).',
+    'Issue gắn label QA-FTO/SL: worklog Jira bị bỏ hoàn toàn (giờ nghỉ đã lấy từ Odoo).',
+    'Issue nhiều label: chỉ tính label có cột; nếu trùng nhiều cột thì lấy cột đứng trước.',
+    'Số liệu tính theo ngày của worklog/đơn nghỉ, trong khoảng thời gian đang chọn.',
+  ];
+  return { map, notes };
+}
+
+function worklogTable(wl, agg, help) {
+  const h = help || {};
   const cell = (c, v) => `<td class="num ${c.kind} ${c.key}">${fmt(v)}</td>`;
-  const head = wl.columns.map((c) => `<th class="${c.kind} ${c.key}">${wbrLabel(c.label)}</th>`).join('');
+  const head = wl.columns.map((c) =>
+    `<th class="${c.kind} ${c.key}"${h[c.key] ? ` title="${esc(h[c.key])}"` : ''}>${wbrLabel(c.label)}</th>`).join('');
   const body = agg.byTester.map((t) =>
     `<tr><td class="wname">${esc(t.name)}</td>${wl.columns.map((c) => cell(c, t.cols[c.key])).join('')}</tr>`).join('');
   const totalRow = `<tr class="wtotal"><td class="wname">Total</td>` +
@@ -217,14 +247,15 @@ function piesFor(wl, agg) {
   }).join('') + '</div>';
 }
 
-function worklogView(wl, ranges, def) {
+function worklogView(wl, ranges, def, help) {
   if (!wl || !wl.columns) return '<p class="muted">No worklog data available.</p>';
+  const h = help || worklogHelp(wl.columns);
   const blocks = RANGE_ORDER.filter((k) => wl.ranges[k]).map((k) => {
     const agg = wl.ranges[k];
     return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
       <section class="metric">
         <div class="subh">Team · hours logged in Jira (${esc(agg.from)} → ${esc(agg.to)})</div>
-        ${worklogTable(wl, agg)}
+        ${worklogTable(wl, agg, h.map)}
       </section>
       <section class="metric">
         <div class="subh">Worklog by main tasks</div>
@@ -251,12 +282,23 @@ function worklogView(wl, ranges, def) {
         <div id="wl-custom-pies"></div>
       </section>
     </div>`;
+  const colHelp = wl.columns.map((c) => `<li><b>${esc(c.label)}</b> — ${esc(h.map[c.key] || '')}</li>`).join('');
+  const genHelp = (h.notes || []).map((n) => `<li>${esc(n)}</li>`).join('');
+  const note = `<div class="wlnote" tabindex="0">ℹ️ Cách tính các cột<span class="wlnote-hint"> (di chuột để xem)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Cách tính từng cột</div>
+      <ul>${colHelp}</ul>
+      <div class="wlnote-h">Quy tắc chung</div>
+      <ul>${genHelp}</ul>
+    </div>
+  </div>`;
   return `<div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
     <div class="ranges">${presetBtns}<button type="button" data-rangebtn="custom" id="wl-custom-btn">Custom date</button></div>
     <div class="wl-dates">
       <label>Start <input type="date" id="wl-start" min="${esc(minD)}" max="${esc(maxD)}"></label>
       <label>End <input type="date" id="wl-end" min="${esc(minD)}" max="${esc(maxD)}"></label>
     </div>
+    ${note}
     ${blocks}
     ${customBlock}`;
 }
@@ -272,6 +314,15 @@ body{margin:0;background:#f4f5f7}
 .wl-dates{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 4px;font-size:13px;color:#555}
 .wl-dates label{display:flex;gap:6px;align-items:center}
 .wl-dates input[type=date]{font-family:inherit;font-size:13px;padding:5px 9px;border:1px solid #d9c9ee;border-radius:8px;color:#444;background:#fff}
+.wlnote{position:relative;display:inline-block;margin:2px 0 6px;font-size:12px;font-weight:600;color:#6a3093;background:#f3eefc;border:1px solid #d9c9ee;border-radius:14px;padding:5px 13px;cursor:help}
+.wlnote-hint{font-weight:400;opacity:.8}
+.wlnote-pop{display:none;position:absolute;z-index:30;left:0;top:calc(100% + 6px);width:min(620px,92vw);background:#fff;border:1px solid #d9c9ee;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.18);padding:12px 16px;font-weight:400;color:#333;text-align:left}
+.wlnote:hover .wlnote-pop,.wlnote:focus .wlnote-pop,.wlnote:focus-within .wlnote-pop{display:block}
+.wlnote-pop .wlnote-h{font-weight:700;color:#6a3093;font-size:11px;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.04em}
+.wlnote-pop ul{margin:0 0 6px;padding-left:18px}
+.wlnote-pop li{margin:3px 0;font-size:12.5px;line-height:1.45}
+.wlnote-pop b{color:#222}
+.wtbl thead th[title]{cursor:help}
 .warn{background:#fff4e0;border-left:4px solid #f0a030;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px;color:#8a5a00}
 .viewtabs{display:flex;gap:6px;margin:14px 0 8px}
 .viewtabs button{font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border:1px solid #d9c9ee;background:#fff;color:#6a3093;border-radius:8px 8px 0 0;cursor:pointer}
@@ -406,7 +457,7 @@ const APP_JS = `(function () {
   function tableHtml(a) {
     var cols = WL.columns;
     function cell(c, v) { return '<td class="num ' + c.kind + ' ' + c.key + '">' + fmt(v) + '</td>'; }
-    var head = cols.map(function (c) { return '<th class="' + c.kind + ' ' + c.key + '">' + wbr(c.label) + '</th>'; }).join('');
+    var head = cols.map(function (c) { var t = (WL.help && WL.help[c.key]) ? ' title="' + esc(WL.help[c.key]) + '"' : ''; return '<th class="' + c.kind + ' ' + c.key + '"' + t + '>' + wbr(c.label) + '</th>'; }).join('');
     var body = a.byTester.map(function (t) { return '<tr><td class="wname">' + esc(t.name) + '</td>' + cols.map(function (c) { return cell(c, t.cols[c.key]); }).join('') + '</tr>'; }).join('');
     var tot = '<tr class="wtotal"><td class="wname">Total</td>' + cols.map(function (c) { return cell(c, a.totals[c.key]); }).join('') + '</tr>';
     var pc = '<tr class="wpct"><td class="wname"></td>' + cols.map(function (c) { return '<td class="num ' + c.kind + ' ' + c.key + '">' + a.pct[c.key] + '%</td>'; }).join('') + '</tr>';
@@ -508,10 +559,12 @@ function main() {
   const wlCols = (data.worklog && data.worklog.columns) ? data.worklog.columns : [];
   const wlColors = {};
   wlCols.filter((c) => c.kind !== 'total').forEach((c, i) => { wlColors[c.key] = wlColor(c.key, i); });
+  const wlHelp = (data.worklog && data.worklog.columns) ? worklogHelp(data.worklog.columns) : { map: {}, notes: [] };
   const wlData = data.worklog ? {
     columns: data.worklog.columns,
     members: data.members,
     colors: wlColors,
+    help: wlHelp.map,
     daily: data.worklog.daily || [],
   } : null;
   const wlDataScript = wlData
@@ -526,7 +579,7 @@ function main() {
 </div>
 <div class="wrap wide">
   ${sourceBanner(data.sources)}
-  ${worklogView(data.worklog, data.ranges, defRange)}
+  ${worklogView(data.worklog, data.ranges, defRange, wlHelp)}
   <div class="foot">Source: Jira worklogs (bucketed by issue label) + Odoo <code>hr.leave</code> &amp; VN public holidays (FTO/SL/Holiday column) · regenerated daily · self-contained page.</div>
 </div>
 ${wlDataScript}
