@@ -175,22 +175,22 @@ function worklogHelp(columns) {
   rules.forEach((r) => { (byCol[r.column] = byCol[r.column] || []).push(r.contains); });
   const map = {};
   for (const c of columns) {
-    if (c.kind === 'total') map[c.key] = 'Tổng giờ tất cả các cột Jira (KHÔNG gồm QA-FTO/SL/Holiday).';
-    else if (c.kind === 'leave') map[c.key] = 'Giờ nghỉ FTO + Sick Leave từ Odoo hr.leave (chỉ đơn đã duyệt, tính theo ngày bắt đầu) + ngày lễ VN rơi vào T2–T6 (8h/ngày). Không phải worklog Jira.';
-    else if (c.kind === 'other') map[c.key] = 'Worklog trên issue không khớp cột label nào ở trên (catch-all).';
-    else if (byCol[c.key]) map[c.key] = `Worklog có comment chứa ${byCol[c.key].map((k) => '“' + k + '”').join(' hoặc ')} (xét trước label, không phân biệt hoa/thường), hoặc issue gắn label ${c.label}.`;
+    if (c.kind === 'total') map[c.key] = 'Total of all Jira columns (EXCLUDES QA-FTO/SL/Holiday).';
+    else if (c.kind === 'leave') map[c.key] = 'FTO + Sick Leave hours from Odoo hr.leave (approved only, by start date) + Vietnamese public holidays falling on a working day (Mon–Fri, 8h/day). Not Jira worklogs.';
+    else if (c.kind === 'other') map[c.key] = 'Worklogs whose issue matches none of the label columns above (catch-all).';
+    else if (byCol[c.key]) map[c.key] = `Worklogs whose comment contains ${byCol[c.key].map((k) => '“' + k + '”').join(' or ')} (checked before the label, case-insensitive), or issues labelled ${c.label}.`;
     else {
-      let d = `Giờ worklog trên issue gắn label ${c.label}.`;
-      if (rules.length && /Feature_verification/.test(c.label)) d += ' Đã trừ phần comment chứa “Smoke”/“Regression” (được tách sang 2 cột tương ứng).';
+      let d = `Worklog hours on issues labelled ${c.label}.`;
+      if (rules.length && /Feature_verification/.test(c.label)) d += ' Minus the worklogs whose comment contains “Smoke”/“Regression” (moved to those two columns).';
       map[c.key] = d;
     }
   }
   const notes = [
-    'Mỗi worklog được tính vào đúng 1 cột.',
-    'Comment chứa “Smoke”/“Regression” được xét TRƯỚC label → tách khỏi cột theo label (thường là khỏi QA-Feature_verification).',
-    'Issue gắn label QA-FTO/SL: worklog Jira bị bỏ hoàn toàn (giờ nghỉ đã lấy từ Odoo).',
-    'Issue nhiều label: chỉ tính label có cột; nếu trùng nhiều cột thì lấy cột đứng trước.',
-    'Số liệu tính theo ngày của worklog/đơn nghỉ, trong khoảng thời gian đang chọn.',
+    'Each worklog is counted in exactly one column.',
+    'A comment containing “Smoke”/“Regression” is checked BEFORE the label → it is split out of the label column (usually out of QA-Feature_verification).',
+    'Issues labelled QA-FTO/SL: their Jira worklogs are dropped entirely (leave time comes from Odoo).',
+    'Multi-label issues: only labels that have a column are counted; if several match, the earliest column wins.',
+    'Figures are by the worklog / leave date, within the selected period.',
   ];
   return { map, notes };
 }
@@ -275,7 +275,7 @@ function worklogView(wl, ranges, def, help) {
   const customBlock = `<div class="range-block" data-range="custom">
       <section class="metric">
         <div class="subh">Team · hours logged in Jira <span id="wl-custom-sub" class="muted"></span></div>
-        <div id="wl-custom-table"><p class="muted">Chọn Start date và End date để xem khoảng tùy chỉnh.</p></div>
+        <div id="wl-custom-table"><p class="muted">Pick a Start and End date to see a custom range.</p></div>
       </section>
       <section class="metric">
         <div class="subh">Worklog by main tasks</div>
@@ -284,11 +284,11 @@ function worklogView(wl, ranges, def, help) {
     </div>`;
   const colHelp = wl.columns.map((c) => `<li><b>${esc(c.label)}</b> — ${esc(h.map[c.key] || '')}</li>`).join('');
   const genHelp = (h.notes || []).map((n) => `<li>${esc(n)}</li>`).join('');
-  const note = `<div class="wlnote" tabindex="0">ℹ️ Cách tính các cột<span class="wlnote-hint"> (di chuột để xem)</span>
+  const note = `<div class="wlnote" tabindex="0">ℹ️ How columns are computed<span class="wlnote-hint"> (hover to see)</span>
     <div class="wlnote-pop">
-      <div class="wlnote-h">Cách tính từng cột</div>
+      <div class="wlnote-h">How each column is computed</div>
       <ul>${colHelp}</ul>
-      <div class="wlnote-h">Quy tắc chung</div>
+      <div class="wlnote-h">General rules</div>
       <ul>${genHelp}</ul>
     </div>
   </div>`;
@@ -491,8 +491,8 @@ const APP_JS = `(function () {
     var s = startEl.value, e = endEl.value;
     var tbl = document.getElementById('wl-custom-table'), pies = document.getElementById('wl-custom-pies'),
         sub = document.getElementById('wl-custom-sub'), win = document.getElementById('wl-custom-window');
-    if (!s || !e) { tbl.innerHTML = '<p class="muted">Chọn Start date và End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = ''; return; }
-    if (s > e) { tbl.innerHTML = '<p class="muted">Start date phải nhỏ hơn hoặc bằng End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = '<b>' + esc(s) + '</b> → <b>' + esc(e) + '</b>'; return; }
+    if (!s || !e) { tbl.innerHTML = '<p class="muted">Pick a Start and End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = ''; return; }
+    if (s > e) { tbl.innerHTML = '<p class="muted">Start date must be on or before End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = '<b>' + esc(s) + '</b> → <b>' + esc(e) + '</b>'; return; }
     var a = agg(s, e), label = s + ' → ' + e;
     tbl.innerHTML = tableHtml(a);
     pies.innerHTML = piesHtml(a, label);
