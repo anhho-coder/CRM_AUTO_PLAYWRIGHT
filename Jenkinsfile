@@ -7,18 +7,11 @@ pipeline {
         nodejs 'NodeJS-20'
     }
 
-    parameters {
-        // OPTIONAL override: a spec file, folder, or glob to run. Declared here (not
-        // only in job config) so params.SPEC binds reliably on EVERY trigger incl.
-        // "Build Now" - a job-config-only param does not bind on plain UI builds.
-        // Leave EMPTY and the job runs its default suite, chosen by job name in the
-        // suiteByJob map in the run stage below.
-        string(
-            name: 'SPEC',
-            defaultValue: '',
-            description: 'Optional: spec file/folder/glob (forward slashes). Leave EMPTY to run this job default suite (mapped from the job name). Example override: tests/1.Project_CRM/4.Investments'
-        )
-    }
+    // SPEC (which file/folder/glob to run) is defined PER JOB in the job's own config
+    // ("This project is parameterized" -> String Parameter SPEC -> Default Value), so it
+    // is visible and editable in Jenkins. We deliberately do NOT declare parameters{}
+    // here: a declarative parameters{} block would overwrite every job's SPEC default
+    // on each build. The run stage reads params.SPEC and falls back to a smoke spec.
 
     environment {
         // Enables Playwright CI behaviour from playwright.config.ts:
@@ -110,21 +103,11 @@ pipeline {
             steps {
                 // chrome-headless project = installed Google Chrome, headless, no download.
                 script {
-                    // Per-folder jobs: an explicit SPEC override wins; otherwise the
-                    // target is chosen by JOB NAME. To add a folder job, create a Jenkins
-                    // job named with one of these keys (no code change needed), or pass
-                    // SPEC explicitly. Unknown job + empty SPEC -> fast smoke spec.
-                    def suiteByJob = [
-                        'CRM_Investments'      : 'tests/1.Project_CRM/4.Investments',
-                        'CRM_Lead_Merging'     : 'tests/1.Project_CRM/3.Lead_Merging',
-                        'CRM_Leads_Assignment' : 'tests/1.Project_CRM/2.Leads_Assignment',
-                        'CRM_SalesReport_Perf' : 'tests/1.Project_CRM/1.SalesReport_Performance',
-                        'CRM_CRM_Module'       : 'tests/1.Project_CRM/9.CRM_Module',
-                        'CRM_O12'              : 'tests/1.Project_CRM/O12_CE_to_O12_CC',
-                    ]
+                    // Target = the job's SPEC parameter (set in the job config: a file,
+                    // folder, or glob). Falls back to a fast smoke spec if SPEC is empty.
                     def fallback = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts'
-                    def target = params.SPEC?.trim() ? params.SPEC.trim() : (suiteByJob[env.JOB_BASE_NAME] ?: fallback)
-                    echo "Job '${env.JOB_BASE_NAME}' | SPEC override: '${params.SPEC}' | Running: ${target}"
+                    def target = params.SPEC?.trim() ? params.SPEC.trim() : fallback
+                    echo "Job '${env.JOB_BASE_NAME}' | SPEC: '${params.SPEC}' | Running: ${target}"
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
                     bat 'if exist playwright-report rmdir /s /q playwright-report'
