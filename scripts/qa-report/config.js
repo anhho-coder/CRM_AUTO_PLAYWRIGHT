@@ -127,14 +127,12 @@ const WORKLOG_COLUMNS = [
   { key: 'regression', label: 'QA-Regression_test', match: 'QA-Regression_test' },
   { key: 'smoke', label: 'QA-Smoke_Test', match: 'QA-Smoke_Test' },
   { key: 'featureMaint', label: 'QA-Feature_maintenance', match: 'QA-Feature_maintenance' },
-  { key: 'training', label: 'QA-Training_new_IC', match: 'QA-Training_new_IC' },
   { key: 'automation', label: 'QA-CRM_Automation', match: 'QA-CRM_Automation' },
   { key: 'frdSpec', label: 'QA-FRD/I2L/Spec', match: 'QA-FRD/I2L/Spec' },
   { key: 'supportNbr', label: 'QA-CRM-Support-NBR', match: 'QA-CRM-Support-NBR' },
   { key: 'odoo12Migration', label: 'QA-Odoo12-Migration', match: 'QA-Odoo12-Migration' },
   { key: 'crmBaas', label: 'QA-CRM-BaaS', match: 'QA-CRM-BaaS' },
   { key: 'claude', label: 'QA-Claude', match: 'QA-Claude' },
-  { key: 'crmSupportTicket', label: 'CRM-Support-Ticket', match: 'CRM-Support-Ticket' },
   { key: 'ftoSlHoliday', label: 'QA-FTO/SL/Holiday', kind: 'leave' },
   { key: 'nonCrm', label: 'Non-CRM Project', kind: 'other' },
   { key: 'allLogged', label: 'All Jira logged time', kind: 'total' },
@@ -165,10 +163,9 @@ const WORKLOG_COMMENT_RULES = [
 //   0 columns -> "Non-CRM Project";  1 column -> that column;
 //   2+ columns -> the EARLIER column in this list wins (first-match priority).
 // Confirmed multi-label resolutions (2026-06-17): Feature_verification+Ticket
-// _verification -> Feature; Feature_verification+Regression_test -> Feature;
-// CRM-Support-Ticket+Ticket_verification -> Ticket_verification (Ticket is earlier
-// than CRM-Support-Ticket). All three already fall out of the column order, so no
-// extra priority table is needed; reorder a column to change its priority.
+// _verification -> Feature; Feature_verification+Regression_test -> Feature. Both
+// already fall out of the column order, so no extra priority table is needed;
+// reorder a column to change its priority.
 
 // --- Leave hours (Odoo hr.leave) for the 'leave' column ----------------------
 // FTO + Sick Leave hours are read from hr.leave (NOT Jira) and bucketed by the
