@@ -131,12 +131,15 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
     : [];
   const entries = [...jiraEntries, ...leaveMapped];
 
-  // 6) Aggregate into each selectable range.
+  // 6) Aggregate into each selectable range. Also expose the per-day breakdown so
+  //    the page can recompute a client-side custom date range without re-fetching.
   const out = {};
   for (const r of Object.values(ranges)) out[r.key] = aggregateRange(entries, r);
+  const daily = collapse(entries).map((e) => ({ d: e.date, t: e.tester, c: e.col, h: e.hours }));
   return {
     columns: WORKLOG_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind || 'bucket' })),
     ranges: out,
+    daily,
     issueCount: issues.length,
   };
 }
@@ -185,4 +188,4 @@ function aggregateRange(entries, range) {
   };
 }
 
-module.exports = { collectWorklog };
+module.exports = { collectWorklog, aggregateRange, collapse };

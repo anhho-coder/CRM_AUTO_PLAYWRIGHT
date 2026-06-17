@@ -12,7 +12,10 @@ Two pages, linked by the top nav:
 - **Worklog allocation** (`worklog.html`) — each tester's Jira-logged hours, split
   across activity columns by the issue's Jira label, for the selected range, with a
   per-tester pie chart. The **FTO/SL/Holiday** column is the exception: it is *not*
-  a Jira label — those hours come from Odoo `hr.leave` (see below).
+  a Jira label — those hours come from Odoo `hr.leave` (see below). Besides the
+  Last week / This month / This quarter / This year presets, a **Custom date**
+  option (Start/End) recomputes the table + pies entirely client-side (from a daily
+  dataset embedded in the page) for any window within the fetched year — no rebuild.
 
 ## Status
 

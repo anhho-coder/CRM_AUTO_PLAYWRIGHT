@@ -230,9 +230,33 @@ function worklogView(wl, ranges, def) {
       </section>
     </div>`;
   }).join('\n');
-  return `<div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(ranges, def)}</div>
-    ${selector(ranges, def)}
-    ${blocks}`;
+
+  // Custom date range: the block is filled client-side (app.js) from the embedded
+  // daily data when the user picks a start/end date.
+  const minD = ranges.thisYear ? ranges.thisYear.from : '';
+  const maxD = ranges.thisYear ? ranges.thisYear.to : '';
+  const presetBtns = RANGE_ORDER.filter((k) => ranges[k]).map((k) =>
+    `<button type="button" data-rangebtn="${k}" class="${k === def ? 'active' : ''}">${esc(ranges[k].label)}</button>`).join('');
+  const spans = windowSpans(ranges, def) +
+    `<span class="range-window" data-range="custom" id="wl-custom-window"></span>`;
+  const customBlock = `<div class="range-block" data-range="custom">
+      <section class="metric">
+        <div class="subh">Team · hours logged in Jira <span id="wl-custom-sub" class="muted"></span></div>
+        <div id="wl-custom-table"><p class="muted">Chọn Start date và End date để xem khoảng tùy chỉnh.</p></div>
+      </section>
+      <section class="metric">
+        <div class="subh">Worklog by main tasks</div>
+        <div id="wl-custom-pies"></div>
+      </section>
+    </div>`;
+  return `<div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
+    <div class="ranges">${presetBtns}<button type="button" data-rangebtn="custom" id="wl-custom-btn">Custom date</button></div>
+    <div class="wl-dates">
+      <label>Start <input type="date" id="wl-start" min="${esc(minD)}" max="${esc(maxD)}"></label>
+      <label>End <input type="date" id="wl-end" min="${esc(minD)}" max="${esc(maxD)}"></label>
+    </div>
+    ${blocks}
+    ${customBlock}`;
 }
 
 /* ---------------------------------- assets ----------------------------------- */
@@ -243,6 +267,9 @@ body{margin:0;background:#f4f5f7}
 .hero h1{margin:0;font-size:22px}.hero .sub{opacity:.92;font-size:13px;margin-top:6px}
 .wrap{max-width:1000px;margin:0 auto;padding:14px 28px 60px}
 .wrap.wide{max-width:1340px}
+.wl-dates{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 4px;font-size:13px;color:#555}
+.wl-dates label{display:flex;gap:6px;align-items:center}
+.wl-dates input[type=date]{font-family:inherit;font-size:13px;padding:5px 9px;border:1px solid #d9c9ee;border-radius:8px;color:#444;background:#fff}
 .warn{background:#fff4e0;border-left:4px solid #f0a030;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px;color:#8a5a00}
 .viewtabs{display:flex;gap:6px;margin:14px 0 8px}
 .viewtabs button{font-family:inherit;font-size:13px;font-weight:600;padding:8px 16px;border:1px solid #d9c9ee;background:#fff;color:#6a3093;border-radius:8px 8px 0 0;cursor:pointer}
@@ -326,6 +353,101 @@ const APP_JS = `(function () {
       t = t.parentNode;
     }
   });
+
+  // --- Custom date range (worklog page) -------------------------------------
+  var WL = null;
+  var dataEl = document.getElementById('wl-data');
+  if (dataEl) { try { WL = JSON.parse(dataEl.textContent); } catch (err) { WL = null; } }
+  var startEl = document.getElementById('wl-start');
+  var endEl = document.getElementById('wl-end');
+
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+  function fmt(n) { return Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100); }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function wbr(s) { return esc(s).replace(/([_\\/])/g, '$1<wbr>'); }
+
+  function agg(from, to) {
+    var jira = [], leaveKey = null, totalKey = null;
+    WL.columns.forEach(function (c) {
+      if (c.kind === 'total') totalKey = c.key;
+      else if (c.kind === 'leave') leaveKey = c.key;
+      else jira.push(c.key);
+    });
+    var valueKeys = leaveKey ? jira.concat([leaveKey]) : jira;
+    var byT = {};
+    WL.members.forEach(function (m) { byT[m] = {}; valueKeys.forEach(function (k) { byT[m][k] = 0; }); });
+    WL.daily.forEach(function (e) {
+      if (e.d < from || e.d > to) return;
+      if (!byT[e.t] || byT[e.t][e.c] == null) return;
+      byT[e.t][e.c] += e.h;
+    });
+    var rows = WL.members.map(function (m) {
+      var co = {}, total = 0;
+      jira.forEach(function (k) { var v = round2(byT[m][k]); co[k] = v; total += v; });
+      total = round2(total);
+      if (leaveKey) co[leaveKey] = round2(byT[m][leaveKey]);
+      if (totalKey) co[totalKey] = total;
+      return { name: m, cols: co, total: total };
+    });
+    var totals = {}, grand = 0;
+    jira.forEach(function (k) { var v = round2(rows.reduce(function (s, r) { return s + r.cols[k]; }, 0)); totals[k] = v; grand += v; });
+    grand = round2(grand);
+    if (leaveKey) totals[leaveKey] = round2(rows.reduce(function (s, r) { return s + r.cols[leaveKey]; }, 0));
+    if (totalKey) totals[totalKey] = grand;
+    var pct = {};
+    jira.forEach(function (k) { pct[k] = grand ? Math.round(totals[k] / grand * 1000) / 10 : 0; });
+    if (leaveKey) pct[leaveKey] = grand ? Math.round(totals[leaveKey] / grand * 1000) / 10 : 0;
+    if (totalKey) pct[totalKey] = grand ? 100 : 0;
+    return { byTester: rows, totals: totals, grandTotal: grand, pct: pct };
+  }
+
+  function tableHtml(a) {
+    var cols = WL.columns;
+    function cell(c, v) { return '<td class="num ' + c.kind + ' ' + c.key + '">' + fmt(v) + '</td>'; }
+    var head = cols.map(function (c) { return '<th class="' + c.kind + ' ' + c.key + '">' + wbr(c.label) + '</th>'; }).join('');
+    var body = a.byTester.map(function (t) { return '<tr><td class="wname">' + esc(t.name) + '</td>' + cols.map(function (c) { return cell(c, t.cols[c.key]); }).join('') + '</tr>'; }).join('');
+    var tot = '<tr class="wtotal"><td class="wname">Total</td>' + cols.map(function (c) { return cell(c, a.totals[c.key]); }).join('') + '</tr>';
+    var pc = '<tr class="wpct"><td class="wname"></td>' + cols.map(function (c) { return '<td class="num ' + c.kind + ' ' + c.key + '">' + a.pct[c.key] + '%</td>'; }).join('') + '</tr>';
+    return '<div class="wtblwrap"><table class="wtbl"><thead><tr><th class="wname">QA Name</th>' + head + '</tr></thead><tbody>' + body + tot + pc + '</tbody></table></div>';
+  }
+
+  function piePath(cx, cy, r, a0, a1) {
+    var x0 = cx + r * Math.cos(a0), y0 = cy + r * Math.sin(a0), x1 = cx + r * Math.cos(a1), y1 = cy + r * Math.sin(a1), large = (a1 - a0) > Math.PI ? 1 : 0;
+    return 'M' + cx + ',' + cy + ' L' + x0.toFixed(2) + ',' + y0.toFixed(2) + ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x1.toFixed(2) + ',' + y1.toFixed(2) + ' Z';
+  }
+  function pie(title, slices) {
+    var total = slices.reduce(function (s, x) { return s + x.value; }, 0);
+    if (!total) return '<div class="pie"><div class="pietitle">' + esc(title) + '</div><p class="muted">No worklog in this range.</p></div>';
+    var cx = 90, cy = 90, r = 84, svg = '<svg viewBox="0 0 180 180" width="180" height="180">', a = -Math.PI / 2;
+    if (slices.length === 1) { svg += '<circle cx="90" cy="90" r="84" fill="' + slices[0].color + '"/>'; }
+    else { slices.forEach(function (s) { var a1 = a + (s.value / total) * 2 * Math.PI; svg += '<path d="' + piePath(cx, cy, r, a, a1) + '" fill="' + s.color + '"/>'; a = a1; }); }
+    svg += '</svg>';
+    var legend = slices.map(function (s) { return '<li><span class="sw" style="background:' + s.color + '"></span>' + esc(s.label) + ' <b>' + fmt(s.value) + '</b> <span class="muted">' + Math.round(s.value / total * 100) + '%</span></li>'; }).join('');
+    return '<div class="pie"><div class="pietitle">' + esc(title) + '</div><div class="pierow">' + svg + '<ul class="legend">' + legend + '</ul></div></div>';
+  }
+  function piesHtml(a, label) {
+    var buckets = WL.columns.filter(function (c) { return c.kind !== 'total'; });
+    return '<div class="pies">' + a.byTester.map(function (t) {
+      var slices = buckets.map(function (c) { return { label: c.label, value: t.cols[c.key], color: WL.colors[c.key] }; }).filter(function (s) { return s.value > 0; });
+      return pie(t.name + ' — ' + label, slices);
+    }).join('') + '</div>';
+  }
+
+  function compute() {
+    if (!WL || !startEl || !endEl) return;
+    var s = startEl.value, e = endEl.value;
+    var tbl = document.getElementById('wl-custom-table'), pies = document.getElementById('wl-custom-pies'),
+        sub = document.getElementById('wl-custom-sub'), win = document.getElementById('wl-custom-window');
+    if (!s || !e) { tbl.innerHTML = '<p class="muted">Chọn Start date và End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = ''; return; }
+    if (s > e) { tbl.innerHTML = '<p class="muted">Start date phải nhỏ hơn hoặc bằng End date.</p>'; pies.innerHTML = ''; sub.textContent = ''; win.innerHTML = '<b>' + esc(s) + '</b> → <b>' + esc(e) + '</b>'; return; }
+    var a = agg(s, e), label = s + ' → ' + e;
+    tbl.innerHTML = tableHtml(a);
+    pies.innerHTML = piesHtml(a, label);
+    sub.textContent = '(' + label + ')';
+    win.innerHTML = '<b>' + esc(s) + '</b> → <b>' + esc(e) + '</b>';
+  }
+  function onPick() { compute(); toggleGroup('data-rangebtn', 'custom', '.range-block, .range-window'); }
+  if (startEl && endEl) { startEl.addEventListener('change', onPick); endEl.addEventListener('change', onPick); }
 })();
 `;
 
@@ -379,6 +501,21 @@ function main() {
 </body></html>`;
 
   // --- Worklog allocation page (worklog.html) --------------------------------
+  // Embed the per-day worklog data + per-column colours so app.js can recompute
+  // a custom date range client-side (column colours match the server-rendered pies).
+  const wlCols = (data.worklog && data.worklog.columns) ? data.worklog.columns : [];
+  const wlColors = {};
+  wlCols.filter((c) => c.kind !== 'total').forEach((c, i) => { wlColors[c.key] = wlColor(c.key, i); });
+  const wlData = data.worklog ? {
+    columns: data.worklog.columns,
+    members: data.members,
+    colors: wlColors,
+    daily: data.worklog.daily || [],
+  } : null;
+  const wlDataScript = wlData
+    ? `<script id="wl-data" type="application/json">${JSON.stringify(wlData).replace(/</g, '\\u003c')}</script>`
+    : '';
+
   const worklogHtml = `${docHead('CRM QA — Worklog allocation')}
 <div class="hero">
   <h1>CRM QA Team — Worklog allocation</h1>
@@ -390,6 +527,7 @@ function main() {
   ${worklogView(data.worklog, data.ranges, defRange)}
   <div class="foot">Source: Jira worklogs (bucketed by issue label) + Odoo <code>hr.leave</code> &amp; VN public holidays (FTO/SL/Holiday column) · regenerated daily · self-contained page.</div>
 </div>
+${wlDataScript}
 <script src="app.js"></script>
 </body></html>`;
 
