@@ -12,11 +12,11 @@
   {
     "name": "Automation - async/data not loaded (empty value)",
     "matchedStatuses": ["failed"],
-    "messageRegex": "(?s).*Received(?: string)?: \"\".*"
+    "messageRegex": "(?s).*Received(?: string)?:\\s*\"\".*"
   },
   {
     "name": "Assertion fail - VERIFY MANUALLY (possible business rule)",
     "matchedStatuses": ["failed"],
-    "messageRegex": "(?s).*Received(?: string)?: \"[^\"]+\".*"
+    "messageRegex": "(?s).*Received(?: string)?:\\s*\"[^\"]+\".*"
   }
 ]
