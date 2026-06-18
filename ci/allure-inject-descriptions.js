@@ -1,10 +1,14 @@
 /*
- * Inject each spec's leading /** ... *\/ header comment into its Allure result
- * as the test Description, so it shows in the Allure report's test Overview.
+ * Inject each spec's leading block-comment header into its Allure result as the
+ * test Description, so it shows in the Allure report's test Overview.
  *
  * Usage: node ci/allure-inject-descriptions.js <allure-results-dir> <repo-root>
  * Runs in the CRM-Total_Allure_Report pipeline, between merge and `allure generate`.
- * Touches no spec files; reads the result JSONs and the spec sources from the checkout.
+ * Touches no spec files.
+ *
+ * Note: section projects use a scoped testDir, so a result's fullName is
+ * testDir-relative (e.g. "CRM-2482_.../tc-...spec.ts:104:7") - it does NOT start
+ * with "tests/". So we match on the spec BASENAME and look it up in the repo.
  */
 const fs = require('fs');
 const path = require('path');
@@ -12,11 +16,8 @@ const path = require('path');
 const dir = process.argv[2] || 'allure-merged';
 const repo = process.argv[3] || '.';
 
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-// Pull the first /** ... */ block and strip the comment decoration.
 function headerComment(file) {
   let src;
   try { src = fs.readFileSync(file, 'utf8'); } catch (e) { return null; }
@@ -30,7 +31,19 @@ function headerComment(file) {
   return body || null;
 }
 
-let total = 0, injected = 0, noMatch = 0;
+// Index every spec by basename: { 'tc-...spec.ts': 'C:\\...\\tests\\...\\tc-...spec.ts' }
+const byBase = {};
+(function walk(d) {
+  let ents;
+  try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch (e) { return; }
+  for (const e of ents) {
+    const fp = path.join(d, e.name);
+    if (e.isDirectory()) walk(fp);
+    else if (e.name.endsWith('.spec.ts')) byBase[e.name] = fp;
+  }
+})(path.join(repo, 'tests'));
+
+let total = 0, injected = 0, unmatched = 0;
 const cache = {};
 for (const f of fs.readdirSync(dir)) {
   if (!f.endsWith('-result.json')) continue;
@@ -38,15 +51,17 @@ for (const f of fs.readdirSync(dir)) {
   const p = path.join(dir, f);
   let j;
   try { j = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { continue; }
-  const fn = j.fullName || '';
-  const mm = fn.match(/tests[\\/][\s\S]*?\.spec\.ts/);
-  if (!mm) { noMatch++; continue; }
-  const rel = mm[0].replace(/\\/g, '/');
-  if (!(rel in cache)) cache[rel] = headerComment(path.join(repo, rel));
-  const desc = cache[rel];
+  const fn = j.fullName || j.name || '';
+  const m = fn.match(/([^\/\\>:]+\.spec\.ts)/); // the basename token
+  if (!m) { unmatched++; continue; }
+  const base = m[1];
+  const file = byBase[base];
+  if (!file) { unmatched++; continue; }
+  if (!(base in cache)) cache[base] = headerComment(file);
+  const desc = cache[base];
   if (!desc) continue;
   j.descriptionHtml = '<pre style="white-space:pre-wrap;font-family:monospace">' + escapeHtml(desc) + '</pre>';
   fs.writeFileSync(p, JSON.stringify(j));
   injected++;
 }
-console.log(`allure descriptions: ${total} results, injected ${injected}, no-spec-path ${noMatch}`);
+console.log(`allure descriptions: ${total} results, indexed ${Object.keys(byBase).length} specs, injected ${injected}, unmatched ${unmatched}`);
