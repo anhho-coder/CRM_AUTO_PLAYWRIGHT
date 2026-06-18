@@ -1,0 +1,22 @@
+[
+  {
+    "name": "Automation - element/column not found",
+    "matchedStatuses": ["failed", "broken"],
+    "messageRegex": "(?s).*(not found in any table|No tests found).*"
+  },
+  {
+    "name": "Automation - timeout / element not ready",
+    "matchedStatuses": ["failed", "broken"],
+    "messageRegex": "(?s).*(Timeout \\d+ms exceeded|Test timeout of \\d+ms exceeded|TimeoutError).*"
+  },
+  {
+    "name": "Automation - async/data not loaded (empty value)",
+    "matchedStatuses": ["failed"],
+    "messageRegex": "(?s).*Received: \"\".*"
+  },
+  {
+    "name": "Assertion fail - VERIFY MANUALLY (possible business rule)",
+    "matchedStatuses": ["failed"],
+    "messageRegex": "(?s).*Received: \"[^\"]+\".*"
+  }
+]
