@@ -139,7 +139,15 @@ async function main() {
   try {
     // leave + holidays both feed the FTO/SL/Holiday (leave) column.
     data.worklog = await collectWorklog(ranges, now, [...leaveEntries, ...holidayEntries]);
-    data.sources.jiraWorklog = { status: 'ok', source: 'jira worklogs' };
+    // A few unreadable issues are tolerated by collectWorklog (it only throws on a
+    // mass failure), but they make the page INCOMPLETE — surface that as a non-ok
+    // status so the build is flagged UNSTABLE (not a silent green) and the Jenkins
+    // retry loop re-attempts them (recovers transient reads; permission-restricted
+    // issues stay skipped).
+    const sk = (data.worklog && data.worklog.skipped) || 0;
+    data.sources.jiraWorklog = sk > 0
+      ? { status: 'incomplete', message: `${sk} issue(s) skipped on worklog read — data incomplete`, source: 'jira worklogs' }
+      : { status: 'ok', source: 'jira worklogs' };
   } catch (e) {
     data.sources.jiraWorklog = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Jira worklog source failed:', e.message || e);

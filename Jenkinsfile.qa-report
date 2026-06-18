@@ -23,7 +23,7 @@ pipeline {
     }
 
     options {
-        timeout(time: 15, unit: 'MINUTES')
+        timeout(time: 30, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '30'))
     }
 
@@ -52,7 +52,25 @@ pipeline {
                         usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD'),
                     string(credentialsId: 'jira-crm-qa', variable: 'JIRA_TOKEN')
                 ]) {
-                    bat 'node scripts/qa-report/collect.js'
+                    // Retry until every source returns COMPLETE data (status.txt == 'ok'),
+                    // up to 3 attempts. Recovers transient Jira/Odoo read failures (a
+                    // worklog issue that 5xx'd / timed out, a brief outage). A permanent
+                    // problem (revoked token, permission-restricted issue, bad JQL)
+                    // exhausts the retries; the 'Check data status' stage below then
+                    // marks the build UNSTABLE/FAILURE so incomplete data is never green.
+                    script {
+                        def st = 'failed'
+                        for (int attempt = 1; attempt <= 3; attempt++) {
+                            if (attempt > 1) {
+                                echo "Collect attempt ${attempt}: previous run was '${st}', retrying for complete data…"
+                                sleep time: 30, unit: 'SECONDS'
+                            }
+                            bat 'node scripts/qa-report/collect.js'
+                            st = readFile(file: 'qa-report-out/data/status.txt').trim()
+                            if (st == 'ok') break
+                        }
+                        echo "Collect data status after retries: ${st}"
+                    }
                 }
             }
         }
