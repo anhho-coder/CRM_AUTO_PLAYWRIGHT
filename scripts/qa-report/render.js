@@ -248,7 +248,8 @@ function piesFor(wl, agg) {
   return '<div class="pies">' + agg.byTester.map((t) => {
     const slices = buckets
       .map((c, i) => ({ label: c.label, value: t.cols[c.key], color: wlColor(c.key, i) }))
-      .filter((s) => s.value > 0);
+      .filter((s) => s.value > 0)
+      .sort((a, b) => b.value - a.value); // biggest task first (highest % on top)
     return pieChart(`${t.name} — ${agg.label}`, slices);
   }).join('') + '</div>';
 }
@@ -490,7 +491,7 @@ const APP_JS = `(function () {
   function piesHtml(a, label) {
     var buckets = WL.columns.filter(function (c) { return c.kind !== 'total'; });
     return '<div class="pies">' + a.byTester.map(function (t) {
-      var slices = buckets.map(function (c) { return { label: c.label, value: t.cols[c.key], color: WL.colors[c.key] }; }).filter(function (s) { return s.value > 0; });
+      var slices = buckets.map(function (c) { return { label: c.label, value: t.cols[c.key], color: WL.colors[c.key] }; }).filter(function (s) { return s.value > 0; }).sort(function (x, y) { return y.value - x.value; });
       return pie(t.name + ' — ' + label, slices);
     }).join('') + '</div>';
   }
