@@ -42,7 +42,11 @@ function buildJql(metric, fetchFrom) {
   // / Reopened — see review 2026-06-17.) Omitted when a metric sets no
   // excludeResolutions (count everything).
   const resClause = res ? ` AND (resolution is EMPTY OR resolution not in (${res}))` : '';
-  return `type in (${types})${labelClause}${resClause}` +
+  // Use `issuetype` (not the `type` alias): the team's Jira rejects `type` for the
+  // collector's PAT context ("Field 'type' does not exist…"), which 400'd this
+  // whole query and made the build UNSTABLE. `issuetype` is what the working
+  // testexec/automation modules use. (See build #18, 2026-06-18.)
+  return `issuetype in (${types})${labelClause}${resClause}` +
     ` AND createdDate >= "${fetchFrom}" AND reporter in (${REPORTERS}) ORDER BY created ASC`;
 }
 
