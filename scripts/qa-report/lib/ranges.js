@@ -7,6 +7,7 @@
  *   thisMonth   – 1st of this month → today              – daily buckets
  *   thisQuarter – 1st of this quarter → today            – weekly buckets
  *   thisYear    – Jan 1 → today                          – monthly buckets
+ *   lastYear    – Jan 1 → Dec 31 of last year            – monthly buckets
  */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const isoDate = (d) => d.toISOString().slice(0, 10);
@@ -18,7 +19,8 @@ function mondayOf(d) {
   return x;
 }
 
-/** The four selectable ranges relative to `now` (a Date). */
+/** The selectable ranges relative to `now` (a Date). The Metrics 'By range' view
+ *  shows all of them; the Worklog page uses the four base ones (not lastYear). */
 function computeRanges(now) {
   const today = isoDate(now);
   const y = now.getUTCFullYear();
@@ -32,11 +34,16 @@ function computeRanges(now) {
     thisMonth: { key: 'thisMonth', label: 'This month', from: isoDate(new Date(Date.UTC(y, m, 1))), to: today, bucket: 'day' },
     thisQuarter: { key: 'thisQuarter', label: 'This quarter', from: isoDate(new Date(Date.UTC(y, qStart, 1))), to: today, bucket: 'week' },
     thisYear: { key: 'thisYear', label: 'This year', from: isoDate(new Date(Date.UTC(y, 0, 1))), to: today, bucket: 'month' },
+    lastYear: { key: 'lastYear', label: 'Last year', from: isoDate(new Date(Date.UTC(y - 1, 0, 1))), to: isoDate(new Date(Date.UTC(y - 1, 11, 31))), bucket: 'month' },
   };
 }
 
-/** Earliest date we must fetch to cover every range (start of the year). */
-const fetchStart = (now) => isoDate(new Date(Date.UTC(now.getUTCFullYear(), 0, 1)));
+// Earliest date any source must fetch to cover every range. "Last year" needs the
+// whole previous calendar year, so go back to Jan 1 of LAST year (was: this year).
+// NB: this widens the window for every metric source that calls it — the Odoo KPI
+// query + the per-day Jira counters (testexec.js, automation-tc.js) now span ~1.5
+// years. The Worklog page does NOT use this (it seeds its own this-year window).
+const fetchStart = (now) => isoDate(new Date(Date.UTC(now.getUTCFullYear() - 1, 0, 1)));
 
 /**
  * Aggregate a per-day, per-employee series for one range.

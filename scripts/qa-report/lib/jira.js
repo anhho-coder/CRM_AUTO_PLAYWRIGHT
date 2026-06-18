@@ -28,6 +28,10 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// Exponential backoff with a little jitter, capped at 30s.
+const backoffMs = (attempt) => Math.min(30000, 500 * 2 ** attempt) + Math.floor(Math.random() * 250);
+
 class JiraClient {
   constructor(cfg) {
     this.base = String(cfg.url || '').replace(/\/+$/, '');
@@ -46,17 +50,39 @@ class JiraClient {
       const qs = new URLSearchParams(query).toString();
       if (qs) url += (url.includes('?') ? '&' : '?') + qs;
     }
-    const res = await fetch(url, {
+    const init = {
       method,
       headers: { Authorization: this.auth, 'Content-Type': 'application/json', Accept: 'application/json' },
       body: body == null ? undefined : JSON.stringify(body),
-    });
-    if (!res.ok) {
+    };
+    // The per-day count metrics fire 1000+ requests/build at concurrency 8 against a
+    // SHARED Jira DC, so transient 429/503/timeout become likely; left unhandled, one
+    // rejection bubbles through mapLimit -> Promise.all and drops the whole metric.
+    // Retry the retryable ones with backoff (honouring Retry-After) and bound each
+    // attempt with a timeout. Non-retryable HTTP (e.g. 400/401/404) throws at once.
+    const MAX_RETRIES = 4, TIMEOUT_MS = 45000;
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(url, { ...init, signal: AbortSignal.timeout(TIMEOUT_MS) });
+      } catch (e) { // network error / timeout abort
+        if (attempt >= MAX_RETRIES) {
+          throw new Error(`Jira request failed on ${method} ${apiPath} after ${attempt + 1} tries — ${e.message || e}`);
+        }
+        await sleep(backoffMs(attempt));
+        continue;
+      }
+      if (res.ok) return res.json();
+      const retryable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+      if (retryable && attempt < MAX_RETRIES) {
+        const ra = Number(res.headers.get('retry-after'));
+        await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : backoffMs(attempt));
+        continue;
+      }
       const text = await res.text().catch(() => '');
       throw new Error(`Jira HTTP ${res.status} ${res.statusText} on ${method} ${apiPath}` +
         (text ? ` — ${text.slice(0, 300)}` : ''));
     }
-    return res.json();
   }
 
   /** Run a JQL search, following pagination until every issue is collected. */

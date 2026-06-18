@@ -83,7 +83,9 @@ function saveCache(obj) {
 }
 
 /**
- * @param ranges  the four selectable windows from lib/ranges.computeRanges()
+ * @param ranges  the selectable windows from lib/ranges.computeRanges() (the
+ *                worklog page uses the four base ones; the Metrics-only 'lastYear'
+ *                range is skipped — see below)
  * @param now     Date
  * @returns { columns:[{key,label,kind}], ranges:{ <rangeKey>: <aggregate> } }
  */
@@ -148,8 +150,13 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
 
   // 6) Aggregate into each selectable range. Also expose the per-day breakdown so
   //    the page can recompute a client-side custom date range without re-fetching.
+  //    Skip 'lastYear' (a Metrics-Report-only range): the worklog page only seeds
+  //    THIS year's data, so a lastYear bucket would just be an all-zero dead block.
   const out = {};
-  for (const r of Object.values(ranges)) out[r.key] = aggregateRange(entries, r);
+  for (const r of Object.values(ranges)) {
+    if (r.key === 'lastYear') continue;
+    out[r.key] = aggregateRange(entries, r);
+  }
   const daily = collapse(entries).map((e) => ({ d: e.date, t: e.tester, c: e.col, h: e.hours }));
   return {
     columns: WORKLOG_COLUMNS.map((c) => ({ key: c.key, label: c.label, kind: c.kind || 'bucket' })),

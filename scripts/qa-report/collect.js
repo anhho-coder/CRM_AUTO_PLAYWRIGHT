@@ -2,7 +2,7 @@
 /**
  * Orchestrator: gather every report section into qa-report-out/data/latest.json
  * (plus a dated snapshot in data/history/). Each KPI metric is aggregated into
- * the four selectable ranges. Each source is wrapped so one failing system never
+ * the selectable ranges. Each source is wrapped so one failing system never
  * blocks the rest of the report; the overall status drives the Jenkins build colour.
  *
  * Usage: node scripts/qa-report/collect.js

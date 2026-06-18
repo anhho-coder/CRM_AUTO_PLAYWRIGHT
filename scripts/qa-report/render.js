@@ -22,6 +22,10 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
 const fmt = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
 const EMP_COLORS = ['#6a3093', '#1e7e34', '#c0392b', '#2c7be5'];
 const RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'thisYear'];
+// The Metrics "By range" view adds "Last year" (full previous calendar year). The
+// Worklog page stays on RANGE_ORDER — it only seeds this-year data, so showing a
+// Last year button there would be empty. Hence Last year is Metrics-Report-only.
+const METRIC_RANGE_ORDER = [...RANGE_ORDER, 'lastYear'];
 const BAR_COLORS = { actual: '#1f4e96', forecast: '#1f4e96', current: '#27ae9a', goal: '#e8843c' };
 // Worklog column colours (by config key); anything unmapped falls back to the palette.
 const WL_COLORS = {
@@ -131,7 +135,7 @@ function rangeBlock(agg, active) {
 }
 
 function rangeSection(meta, m, def, lead) {
-  const blocks = RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def)).join('\n');
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def)).join('\n');
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
     ${blocks}
@@ -139,11 +143,13 @@ function rangeSection(meta, m, def, lead) {
 }
 
 function selector(ranges, def) {
-  return '<div class="ranges">' + RANGE_ORDER.map((k) =>
+  return '<div class="ranges">' + METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) =>
     `<button type="button" data-rangebtn="${k}" class="${k === def ? 'active' : ''}">${esc(ranges[k].label)}</button>`).join('') + '</div>';
 }
-function windowSpans(ranges, def) {
-  return RANGE_ORDER.map((k) =>
+// `order` defaults to the 4 base ranges (Worklog page); the Metrics view passes
+// METRIC_RANGE_ORDER so its "Showing …" line includes the Last year window too.
+function windowSpans(ranges, def, order = RANGE_ORDER) {
+  return order.filter((k) => ranges[k]).map((k) =>
     `<span class="range-window${k === def ? ' is-active' : ''}" data-range="${k}"><b>${esc(ranges[k].from)}</b> → <b>${esc(ranges[k].to)}</b></span>`).join('');
 }
 
@@ -546,7 +552,7 @@ function main() {
   </div>
 
   <div class="view${defView === 'range' ? ' is-active' : ''}" data-view="range">
-    <div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(data.ranges, defRange)}</div>
+    <div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(data.ranges, defRange, METRIC_RANGE_ORDER)}</div>
     ${selector(data.ranges, defRange)}
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
