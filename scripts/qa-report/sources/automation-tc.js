@@ -1,8 +1,9 @@
 'use strict';
 /**
  * Source: Jira — "Automation Test cases created" (and any future status-transition
- * Metrics Report metric). Counts CRM automation test cases on the day their status
- * changed to Resolved, split per tester (the tester who made the transition).
+ * Metrics Report metric). Counts test cases with `"Automation scope" = yes` on the
+ * day their status changed to Resolved, split per tester (the tester who made the
+ * transition).
  *
  * For each day × tester we run the team's EXACT per-day JQL once as a cheap
  * maxResults=0 count:

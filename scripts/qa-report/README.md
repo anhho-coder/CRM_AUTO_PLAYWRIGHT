@@ -64,19 +64,23 @@ Forecast/Goal. Because only the current year is fetched, the quarterly card show
 this year's quarters only.
 
 **Automation Test cases created** (`JIRA_TRANSITION_METRICS` in `config.js`,
-`sources/automation-tc.js`) counts CRM automation test cases on the day their
-status changed to **Resolved**, split per tester (the tester who made the
+`sources/automation-tc.js`) counts test cases with `"Automation scope" = yes` on the
+day their status changed to **Resolved**, split per tester (the tester who made the
 transition). Unlike the `created`-by-reporter metrics, the transition day isn't a
 returnable field, so — like *Manual Test cases executed* — the collector runs the
 team's **exact per-day JQL** once per (day, tester) as a cheap `maxResults=0`
 count. For one day `D` and one tester:
 
 ```
-issue in TestRepositoryFolderTests(CRM, "CRM automation", "true")
-AND "Automation scope" = yes
+"Automation scope" = yes
 AND status changed to (resolved) during ("<D> 00:00", "<D> 23:59") BY <tester>
 ```
 
+The earlier `issue in TestRepositoryFolderTests(CRM, "CRM automation", "true")`
+test-repository-folder clause was dropped per request 2026-06-18 — it under-counted
+(automation-scoped test cases resolved but not yet filed in that folder were missed).
+The `"Automation scope"` field is effectively CRM-only (verified: every match is
+project CRM, issuetype *Post-EA - Test Case*), so no project filter is needed.
 Running the team's own JQL per day means the page matches what they see in Jira
 exactly — no changelog re-derivation, no timezone re-projection (Jira evaluates the
 `during` window in the querying user's timezone, as the team does). The per-day
@@ -85,8 +89,9 @@ month bars; a test case resolved on N different days counts N times). A tester w
 no hits over the whole year is detected with one count and skipped, so an inactive
 tester costs 1 query instead of 365. It shows in the **By range** view; add
 `quarterly: true` to the metric to also surface the actual-only Quarterly card.
-*(Verified 2026-06-17 against Jira: 394 YTD for Anh Ho — Jan 13, Feb 13, Mar 209,
-Apr 71, May 88 — and 0 for Thuat Phung.)*
+*(Verified 2026-06-18 against Jira: 425 YTD for Anh Ho — Jan 13, Feb 13, Mar 209,
+Apr 71, May 88, Jun 31 — and 0 for Thuat Phung. The folder clause would give 394
+YTD; the +31 are June test cases not yet in the "CRM automation" folder.)*
 
 Planned (see the approved plan / `scripts/qa-report/sources/`): Features in test,
 FRD/Specs, TCs executed, AI/automation activity (from Jira, Confluence and the

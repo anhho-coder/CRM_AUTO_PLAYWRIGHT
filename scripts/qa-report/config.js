@@ -170,16 +170,20 @@ const JIRA_WORKLOG_METRICS = [
 // JIRA_WORKLOG_METRICS. Kept in a separate list because the JQL shape and source
 // module differ.
 //
-// "Automation Test cases created": CRM automation test cases (in the Test
-// Repository folder "CRM automation" with Automation scope = yes) counted on the
-// day their status changed to Resolved, by the tester who resolved them. `scopeJql`
-// is the folder + automation-scope filter; `kpiName` is the metric card subtitle.
+// "Automation Test cases created": test cases with `"Automation scope" = yes`
+// counted on the day their status changed to Resolved, by the tester who resolved
+// them. `scopeJql` is just the automation-scope filter — the earlier
+// `issue in TestRepositoryFolderTests(CRM, "CRM automation", "true")` test-repository
+// clause was dropped per request 2026-06-18 (it under-counted: automation-scoped
+// test cases resolved but not yet filed in that folder were missed). The field is
+// effectively CRM-only — verified all matches are project CRM, issuetype "Post-EA -
+// Test Case" — so no project filter is needed. `kpiName` is the metric card subtitle.
 const JIRA_TRANSITION_METRICS = [
   {
     key: 'automationTcCreated',
     label: 'Automation Test cases created',
-    kpiName: 'Jira · CRM automation tests resolved per day (by tester)',
-    scopeJql: 'issue in TestRepositoryFolderTests(CRM, "CRM automation", "true") AND "Automation scope" = yes',
+    kpiName: 'Jira · Automation-scope test cases resolved per day (by tester)',
+    scopeJql: '"Automation scope" = yes',
     changedToStatus: 'resolved',
   },
 ];
