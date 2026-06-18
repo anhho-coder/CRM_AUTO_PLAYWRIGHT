@@ -61,6 +61,9 @@ pipeline {
 
         stage('Generate combined Allure report') {
             steps {
+                // Inject each spec's /** ... */ header into its Allure result as the
+                // test Description (shows in the report's test Overview). No spec edits.
+                bat 'node ci/allure-inject-descriptions.js allure-merged .'
                 bat 'npx allure generate allure-merged --clean -o allure-report'
                 powershell '''
                   $ErrorActionPreference = 'Stop'
