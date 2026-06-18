@@ -5,13 +5,14 @@ import { LoginPage, HomePage, InvestmentPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * Investments - Planned Expenses Tab Verification Test
- * Test Case ID: CRM-2482_2.2.2.1.3
+ * Investments - Actual Expenses Tab Verification Test
+ * Test Case ID: CRM-2482_2.2.3.1.3
+ * Jira: CRM-9554
  *
- * Summary: Verify the ROI blocks of a Investment record includes "Type" row
+ * Summary: Verify the Actual expenses tab of a Investment record includes "Type" field
  *
  * Command to run:
- * npx playwright test --grep "CRM-2482_2.2.2.1.3" --project=chromium
+ * npx playwright test --grep "CRM-2482_2.2.3.1.3" --project=chromium
  *
  * Pre-condition:
  * 1. After login successful, click at "Investments" button
@@ -19,13 +20,16 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Steps to reproduce:
  * 1. Press "CREATE" button and wait
- * 2. Click at "Planned expenses" tab
+ * 2. Click at "Actual expenses" tab
  * 3. Press "Add a line" link and wait
  * 4. Click at "Type" field
  * 5. Verify "Type" field is a text field
+ *
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-18
  */
 
-test.describe('CRM-2482_2.2.2.1.3 - Verify Planned Expenses Tab includes Type row', () => {
+test.describe('CRM-2482_2.2.3.1.3 - Verify Actual Expenses Tab includes Type field', () => {
 
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -63,7 +67,7 @@ test.describe('CRM-2482_2.2.2.1.3 - Verify Planned Expenses Tab includes Type ro
     }
   });
 
-  test('CRM-2482_2.2.2.1.3: Verify the ROI blocks of a Investment record includes "Type" row', async ({ page }, testInfo) => {
+  test('CRM-2482_2.2.3.1.3: Verify the Actual expenses tab of a Investment record includes "Type" field', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Maximize browser window
@@ -109,13 +113,13 @@ test.describe('CRM-2482_2.2.2.1.3 - Verify Planned Expenses Tab includes Type ro
       console.log('✓ Create form opened');
     });
 
-    // Step 2: Click at Planned expenses tab
-    await test.step('Step 2: Click at "Planned expenses" tab', async () => {
-      console.log('=== STEP 2: CLICK PLANNED EXPENSES TAB ===');
+    // Step 2: Click at Actual expenses tab
+    await test.step('Step 2: Click at "Actual expenses" tab', async () => {
+      console.log('=== STEP 2: CLICK ACTUAL EXPENSES TAB ===');
 
-      await investmentPage.clickPlannedExpensesTab();
+      await investmentPage.clickActualExpensesTab();
 
-      console.log('✓ Planned expenses tab clicked and content loaded');
+      console.log('✓ Actual expenses tab clicked and content loaded');
     });
 
     // Step 3: Press "Add a line" link and wait
@@ -131,7 +135,7 @@ test.describe('CRM-2482_2.2.2.1.3 - Verify Planned Expenses Tab includes Type ro
     await test.step('Step 4: Click at "Type" field', async () => {
       console.log('=== STEP 4: CLICK "Type" FIELD ===');
 
-      await investmentPage.clickPlannedExpensesTypeField();
+      await investmentPage.clickActualExpensesTypeField();
 
       console.log('\u2713 "Type" field clicked');
     });
@@ -140,7 +144,7 @@ test.describe('CRM-2482_2.2.2.1.3 - Verify Planned Expenses Tab includes Type ro
     await test.step('Step 5: Verify "Type" field is a text field', async () => {
       console.log('=== STEP 5: VERIFY "Type" FIELD ===');
 
-      const isTextFieldValid = await investmentPage.verifyPlannedExpensesTypeField();
+      const isTextFieldValid = await investmentPage.verifyActualExpensesTypeField();
       expect(isTextFieldValid).toBeTruthy();
 
       console.log('  \u2713 "Type" field exists');

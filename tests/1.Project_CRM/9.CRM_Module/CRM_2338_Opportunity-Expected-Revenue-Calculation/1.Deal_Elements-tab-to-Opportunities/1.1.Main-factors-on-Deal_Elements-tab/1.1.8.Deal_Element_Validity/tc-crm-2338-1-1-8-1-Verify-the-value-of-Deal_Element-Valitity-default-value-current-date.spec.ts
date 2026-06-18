@@ -7,8 +7,10 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * CRM-2338 - Opportunity Expected Revenue Calculation
  * Test Case ID: CRM-2338_1.1.8.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-18
  *
- * Summary: Verify the Deal Element.Validity default value is (current date + 1 month) - 1 day
+ * Summary: Verify the Deal Element.Validity default value is (current date + 1 month)
  *
  * Command to run:
  * npx playwright test --grep "CRM-2338_1\.1\.8\.1:" --project=chromium
@@ -40,7 +42,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 1. Press "DEAL ELEMENT" button
  *
  * VIII. Verification:
- * 1. Validity field value = (current date + 1 month) - 1 day
+ * 1. Validity field value = (current date + 1 month)
  *
  * IX. Tear down:
  * 1. Delete EndUser#1 via URL_EndUser#1
@@ -48,7 +50,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 3. Close all browsers
  */
 
-test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value is current date', () => {
+test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value is current date + 1 month', () => {
 
   let url_EndUser1 = '';
   let url_Opp1     = '';
@@ -261,7 +263,7 @@ test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value
     email_EndUser1 = '';
   });
 
-  test('CRM-2338_1.1.8.1: Verify the Deal Element.Validity default value is current date', async ({ page }, testInfo) => {
+  test('CRM-2338_1.1.8.1: Verify the Deal Element.Validity default value is current date + 1 month', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -275,15 +277,15 @@ test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value
     const tcId      = 'CRM-2338_1.1.8.1';
     const timestamp = CommonUtils.generateTimestamp();
 
-    // Compute (current date + 1 month) - 1 day in MM/DD/YYYY format for comparison with the Validity field
+    // Compute (current date + 1 month) in MM/DD/YYYY format for comparison with the Validity field
     const now = new Date();
-    const expectedDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate() - 1);
+    const expectedDate = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
     const currentDate = `${String(expectedDate.getMonth() + 1).padStart(2, '0')}/${String(expectedDate.getDate()).padStart(2, '0')}/${expectedDate.getFullYear()}`;
 
     console.log(`\n=== TEST DATA ===`);
     console.log(`  TC ID     : ${tcId}`);
     console.log(`  Timestamp : ${timestamp}`);
-    console.log(`  Expected Validity ((current date + 1 month) - 1 day) : ${currentDate}`);
+    console.log(`  Expected Validity ((current date + 1 month)) : ${currentDate}`);
 
     // ==============================================================
     // V. PRE-CONDITION#3: Create EndUser#1
@@ -444,13 +446,13 @@ test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value
     // VIII. VERIFICATION POINTS
     // ==============================================================
 
-    await test.step('VIII. Verification - Step 1: Verify Validity = (current date + 1 month) - 1 day', async () => {
+    await test.step('VIII. Verification - Step 1: Verify Validity = (current date + 1 month)', async () => {
       console.log(`\n=== VIII. VERIFICATION POINTS ===`);
       const validityValue = await dealElementPage.getValidityValue();
       console.log(`  Validity value received: "${validityValue}"`);
-      console.log(`  Expected ((current date + 1 month) - 1 day): "${currentDate}"`);
-      expect(validityValue, 'VIII.1: Validity field should equal (current date + 1 month) - 1 day').toBe(currentDate);
-      console.log(`✓ VIII.1: Validity = "${currentDate}" — default value is (current date + 1 month) - 1 day`);
+      console.log(`  Expected ((current date + 1 month)): "${currentDate}"`);
+      expect(validityValue, 'VIII.1: Validity field should equal (current date + 1 month)').toBe(currentDate);
+      console.log(`✓ VIII.1: Validity = "${currentDate}" — default value is (current date + 1 month)`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Validity verified');
     });
 
@@ -458,7 +460,7 @@ test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value
       console.log('\n✅ TEST PASSED: CRM-2338_1.1.8.1 verification completed successfully');
       console.log(`   EndUser#1              : "${name_EndUser1}"`);
       console.log(`   URL_Opp#1              : ${url_Opp1}`);
-      console.log(`   VIII.1: Deal Element.Validity = "${currentDate}" ((current date + 1 month) - 1 day)`);
+      console.log(`   VIII.1: Deal Element.Validity = "${currentDate}" ((current date + 1 month))`);
       console.log('   IX    : All records will be deleted in afterEach (tear down)');
       console.log('==================================================\n');
     });

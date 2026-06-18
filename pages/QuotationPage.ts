@@ -562,11 +562,17 @@ export class QuotationPage extends BasePage {
   /**
    * Get the current Quotation / Sales Order status from the statusbar.
    * Uses JS evaluation to find the active statusbar state, normalised to title case.
-   * @param timeout - Maximum time to wait for the statusbar (default: 15000ms)
+   * @param timeout - Maximum time to wait for the form + statusbar (default: CommonUtils.waitTimes.pageLoad)
    * @returns The status string in title case, e.g. "Quotation", "Sales Order"
    */
-  async getQuotationStatus(timeout: number = 15000): Promise<string> {
-    // Wait for the statusbar container to be present at all
+  async getQuotationStatus(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<string> {
+    // Gate on the quotation form being loaded first - the SO number / name field is a reliable
+    // "form ready" signal. On a freshly-opened DRAFT quote the form (and its statusbar) can render
+    // late, so waiting for the form before the statusbar avoids a premature timeout. (The old 15s
+    // literal timed out on the draft "Quotation" state under load; sent/confirmed quotes passed.)
+    await this.salesOrderNumberField().waitFor({ state: 'visible', timeout }).catch(() => {});
+
+    // Wait for the statusbar container to be present
     const statusBarContainer = this.page.locator('.o_statusbar_status').first();
     await statusBarContainer.waitFor({ state: 'visible', timeout });
 

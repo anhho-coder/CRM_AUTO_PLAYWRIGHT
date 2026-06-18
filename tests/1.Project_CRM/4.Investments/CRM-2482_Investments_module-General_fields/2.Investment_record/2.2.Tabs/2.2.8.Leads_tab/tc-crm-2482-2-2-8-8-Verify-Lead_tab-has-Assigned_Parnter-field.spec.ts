@@ -9,6 +9,8 @@ import * as path from 'path';
 /**
  * Investments - Lead Tab Verification Test
  * Test Case ID: CRM-2482_2.2.8.8
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-18
  *
  * Summary: Verify the Lead tab of a Investment record includes "Assigned Partner" field
  *
@@ -238,6 +240,7 @@ test.describe('CRM-2482_2.2.8.8 - Verify the Lead tab of a Investment record inc
     });
 
     // Step 3: Verify Assigned Partner = BLANK
+    // (getLeadsFirstRowCellText now self-gates on the async lead row appearing.)
     await test.step('Step 3: Verify "Assigned Partner" value in Leads tab is blank', async () => {
       console.log('=== STEP 3: VERIFY ASSIGNED PARTNER ===');
 

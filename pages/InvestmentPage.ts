@@ -68,7 +68,10 @@ export class InvestmentPage extends BasePage {
 
   // Actual Expenses tab locators
   private readonly actualExpensesTab = () => this.page.locator('xpath=//a[contains(normalize-space(), "Actual expenses")] | //button[contains(normalize-space(), "Actual expenses")] | //li[contains(normalize-space(), "Actual expenses")]//a').first();
-  private readonly actualExpenses_addALineLink = () => this.page.locator('xpath=(//a[@role="button" and contains(text(),"Add a line")])[2]').first();
+  // Scoped to the ACTIVE/visible notebook tab pane (not a fragile global index): the "Add a line"
+  // inside whichever expenses tab is currently open. The caller opens the Actual expenses tab first,
+  // so this resolves to the Actual list's visible add-row link regardless of the other tabs' links.
+  private readonly actualExpenses_addALineLink = () => this.page.locator('xpath=//div[contains(@class,"tab-pane") and contains(@class,"active")]//a[@role="button" and contains(normalize-space(),"Add a line")]').first();
   private readonly actualExpensesDateField = () => this.page.locator('xpath=//td[contains(@class, "o_data_cell") and @name="date"]//input | //div[@name="date"]//input | //input[@name="date"]').first();
   private readonly actualExpensesDescriptionField = () => this.page.locator('xpath=//td/textarea[@name="description"]').first();
   private readonly actualExpensesTypeField = () => this.page.locator('xpath=(//div[@name="type_id"]/div/input[@type="text"])[2]').first();
@@ -1942,8 +1945,10 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     await this.page.waitForTimeout(2000);
   }
   async actualExpenses_clickAddALine(): Promise<void> {
-    await this.actualExpenses_addALineLink().click();
-    await this.page.waitForTimeout(2000);
+    const addALine = this.actualExpenses_addALineLink();
+    await addALine.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await addALine.click();
+    await this.page.waitForTimeout(CommonUtils.waitTimes.standard);
   }
 
   async clickPlannedExpensesDateField(): Promise<void> {
@@ -2143,6 +2148,40 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   async clickActualExpensesTab(): Promise<void> {
     await this.actualExpensesTab().click();
     await this.page.waitForTimeout(2000);
+  }
+
+  async clickActualExpensesTypeField(): Promise<void> {
+    await this.actualExpensesTypeField().click();
+    await this.page.waitForTimeout(CommonUtils.waitTimes.standard);
+  }
+
+  async verifyActualExpensesTypeField(): Promise<boolean> {
+    try {
+      const field = this.actualExpensesTypeField();
+
+      // Wait for field to be visible
+      await field.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+
+      // Verify it's a text input (Many2one fields render as input[type="text"])
+      const tagName = await field.evaluate((el) => el.tagName.toLowerCase());
+
+      if (tagName === 'input') {
+        const inputType = await field.getAttribute('type');
+        const isTextType = inputType === 'text' || inputType === null;
+        if (isTextType) {
+          console.log(`  ✓ Type field is a text input (type=${inputType})`);
+          return true;
+        }
+        console.log(`  ⚠️ Type field type unexpected: type=${inputType}`);
+        return false;
+      }
+
+      console.log(`  ⚠️ Type field has unexpected tag: ${tagName}`);
+      return false;
+    } catch (error) {
+      console.log(`  ⚠️ Error verifying Type field: ${error}`);
+      return false;
+    }
   }
 
   async clickActualExpensesDateField(): Promise<void> {
@@ -2397,46 +2436,41 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
    * @param columnHeader - The visible column header text (e.g. "Contact ID", "Email", "Company")
    */
   async getAudienceFirstRowCellText(columnHeader: string): Promise<string> {
-    await this.page.waitForSelector('table', { state: 'visible', timeout: 30000 });
+    // The audience import runs through a queue (and the linked Contact is created async), so the
+    // row loads asynchronously - wait for a REAL data row first (reload-retry). Without this the
+    // reader can pick up an empty filler row or the header-echo placeholder and return the wrong
+    // text (e.g. the concatenated column headers). Shared gate -> fixes every Audience-tab reader.
+    await this.waitForAudienceRowToAppear();
 
-    // Wait until the target table has at least one non-header row
-    await this.page.waitForFunction((header: string): boolean => {
-      const normalizeHeader = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase();
-      const tables = Array.from(document.querySelectorAll('table'));
-      for (const table of tables) {
-        const colIndex = Array.from(table.querySelectorAll('thead th, thead td')).findIndex((th) => {
-          const text = (th as HTMLElement).innerText ?? th.textContent ?? '';
-          return normalizeHeader(text) === normalizeHeader(header);
-        });
-        if (colIndex === -1) continue;
-        const nonHeadTrs = Array.from(table.querySelectorAll('tr')).filter(row => !row.closest('thead'));
-        if (nonHeadTrs.length > 0) return true;
-      }
-      return false;
-    }, columnHeader, { timeout: 30000 });
+    await this.page.waitForSelector('table', { state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
 
     const cellText = await this.page.evaluate((header: string): string | null => {
-      const normalizeHeader = (s: string): string => s.replace(/\s+/g, ' ').trim().toLowerCase();
-      const tables = Array.from(document.querySelectorAll('table'));
+      const norm = (s: string | null): string => (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+      // LEAF tables only - the audience grid is nested inside a control-panel wrapper table; a
+      // recursive querySelectorAll across both levels misaligns columns and matches the wrapper's
+      // header-echo row. Excluding tables that contain another table targets the real grid.
+      const tables = Array.from(document.querySelectorAll('table')).filter((t) => !t.querySelector('table'));
       for (const table of tables) {
-        const headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
-        const colIndex = headerCells.findIndex((th) => {
-          const text = (th as HTMLElement).innerText ?? th.textContent ?? '';
-          return normalizeHeader(text) === normalizeHeader(header);
-        });
+        let headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+        if (headerCells.length === 0) {
+          const headRow = table.querySelector('tr');
+          headerCells = headRow ? Array.from(headRow.querySelectorAll('th, td')) : [];
+        }
+        const colIndex = headerCells.findIndex(
+          (th) => norm((th as HTMLElement).innerText ?? th.textContent) === norm(header)
+        );
         if (colIndex === -1) continue;
 
-        // Include rows directly in table (without tbody) as well
-        const nonHeadTrs = Array.from(table.querySelectorAll('tr')).filter(row => !row.closest('thead'));
-        for (const row of nonHeadTrs) {
-          // Skip container/wrapper rows where cell[0] holds concatenated column names (multi-line)
-          const firstCell = row.querySelectorAll('td')[0];
-          if (firstCell) {
-            const firstCellText = (firstCell.innerText ?? firstCell.textContent ?? '').trim();
-            if (firstCellText.includes('\n')) continue;
-          }
-
-          const cell = row.querySelectorAll('td')[colIndex];
+        // Header text joined, so we can exclude any row that merely echoes the column headers.
+        const headerText = norm(headerCells.map((c) => c.textContent).join(' '));
+        const dataRows = Array.from(table.querySelectorAll('tr')).filter((row) => !row.closest('thead'));
+        for (const row of dataRows) {
+          const cells = row.querySelectorAll('td');
+          // Only a REAL data row: multiple cells, non-empty content, not the header-echo / filler row.
+          if (cells.length <= 1) continue;
+          const rowText = norm(row.textContent);
+          if (rowText.length === 0 || rowText === headerText) continue;
+          const cell = cells[colIndex] as HTMLElement | undefined;
           if (!cell) continue;
           return (cell.innerText ?? cell.textContent ?? '').trim();
         }
@@ -2449,6 +2483,60 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     }
 
     return cellText;
+  }
+
+  /**
+   * Wait until the Investment Audience tab shows a REAL imported data row (not just the empty
+   * filler / header-echo placeholder rows). The audience import runs through a queue, so the row
+   * appears asynchronously - poll, reloading the record and re-opening the Audience tab between
+   * attempts. Gate audience reads on this so we never read before the import has landed.
+   * @param maxAttempts - Max reload-and-check attempts (default 8)
+   */
+  async waitForAudienceRowToAppear(maxAttempts: number = 8): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.page.waitForSelector('table', { state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.standard);
+
+      const hasRow = await this.page.evaluate((): boolean => {
+        const norm = (s: string | null): string => (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        // Leaf tables only (the audience grid is nested in a control-panel wrapper table).
+        const tables = Array.from(document.querySelectorAll('table')).filter((t) => !t.querySelector('table'));
+        for (const table of tables) {
+          let headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+          if (headerCells.length === 0) {
+            const headRow = table.querySelector('tr');
+            headerCells = headRow ? Array.from(headRow.querySelectorAll('th, td')) : [];
+          }
+          const isAudience = headerCells.some((c) => {
+            const t = norm(c.textContent);
+            return t === 'contact id' || t === 'partner email';
+          });
+          if (!isAudience) continue;
+          const headerText = norm(headerCells.map((c) => c.textContent).join(' '));
+          const dataRows = Array.from(table.querySelectorAll('tr')).filter((r) => !r.closest('thead'));
+          const hasData = dataRows.some((r) => {
+            const rowText = norm(r.textContent);
+            return r.querySelectorAll('td').length > 1 && rowText.length > 0 && rowText !== headerText;
+          });
+          if (hasData) return true;
+        }
+        return false;
+      });
+
+      if (hasRow) {
+        if (attempt > 1) console.log(`  ✓ Audience row appeared in the Audience tab on attempt ${attempt}`);
+        return true;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⚠ Attempt ${attempt}/${maxAttempts}: no audience data row yet - reloading and re-opening the Audience tab...`);
+        await this.wait(CommonUtils.waitTimes.extraLong);
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.wait(CommonUtils.waitTimes.long);
+        await this.clickAudienceTab();
+      }
+    }
+    throw new Error(`No audience data row appeared in the Investment Audience tab after ${maxAttempts} attempts`);
   }
 
   /**
@@ -2467,23 +2555,49 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
    * @param columnHeader - The visible column header text (e.g. "Opportunity", "Email", "Sales Team", "Salesperson")
    */
   async getLeadsFirstRowCellText(columnHeader: string): Promise<string> {
+    // The Leads o2m list populates asynchronously after an import/save, so first wait until a real
+    // lead row exists (reload-retry). Without this the read can hit only the empty filler rows and
+    // throw a misleading "column header not found". Shared gate -> fixes every Leads-tab reader at once.
+    await this.waitForLeadsRowToAppear();
+
     // Wait for at least one table to be present, then do all DOM work in a single evaluate call
-    await this.page.waitForSelector('table', { state: 'visible', timeout: 30000 });
-    await this.page.waitForTimeout(1000);
+    await this.page.waitForSelector('table', { state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.standard);
 
     const cellText = await this.page.evaluate((header: string): string | null => {
+      // Odoo column headers/cells often contain a non-breaking space ( ), which
+      // String.trim() does NOT strip - so an exact "=== header" match silently misses
+      // (e.g. "Assigned Partner " !== "Assigned Partner"). Normalize nbsp + collapse
+      // whitespace before comparing; keep case for the returned value.
+      const clean = (s: string | null): string =>
+        (s ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+      const target = clean(header).toLowerCase();
+
       const tables = Array.from(document.querySelectorAll('table'));
       for (const table of tables) {
-        const headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
-        const colIndex = headerCells.findIndex(
-          (th) => (th.textContent ?? '').trim().toLowerCase() === header.toLowerCase()
-        );
+        // Header cells: prefer <thead>; fall back to the first row's cells for lists
+        // that render without a <thead>.
+        let headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+        if (headerCells.length === 0) {
+          const headRow = table.querySelector('tr');
+          headerCells = headRow ? Array.from(headRow.querySelectorAll('th, td')) : [];
+        }
+        const colIndex = headerCells.findIndex((c) => clean(c.textContent).toLowerCase() === target);
         if (colIndex === -1) continue;
-        const firstRow = table.querySelector('tbody tr');
-        if (!firstRow) continue;
-        const cell = firstRow.querySelectorAll('td')[colIndex];
+
+        // First data row: prefer <tbody>; otherwise the row after the header row.
+        let dataRow = table.querySelector('tbody tr');
+        if (!dataRow) {
+          const rows = Array.from(table.querySelectorAll('tr'));
+          dataRow = rows[1] ?? null;
+        }
+        if (!dataRow) continue;
+
+        const cells = Array.from(dataRow.querySelectorAll('th, td'));
+        const cell = cells[colIndex] as HTMLElement | undefined;
         if (!cell) continue;
-        return (cell.innerText ?? cell.textContent ?? '').trim();
+        // Normalize the returned value too - a "blank" Odoo cell can be &nbsp;.
+        return clean(cell.innerText ?? cell.textContent);
       }
       return null;
     }, columnHeader);
@@ -2493,6 +2607,60 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     }
 
     return cellText;
+  }
+
+  /**
+   * Wait until the Investment Leads tab shows a real lead/opp row (not just the empty filler rows).
+   * The lead is created/displayed asynchronously after an audience import, so poll - reloading the
+   * record and re-opening the Leads tab between attempts - until a data row appears. Gate the
+   * verification on this so we never read the Assigned Partner cell before the lead exists.
+   * @param maxAttempts - Max reload-and-check attempts (default 8)
+   * @returns true once a lead row is present; throws if none appears within the budget.
+   */
+  async waitForLeadsRowToAppear(maxAttempts: number = 8): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.page.waitForSelector('table', { state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.standard);
+
+      const hasLeadRow = await this.page.evaluate((): boolean => {
+        const norm = (s: string | null): string => (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        const tables = Array.from(document.querySelectorAll('table'));
+        for (const table of tables) {
+          // Identify the Leads list by a signature header column.
+          let headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+          if (headerCells.length === 0) {
+            const headRow = table.querySelector('tr');
+            headerCells = headRow ? Array.from(headRow.querySelectorAll('th, td')) : [];
+          }
+          const isLeadsTable = headerCells.some((c) => {
+            const t = norm(c.textContent);
+            return t === 'opportunity' || t === 'assigned partner';
+          });
+          if (!isLeadsTable) continue;
+          // A real lead row has actual content + multiple cells; empty filler rows are blank.
+          const bodyRows = Array.from(table.querySelectorAll('tbody tr'));
+          const hasData = bodyRows.some(
+            (r) => (r.textContent ?? '').replace(/\s+/g, '').length > 0 && r.querySelectorAll('th, td').length > 1
+          );
+          if (hasData) return true;
+        }
+        return false;
+      });
+
+      if (hasLeadRow) {
+        if (attempt > 1) console.log(`  ✓ Lead row appeared in the Leads tab on attempt ${attempt}`);
+        return true;
+      }
+
+      if (attempt < maxAttempts) {
+        console.log(`  ⚠ Attempt ${attempt}/${maxAttempts}: no lead row in the Leads tab yet - reloading and re-opening the Leads tab...`);
+        await this.wait(CommonUtils.waitTimes.extraLong);
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.wait(CommonUtils.waitTimes.long);
+        await this.clickLeadsTab();
+      }
+    }
+    throw new Error(`No lead row appeared in the Investment Leads tab after ${maxAttempts} attempts`);
   }
 
   async clickQuotesTab(): Promise<void> {
@@ -2523,19 +2691,33 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
       await this.page.waitForTimeout(1000);
 
       return this.page.evaluate((col: string): string | null => {
-        const tables = Array.from(document.querySelectorAll('table'));
+        const norm = (s: string | null): string => (s ?? '').replace(/\s+/g, ' ').trim().toLowerCase();
+        // Leaf tables only - the Quotes grid can be nested inside a control-panel wrapper table; a
+        // recursive querySelectorAll across both levels misaligns columns / matches the wrapper row.
+        const tables = Array.from(document.querySelectorAll('table')).filter((t) => !t.querySelector('table'));
         for (const table of tables) {
-          const headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+          let headerCells = Array.from(table.querySelectorAll('thead th, thead td'));
+          if (headerCells.length === 0) {
+            const headRow = table.querySelector('tr');
+            headerCells = headRow ? Array.from(headRow.querySelectorAll('th, td')) : [];
+          }
           const colIndex = headerCells.findIndex(
-            (th) => (th.textContent ?? '').trim().toLowerCase() === col.toLowerCase()
+            (th) => norm((th as HTMLElement).innerText ?? th.textContent) === norm(col)
           );
           if (colIndex === -1) continue;
-          const firstRow = table.querySelector('tbody tr');
-          if (!firstRow) continue;
-          const cell = firstRow.querySelectorAll('td')[colIndex];
-          if (!cell) continue;
-          const text = ((cell as HTMLElement).innerText ?? cell.textContent ?? '').trim();
-          return text.length > 0 ? text : null;
+          const headerText = norm(headerCells.map((c) => c.textContent).join(' '));
+          const dataRows = Array.from(table.querySelectorAll('tr')).filter((r) => !r.closest('thead'));
+          for (const row of dataRows) {
+            const cells = row.querySelectorAll('td');
+            // Only a REAL data row: multiple cells, non-empty, not the header-echo / filler row.
+            if (cells.length <= 1) continue;
+            const rowText = norm(row.textContent);
+            if (rowText.length === 0 || rowText === headerText) continue;
+            const cell = cells[colIndex] as HTMLElement | undefined;
+            if (!cell) continue;
+            const text = (cell.innerText ?? cell.textContent ?? '').trim();
+            return text.length > 0 ? text : null;
+          }
         }
         return null;
       }, columnHeader);
