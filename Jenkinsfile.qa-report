@@ -23,7 +23,7 @@ pipeline {
     }
 
     options {
-        timeout(time: 30, unit: 'MINUTES')
+        timeout(time: 60, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '30'))
     }
 
@@ -59,10 +59,11 @@ pipeline {
                     // exhausts the retries; the 'Check data status' stage below then
                     // marks the build UNSTABLE/FAILURE so incomplete data is never green.
                     script {
+                        def maxAttempts = 20
                         def st = 'failed'
-                        for (int attempt = 1; attempt <= 3; attempt++) {
+                        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                             if (attempt > 1) {
-                                echo "Collect attempt ${attempt}: previous run was '${st}', retrying for complete data…"
+                                echo "Collect attempt ${attempt}/${maxAttempts}: previous run was '${st}', retrying for complete data…"
                                 sleep time: 30, unit: 'SECONDS'
                             }
                             bat 'node scripts/qa-report/collect.js'
