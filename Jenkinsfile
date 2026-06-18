@@ -23,6 +23,11 @@ pipeline {
             defaultValue: '',
             description: 'Optional ad-hoc spec/folder/glob to run instead of the section (overrides PROJECT). Forward slashes.'
         )
+        string(
+            name: 'JIRA_PATH',
+            defaultValue: '',
+            description: 'Optional Jira/Xray Test Repository path, e.g. "CRM test/CRM module/CRM-10601 Veronikas request - Mass Mark lead as lost options" (or a deeper sub-folder, or just a CRM-#### key). Resolved to specs by ci/resolve-jira-path.js. Ignored when SPEC is set. Precedence: SPEC > JIRA_PATH > PROJECT.'
+        )
     }
 
     environment {
@@ -125,6 +130,27 @@ pipeline {
                         'CRM_O12'              : 'O12',
                     ]
                     def spec = params.SPEC?.trim()
+                    // JIRA_PATH (Jira/Xray Test Repository path) -> spec list via the resolver.
+                    // SPEC still wins; JIRA_PATH beats PROJECT. The matched list is echoed to
+                    // the build log so you can see exactly which specs will run.
+                    def jiraPath = params.JIRA_PATH?.trim()
+                    if (!spec && jiraPath) {
+                        echo "Resolving JIRA_PATH via ci/resolve-jira-path.js: ${jiraPath}"
+                        // Pass via env var + quoted %JP% so '&' and spaces in the path survive cmd.
+                        def out = ''
+                        withEnv(["JP=${jiraPath}"]) {
+                            out = bat(returnStdout: true, script: '@echo off\r\nnode ci\\resolve-jira-path.js "%JP%"').trim()
+                        }
+                        echo out
+                        def hit = (out =~ /(?m)^SPEC=(.+)$/)
+                        def resolved = hit ? hit[0][1].trim() : ''
+                        hit = null
+                        if (!resolved) {
+                            error "JIRA_PATH '${jiraPath}' resolved to no specs (see resolver output above)."
+                        }
+                        spec = resolved
+                        echo "JIRA_PATH resolved -> SPEC: ${spec}"
+                    }
                     def project = (params.PROJECT && params.PROJECT != 'auto') ? params.PROJECT : (jobToProject[env.JOB_BASE_NAME] ?: '')
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
