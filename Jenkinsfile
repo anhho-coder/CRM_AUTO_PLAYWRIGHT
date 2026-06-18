@@ -26,7 +26,12 @@ pipeline {
         string(
             name: 'JIRA_PATH',
             defaultValue: '',
-            description: 'Optional Jira/Xray Test Repository path, e.g. "CRM test/CRM module/CRM-10601 Veronikas request - Mass Mark lead as lost options" (or a deeper sub-folder, or just a CRM-#### key). Resolved to specs by ci/resolve-jira-path.js. Ignored when SPEC is set. Precedence: SPEC > JIRA_PATH > PROJECT.'
+            description: 'Optional Jira/Xray Test Repository path, e.g. "CRM test/CRM module/CRM-10601 Veronikas request - Mass Mark lead as lost options" (or a deeper sub-folder, or just a CRM-#### key). Resolved to specs by ci/resolve-jira-path.js. Ignored when SPEC is set. Precedence: SPEC > JIRA_PATH > GREP > PROJECT.'
+        )
+        string(
+            name: 'GREP',
+            defaultValue: '',
+            description: 'Optional Playwright --grep regex matched on test TITLES (the CRM-XXXX_X.X.X: prefix). Runs every matching test across all sections on chrome-headless. Combine several IDs with | to re-run an exact set. Ignored when SPEC or JIRA_PATH is set. Precedence: SPEC > JIRA_PATH > GREP > PROJECT.'
         )
     }
 
@@ -151,6 +156,9 @@ pipeline {
                         spec = resolved
                         echo "JIRA_PATH resolved -> SPEC: ${spec}"
                     }
+                    // GREP (Playwright --grep on test titles) -> re-run an exact set of IDs.
+                    // Used only when neither SPEC nor JIRA_PATH is set; beats PROJECT.
+                    def grepPat = params.GREP?.trim()
                     def project = (params.PROJECT && params.PROJECT != 'auto') ? params.PROJECT : (jobToProject[env.JOB_BASE_NAME] ?: '')
                     // Start each build with empty report/results dirs (the workspace
                     // persists between builds) so the published report is ONLY this run.
@@ -161,6 +169,12 @@ pipeline {
                     if (spec) {
                         echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec}"
                         bat "npx playwright test \"${spec}\" --project=chrome-headless"
+                    } else if (grepPat) {
+                        echo "Job '${env.JOB_BASE_NAME}' | GREP (title regex): ${grepPat}"
+                        // Pass via env var + quoted %GP% so the regex's | and \\ survive cmd.
+                        withEnv(["GP=${grepPat}"]) {
+                            bat 'npx playwright test --grep "%GP%" --project=chrome-headless'
+                        }
                     } else if (project) {
                         echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project}"
                         bat "npx playwright test --project=${project}"
