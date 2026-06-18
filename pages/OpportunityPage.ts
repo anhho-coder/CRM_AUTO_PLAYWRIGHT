@@ -157,6 +157,23 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   // Approval Status (state) field on the Opportunity form (CRM Developer tab).
   private readonly approvalStatusField = () =>
     this.page.locator("xpath=//tr[td/label[normalize-space()='Approval Status']]//span[@name='state'] | //span[@name='state']").first();
+  // The boolean "active" field on the Opportunity form (CRM Developer tab). An archived/deactivated
+  // record has active=false. Odoo may render two inputs (hidden + visible toggle); read the last one.
+  private readonly opportunityActiveInputs = () =>
+    this.page.locator("xpath=//div[@name='active']//input | //input[@name='active']");
+  // Visibility & Access (CRM-10601 section 3): generic helpers to read Action-menu option labels.
+  // The checkbox of the FIRST data row in a list (select any 1 record to reveal the list Action menu).
+  private readonly firstListRowCheckbox = () =>
+    this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]//td[contains(@class,'o_list_record_selector')]//input[@type='checkbox']").first();
+  // The first clickable data cell of the first row (to open that record's form/detail view).
+  private readonly firstListRowFirstCell = () =>
+    this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]//td[contains(@class,'o_data_cell')][1]").first();
+  // Every option label in the currently-open Action dropdown (list toolbar OR form control panel).
+  private readonly openActionMenuItems = () =>
+    this.page.locator("xpath=//div[contains(@class,'dropdown-menu') and contains(@class,'show')]//a[@role='menuitem']");
+  // The "Action" dropdown button on a record FORM (control panel) - text label "Action".
+  private readonly formActionMenuButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_control_panel')]//button[normalize-space()='Action']").first();
   // Mass Mark wizard: Cancel button, Lost Reason autocomplete options, and the error popup.
   private readonly massMarkCancelButton = () =>
     this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]//footer//button[@special='cancel'] | //div[contains(@class,'modal') and contains(@class,'show')]//footer//button[normalize-space()='Cancel'] | //div[contains(@class,'modal') and contains(@class,'show')]//button[normalize-space()='Cancel']").first();
@@ -1657,6 +1674,68 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Select the FIRST data row in the current list view (any record) by ticking its checkbox, to reveal
+   * the selection-dependent list "Action" menu. Read-only callers only (visibility checks) - no
+   * destructive action is taken on the selected record. Confirmed by the Action toolbar toggle appearing.
+   */
+  async selectFirstListRow(): Promise<void> {
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    const actionToggle = this.listSelectionActionToggle();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const cb = this.firstListRowCheckbox();
+      await cb.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait });
+      await cb.evaluate((el: HTMLInputElement) => {
+        el.checked = true;
+        el.dispatchEvent(new Event('click', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await this.wait(CommonUtils.waitTimes.medium);
+      const registered = await actionToggle.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+      if (registered) {
+        console.log(`  ✓ Selected the first list row (attempt ${attempt})`);
+        return;
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    throw new Error('Could not register selection of the first list row (the "Action" toolbar button never appeared).');
+  }
+
+  /**
+   * Open the first record in the current list (click its first data cell) and wait for the form view.
+   * Use for the "detail screen" visibility checks.
+   */
+  async openFirstListRecord(): Promise<void> {
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.firstListRowFirstCell().click();
+    await this.waitForURL('**view_type=form**', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Opened the first record (form/detail view)');
+  }
+
+  /**
+   * Open the "Action" dropdown on a record FORM (detail/control-panel) so its options can be read.
+   */
+  async clickFormActionMenu(): Promise<void> {
+    const btn = this.formActionMenuButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Form Action menu opened');
+  }
+
+  /**
+   * Read every visible option label in the currently-open Action dropdown (list toolbar OR form).
+   * Use to assert a specific option's presence/absence (e.g. "Mass Mark as Duplicate and Deactivate").
+   */
+  async getOpenActionMenuOptionLabels(): Promise<string[]> {
+    await this.openActionMenuItems().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const labels = (await this.openActionMenuItems().allTextContents()).map((t) => t.trim()).filter(Boolean);
+    console.log(`  - Action menu options (${labels.length}): ${JSON.stringify(labels)}`);
+    return labels;
+  }
+
+  /**
    * Wait for the Mass Mark wizard modal and return its title (e.g. "Mass Mark as Duplicate").
    */
   async waitForMassMarkWizard(): Promise<string> {
@@ -1724,6 +1803,19 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     } catch {
       return '';
     }
+  }
+
+  /**
+   * Read whether the Opportunity is currently Active (true) or deactivated/archived (false).
+   * Reads the boolean `active` field on the CRM Developer tab. Call clickCRMDeveloperTab() first so
+   * the field is rendered. Returns true (active) defensively if the field cannot be found/read.
+   * Used to verify the "Mass Mark as Duplicate and Deactivate" action deactivates the record.
+   */
+  async isOpportunityActive(): Promise<boolean> {
+    const inputs = this.opportunityActiveInputs();
+    const count = await inputs.count().catch(() => 0);
+    if (count === 0) return true;
+    return inputs.last().evaluate((el: HTMLInputElement) => el.checked).catch(() => true);
   }
 
   /**

@@ -98,6 +98,15 @@ export class ContactPage extends BasePage {
   // Form view: Delete option inside Action dropdown
   private readonly formActionMenuDeleteOption = () =>
     this.page.locator("xpath=//a[normalize-space()='Delete' or normalize-space()='DELETE'] | //span[normalize-space()='Delete' or normalize-space()='DELETE']/parent::a | //li[contains(@class,'o_menu_item')]//a[normalize-space()='Delete']").first();
+  // Visibility & Access (CRM-10601 3.4): first-row checkbox, first-row cell, open-menu items, selection toggle.
+  private readonly firstListRowCheckbox = () =>
+    this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]//td[contains(@class,'o_list_record_selector')]//input[@type='checkbox']").first();
+  private readonly firstListRowFirstCell = () =>
+    this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]//td[contains(@class,'o_data_cell')][1]").first();
+  private readonly openActionMenuItems = () =>
+    this.page.locator("xpath=//div[contains(@class,'dropdown-menu') and contains(@class,'show')]//a[@role='menuitem']");
+  private readonly listSelectionActionToggle = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_dropdown_toggler_btn') and (normalize-space()='Action' or normalize-space()='ACTION')] | //div[contains(@class,'o_cp_action_menus')]//button[normalize-space()='Action' or normalize-space()='ACTION']").first();
   // Sales & Purchases tab
   private readonly salesPurchasesTab = () =>
     this.page.locator("xpath=//a[contains(normalize-space(),'Sales & Purchases') or contains(normalize-space(),'Sales &amp; Purchases')]").first();
@@ -675,6 +684,64 @@ export class ContactPage extends BasePage {
     await btn.click();
     await this.wait(CommonUtils.waitTimes.standard);
     console.log('  ✓ Action menu opened');
+  }
+
+  /**
+   * Select the FIRST data row in the contacts list (any record) by ticking its checkbox, to reveal the
+   * selection-dependent list "Action" menu. Read-only callers only (visibility checks). Confirmed by the
+   * Action toolbar toggle appearing.
+   */
+  async selectFirstListRow(): Promise<void> {
+    const actionToggle = this.listSelectionActionToggle();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const cb = this.firstListRowCheckbox();
+      await cb.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait });
+      await cb.evaluate((el: HTMLInputElement) => {
+        el.checked = true;
+        el.dispatchEvent(new Event('click', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await this.wait(CommonUtils.waitTimes.medium);
+      const registered = await actionToggle.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+      if (registered) {
+        console.log(`  ✓ Selected the first contact row (attempt ${attempt})`);
+        return;
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    throw new Error('Could not register selection of the first contact row (the "Action" toolbar button never appeared).');
+  }
+
+  /**
+   * Open the first contact in the list (click its first data cell) and wait for the form view.
+   */
+  async openFirstListRecord(): Promise<void> {
+    await this.firstListRowFirstCell().click();
+    await this.page.waitForURL('**view_type=form**', { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Opened the first contact (form/detail view)');
+  }
+
+  /**
+   * Open the "Action" dropdown on a contact FORM (detail/control panel).
+   */
+  async clickFormActionMenu(): Promise<void> {
+    const btn = this.formActionMenuButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Form Action menu opened');
+  }
+
+  /**
+   * Read every visible option label in the currently-open Action dropdown (list toolbar OR form).
+   */
+  async getOpenActionMenuOptionLabels(): Promise<string[]> {
+    await this.openActionMenuItems().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const labels = (await this.openActionMenuItems().allTextContents()).map((t) => t.trim()).filter(Boolean);
+    console.log(`  - Action menu options (${labels.length}): ${JSON.stringify(labels)}`);
+    return labels;
   }
 
   /**
