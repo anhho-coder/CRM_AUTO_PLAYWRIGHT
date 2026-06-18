@@ -298,7 +298,10 @@ function worklogView(wl, ranges, def, help) {
       <ul>${genHelp}</ul>
     </div>
   </div>`;
-  return `<div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
+  const skipNote = wl.skipped
+    ? `<div class="warn">⚠ ${wl.skipped} issue(s) were skipped on worklog read (no permission / read error); their hours are not counted.</div>`
+    : '';
+  return `${skipNote}<div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
     <div class="ranges">${presetBtns}<button type="button" data-rangebtn="custom" id="wl-custom-btn">Custom date</button></div>
     <div class="wl-dates">
       <label>Start <input type="date" id="wl-start" min="${esc(minD)}" max="${esc(maxD)}"></label>

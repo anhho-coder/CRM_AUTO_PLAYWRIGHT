@@ -116,11 +116,18 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
 
   // 3) Read each issue's in-window worklogs; keep this team's, route by label.
   const startedAfterMs = Date.parse(fetchFrom + 'T00:00:00Z') - 2 * MS_DAY; // buffer; date string below is authoritative
+  const skipped = [];   // issues whose worklog read failed (permission/auth/transient)
   const perIssue = await mapLimit(issues, FETCH_CONCURRENCY, async (it) => {
     const labels = (it.fields && it.fields.labels) || [];
     if (labels.some((l) => EXCLUDE.has(l))) return [];   // drop excluded-label issues (e.g. QA-FTO/SL) entirely
     const labelCol = columnFor(labels);
-    const logs = await jira.issueWorklogs(it.key, startedAfterMs);
+    let logs;
+    try {
+      logs = await jira.issueWorklogs(it.key, startedAfterMs);
+    } catch (e) {
+      skipped.push({ key: it.key, error: String(e.message || e) });
+      return [];   // one unreadable issue must not sink the whole page
+    }
     const rows = [];
     for (const w of logs) {
       const user = w.author && w.author.name;
@@ -134,6 +141,17 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
     }
     return rows;
   });
+
+  // A few unreadable issues are tolerated (skipped); but if most failed it's an
+  // auth/permission problem (e.g. an expired/revoked token) — fail loudly so the
+  // page shows the error instead of publishing misleading zeros.
+  if (skipped.length) {
+    console.error(`[worklog] skipped ${skipped.length}/${issues.length} issues on worklog read: ` +
+      skipped.slice(0, 5).map((s) => s.key).join(', ') + (skipped.length > 5 ? ', …' : ''));
+    if (issues.length && skipped.length >= Math.max(3, Math.ceil(issues.length * 0.5))) {
+      throw new Error(`Jira worklog read failed for ${skipped.length}/${issues.length} issues — likely an auth/permission problem (token expired or revoked?). First: ${skipped[0].error}`);
+    }
+  }
 
   // 4) Merge fresh window with the cached older days, then persist the year store.
   const jiraEntries = collapse([...keptOld, ...perIssue.flat()]);
@@ -163,6 +181,7 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
     ranges: out,
     daily,
     issueCount: issues.length,
+    skipped: skipped.length,
   };
 }
 
