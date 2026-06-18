@@ -147,7 +147,8 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
   // page shows the error instead of publishing misleading zeros.
   if (skipped.length) {
     console.error(`[worklog] skipped ${skipped.length}/${issues.length} issues on worklog read: ` +
-      skipped.slice(0, 5).map((s) => s.key).join(', ') + (skipped.length > 5 ? ', …' : ''));
+      skipped.slice(0, 5).map((s) => s.key).join(', ') + (skipped.length > 5 ? ', …' : '') +
+      ` — first error: ${skipped[0].error}`); // surface the real HTTP status (transient 5xx/timeout vs permission)
     if (issues.length && skipped.length >= Math.max(3, Math.ceil(issues.length * 0.5))) {
       throw new Error(`Jira worklog read failed for ${skipped.length}/${issues.length} issues — likely an auth/permission problem (token expired or revoked?). First: ${skipped[0].error}`);
     }
