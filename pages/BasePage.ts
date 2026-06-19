@@ -21,6 +21,8 @@ export class BasePage {
   private readonly applicationMenuLink_basePage = () => this.page.locator('//a[@title="Applications"]').or(this.page.locator('//button[contains(., "Applications")]')).first();
   // User menu link using XPath - updated to match the actual element
   private readonly userMenuLink_basePage = () => this.page.locator('//li[@class="o_user_menu"]').first();
+  // Record form view container (XPath primary, CSS fallback)
+  private readonly formView_basePage = () => this.page.locator('//div[contains(@class,"o_form_view")]').or(this.page.locator('.o_form_view')).first();
   // ---------------------------------------------------------------------------
   // Private locator methods
   // ---------------------------------------------------------------------------
@@ -246,6 +248,16 @@ await newPage.close();
     } catch {
       await this.page.waitForTimeout(timeout);
     }
+  }
+
+  /**
+   * Best-effort wait for the record form view to render. Non-throwing: resolves as
+   * soon as the form is visible, and silently continues if it never appears (callers
+   * that strictly need an element should wait on that element specifically).
+   * @param timeout - Maximum time to wait (default: abnormalWait)
+   */
+  async waitForFormView(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    await this.formView_basePage().waitFor({ state: 'visible', timeout }).catch(() => {});
   }
 
   /**

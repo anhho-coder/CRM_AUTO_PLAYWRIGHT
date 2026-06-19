@@ -371,7 +371,7 @@ test.describe('TC.Performance.1.1.5.5 - Reject Quotation Performance', () => {
         await maxPage.waitForTimeout(CommonUtils.waitTimes.long);
         
         // Wait for page to fully load
-        await maxPage.locator('.o_form_view').waitFor({ state: 'visible', timeout: 10000 }).catch(() => {});
+        await maxBasePage.waitForFormView();
         await maxPage.waitForTimeout(CommonUtils.waitTimes.long);
         console.log('  - Page loaded, waiting for approval state...');
         
