@@ -193,7 +193,7 @@ test.describe('TC.BDR.1.1.1.4 - BDR Team Assignment for Partner Sign up Promote 
       console.log('  - Waiting up to 1.5 minutes for Sales Team to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = 90000; // 1.5 minutes in milliseconds
+      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salesTeamValue = '';

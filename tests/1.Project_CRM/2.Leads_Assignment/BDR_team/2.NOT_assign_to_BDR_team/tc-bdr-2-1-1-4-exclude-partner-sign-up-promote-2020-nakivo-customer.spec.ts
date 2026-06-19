@@ -188,7 +188,7 @@ test.describe('TC.BDR.2.1.1.4 - BDR Team Exclusion for Partner Sign up Promote 2
       console.log('  ⏳ Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = 90000; // 1.5 minutes in milliseconds
+      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
       let fieldsAssigned = false;
       let salesTeamValue = '';
       let salespersonValue = '';

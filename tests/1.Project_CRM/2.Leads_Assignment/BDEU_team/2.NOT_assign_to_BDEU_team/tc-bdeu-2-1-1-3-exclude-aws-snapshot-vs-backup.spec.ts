@@ -194,7 +194,7 @@ test.describe('TC.BDEU.2.1.1.3 - BDEU Team Exclusion for AWS Snapshot vs. Backup
       console.log('  - Waiting up to 1.5 minutes for Sales Team to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = 90000; // 1.5 minutes in milliseconds
+      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salesTeamValue = '';

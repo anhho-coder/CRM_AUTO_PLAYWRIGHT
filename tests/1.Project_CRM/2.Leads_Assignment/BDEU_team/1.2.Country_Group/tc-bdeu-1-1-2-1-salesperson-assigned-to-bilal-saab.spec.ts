@@ -196,7 +196,7 @@ test.describe('TC.BDEU.1.1.2.1 - Salesperson Assignment to Bilal Saab', () => {
       console.log('  - Waiting up to 1.5 minutes for Salesperson to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = 90000; // 1.5 minutes in milliseconds
+      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salespersonAssigned = false;
       let salespersonValue = '';
