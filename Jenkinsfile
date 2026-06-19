@@ -47,10 +47,11 @@ pipeline {
     }
 
     options {
-        // Generous cap so whole-folder jobs (e.g. 4.Investments has 150+ specs, run
-        // sequentially with workers:1) are not cut off. Single-spec jobs finish in
-        // minutes regardless. Scope a job to a sub-folder to keep runs short.
-        timeout(time: 480, unit: 'MINUTES')
+        // Cap a single build at 90 min: a healthy section/sub-folder run finishes well
+        // inside this, so exceeding it means the run is stuck or the env is flaky -
+        // abort fast and free the executor instead of grinding for hours. Scope jobs to
+        // sub-folders (SPEC/JIRA_PATH/GREP) to stay comfortably under the cap.
+        timeout(time: 90, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // One run per job at a time: clicking Build twice queues rather than running
         // two concurrent builds that fight for executors / spawn @2 workspaces.
