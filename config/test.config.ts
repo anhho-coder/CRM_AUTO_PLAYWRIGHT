@@ -16,7 +16,7 @@ export const config = {
     urlWait: 60000, // 60 seconds - waiting for URL changes
     loadingSpinner: 30000, // 30 seconds - waiting for loading spinner to disappear
     salesTeamAssignment: {
-      maxWaitTime: 90000, // 1.5 minutes in milliseconds
+      maxWaitTime: 480000, // 8 minutes - async assignment runs on a cron and can take minutes; 1.5 min was too short and caused empty-Team/Salesperson flakes. Stays within the 15-min per-test timeout (config.timeouts.test) with headroom for the create/navigate steps.
       checkInterval: 10000, // Check every 10 seconds
     },
   },
