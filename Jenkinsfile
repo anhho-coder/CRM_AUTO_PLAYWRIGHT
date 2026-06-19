@@ -243,6 +243,27 @@ pipeline {
                 Write-Host "WARNING: could not stash Allure results: $($_.Exception.Message)"
               }
             '''
+            // Also drop a DATE-stamped copy under C:\allure\periods\results\<yyyy-MM-dd>\<JOB>\
+            // (separate tree, NOT scanned by the Total report). The per-period Allure jobs
+            // (CRM-Allure-Daily/Monthly/Quarterly/Yearly) freeze a completed period from these,
+            // so you can open "yesterday's / last month's" report the next day. Overwrites this
+            // job's slice for today, so a day's bucket = that job's last run of the day.
+            powershell '''
+              try {
+                $day  = (Get-Date).ToString('yyyy-MM-dd')
+                $dest = "C:\\allure\\periods\\results\\$day\\$env:JOB_BASE_NAME"
+                if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                if (Test-Path allure-results) {
+                  Get-ChildItem -LiteralPath allure-results -Force | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+                  }
+                  Write-Host "Stashed dated Allure results -> $dest"
+                } else { Write-Host 'No allure-results to stash (dated bucket).' }
+              } catch {
+                Write-Host "WARNING: could not stash dated Allure results: $($_.Exception.Message)"
+              }
+            '''
         }
         success {
             echo 'Tests passed!'

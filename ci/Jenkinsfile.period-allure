@@ -1,0 +1,97 @@
+// Per-PERIOD combined Allure report (frozen snapshot you can look back at).
+//
+// FOUR jobs share this one Jenkinsfile and differ only by job name (same pattern as the
+// section jobs / jobToProject map). Each runs once on a cron AFTER its period ends and
+// freezes the just-completed period's report; Jenkins keepAll keeps every build, so the
+// next day/month/quarter/year you open the relevant build -> "Allure Report".
+//
+//   Job name              Scope       Cron (when it freezes the PREVIOUS period)
+//   CRM-Allure-Daily      daily       ~05:00 every day      -> yesterday
+//   CRM-Allure-Weekly     weekly      ~05:00 every Monday   -> last ISO week (Mon..Sun)
+//   CRM-Allure-Monthly    monthly     ~05:00 on the 1st     -> last month
+//   CRM-Allure-Quarterly  quarterly   ~05:00 on 1 Jan/Apr/Jul/Oct -> last quarter
+//   CRM-Allure-Yearly     yearly      ~05:00 on 1 Jan       -> last year
+//
+// All five run in the 05:00 hour; the 'H' in the minute field hashes each job to its own
+// fixed minute so they don't all fire at the same instant. Report generation is light
+// (no browser), and Jenkins never interrupts a running build -> these queue behind any
+// in-progress job and wait for a free executor.
+//
+// Pipeline -> Script Path: ci/Jenkinsfile.period-allure   (for all five jobs)
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    options {
+        timeout(time: 60, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '200'))   // keep plenty of frozen periods
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    // Each job picks up only the cron line that matches its own name. All in the 05:00 hour;
+    // 'H' staggers the minute per job so they don't fire simultaneously.
+    triggers {
+        cron(
+            env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? 'H 5 * * 1'        :
+            env.JOB_BASE_NAME == 'CRM-Allure-Monthly'   ? 'H 5 1 * *'        :
+            env.JOB_BASE_NAME == 'CRM-Allure-Quarterly' ? 'H 5 1 1,4,7,10 *' :
+            env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
+                                                          'H 5 * * *'          // default: daily
+        )
+    }
+
+    stages {
+        stage('Resolve scope from job name') {
+            steps {
+                script {
+                    def jobScope = [
+                        'CRM-Allure-Daily'    : 'daily',
+                        'CRM-Allure-Weekly'   : 'weekly',
+                        'CRM-Allure-Monthly'  : 'monthly',
+                        'CRM-Allure-Quarterly': 'quarterly',
+                        'CRM-Allure-Yearly'   : 'yearly'
+                    ]
+                    env.SCOPE = jobScope[env.JOB_BASE_NAME] ?: 'daily'
+                    echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}"
+                }
+            }
+        }
+
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install deps (allure-commandline)') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Freeze period Allure report') {
+            steps {
+                bat "powershell -NoProfile -ExecutionPolicy Bypass -File ci\\allure-period-report.ps1 -Scope ${env.SCOPE}"
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'allure-report',
+                reportFiles: 'index.html',
+                reportName: 'Allure-Report'
+            ])
+            archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+        }
+    }
+}

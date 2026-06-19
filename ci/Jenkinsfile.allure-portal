@@ -1,0 +1,50 @@
+// CRM-Allure-Portal — one bookmarkable landing page linking to all period reports.
+//
+// Publishes a tiny static page (ci/allure-build-portal.ps1) as "Allure Portal":
+//   http://<jenkins>/job/CRM-Allure-Portal/Allure_20Portal/
+// Cards link to the LATEST build report of each period job (Daily/Weekly/Monthly/
+// Quarterly/Yearly) + the Total report. Refreshes daily at 06:00 (after the 05:00
+// period jobs) so the "latest period" labels stay current.
+//
+// Pipeline -> Script Path: ci/Jenkinsfile.allure-portal
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 10, unit: 'MINUTES')
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    triggers {
+        cron('0 6 * * *')   // after the 05:00 period jobs have refreshed their latest folders
+    }
+
+    stages {
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+        stage('Build portal page') {
+            steps {
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File ci\\allure-build-portal.ps1'
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: false,
+                reportDir: 'portal',
+                reportFiles: 'index.html',
+                reportName: 'Allure-Portal'
+            ])
+        }
+    }
+}
