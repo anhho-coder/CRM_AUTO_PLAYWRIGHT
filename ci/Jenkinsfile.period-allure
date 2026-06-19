@@ -42,6 +42,7 @@ pipeline {
 
     // Each job picks up only the cron line that matches its own name. All in the 05:00 hour;
     // 'H' staggers the minute per job so they don't fire simultaneously.
+    // CRON runs freeze the PREVIOUS (completed) period -> clean archival snapshot.
     triggers {
         cron(
             env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? 'H 5 * * 1'        :
@@ -49,6 +50,15 @@ pipeline {
             env.JOB_BASE_NAME == 'CRM-Allure-Quarterly' ? 'H 5 1 1,4,7,10 *' :
             env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
                                                           'H 5 * * *'          // default: daily
+        )
+        // LIVE refresh: only Daily & Weekly rebuild after any section job finishes, and
+        // (see Resolve stage) generate the CURRENT period so today's runs show up same-day.
+        // Monthly/Quarterly/Yearly stay cron-only (they aggregate many buckets / change slowly).
+        upstream(
+            upstreamProjects: (env.JOB_BASE_NAME == 'CRM-Allure-Daily' || env.JOB_BASE_NAME == 'CRM-Allure-Weekly')
+                ? 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12'
+                : '',
+            threshold: hudson.model.Result.FAILURE   // refresh even when some tests failed
         )
     }
 
@@ -64,7 +74,13 @@ pipeline {
                         'CRM-Allure-Yearly'   : 'yearly'
                     ]
                     env.SCOPE = jobScope[env.JOB_BASE_NAME] ?: 'daily'
-                    echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}"
+
+                    // Cause-based period: a section job finishing (UpstreamCause) means we want
+                    // TODAY's live data -> generate the CURRENT period. Cron/manual without an
+                    // explicit PERIOD keeps the default (previous, completed) period.
+                    def upstreamHit = currentBuild.getBuildCauses().any { (it._class ?: '').contains('UpstreamCause') }
+                    env.CURRENT = (upstreamHit && !(params.PERIOD?.trim())) ? 'true' : 'false'
+                    echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
                 }
             }
         }
@@ -85,7 +101,8 @@ pipeline {
         stage('Freeze period Allure report') {
             steps {
                 script {
-                    def periodArg = (params.PERIOD?.trim()) ? " -Period ${params.PERIOD.trim()}" : ''
+                    def periodArg = (params.PERIOD?.trim()) ? " -Period ${params.PERIOD.trim()}" :
+                                    (env.CURRENT == 'true' ? ' -Current' : '')
                     bat "powershell -NoProfile -ExecutionPolicy Bypass -File ci\\allure-period-report.ps1 -Scope ${env.SCOPE}${periodArg}"
                 }
             }

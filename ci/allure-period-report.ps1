@@ -28,7 +28,11 @@ param(
 
     # Optional: regenerate a specific past period instead of "the one that just ended".
     #   daily=yyyy-MM-dd  weekly=yyyy-Www  monthly=yyyy-MM  quarterly=yyyy-Qn  yearly=yyyy
-    [string]$Period = ''
+    [string]$Period = '',
+
+    # Generate the CURRENT (in-progress) period instead of the previous completed one.
+    # Used for the live same-day refresh triggered by section jobs. Ignored if -Period is set.
+    [switch]$Current
 )
 
 $ErrorActionPreference = 'Stop'
@@ -48,7 +52,7 @@ $prefixes  = @()    # a dated bucket matches if its name == prefix OR starts wit
 
 switch ($Scope) {
     'daily' {
-        $t = if ($Period) { [datetime]::ParseExact($Period, 'yyyy-MM-dd', $inv) } else { $now.AddDays(-1) }
+        $t = if ($Period) { [datetime]::ParseExact($Period, 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddDays(-1) }
         $periodKey = $t.ToString('yyyy-MM-dd')
         $prefixes  = @($periodKey)                       # exact day folder
     }
@@ -61,7 +65,7 @@ switch ($Scope) {
             $monday = $jan4.AddDays((1 - $d4) + ($wn - 1) * 7)
         }
         else {
-            $t  = $now.AddDays(-7)                        # a day inside the previous ISO week
+            $t  = if ($Current) { $now } else { $now.AddDays(-7) }   # a day inside the target ISO week
             $dt = [int]$t.DayOfWeek; if ($dt -eq 0) { $dt = 7 }
             $monday = $t.AddDays(1 - $dt)                 # Monday of that week
         }
@@ -71,18 +75,18 @@ switch ($Scope) {
         $prefixes  = (0..6 | ForEach-Object { $monday.AddDays($_).ToString('yyyy-MM-dd') })   # 7 exact day folders
     }
     'monthly' {
-        $t = if ($Period) { [datetime]::ParseExact("$Period-01", 'yyyy-MM-dd', $inv) } else { $now.AddMonths(-1) }
+        $t = if ($Period) { [datetime]::ParseExact("$Period-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddMonths(-1) }
         $periodKey = $t.ToString('yyyy-MM')
         $prefixes  = @($periodKey)                       # 2026-06-*
     }
     'quarterly' {
         if ($Period -match '^(\d{4})-Q([1-4])$') { $py = [int]$Matches[1]; $q = [int]$Matches[2] }
-        else { $t = $now.AddMonths(-3); $py = $t.Year; $q = [int][math]::Ceiling($t.Month / 3) }
+        else { $t = if ($Current) { $now } else { $now.AddMonths(-3) }; $py = $t.Year; $q = [int][math]::Ceiling($t.Month / 3) }
         $periodKey = "$py-Q$q"
         $prefixes  = (1..3 | ForEach-Object { '{0}-{1:D2}' -f $py, ((($q - 1) * 3) + $_) })   # 2026-04-*,05-*,06-*
     }
     'yearly' {
-        $t = if ($Period) { [datetime]::ParseExact("$Period-01-01", 'yyyy-MM-dd', $inv) } else { $now.AddYears(-1) }
+        $t = if ($Period) { [datetime]::ParseExact("$Period-01-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddYears(-1) }
         $periodKey = $t.ToString('yyyy')
         $prefixes  = @($periodKey)                       # 2026-*
     }

@@ -18,7 +18,10 @@ pipeline {
     }
 
     triggers {
-        cron('0 6 * * *')   // after the 05:00 period jobs have refreshed their latest folders
+        cron('0 6 * * *')   // daily after the 05:00 period jobs refresh their latest folders
+        // Also refresh right after the live Daily/Weekly reports rebuild, so the portal's
+        // "Latest period" labels and links stay current during the day.
+        upstream(upstreamProjects: 'CRM-Allure-Daily,CRM-Allure-Weekly', threshold: hudson.model.Result.FAILURE)
     }
 
     stages {
