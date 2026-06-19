@@ -32,6 +32,14 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    // Optional override to (re)generate a SPECIFIC past period instead of the scheduled
+    // "previous" one. Leave blank for cron runs. Formats by scope:
+    //   daily=yyyy-MM-dd  weekly=yyyy-Www  monthly=yyyy-MM  quarterly=yyyy-Qn  yearly=yyyy
+    parameters {
+        string(name: 'PERIOD', defaultValue: '',
+               description: 'Optional period to regenerate (else the previous period). daily=2026-06-19, weekly=2026-W25, monthly=2026-06, quarterly=2026-Q2, yearly=2026.')
+    }
+
     // Each job picks up only the cron line that matches its own name. All in the 05:00 hour;
     // 'H' staggers the minute per job so they don't fire simultaneously.
     triggers {
@@ -76,7 +84,10 @@ pipeline {
 
         stage('Freeze period Allure report') {
             steps {
-                bat "powershell -NoProfile -ExecutionPolicy Bypass -File ci\\allure-period-report.ps1 -Scope ${env.SCOPE}"
+                script {
+                    def periodArg = (params.PERIOD?.trim()) ? " -Period ${params.PERIOD.trim()}" : ''
+                    bat "powershell -NoProfile -ExecutionPolicy Bypass -File ci\\allure-period-report.ps1 -Scope ${env.SCOPE}${periodArg}"
+                }
             }
         }
     }
