@@ -332,11 +332,7 @@ test.describe('TC.Performance.1.1.5.5 - Reject Quotation Performance', () => {
           // Create a new browser context for Max with video recording enabled
           maxContext = await browser.newContext({
             viewport: { width: 1920, height: 1080 },
-            recordVideo: {
-              dir: 'test-results',
-              size: { width: 1920, height: 1080 }
-            }
-          });
+            ...(process.env.CI ? {} : { recordVideo: { dir: 'test-results', size: { width: 1920, height: 1080 } } })});
           maxPage = await maxContext.newPage();
           
           // Login as Max

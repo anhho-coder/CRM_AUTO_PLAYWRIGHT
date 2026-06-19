@@ -225,7 +225,7 @@ test.describe('TC.-A.6.3 - Confirm an approved Quotation to a Sales Order', () =
       // recordVideo is required for every context: a manually-created context does NOT inherit use.video
       managerContext = await browser.newContext({
         viewport: { width: 1920, height: 1080 },
-        recordVideo: { dir: 'test-results', size: { width: 1920, height: 1080 } },
+        ...(process.env.CI ? {} : { recordVideo: { dir: 'test-results', size: { width: 1920, height: 1080 } } })
       });
       const managerPage = await managerContext.newPage();
       const managerLoginPage = new LoginPage(managerPage);
