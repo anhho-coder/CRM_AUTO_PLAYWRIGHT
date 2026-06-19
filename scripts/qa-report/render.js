@@ -165,8 +165,11 @@ function sourceBanner(sources) {
 function pageNav(active) {
   const tab = (href, key, label) =>
     `<a href="${href}" class="pgtab${active === key ? ' active' : ''}">${esc(label)}</a>`;
-  return `<div class="pagenav">${tab('index.html', 'metrics', 'Metrics Report')}` +
-    `${tab('worklog.html', 'worklog', 'Worklog allocation')}</div>`;
+  return `<div class="pagenav">` +
+    tab('index.html', 'manual', 'Manual test') +
+    tab('automation.html', 'automation', 'Automation test') +
+    tab('worklog.html', 'worklog', 'Worklog allocation') +
+    `</div>`;
 }
 
 // Allow header wrapping only after '_' and '/' (and spaces) so multi-word labels
@@ -520,15 +523,12 @@ function main() {
   const data = JSON.parse(fs.readFileSync(path.join(cfg.DATA_DIR, 'latest.json'), 'utf8'));
   const defView = data.defaultView || 'quarterly';
   const defRange = data.defaultRange || 'lastWeek';
-  // Odoo KPI metrics + Jira-sourced metrics. The quarterly view filters to those
-  // with Odoo quarterly Forecast/Goal data (Jira metrics have none, so they fall
-  // out automatically); the "By range" view shows every metric with range data.
-  const metrics = [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS];
 
-  const quarterlySections = metrics.filter((meta) => data.quarterly && data.quarterly[meta.key])
-    .map((meta, i) => quarterlySection(meta, data.quarterly[meta.key], i === 0)).join('\n');
-  const rangeSections = metrics.filter((meta) => data.metrics[meta.key])
-    .map((meta, i) => rangeSection(meta, data.metrics[meta.key], defRange, i === 0)).join('\n');
+  // Metric metadata by key (Odoo KPI + all Jira-sourced metrics) so each section
+  // page can pull exactly the metrics it lists in config.SECTIONS, in that order.
+  const metaByKey = {};
+  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS]
+    .forEach((m) => { metaByKey[m.key] = m; });
 
   const subline = `Team: ${esc(data.members.join(', '))} · Manager: Anh Ho` +
     ` · Generated ${esc(data.generatedAt.replace('T', ' ').slice(0, 16))} UTC`;
@@ -537,12 +537,21 @@ function main() {
 <title>${esc(title)}</title>
 <link rel="stylesheet" href="styles.css">
 </head><body>`;
+  const metricsFoot = 'Sources: Odoo <code>nakivo.kpi.database</code> + <code>nakivo.quarterly.kpi.detail</code> and <code>Jira</code> (support tickets, automation, worklog-based counts) · regenerated daily · self-contained page.';
 
-  const html = `${docHead('CRM QA Report')}
+  // One metrics page per section (Manual test / Automation test). Each keeps the
+  // Quarterly KPI + By range sub-views but renders ONLY that section's metrics.
+  const metricsPageHtml = (section, navKey, title) => {
+    const metrics = section.metricKeys.map((k) => metaByKey[k]).filter(Boolean);
+    const quarterlySections = metrics.filter((m) => data.quarterly && data.quarterly[m.key])
+      .map((m, i) => quarterlySection(m, data.quarterly[m.key], i === 0)).join('\n');
+    const rangeSections = metrics.filter((m) => data.metrics[m.key])
+      .map((m, i) => rangeSection(m, data.metrics[m.key], defRange, i === 0)).join('\n');
+    return `${docHead(title)}
 <div class="hero">
-  <h1>CRM QA Team — Metrics Report</h1>
+  <h1>CRM QA Team — ${esc(section.label)}</h1>
   <div class="sub">${subline}</div>
-  ${pageNav('metrics')}
+  ${pageNav(navKey)}
 </div>
 <div class="wrap">
   ${sourceBanner(data.sources)}
@@ -561,10 +570,16 @@ function main() {
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 
-  <div class="foot">Source: Odoo <code>nakivo.quarterly.kpi.detail</code> + <code>nakivo.kpi.database</code>; Support Ticket created &amp; Bugs found by automation test (by reporter) &amp; Manual Test cases executed (by worklog) &amp; Automation Test cases created (by status transition) from <code>Jira</code> · regenerated daily · self-contained page.</div>
+  <div class="foot">${metricsFoot}</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;
+  };
+
+  const manualSec = cfg.SECTIONS.find((s) => s.key === 'manual');
+  const automationSec = cfg.SECTIONS.find((s) => s.key === 'automation');
+  const manualHtml = metricsPageHtml(manualSec, 'manual', 'CRM QA — Manual test');
+  const automationHtml = metricsPageHtml(automationSec, 'automation', 'CRM QA — Automation test');
 
   // --- Worklog allocation page (worklog.html) --------------------------------
   // Embed the per-day worklog data + per-column colours so app.js can recompute
@@ -602,9 +617,10 @@ ${wlDataScript}
   fs.mkdirSync(cfg.OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'styles.css'), CSS);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'app.js'), APP_JS);
-  fs.writeFileSync(path.join(cfg.OUT_DIR, 'index.html'), html);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'index.html'), manualHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'automation.html'), automationHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'worklog.html'), worklogHtml);
-  console.log(`[render] Wrote ${path.join(cfg.OUT_DIR, 'index.html')} + worklog.html (+ styles.css, app.js)`);
+  console.log(`[render] Wrote index.html (Manual) + automation.html + worklog.html (+ styles.css, app.js)`);
 }
 
 main();

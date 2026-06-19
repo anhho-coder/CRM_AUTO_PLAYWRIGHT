@@ -137,6 +137,7 @@ const JIRA_METRICS = [
     kpiName: 'Jira · Bugs (incl. Maintenance) labelled QA-CRM_Automation (by reporter)',
     types: ['Bug', 'Bug [Maintenance]'],
     labels: ['QA-CRM_Automation'],
+    quarterly: true, // also show an actual-only card in the Automation Quarterly view
   },
 ];
 
@@ -185,6 +186,27 @@ const JIRA_TRANSITION_METRICS = [
     kpiName: 'Jira · Automation-scope test cases resolved per day (by tester)',
     scopeJql: '"Automation scope" = yes',
     changedToStatus: 'resolved',
+    quarterly: true, // also show an actual-only card in the Automation Quarterly view
+  },
+];
+
+// --- Report sections (the "Manual test" / "Automation test" tabs) ------------
+// The 3rd tab, "Worklog allocation", is the separate worklog page. Each section
+// lists its metric keys IN DISPLAY ORDER; render.js builds one page per section
+// (with the Quarterly KPI + By range sub-views) showing ONLY these metrics.
+// Metrics with no calc yet — support tickets verified, automation TCs executed,
+// automation run frequency — are simply not listed, so they don't render until
+// added here (and wired in collect.js).
+const SECTIONS = [
+  {
+    key: 'manual',
+    label: 'Manual test',
+    metricKeys: ['testCasesNewCreated', 'manualTcExecuted', 'bugsValidReported', 'bugsFixVerified', 'supportTicketCreated'],
+  },
+  {
+    key: 'automation',
+    label: 'Automation test',
+    metricKeys: ['automationTcCreated', 'bugsFoundByAutomation'],
   },
 ];
 
@@ -288,7 +310,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_TRANSITION_METRICS,
+  loadOdoo, loadJira, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_TRANSITION_METRICS, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,
