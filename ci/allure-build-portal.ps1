@@ -18,15 +18,15 @@ $reportRoot = 'C:\allure\periods\report'
 
 # scope -> job name, Vietnamese label, accent colour
 $scopes = @(
-    [pscustomobject]@{ key = 'daily';     job = 'CRM-Allure-Daily';     title = 'Ngay';  sub = 'Bao cao theo NGAY';  color = '#2563eb' }
-    [pscustomobject]@{ key = 'weekly';    job = 'CRM-Allure-Weekly';    title = 'Tuan';  sub = 'Bao cao theo TUAN';  color = '#0891b2' }
-    [pscustomobject]@{ key = 'monthly';   job = 'CRM-Allure-Monthly';   title = 'Thang'; sub = 'Bao cao theo THANG'; color = '#059669' }
-    [pscustomobject]@{ key = 'quarterly'; job = 'CRM-Allure-Quarterly'; title = 'Quy';   sub = 'Bao cao theo QUY';   color = '#d97706' }
-    [pscustomobject]@{ key = 'yearly';    job = 'CRM-Allure-Yearly';    title = 'Nam';   sub = 'Bao cao theo NAM';   color = '#dc2626' }
+    [pscustomobject]@{ key = 'daily';     job = 'CRM-Allure-Daily';     title = 'Daily';     sub = 'DAILY report';     color = '#2563eb' }
+    [pscustomobject]@{ key = 'weekly';    job = 'CRM-Allure-Weekly';    title = 'Weekly';    sub = 'WEEKLY report';    color = '#0891b2' }
+    [pscustomobject]@{ key = 'monthly';   job = 'CRM-Allure-Monthly';   title = 'Monthly';   sub = 'MONTHLY report';   color = '#059669' }
+    [pscustomobject]@{ key = 'quarterly'; job = 'CRM-Allure-Quarterly'; title = 'Quarterly'; sub = 'QUARTERLY report'; color = '#d97706' }
+    [pscustomobject]@{ key = 'yearly';    job = 'CRM-Allure-Yearly';    title = 'Yearly';    sub = 'YEARLY report';    color = '#dc2626' }
 )
 
 $cards = foreach ($s in $scopes) {
-    $latest = '(chua co ky nao)'
+    $latest = '(no period yet)'
     $dir = Join-Path $reportRoot $s.key
     if (Test-Path -LiteralPath $dir) {
         $newest = Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
@@ -37,8 +37,8 @@ $cards = foreach ($s in $scopes) {
     <a class="card" href="$href" style="--accent:$($s.color)">
       <div class="title">$($s.title)</div>
       <div class="sub">$($s.sub)</div>
-      <div class="period">Ky moi nhat: <b>$latest</b></div>
-      <div class="open">Mo report &rarr;</div>
+      <div class="period">Latest period: <b>$latest</b></div>
+      <div class="open">Open report &rarr;</div>
     </a>
 "@
 }
@@ -46,11 +46,11 @@ $cards = foreach ($s in $scopes) {
 $now = (Get-Date).ToString('yyyy-MM-dd HH:mm')
 $html = @"
 <!doctype html>
-<html lang="vi">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CRM Allure - Cong bao cao</title>
+<title>CRM Allure - Report Portal</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -75,13 +75,13 @@ $html = @"
 </style>
 </head>
 <body>
-  <h1>CRM Automation &mdash; Bao cao Allure</h1>
-  <p class="lead">Bam vao mot ky de mo report MOI NHAT cua ky do. Muon xem ky cu hon: mo build cu hon cua job tuong ung.</p>
+  <h1>CRM Automation &mdash; Allure Reports</h1>
+  <p class="lead">Click a period to open its LATEST report. To see an older period, open an older build of that job.</p>
   <div class="grid">
 $($cards -join "`n")
   </div>
-  <p class="foot">Cap nhat: $now &nbsp;&middot;&nbsp;
-     <a href="/job/CRM-Total_Allure_Report/Allure_20Report/">Report TONG (anh chup moi nhat)</a></p>
+  <p class="foot">Updated: $now &nbsp;&middot;&nbsp;
+     <a href="/job/CRM-Total_Allure_Report/Allure_20Report/">Total report (latest snapshot)</a></p>
 </body>
 </html>
 "@
