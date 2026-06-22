@@ -15,3 +15,5 @@ export { InvoicePage } from './InvoicePage';
 export { LicensePage } from './LicensePage';
 export { InvestmentPage } from './InvestmentPage';
 export { ReAssignationPage } from './ReAssignationPage';
+export { PromotionPage } from './PromotionPage';
+export { ResellerPortalPage } from './ResellerPortalPage';

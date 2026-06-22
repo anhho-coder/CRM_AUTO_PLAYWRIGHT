@@ -642,6 +642,89 @@ export class DealElementPage extends BasePage {
     return value;
   }
 
+  // --- Promotion fields on the Deal Element (sale.order) ---
+  // CRM-10780 "Apply Promotion": an Automatically-Applied promo surfaces on the order as the computed
+  // promo_discount_amount (and an applied promotion_id). These are read after the order qualifies/saves.
+  private readonly promoDiscountAmount = () =>
+    this.page.locator("xpath=//span[@name='promo_discount_amount'] | //*[@name='promo_discount_amount']").first();
+  private readonly promotionIdField = () => this.page.locator("xpath=//div[@name='promotion_id']").first();
+  private readonly promotionIdInput = () => this.page.locator("xpath=//div[@name='promotion_id']//input").first();
+
+  /**
+   * Read the computed promo discount amount (promo_discount_amount) on the order.
+   * @returns the numeric discount, or 0 if the field is absent/empty.
+   */
+  async getPromoDiscountAmount(): Promise<number> {
+    const loc = this.promoDiscountAmount();
+    if ((await loc.count().catch(() => 0)) === 0) {
+      console.log('  ⚠ promo_discount_amount field not found');
+      return 0;
+    }
+    let text = (await loc.innerText().catch(() => '')) || '';
+    if (!text.trim()) text = (await loc.inputValue().catch(() => '')) || '';
+    const value = parseFloat(String(text).replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
+    console.log(`  - promo_discount_amount: ${value} (got: "${String(text).trim()}")`);
+    return value;
+  }
+
+  /**
+   * Read the name of the applied promotion (promotion_id), if the field is present on the form.
+   * @returns the applied promotion name, or '' if none.
+   */
+  async getAppliedPromotionName(): Promise<string> {
+    const input = this.promotionIdInput();
+    if (await input.count().catch(() => 0)) {
+      const v = await input.inputValue().catch(() => '');
+      if (v && v.trim()) { console.log(`  - promotion_id (input): "${v.trim()}"`); return v.trim(); }
+    }
+    const field = this.promotionIdField();
+    const t = ((await field.innerText().catch(() => '')) || '').trim();
+    console.log(`  - promotion_id (text): "${t}"`);
+    return t;
+  }
+
+  /**
+   * Apply a promotion: set the "Promotion" field (promotion_id, an editable Many2one while the form is
+   * in edit mode) to the given promotion name, then pick it from the dropdown. After SAVE, the promo is
+   * added as a discount line in Order Lines and the order total is reduced. (The form must be in edit
+   * mode - e.g. right after adding a product line - because in readonly mode promotion_id is a <span>.)
+   * @returns true if the field was found and set, false if its input is absent (form readonly).
+   */
+  async setPromotion(promoName: string): Promise<boolean> {
+    const input = this.promotionIdInput();
+    if ((await input.count().catch(() => 0)) === 0) {
+      console.log('  ⚠ Promotion field input not found (form not in edit mode?)');
+      return false;
+    }
+    await input.scrollIntoViewIfNeeded().catch(() => {});
+    await input.click();
+    await input.fill(promoName);
+    await this.wait(CommonUtils.waitTimes.long);
+    const option = this.dropdownOption().filter({ hasText: promoName }).first();
+    const optVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (optVisible) {
+      await option.click();
+      console.log(`  ✓ Promotion set to "${promoName}" (dropdown)`);
+    } else {
+      await this.page.keyboard.press('Enter');
+      console.log(`  ✓ Promotion set to "${promoName}" (keyboard fallback)`);
+    }
+    await this.wait(CommonUtils.waitTimes.long); // let the discount line + totals recompute (onchange)
+    return true;
+  }
+
+  /**
+   * Read the grand total (amount_total) shown on the order.
+   * @returns the numeric grand total, or 0 if not found.
+   */
+  async getAmountTotal(): Promise<number> {
+    const loc = this.page.locator("xpath=//span[@name='amount_total']").first();
+    const text = (await loc.innerText().catch(() => '0')) || '0';
+    const value = parseFloat(text.trim().replace(/[^0-9.,]/g, '').replace(/,/g, '')) || 0;
+    console.log(`  - amount_total: ${value} (got: "${text.trim()}")`);
+    return value;
+  }
+
   /**
    * Remove a product line row by clicking the trash bin icon on the row matching the given product name.
    * Must be in edit mode before calling this method.
