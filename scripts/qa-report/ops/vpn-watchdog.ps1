@@ -7,21 +7,24 @@
   stage CANNOT fix this — the SCM checkout runs before any stage — so this watchdog
   runs at the OS level (Scheduled Task) and reconnects independently of any build.
 
-  WHAT IT DOES: every run, check whether the GP tunnel is up (adapter Up + an
-  internal host resolves). If not, reconnect GlobalProtect (restart the PanGPS
+  WHAT IT DOES: every run, test whether the box can actually REACH the resource the
+  build needs (Odoo over VPN). If not, reconnect GlobalProtect (restart the PanGPS
   service, ensure the PanGPA agent is running), wait, and re-check. Logs to a file.
+  NB: detection is reachability-based on purpose — gating on the GlobalProtect adapter
+  name/status gave false negatives (adapter "not Up" while connectivity was fine),
+  which caused needless GP restarts.
 
-  NOTE: this is best-effort. The PROPER fix for an unattended server is to have the
-  GlobalProtect *portal* set this host's Connect Method to "Pre-logon (Always On)"
-  with a machine certificate (no MFA) — then GP stays up at boot system-wide and
-  reconnects natively, and this watchdog just becomes a safety net.
+  PROPER fix for an unattended server: set this host's GlobalProtect *portal* Connect
+  Method to "Pre-logon (Always On)" with a machine certificate (no MFA) — then GP stays
+  up at boot system-wide and this watchdog is just a safety net.
 
-  Run as SYSTEM via Task Scheduler (see register-vpn-watchdog.cmd / the README).
+  Run as SYSTEM via Task Scheduler (see the README / the schtasks command).
 #>
 
 $ErrorActionPreference = 'SilentlyContinue'
 $LogFile   = 'C:\ops\vpn-watchdog.log'
-$TestHost  = 'crm.nakivo.com'   # a host that only resolves/reachable when VPN is up
+$TestHost  = 'crm.nakivo.com'   # internal resource only reachable when the VPN is up
+$TestPort  = 443
 $GpService = 'PanGPS'           # GlobalProtect Windows service
 $GpAgent   = 'C:\Program Files\Palo Alto Networks\GlobalProtect\PanGPA.exe'
 $WaitSecs  = 25                 # time to allow the tunnel to come back after a reconnect
@@ -33,17 +36,16 @@ function Log($m) {
 }
 
 function Test-Vpn {
-  # Up if the GlobalProtect virtual adapter is connected AND DNS resolves an internal host.
-  $adapterUp = [bool](Get-NetAdapter | Where-Object { $_.InterfaceDescription -like '*PANGP*' -and $_.Status -eq 'Up' })
-  $dnsOk = $false
-  try { Resolve-DnsName -Name $TestHost -ErrorAction Stop | Out-Null; $dnsOk = $true } catch { $dnsOk = $false }
-  return [pscustomobject]@{ AdapterUp = $adapterUp; DnsOk = $dnsOk; Ok = ($adapterUp -and $dnsOk) }
+  # "Up" = we can actually reach the build's resource over the tunnel. Do NOT gate on
+  # the GP adapter name/status (varies by version; produced false negatives).
+  $ok = $false
+  try { $ok = Test-NetConnection -ComputerName $TestHost -Port $TestPort -InformationLevel Quiet -WarningAction SilentlyContinue } catch { $ok = $false }
+  return [bool]$ok
 }
 
-$state = Test-Vpn
-if ($state.Ok) { Log "OK (adapter=$($state.AdapterUp) dns=$($state.DnsOk))"; exit 0 }
+if (Test-Vpn) { Log "OK (reachable ${TestHost}:${TestPort})"; exit 0 }
 
-Log "DOWN (adapter=$($state.AdapterUp) dns=$($state.DnsOk)) — reconnecting GlobalProtect..."
+Log "DOWN (cannot reach ${TestHost}:${TestPort}) - reconnecting GlobalProtect..."
 
 # 1) Bounce the GlobalProtect service — with saved creds / cert (no MFA) this
 #    re-establishes the tunnel headlessly.
@@ -61,12 +63,10 @@ if (Test-Path $GpAgent) {
     Start-Process -FilePath $GpAgent
     Log 'Started PanGPA agent'
   }
-  # Some GP versions accept a CLI re-evaluate/connect; harmless if unsupported.
   & $GpAgent rediscovernetwork 2>$null
 }
 
 # 3) Give it time, then re-check and log the outcome.
 Start-Sleep -Seconds $WaitSecs
-$after = Test-Vpn
-if ($after.Ok) { Log 'Reconnect OK' } else { Log "STILL DOWN after reconnect (adapter=$($after.AdapterUp) dns=$($after.DnsOk))" }
+if (Test-Vpn) { Log 'Reconnect OK' } else { Log "STILL DOWN after reconnect (cannot reach ${TestHost}:${TestPort})" }
 exit 0
