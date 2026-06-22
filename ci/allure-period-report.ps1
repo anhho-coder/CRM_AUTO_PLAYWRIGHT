@@ -48,6 +48,7 @@ $reportRoot  = Join-Path $root 'report'    # frozen per-period reports
 # ---- Resolve the period key + which dated-bucket name prefixes belong to it ----
 $now      = Get-Date
 $periodKey = ''
+$reportTitle = ''   # human-readable title shown at the top of the Allure report
 $prefixes  = @()    # a dated bucket matches if its name == prefix OR starts with "<prefix>-"
 
 switch ($Scope) {
@@ -55,6 +56,7 @@ switch ($Scope) {
         $t = if ($Period) { [datetime]::ParseExact($Period, 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddDays(-1) }
         $periodKey = $t.ToString('yyyy-MM-dd')
         $prefixes  = @($periodKey)                       # exact day folder
+        $reportTitle = 'Daily - ' + $t.ToString('ddd, MMM d, yyyy', $inv)   # Daily - Fri, Jun 19, 2026
     }
     'weekly' {
         # ISO week: weeks start Monday; the week's Thursday decides its year + number.
@@ -73,25 +75,39 @@ switch ($Scope) {
         $weekNo    = [int][math]::Floor(($thursday.DayOfYear - 1) / 7) + 1
         $periodKey = '{0}-W{1:D2}' -f $thursday.Year, $weekNo
         $prefixes  = (0..6 | ForEach-Object { $monday.AddDays($_).ToString('yyyy-MM-dd') })   # 7 exact day folders
+        $sunday = $monday.AddDays(6)
+        if ($monday.Year -ne $sunday.Year) {
+            $range = '{0} - {1}' -f $monday.ToString('MMM d, yyyy', $inv), $sunday.ToString('MMM d, yyyy', $inv)
+        } elseif ($monday.Month -ne $sunday.Month) {
+            $range = '{0} - {1}, {2}' -f $monday.ToString('MMM d', $inv), $sunday.ToString('MMM d', $inv), $sunday.Year
+        } else {
+            $range = '{0} - {1}, {2}' -f $monday.ToString('MMM d', $inv), $sunday.Day, $sunday.Year
+        }
+        $reportTitle = "Weekly - $range ($periodKey)"   # Weekly - Jun 14 - 20, 2026 (2026-W25)
     }
     'monthly' {
         $t = if ($Period) { [datetime]::ParseExact("$Period-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddMonths(-1) }
         $periodKey = $t.ToString('yyyy-MM')
         $prefixes  = @($periodKey)                       # 2026-06-*
+        $reportTitle = 'Monthly - ' + $t.ToString('MMMM yyyy', $inv)   # Monthly - June 2026
     }
     'quarterly' {
         if ($Period -match '^(\d{4})-Q([1-4])$') { $py = [int]$Matches[1]; $q = [int]$Matches[2] }
         else { $t = if ($Current) { $now } else { $now.AddMonths(-3) }; $py = $t.Year; $q = [int][math]::Ceiling($t.Month / 3) }
         $periodKey = "$py-Q$q"
         $prefixes  = (1..3 | ForEach-Object { '{0}-{1:D2}' -f $py, ((($q - 1) * 3) + $_) })   # 2026-04-*,05-*,06-*
+        $qFirst = [datetime]::new($py, ((($q - 1) * 3) + 1), 1)
+        $qLast  = [datetime]::new($py, ($q * 3), 1)
+        $reportTitle = 'Quarterly - Q{0} {1} ({2} - {3})' -f $q, $py, $qFirst.ToString('MMM', $inv), $qLast.ToString('MMM', $inv)   # Quarterly - Q2 2026 (Apr - Jun)
     }
     'yearly' {
         $t = if ($Period) { [datetime]::ParseExact("$Period-01-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddYears(-1) }
         $periodKey = $t.ToString('yyyy')
         $prefixes  = @($periodKey)                       # 2026-*
+        $reportTitle = 'Yearly - ' + $periodKey   # Yearly - 2026
     }
 }
-Write-Host "Scope=$Scope  Period=$periodKey  bucket-prefixes=$($prefixes -join ', ')"
+Write-Host "Scope=$Scope  Period=$periodKey  Title='$reportTitle'  bucket-prefixes=$($prefixes -join ', ')"
 
 # ---- Merge every dated bucket that falls inside this period ----
 $merged = Join-Path $Workspace 'allure-merged'
@@ -141,6 +157,17 @@ try {
 }
 finally {
     Pop-Location
+}
+
+# ---- Put the period range in the report title (Overview header) ----
+# Allure renders the Overview title from widgets/summary.json -> reportName, so set it there.
+$summaryPath = Join-Path $reportDir 'widgets\summary.json'
+if ($reportTitle -and (Test-Path -LiteralPath $summaryPath)) {
+    $raw  = Get-Content -LiteralPath $summaryPath -Raw
+    $safe = ($reportTitle -replace '\\', '\\\\') -replace '"', '\"'
+    $raw  = [regex]::Replace($raw, '("reportName"\s*:\s*)"(?:[^"\\]|\\.)*"', ('${1}"' + $safe + '"'))
+    [System.IO.File]::WriteAllText($summaryPath, $raw, (New-Object System.Text.UTF8Encoding $false))
+    Write-Host "Set report title -> $reportTitle"
 }
 
 # ---- Update the rolling history from the freshly generated report ----
