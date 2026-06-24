@@ -217,6 +217,11 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   async switchToListView() {
     await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
     await this.viewListButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // A loading mask / "Odoo Client Error" modal can sit over the toolbar and intercept the
+    // click (observed: 900s timeout - blockUI then o_technical_modal intercepting pointer
+    // events on CRM-457_3.1.1.5). Clear them so the click lands on the button, not the overlay.
+    await this.dismissErrorDialog();
+    await this.waitForLoadingOverlayHidden();
     await this.viewListButton().click();
     await this.waitForURL('**/web?*view_type=list*', CommonUtils.waitTimes.pageLoad);
     await this.page.locator('.o_list_view, table.o_list_table').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });

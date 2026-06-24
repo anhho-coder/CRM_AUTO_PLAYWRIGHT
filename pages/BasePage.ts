@@ -23,6 +23,8 @@ export class BasePage {
   private readonly userMenuLink_basePage = () => this.page.locator('//li[@class="o_user_menu"]').first();
   // Record form view container (XPath primary, CSS fallback)
   private readonly formView_basePage = () => this.page.locator('//div[contains(@class,"o_form_view")]').or(this.page.locator('.o_form_view')).first();
+  // Loading mask / jQuery blockUI overlay that intercepts pointer events while Odoo is busy
+  private readonly loadingOverlay_basePage = () => this.page.locator('.blockUI.blockOverlay, .o_blockUI, .o_loading, .oe_loading');
   // ---------------------------------------------------------------------------
   // Private locator methods
   // ---------------------------------------------------------------------------
@@ -258,6 +260,20 @@ await newPage.close();
    */
   async waitForFormView(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
     await this.formView_basePage().waitFor({ state: 'visible', timeout }).catch(() => {});
+  }
+
+  /**
+   * Wait for Odoo's loading mask / jQuery blockUI overlay to disappear. The
+   * `.blockUI.blockOverlay` mask (and `.o_loading` / `.o_blockUI`) sits on top of the page
+   * while the backend is busy and silently intercepts pointer events, so a click issued
+   * while it is up retries until the action times out (observed: a 900s timeout on a
+   * "View list" click with "<div class=blockUI blockOverlay> intercepts pointer events").
+   * Call this before clicking after a navigation / data load. Non-throwing: resolves as
+   * soon as no overlay is present, or when the timeout lapses.
+   * @param timeout - Maximum time to wait for the overlay to clear (default: abnormalWait)
+   */
+  async waitForLoadingOverlayHidden(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    await this.loadingOverlay_basePage().first().waitFor({ state: 'hidden', timeout }).catch(() => {});
   }
 
   /**
