@@ -97,6 +97,13 @@ export default defineConfig({
     /* Launch options */
     launchOptions: {
       slowMo: 100, // Slow down by 100ms to see actions
+      // DNS workaround (opt-in): when the agent can reach the pre-prod IP but DNS cannot
+      // resolve the hostname, set HOST_RESOLVER_MAP (e.g. "MAP pre-production.nakivo.site
+      // 10.220.222.100") and Chrome resolves via the map instead of DNS. The cert still
+      // validates against the hostname. Unset => normal DNS, no effect (local/dev default).
+      args: process.env.HOST_RESOLVER_MAP
+        ? [`--host-resolver-rules=${process.env.HOST_RESOLVER_MAP}`]
+        : [],
     },
   },
 

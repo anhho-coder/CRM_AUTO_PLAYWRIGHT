@@ -44,6 +44,11 @@ pipeline {
         // once and reused across builds (and survive `npm ci`). Add a Windows
         // Defender exclusion for this folder on the agent to avoid extraction stalls.
         PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        // TEMPORARY DNS workaround: the agent can reach the pre-prod IP (10.220.222.100)
+        // but its DNS cannot resolve pre-production.nakivo.site (ERR_NAME_NOT_RESOLVED).
+        // Map the host at the Chrome level so tests run. REMOVE this line once agent DNS
+        // is fixed (consumed by launchOptions.args in playwright.config.ts).
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
     }
 
     options {
