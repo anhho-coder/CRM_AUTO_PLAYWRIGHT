@@ -44,6 +44,11 @@ pipeline {
         // once and reused across builds (and survive `npm ci`). Add a Windows
         // Defender exclusion for this folder on the agent to avoid extraction stalls.
         PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        // TEMPORARY DNS workaround (mirrors main Jenkinsfile): the agent can reach the
+        // pre-prod IP (10.220.222.100) but its DNS cannot resolve pre-production.nakivo.site.
+        // Map the host at the Chrome level (consumed by launchOptions.args in
+        // playwright.config.ts). REMOVE this line once agent DNS is fixed.
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
     }
 
     options {
