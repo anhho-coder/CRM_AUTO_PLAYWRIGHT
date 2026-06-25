@@ -1,11 +1,31 @@
 [
   {
+    "name": "Environment - VPN / DNS / connection drop (NOT a defect)",
+    "matchedStatuses": ["failed", "broken"],
+    "messageRegex": "(?s).*(net::ERR_NAME_NOT_RESOLVED|net::ERR_CERT_AUTHORITY_INVALID|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION|ERR_NAME_NOT_RESOLVED|ERR_CERT_AUTHORITY_INVALID|ERR_EMPTY_RESPONSE).*"
+  },
+  {
+    "name": "Automation - overlay / dialog intercepts click (fixed: switchToListView)",
+    "matchedStatuses": ["failed", "broken"],
+    "traceRegex": "(?s).*(intercepts pointer events|blockOverlay|blockUI|o_technical_modal).*"
+  },
+  {
+    "name": "Data drift - count/value mismatch (shared-env data) - VERIFY",
+    "matchedStatuses": ["failed"],
+    "messageRegex": "(?s).*Expected:\\s*\"?\\d+\\s*/\\s*\\d+\"?.*"
+  },
+  {
+    "name": "Business rule - expected message/warning missing - VERIFY MANUALLY",
+    "matchedStatuses": ["failed"],
+    "messageRegex": "(?s).*(Log area should contain|should contain|invalid email address).*"
+  },
+  {
     "name": "Automation - element/column not found",
     "matchedStatuses": ["failed", "broken"],
     "messageRegex": "(?s).*(not found in any table|No tests found).*"
   },
   {
-    "name": "Automation - timeout / element not ready",
+    "name": "Timeout - TRIAGE (env cascade vs automation wait)",
     "matchedStatuses": ["failed", "broken"],
     "messageRegex": "(?s).*(Timeout \\d+ms exceeded|Test timeout of \\d+ms exceeded|TimeoutError).*"
   },
@@ -15,7 +35,7 @@
     "messageRegex": "(?s).*Received(?: string)?:\\s*\"\".*"
   },
   {
-    "name": "Assertion fail - VERIFY MANUALLY (possible business rule)",
+    "name": "Assertion fail - other (possible business rule) - VERIFY",
     "matchedStatuses": ["failed"],
     "messageRegex": "(?s).*Received(?: string)?:\\s*\"[^\"]+\".*"
   }
