@@ -760,6 +760,10 @@ export class LeadPage extends BasePage {
     // Bounded wait so a missing "CRM Developer" tab fails fast (abnormalWait) instead of the click
     // auto-waiting up to the 15-min test timeout (root cause of CRM-671_2.1.9's hang).
     await this.crmDeveloperTab_targetLead().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // Clear any loading mask / "Odoo Client Error" modal that can intercept the tab click
+    // (root cause of CRM-2178_1.1.2.1 / CRM-671_2.1.4 hanging ~900s on an intercepted click).
+    await this.dismissErrorDialog();
+    await this.waitForLoadingOverlayHidden();
     await this.crmDeveloperTab_targetLead().click();
     await this.wait(CommonUtils.waitTimes.medium);
   }
@@ -780,7 +784,11 @@ export class LeadPage extends BasePage {
       console.log('  - CRM Developer tab already active, clicking main tab first...');
       await this.clickMainTabToExitCRMDeveloper();
     }
-    
+
+    // Clear any loading mask / "Odoo Client Error" modal that can intercept the tab click
+    // (root cause of CRM-2178_1.1.2.1 / CRM-671_2.1.4 hanging ~900s on an intercepted click).
+    await this.dismissErrorDialog();
+    await this.waitForLoadingOverlayHidden();
     await this.crmDeveloperTab().first().click();
     await this.wait(300);
   }
