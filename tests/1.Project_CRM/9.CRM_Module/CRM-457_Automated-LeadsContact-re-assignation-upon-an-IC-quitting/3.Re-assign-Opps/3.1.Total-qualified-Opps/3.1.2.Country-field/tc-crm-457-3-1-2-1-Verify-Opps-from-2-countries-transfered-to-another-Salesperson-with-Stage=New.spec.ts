@@ -7,6 +7,8 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * CRM-457 - Verify Re-assign Opps
  * Test Case ID: CRM-457_3.1.2.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-06-26
  *
  * Summary: Verify the qualified Opps from 2 countries have been transfered to another Salesperson correctly
  *
@@ -171,17 +173,17 @@ test.describe('CRM-457_3.1.2.1 - Verify qualified Opps from 2 countries transfer
       await opportunityPageClean.selectCustomFilterField('Country');
       await opportunityPageClean.selectCustomFilterOperator('is equal to');
       await opportunityPageClean.selectCustomFilterValue('Poland');
+      // Germany must be an OR branch INSIDE the SAME custom filter. Applying Poland and Germany as
+      // two SEPARATE custom filters AND-combines them (Country=Poland AND Country=Germany = 0 rows),
+      // so isListEmpty() returns true and the cleanup skips - leaving stale PL/DE records (e.g. a
+      // leftover Lead from another TC) that then inflate the Re-assignation Total from 0/2 to 0/3.
+      await opportunityPageClean.clickAddCondition();
+      await opportunityPageClean.selectLastCustomFilterField('Country');
+      await opportunityPageClean.selectLastCustomFilterOperator('is equal to');
+      await opportunityPageClean.selectLastCustomFilterValue('Germany');
       await opportunityPageClean.clickApplyFilter();
       await opportunityPageClean.clickFilterButton();
-      console.log('\u2713 beforeEach I.4: Country = Poland filter applied');
-      await opportunityPageClean.clickFilterButton();
-      await opportunityPageClean.clickAddCustomFilter();
-      await opportunityPageClean.selectCustomFilterField('Country');
-      await opportunityPageClean.selectCustomFilterOperator('is equal to');
-      await opportunityPageClean.selectCustomFilterValue('Germany');
-      await opportunityPageClean.clickApplyFilter();
-      await opportunityPageClean.clickFilterButton();
-      console.log('\u2713 beforeEach I.5: Country = Germany filter applied');
+      console.log('\u2713 beforeEach I.4-5: Country = Poland OR Germany filter applied (single OR facet)');
       await opportunityPageClean.clickFilterButton();
       await opportunityPageClean.clickAddCustomFilter();
       await opportunityPageClean.selectCustomFilterField('Active');
