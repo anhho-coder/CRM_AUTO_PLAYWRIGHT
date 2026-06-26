@@ -540,6 +540,30 @@ export class InvoicePage extends BasePage {
   }
 
   /**
+   * Select the FIRST available "Post Difference In" write-off account from its dropdown (name-independent).
+   * "Mark invoice as fully paid" requires this account to be filled, else Validate is silently rejected.
+   * Opens the Many2one, skips the "Create..."/"Search More..." entries, clicks the first real account,
+   * and returns its name.
+   * @returns the chosen account name (or '' if none found)
+   */
+  async selectFirstWriteoffAccount(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const input = this.writeoffAccountInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    const options = this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+    await options.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const texts = (await options.allTextContents()).map((t) => t.trim());
+    let idx = texts.findIndex((t) => t && !/^(Create|Search More|Start typing)/i.test(t));
+    if (idx < 0) idx = 0;
+    const chosen = texts[idx] || '';
+    await options.nth(idx).click().catch(async () => { await this.page.keyboard.press('Enter'); });
+    await this.wait(CommonUtils.waitTimes.short);
+    console.log(`  ✓ "Post Difference In" write-off account set to "${chosen}"`);
+    return chosen;
+  }
+
+  /**
    * Select the "Payment Journal" (journal_id) in the Register Payment wizard. This wizard renders
    * journal_id as a native <select>; falls back to a Many2one input if not.
    * @param journalName - the journal label, e.g. "Bank Transfer", "Cash"

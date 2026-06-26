@@ -59,8 +59,9 @@ import { createValidatedInvoiceForPartialPayment, deleteCreatedOpportunityAsAdmi
  */
 
 const SKIP_CLEANUP_OPP = true;
-// Write-off account for "Post Difference In" if Odoo requires one and it is not auto-filled
-// (confirmed via exploration; empty -> rely on Odoo's default / auto-fill).
+// "Post Difference In" write-off account. "Mark invoice as fully paid" requires it (Validate is
+// silently rejected if empty). Leave '' to pick the FIRST available account from the dropdown
+// (name-independent, confirmed working in exploration), or set a specific account name here.
 const WRITEOFF_ACCOUNT = '';
 
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
@@ -142,11 +143,17 @@ test.describe('TC.-B.3.10 - Reseller pays partially then Mark invoice as fully p
       expect(diffVisible, 'A "Payment Difference" field should appear for a partial payment').toBeTruthy();
       const marked = await invoicePage.selectPaymentDifferenceMarkFullyPaid();
       expect(marked, '"Mark invoice as fully paid" should be selected').toBeTruthy();
-      // If Odoo requires a write-off account ("Post Difference In") and one is configured, set it.
-      if (WRITEOFF_ACCOUNT && (await invoicePage.isWriteoffAccountVisible())) {
+      // "Mark invoice as fully paid" requires a "Post Difference In" write-off account (empty by default;
+      // Validate is silently rejected without it). Set it to a named account if configured, else pick the
+      // first available account from the dropdown (name-independent).
+      expect(await invoicePage.isWriteoffAccountVisible(), 'A "Post Difference In" write-off account field should appear').toBeTruthy();
+      if (WRITEOFF_ACCOUNT) {
         await invoicePage.setPostDifferenceAccount(WRITEOFF_ACCOUNT);
+      } else {
+        const acct = await invoicePage.selectFirstWriteoffAccount();
+        expect(acct, 'A write-off account should be selected').toBeTruthy();
       }
-      console.log('✓ Payment Difference = "Mark invoice as fully paid"');
+      console.log('✓ Payment Difference = "Mark invoice as fully paid" (write-off account set)');
     });
 
     await test.step('Steps to reproduce - Step 5: Set Actually Received($) = PartialAmount', async () => {
