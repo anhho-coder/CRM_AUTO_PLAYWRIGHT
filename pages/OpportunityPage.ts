@@ -1351,33 +1351,37 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await ta.scrollIntoViewIfNeeded();
     await ta.click();
-    await ta.click();
     await ta.fill('');
     await ta.fill(message);
-    // Fire keyboard-style events so Odoo's composer widget registers the body (a bare value set does
-    // not always enable Send): type a trailing space then backspace, and dispatch input/change.
-    await ta.evaluate((el) => {
-      el.dispatchEvent(new Event('input', { bubbles: true }));
-      el.dispatchEvent(new Event('change', { bubbles: true }));
-    });
-    await this.page.keyboard.press('End').catch(() => {});
-    await this.wait(CommonUtils.waitTimes.medium);
+    // Ensure the input event fires so the Send button enables.
+    await ta.evaluate((el) => el.dispatchEvent(new Event('input', { bubbles: true })));
+    await this.wait(CommonUtils.waitTimes.short);
 
-    // The deal-registration Opp form can raise a delayed "Odoo Client Error" popup that overlays the
-    // chatter and would intercept the Send click - clear it right before sending.
+    // Uncheck any auto-added suggested recipient. "Send message" on this form auto-adds the customer's
+    // email contact (a freshly-created partner) as a checked recipient, and its presence makes the Send
+    // a silent no-op. Unchecking it posts the message as a customer-visible comment to the followers and
+    // sends reliably. (Log note has no suggested recipients, so this is a no-op there.)
+    await this.page
+      .locator("div.o_thread_composer div.o_composer_suggested_partners input[type='checkbox']")
+      .evaluateAll((cbs) => cbs.forEach((c) => { const el = c as HTMLInputElement; if (el.checked) { el.checked = false; el.dispatchEvent(new Event('change', { bubbles: true })); } }))
+      .catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
     await this.dismissErrorDialog().catch(() => {});
 
-    // Click "Send" and confirm the composer collapses (= the message posted). The Send button can be
-    // briefly disabled right after typing, so re-click until the composer closes (a few attempts).
-    for (let attempt = 1; attempt <= 4; attempt++) {
-      let send = this.composerSendButtonXPath();
-      if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) send = this.composerSendButtonCss();
-      if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false))) break; // composer already closed
+    // Click "Send" and confirm the composer collapses (= posted). Try a real click then a JS click
+    // (overlay-proof); clear any stray client-error backdrop between attempts.
+    let send = this.composerSendButtonXPath();
+    if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) send = this.composerSendButtonCss();
+    await send.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false))) break;
+      await this.page.evaluate(() => document.querySelectorAll('.modal-backdrop, .o_blockUI, .blockUI').forEach((e) => e.remove())).catch(() => {});
       await send.scrollIntoViewIfNeeded().catch(() => {});
-      await send.click().catch(() => {});
-      const closed = await ta.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility }).then(() => true).catch(() => false);
-      if (closed) break;
-      console.log(`  - composer still open after Send (attempt ${attempt}); clearing any popup and retrying`);
+      await send.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      if (await ta.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility }).then(() => true).catch(() => false)) break;
+      await send.evaluate((b) => (b as HTMLElement).click()).catch(() => {});
+      if (await ta.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility }).then(() => true).catch(() => false)) break;
+      console.log(`  - composer still open after Send (attempt ${attempt}); retrying`);
       await this.dismissErrorDialog().catch(() => {});
       await this.wait(CommonUtils.waitTimes.long);
     }
@@ -1470,6 +1474,24 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const dialog = this.serverErrorDialog();
     await dialog.waitFor({ state: 'visible', timeout });
     return ((await dialog.textContent()) ?? '').trim();
+  }
+
+  /**
+   * Non-throwing check: returns true if the "email is invalid" server-error dialog becomes
+   * visible within `timeout`, false otherwise. Used to assert a valid email is NOT rejected.
+   */
+  async isServerErrorDialogVisible(timeout: number = CommonUtils.waitTimes.long): Promise<boolean> {
+    return this.serverErrorDialog().first().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+  }
+
+  /**
+   * Wait for the record to be saved (the form URL gains a record id). Throws on timeout, so a
+   * blocked save (e.g. a rejected email) fails the test. Authoritative "accepted" signal.
+   */
+  async waitForRecordSaved(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    // Wait for a REAL record id (digits): the form URL briefly shows an empty "id=" right after save,
+    // so a loose "id=*" glob would resolve too early. Require id=<digits>.
+    await this.page.waitForURL(/[?#&]id=\d+/, { timeout });
   }
 
   /**

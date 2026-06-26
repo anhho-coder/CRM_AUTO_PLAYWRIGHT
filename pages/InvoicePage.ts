@@ -54,6 +54,14 @@ export class InvoicePage extends BasePage {
   private readonly keepOpenRadioInput          = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="open"]').first();
   // The radio input is a visually-hidden Bootstrap custom-control, so the clickable target is its label.
   private readonly keepOpenLabel               = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="open"]/following-sibling::label').or(this.page.locator('xpath=//div[@name="payment_difference_handling"]//label[normalize-space()="Keep open"]')).first();
+  // "Mark invoice as fully paid" = the reconcile option (write off the difference).
+  private readonly markFullyPaidRadioInput     = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="reconcile"]').first();
+  private readonly markFullyPaidLabel          = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="reconcile"]/following-sibling::label').or(this.page.locator('xpath=//div[@name="payment_difference_handling"]//label[normalize-space()="Mark invoice as fully paid"]')).first();
+  // "Post Difference In" write-off account (writeoff_account_id) - shown only when "Mark fully paid" is chosen.
+  private readonly writeoffAccountInput        = () => this.page.locator('xpath=//div[@name="writeoff_account_id"]//input').first();
+  // Register Payment "Payment Journal" (journal_id) - rendered as a native <select> in this wizard.
+  private readonly paymentJournalSelect        = () => this.page.locator('xpath=//select[@name="journal_id"]').first();
+  private readonly paymentJournalM2OInput      = () => this.page.locator('xpath=//div[@name="journal_id"]//input').first();
 
   // ─── Notebook tabs ────────────────────────────────────────────────────────
   private readonly paymentsTabLoc              = () => this.page.locator('xpath=//a[contains(normalize-space(),"Payments")]').first();
@@ -472,6 +480,110 @@ export class InvoicePage extends BasePage {
     const checked = await this.keepOpenRadioInput().isChecked().catch(() => false);
     console.log(`  ${checked ? '✓' : '⚠'} "Keep open" selected (checked=${checked})`);
     return checked;
+  }
+
+  /**
+   * Select "Mark invoice as fully paid" in the Payment Difference handling (writes off the remaining
+   * difference so the invoice posts as Paid from a single partial payment). Clicks the label, then
+   * verifies the reconcile radio is checked.
+   * @returns true once "Mark invoice as fully paid" is selected/checked
+   */
+  async selectPaymentDifferenceMarkFullyPaid(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log('  - Selecting Payment Difference = "Mark invoice as fully paid"');
+    await this.markFullyPaidLabel().waitFor({ state: 'visible', timeout }).catch(() => {});
+    try {
+      await this.markFullyPaidLabel().click();
+    } catch {
+      await this.markFullyPaidRadioInput().check({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    const checked = await this.markFullyPaidRadioInput().isChecked().catch(() => false);
+    console.log(`  ${checked ? '✓' : '⚠'} "Mark invoice as fully paid" selected (checked=${checked})`);
+    return checked;
+  }
+
+  /**
+   * Set the "Post Difference In" write-off account (writeoff_account_id), required by Odoo when
+   * "Mark invoice as fully paid" is chosen and the field is empty. No-op if the field is not present
+   * (some configs auto-fill it). Many2one: fill + pick the matching dropdown option.
+   * @param accountName - account to select (e.g. "Bank fees" / a write-off account name)
+   * @returns true if the field was found and set
+   */
+  async setPostDifferenceAccount(accountName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const input = this.writeoffAccountInput();
+    if ((await input.count().catch(() => 0)) === 0) {
+      console.log('  - "Post Difference In" field not present (skipping)');
+      return false;
+    }
+    await input.click();
+    await input.fill('');
+    await input.fill(accountName);
+    await this.wait(CommonUtils.waitTimes.standard);
+    const option = this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]').filter({ hasText: accountName }).first();
+    const visible = await option.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (visible) {
+      await option.click();
+      console.log(`  ✓ "Post Difference In" set to "${accountName}"`);
+    } else {
+      await this.page.keyboard.press('Enter');
+      console.log(`  ✓ "Post Difference In" set to "${accountName}" (keyboard)`);
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    return true;
+  }
+
+  /**
+   * Whether the "Post Difference In" write-off account field is currently shown (and empty).
+   */
+  async isWriteoffAccountVisible(): Promise<boolean> {
+    return await this.writeoffAccountInput().isVisible().catch(() => false);
+  }
+
+  /**
+   * Select the "Payment Journal" (journal_id) in the Register Payment wizard. This wizard renders
+   * journal_id as a native <select>; falls back to a Many2one input if not.
+   * @param journalName - the journal label, e.g. "Bank Transfer", "Cash"
+   * @returns true once the journal is set
+   */
+  async selectPaymentJournal(journalName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log(`  - Selecting Payment Journal = "${journalName}"`);
+    const sel = this.paymentJournalSelect();
+    const m2o = this.paymentJournalM2OInput();
+
+    // The journal widget renders a beat AFTER the dialog opens; poll for whichever form (native
+    // <select> or Many2one input) appears, up to `timeout`, instead of checking count() once.
+    const deadline = timeout;
+    const step = CommonUtils.waitTimes.standard;
+    let kind: 'select' | 'm2o' | '' = '';
+    for (let waited = 0; waited <= deadline; waited += step) {
+      if ((await sel.count().catch(() => 0)) > 0) { kind = 'select'; break; }
+      if ((await m2o.count().catch(() => 0)) > 0) { kind = 'm2o'; break; }
+      await this.wait(step);
+    }
+
+    if (kind === 'select') {
+      await sel.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await sel.selectOption({ label: journalName }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard); // let the onchange (payment method, etc.) run
+      const current = await sel.evaluate((el: HTMLSelectElement) => el.options[el.selectedIndex]?.text || '').catch(() => '');
+      console.log(`  ✓ Payment Journal (select) = "${current}"`);
+      return current.includes(journalName);
+    }
+    if (kind === 'm2o') {
+      await m2o.click();
+      await m2o.fill('');
+      await m2o.fill(journalName);
+      await this.wait(CommonUtils.waitTimes.standard);
+      const option = this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]').filter({ hasText: journalName }).first();
+      const visible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+      if (visible) await option.click();
+      else await this.page.keyboard.press('Enter');
+      await this.wait(CommonUtils.waitTimes.standard);
+      console.log(`  ✓ Payment Journal (Many2one) set to "${journalName}"`);
+      return true;
+    }
+    console.log('  ⚠ Payment Journal widget not found (neither <select> nor Many2one)');
+    return false;
   }
   /**
    * Click REGISTER PAYMENT button on the validated invoice

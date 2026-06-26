@@ -1405,6 +1405,24 @@ export class LeadPage extends BasePage {
   }
 
   /**
+   * Non-throwing check: returns true if the "email is invalid" server-error dialog becomes
+   * visible within `timeout`, false otherwise. Used to assert a valid email is NOT rejected.
+   */
+  async isServerErrorDialogVisible(timeout: number = CommonUtils.waitTimes.long): Promise<boolean> {
+    return this.serverErrorDialog().first().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+  }
+
+  /**
+   * Wait for the record to be saved (the form URL gains a record id). Throws on timeout, so a
+   * blocked save (e.g. a rejected email) fails the test. Authoritative "accepted" signal.
+   */
+  async waitForRecordSaved(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    // Wait for a REAL record id (digits): the form URL briefly shows an empty "id=" right after save,
+    // so a loose "id=*" glob would resolve too early. Require id=<digits>.
+    await this.page.waitForURL(/[?#&]id=\d+/, { timeout });
+  }
+
+  /**
    * Click save button
    */
   async clickSave() {
