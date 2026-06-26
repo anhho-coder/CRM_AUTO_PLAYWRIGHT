@@ -20,6 +20,8 @@ export class InvoicePage extends BasePage {
   private readonly createAndViewInvoicesButton = () => this.page.locator("//button[@context=\"{'open_invoices': True}\"]").first();
   private readonly validateButton              = () => this.page.locator("xpath=//button/span[contains(text(),'Validate')]");
   private readonly validateButton_RegisterPayment = () => this.page.locator("xpath=(//button/span[contains(text(),'Validate')])[2]");
+  // Robust Register-Payment wizard "Validate" button (anchored on the action name; survives layout/index shifts).
+  private readonly registerPaymentValidateByName = () => this.page.locator('xpath=//button[@name="action_validate_invoice_payment"]').first();
   private readonly registerPaymentButton       = () => this.page.locator("xpath=//button/span[contains(text(),'Register Payment')]").filter({ visible: true }).first();
   // "Register Payment" rendered as any visible control (header button OR an item inside the "Action" cog menu)
   private readonly registerPaymentAnyVisible   = () => this.page.locator("xpath=//a[contains(normalize-space(),'Register Payment')] | //button[contains(normalize-space(),'Register Payment')] | //span[contains(normalize-space(),'Register Payment')]").filter({ visible: true }).first();
@@ -42,8 +44,16 @@ export class InvoicePage extends BasePage {
   private readonly paymentTermsInput           = () => this.page.getByRole('textbox', { name: /Payment Terms/i }).first();
   /** Input field in the Register Payment dialog */
   private readonly paymentAmountInput          = () => this.page.locator('xpath=(//div[@name="amount"]//input)[1]');
-  /** Input field in the Register Payment dialog */
-  private readonly actuallyReceivedInput       = () => this.page.locator('xpath=((//td//label[contains(text(),"Actually Received")])[3]/following::td/input)[1]');
+  /** "Actually Received($)" input in the Register Payment dialog (robust: anchored on the field name,
+   *  with the legacy label-index XPath as a fallback). */
+  private readonly actuallyReceivedInput       = () => this.page.locator('xpath=//input[@name="actually_received"]').or(this.page.locator('xpath=((//td//label[contains(text(),"Actually Received")])[3]/following::td/input)[1]')).first();
+  // ── Register Payment wizard: "Payment Difference" handling (surfaces when Payment Amount < balance) ──
+  // The radiogroup div is always present; it is only meaningful when a difference exists. "Keep open"
+  // = data-value="open" (checked by default), "Mark invoice as fully paid" = data-value="reconcile".
+  private readonly paymentDifferenceGroup      = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]').first();
+  private readonly keepOpenRadioInput          = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="open"]').first();
+  // The radio input is a visually-hidden Bootstrap custom-control, so the clickable target is its label.
+  private readonly keepOpenLabel               = () => this.page.locator('xpath=//div[@name="payment_difference_handling"]//input[@data-value="open"]/following-sibling::label').or(this.page.locator('xpath=//div[@name="payment_difference_handling"]//label[normalize-space()="Keep open"]')).first();
 
   // ─── Notebook tabs ────────────────────────────────────────────────────────
   private readonly paymentsTabLoc              = () => this.page.locator('xpath=//a[contains(normalize-space(),"Payments")]').first();
@@ -57,6 +67,9 @@ export class InvoicePage extends BasePage {
   private readonly paymentAmountOnTabLoc       = () => this.page.locator('xpath=(//td[contains(@title,"Amount")])[1]').first();
   private readonly actuallyReceivedOnTabLoc    = () => this.page.locator('xpath=(//td[contains(@title,"Amount")])[3]').first();
   private readonly endUserLoc                  = () => this.page.locator('xpath=//a[@name="partner_end_user_id"]').first();
+  // "Payer" on the NAKIVO invoice = the Customer/billing partner (partner_id). Rendered readonly as a
+  // link (like End User / Reseller). XPath primary (anchor), with a field-container fallback.
+  private readonly payerLoc                    = () => this.page.locator('xpath=//a[@name="partner_id"]').or(this.page.locator('xpath=//div[@name="partner_id"]//a')).or(this.page.locator('xpath=//div[@name="partner_id"]')).first();
   private readonly sourceDocumentLoc           = () => this.page.locator('xpath=//span[@name="origin"]').first();
   //Quoc Anh: Invoice date located in the center of page. 
   private readonly invoiceDateLoc              = () => this.page.locator('xpath=//span[@name="date_invoice"]').first();
@@ -66,9 +79,23 @@ export class InvoicePage extends BasePage {
   private readonly salesTeamLoc                = () => this.page.locator('xpath=//a[@name="team_id"]').first();
   private readonly salespersonLoc              = () => this.page.locator('xpath=//a[@name="user_id"]').first();
   private readonly amountDueLoc                = () => this.page.locator('xpath=//span[@name="residual"] | //span[@name="amount_residual"]').first();
+  // Invoice grand total (footer "Total" = amount_total). For a Reseller this is the net after the
+  // automatic Partner Discount (e.g. line gross $101.00 -> net total $85.85).
+  private readonly invoiceTotalLoc            = () => this.page.locator('xpath=//span[@name="amount_total"]').first();
+  // ── Invoice Order wizard (sale.advance.payment.inv): "What do you want to invoice?" radio ──
+  // "Invoiceable lines" = the first option (data-value="delivered"), checked by default. The radio
+  // input is visually hidden (Bootstrap custom-control), so click its <label>; the input id has a
+  // per-render number, so anchor on data-value.
+  private readonly invoiceableLinesRadio      = () => this.page.locator('xpath=//div[@name="advance_payment_method"]//input[@data-value="delivered"]').first();
+  private readonly invoiceableLinesLabel      = () => this.page.locator('xpath=//div[@name="advance_payment_method"]//input[@data-value="delivered"]/following-sibling::label').or(this.page.locator('xpath=//div[@name="advance_payment_method"]//label[normalize-space()="Invoiceable lines"]')).first();
 
   constructor(page: Page) {
     super(page);
+  }
+
+  /** Escape XPath-significant characters in a product code so brackets match literally. */
+  private escapeForXPathContains(text: string): string {
+    return text.replace(/["]/g, '');
   }
 
   /**
@@ -236,6 +263,63 @@ export class InvoicePage extends BasePage {
   }
 
   /**
+   * Click VALIDATE and wait until the invoice is actually POSTED (Open/Posted/Paid). Robust against:
+   *  - a delayed "Odoo Client Error" / "Missing Record" (mail.followers) popup that can intercept the
+   *    VALIDATE click on a freshly-opened invoice, leaving it Draft, and
+   *  - a slow async post.
+   * Dismisses popups, polls the statusbar, and re-clicks VALIDATE if the invoice is still Draft.
+   * @param maxAttempts - number of poll/re-attempt cycles (default 6)
+   * @returns the final invoice status text (e.g. "Open")
+   */
+  async clickValidateAndWaitPosted(maxAttempts: number = 6): Promise<string> {
+    await this.dismissErrorDialogWithRetry();
+    await this.clickValidate();
+    let status = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.dismissErrorDialog();
+      try { status = await this.getInvoiceStatus(); } catch { status = ''; }
+      console.log(`  - Invoice status poll ${attempt}/${maxAttempts}: "${status}"`);
+      if (/Open|Posted|Paid/i.test(status)) return status;
+      // Still Draft -> clear any intercepting popup and re-attempt VALIDATE if the button is present.
+      await this.dismissErrorDialogWithRetry();
+      const validateVisible = await this.validateButton()
+        .isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+      if (validateVisible) {
+        await this.validateButton().click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+        await this.wait(CommonUtils.waitTimes.long);
+      } else {
+        // No Validate button and not posted yet -> give the async post a moment, then reload.
+        await this.wait(CommonUtils.waitTimes.long);
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.dismissErrorDialog();
+      }
+    }
+    return status;
+  }
+
+  /**
+   * Poll the invoice statusbar until it reaches the expected status (e.g. "Paid"), reloading the
+   * form between attempts (the status can update asynchronously after a payment is validated).
+   * Dismisses any intercepting Odoo error popup on each pass. Returns the last status read.
+   * @param expected - status to wait for, matched case-insensitively as a substring (e.g. "Paid")
+   * @param maxAttempts - number of poll/reload cycles (default 8)
+   */
+  async waitForInvoiceStatus(expected: string, maxAttempts: number = 8): Promise<string> {
+    const re = new RegExp(expected, 'i');
+    let status = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.dismissErrorDialog();
+      try { status = await this.getInvoiceStatus(); } catch { status = ''; }
+      console.log(`  - Invoice status poll ${attempt}/${maxAttempts}: "${status}" (waiting for "${expected}")`);
+      if (re.test(status)) return status;
+      await this.wait(CommonUtils.waitTimes.long);
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.dismissErrorDialog();
+    }
+    return status;
+  }
+
+  /**
    * Click the invoice CANCEL button (cancels the posted invoice).
    * @param timeout - max time to wait for the button (default: abnormalWait)
    */
@@ -326,17 +410,68 @@ export class InvoicePage extends BasePage {
    * @param timeout - Maximum time to wait (default: 20000ms)
    */
   async clickValidate_RegisterPayment(timeout: number = 20000): Promise<void> {
-    console.log('  - Looking for VALIDATE button');
-    
-    const validateButton = this.validateButton_RegisterPayment();
-    await validateButton.waitFor({ state: 'visible', timeout });
+    console.log('  - Looking for the Register Payment "Validate" button');
+
+    // Prefer the action-name-anchored button (robust); fall back to the legacy indexed span locator.
+    let validateButton = this.registerPaymentValidateByName();
+    const byNameVisible = await validateButton.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (!byNameVisible) {
+      console.log('  - action_validate_invoice_payment not visible; falling back to the indexed Validate locator');
+      validateButton = this.validateButton_RegisterPayment();
+      await validateButton.waitFor({ state: 'visible', timeout });
+    }
     console.log('  - Found VALIDATE button');
-    
+
     await validateButton.click();
     console.log('  - Clicked "VALIDATE" button on Register Payment dialog');
-    
+
     // Wait for validation to complete
     await this.wait(5000);
+  }
+
+  /**
+   * "Click outside" the Payment Amount field so the wizard's onchange recomputes and (when the amount
+   * is less than the open balance) surfaces the "Payment Difference" handling field. Blurs via Tab and
+   * waits for the payment_difference_handling group to be present.
+   * @returns true if the Payment Difference field is visible afterwards
+   */
+  async blurPaymentAmountAndAwaitDifference(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    await this.page.keyboard.press('Tab');
+    await this.wait(CommonUtils.waitTimes.long);
+    const visible = await this.paymentDifferenceGroup()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+    console.log(`  - Payment Difference field visible after blur: ${visible}`);
+    return visible;
+  }
+
+  /**
+   * Whether the "Payment Difference" handling field is currently shown in the Register Payment wizard.
+   */
+  async isPaymentDifferenceVisible(): Promise<boolean> {
+    return await this.paymentDifferenceGroup().isVisible().catch(() => false);
+  }
+
+  /**
+   * Select "Keep open" in the Register Payment wizard's Payment Difference handling (records a PARTIAL
+   * payment and leaves the invoice open for the remaining balance). "Keep open" is the default, so this
+   * is idempotent; it mirrors the manual step and guarantees the state. Clicks the label (the radio
+   * input is a visually-hidden Bootstrap custom-control), then verifies the open radio is checked.
+   * @returns true once "Keep open" is selected/checked
+   */
+  async selectPaymentDifferenceKeepOpen(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log('  - Selecting Payment Difference = "Keep open"');
+    await this.keepOpenLabel().waitFor({ state: 'visible', timeout }).catch(() => {});
+    try {
+      await this.keepOpenLabel().click();
+    } catch {
+      await this.keepOpenRadioInput().check({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    const checked = await this.keepOpenRadioInput().isChecked().catch(() => false);
+    console.log(`  ${checked ? '✓' : '⚠'} "Keep open" selected (checked=${checked})`);
+    return checked;
   }
   /**
    * Click REGISTER PAYMENT button on the validated invoice
@@ -538,6 +673,74 @@ export class InvoicePage extends BasePage {
     return value;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Payments tab - MULTI-row readers (UC-B-3: a partially-paid invoice has N payment rows)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Count the payment rows in the Payments tab's one2many list (payment_ids).
+   * @param timeout - max time to wait for the Payments list to render (default: abnormalWait)
+   */
+  async getPaymentRowCount(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    const list = this.page.locator('xpath=//div[@name="payment_ids"]').first();
+    await list.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await this.page.locator('xpath=//div[@name="payment_ids"]//tr[contains(@class,"o_data_row")]').count().catch(() => 0);
+    console.log(`  ✓ Payment rows on the Payments tab: ${count}`);
+    return count;
+  }
+
+  /**
+   * Read every payment row's value for a given column (matched by its header text) from the Payments
+   * tab one2many list (payment_ids). Resolves the column by header index so it is resilient to CSS
+   * changes and to a leading handle/selector column.
+   * @param headerText - the column header (prefix match), e.g. "Payment Amount", "Actually Received", "Status"
+   * @param timeout - max time to wait for the list (default: abnormalWait)
+   * @returns the trimmed cell text for each data row, in row order
+   */
+  async getPaymentColumnValues(
+    headerText: string,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<string[]> {
+    const list = this.page.locator('xpath=//div[@name="payment_ids"]').first();
+    await list.waitFor({ state: 'visible', timeout }).catch(() => {});
+
+    const values = await this.page.evaluate((header: string) => {
+      const container = document.querySelector('div[name="payment_ids"]');
+      if (!container) return [] as string[];
+      const table = container.querySelector('table');
+      if (!table) return [] as string[];
+      const headers = Array.from(table.querySelectorAll('thead th'));
+      const colIdx = headers.findIndex(h => (h.textContent || '').trim().startsWith(header));
+      if (colIdx === -1) return [] as string[];
+      const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+      return rows.map(r => {
+        const cells = r.querySelectorAll('td');
+        return cells[colIdx] ? (cells[colIdx].textContent || '').trim() : '';
+      });
+    }, headerText);
+
+    console.log(`  ✓ Payments tab column "${headerText}" values: ${JSON.stringify(values)}`);
+    return values;
+  }
+
+  /**
+   * Get the "Payer" field value from the Invoice form (the Customer / billing partner, partner_id).
+   * On the NAKIVO invoice the Payer is what the Deal Element's Payer propagates to. Returns the
+   * trimmed link/field text, or '' when the field is blank/not visible.
+   * @param timeout - Maximum time to wait for the element (default: 15000ms)
+   */
+  async getPayer(timeout: number = 15000): Promise<string> {
+    const field = this.payerLoc();
+    const visible = await field.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!visible) {
+      console.log('  ⚠ Payer field not visible');
+      return '';
+    }
+    const value = (await field.innerText().catch(() => '')).trim();
+    console.log(`  ✓ Payer (partner_id): "${value}"`);
+    return value;
+  }
+
   /**
    * Get the "End User" field value from the Invoice form.
    * @param timeout - Maximum time to wait for the element (default: 15000ms)
@@ -690,6 +893,74 @@ export class InvoicePage extends BasePage {
     const value = (await field.innerText()).trim();
     console.log(`  ✓ Salesperson: ${value}`);
     return value;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Invoice Order wizard + invoice line / total readers (UC-B-1: multi-product invoice)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * On the "Invoice Order" wizard, select the "Invoiceable lines" option (the first option,
+   * advance_payment_method = "delivered"). It is selected by default, so this is idempotent - it
+   * mirrors the manual step and guards against a non-default pre-selection. Tolerant: logs and
+   * continues if the radio is not present.
+   * @param timeout - max time to wait for the radio (default: abnormalWait)
+   */
+  async selectInvoiceableLines(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log('  - Selecting "Invoiceable lines" in the Invoice Order wizard');
+    const label = this.invoiceableLinesLabel();
+    const visible = await label.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!visible) {
+      console.log('  ⚠ "Invoiceable lines" option not found (wizard may differ) - continuing with default');
+      return false;
+    }
+    try {
+      // Click the label (the input is visually hidden). Force-check the input as a fallback.
+      await label.click();
+    } catch {
+      await this.invoiceableLinesRadio().check({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    const checked = await this.invoiceableLinesRadio().isChecked().catch(() => false);
+    console.log(`  ✓ "Invoiceable lines" selected (checked=${checked})`);
+    return true;
+  }
+
+  /**
+   * Read the invoice grand Total (footer amount_total). For a Reseller this is the NET total after
+   * the automatic Partner Discount (it can be less than the sum of the per-line gross subtotals).
+   * @returns the trimmed total text, e.g. "$ 85.85"
+   * @param timeout - max time to wait for the element (default: 15000ms)
+   */
+  async getInvoiceTotal(timeout: number = 15000): Promise<string> {
+    const field = this.invoiceTotalLoc();
+    await field.waitFor({ state: 'visible', timeout });
+    const value = (await field.innerText()).trim();
+    console.log(`  ✓ Invoice Total (amount_total): ${value}`);
+    return value;
+  }
+
+  /**
+   * Read an invoice line's Quantity and Subtotal (the GROSS line amount before the order-level
+   * Partner Discount) by product code. Columns on the posted account.invoice line list:
+   * 1 handle | 2 Product | 3 Start | 4 End | 5 Description | 6 Quantity | 7 UoM | 8 Price |
+   * 9 Special Discount(%) | 10 Subtotal. Quantity (td[6]) and Subtotal (td[10]) are bare <td> text.
+   * @param productCode - product code to identify the line, e.g. "[A2149B]"
+   * @param timeout - max time to wait for the line (default: abnormalWait)
+   * @returns { quantity, subtotal } trimmed strings; empty when the line/cell is not found
+   */
+  async getInvoiceLineData(
+    productCode: string,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<{ quantity: string; subtotal: string }> {
+    const code = this.escapeForXPathContains(productCode);
+    const rowXp = `//div[@name="invoice_line_ids"]//tr[contains(@class,"o_data_row")][.//span[@name="product_id"][contains(.,"${code}")]]`;
+    const row = this.page.locator(`xpath=${rowXp}`).first();
+    await row.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const quantity = ((await this.page.locator(`xpath=${rowXp}/td[6]`).first().innerText().catch(() => '')) || '').trim();
+    const subtotal = ((await this.page.locator(`xpath=${rowXp}/td[10]`).first().innerText().catch(() => '')) || '').trim();
+    console.log(`  ✓ Invoice line "${productCode}": qty="${quantity}" subtotal="${subtotal}"`);
+    return { quantity, subtotal };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

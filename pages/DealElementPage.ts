@@ -624,6 +624,47 @@ export class DealElementPage extends BasePage {
   }
 
   /**
+   * Read the Unit Price ("Unit Price" column = price_unit) for the order line matching the given
+   * product code. In readonly mode the value is bare text in following-sibling::td[6].
+   * @param productName - product code to identify the row (e.g. "[A2149B]")
+   * @returns parsed numeric unit price, or 0 if not found
+   */
+  async getUnitPriceForProduct(productName: string): Promise<number> {
+    const cell = this.page.locator(
+      `xpath=//td/span[@name="product_id" and contains(text(),'${productName}')]/ancestor::td/following-sibling::td[6]`
+    ).first();
+    const text = await cell.innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '0');
+    const value = parseFloat(text.trim().replace(/[^0-9.,]/g, '').replace(/,/g, '')) || 0;
+    console.log(`  - Unit Price for "${productName}": ${value} (got: "${text.trim()}")`);
+    return value;
+  }
+
+  /**
+   * Set the Ordered Qty on the order line matching the given product code. Clicks the product cell to
+   * put the row into edit mode (so the qty input renders), then fills product_uom_qty and commits
+   * with Tab. Mirrors changeUnitPriceInRow's row-activation pattern. Lets totals recompute (onchange).
+   * @param productName - product code to identify the row (e.g. "[A2149B]")
+   * @param quantity - the Ordered Qty to set
+   */
+  async changeQtyInRow(productName: string, quantity: number): Promise<void> {
+    console.log(`  - Setting Ordered Qty for row "${productName}" -> ${quantity}...`);
+    const productCell = this.page.locator(
+      `xpath=//span[@name="product_id" and contains(text(),'${productName}')]`
+    ).first();
+    // Explicit timeout so a wrong (active-row) state fails fast instead of consuming the test budget.
+    await productCell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await productCell.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const qtyInput = this.page.locator('xpath=//input[@name="product_uom_qty"]').first();
+    await qtyInput.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await qtyInput.click({ clickCount: 3 });
+    await qtyInput.fill(String(quantity));
+    await this.page.keyboard.press('Tab');
+    await this.wait(CommonUtils.waitTimes.long); // let totals recompute (onchange)
+    console.log(`  ✓ Ordered Qty for "${productName}" set to ${quantity}`);
+  }
+
+  /**
    * Get the total amount displayed at the bottom of the Order Lines section (Untaxed Amount / Total).
    * Reads the span[@name="amount_untaxed"] value. Falls back to span[@name="amount_total"] if not found.
    * @returns parsed numeric total, or 0 if not found
@@ -1053,6 +1094,71 @@ export class DealElementPage extends BasePage {
     await this.page.keyboard.press('Escape');
     await this.wait(300);
     console.log('  \u2713 Payer field cleared');
+  }
+
+  /**
+   * Set the Payer (partner_id) Many2one field to the given partner/contact name.
+   *
+   * When the Deal Element opens, the Payer auto-populates with the Reseller (Assigned Partner).
+   * This clears it and selects the given partner (e.g. the End User contact). The form must be in
+   * edit mode (a freshly-opened/new Deal Element is). Uses the repo's canonical M2O pattern
+   * (see OpportunityPage.setAssignedPartner / CLAUDE.md): clear, type, then press Enter PROMPTLY
+   * while the autocomplete still holds the typed text + highlighted match - do NOT wait for / click
+   * a rendered dropdown option (that races the autocomplete closed and Enter then clears the field).
+   * Verifies the value took and retries once.
+   * @param payerName - the partner/contact name to set as Payer (e.g. the End User contact name)
+   */
+  async setPayer(payerName: string): Promise<void> {
+    console.log(`  - Setting Payer to "${payerName}"...`);
+    const input = this.payerInput();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await input.click();
+      await input.fill('');
+      await this.wait(CommonUtils.waitTimes.short);
+      await input.fill(payerName);
+      await this.wait(CommonUtils.waitTimes.long); // let the autocomplete fetch + highlight the match
+      await this.page.keyboard.press('Enter');
+      await this.wait(CommonUtils.waitTimes.long); // let the Payer onchange recompute (pricelist/addresses)
+      const current = await input.inputValue().catch(() => '');
+      if (current && current.includes(payerName)) {
+        console.log(`  ✓ Payer set to "${current}" (attempt ${attempt})`);
+        return;
+      }
+      console.log(`  ⚠ Payer not set on attempt ${attempt} (got "${current}") - retrying`);
+    }
+    console.log('  ⚠ Payer could not be set after 2 attempts');
+  }
+
+  /**
+   * Set the Invoice Address (partner_invoice_id) Many2one to the given partner/contact name, using the
+   * repo's canonical fill+Enter M2O pattern (robust variant of setInvoiceAddress, which uses the flaky
+   * dropdown-click). When an invoice is created from the Sales Order, Odoo bills the SO's Invoice
+   * Address - so to invoice the End User directly, this must point at the End User (not the Reseller).
+   * Verifies and retries once. Form must be in edit mode.
+   * @param name - the partner/contact name to set as Invoice Address
+   */
+  async setInvoiceAddressByName(name: string): Promise<void> {
+    console.log(`  - Setting Invoice Address to "${name}"...`);
+    const input = this.invoiceAddressInput();
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await input.scrollIntoViewIfNeeded().catch(() => {});
+      await input.click();
+      await input.fill('');
+      await this.wait(CommonUtils.waitTimes.short);
+      await input.fill(name);
+      await this.wait(CommonUtils.waitTimes.long);
+      await this.page.keyboard.press('Enter');
+      await this.wait(CommonUtils.waitTimes.long);
+      const current = await input.inputValue().catch(() => '');
+      if (current && current.includes(name)) {
+        console.log(`  ✓ Invoice Address set to "${current}" (attempt ${attempt})`);
+        return;
+      }
+      console.log(`  ⚠ Invoice Address not set on attempt ${attempt} (got "${current}") - retrying`);
+    }
+    console.log('  ⚠ Invoice Address could not be set after 2 attempts');
   }
 
   /**

@@ -24,6 +24,9 @@ export class QuotationPage extends BasePage {
   private readonly salesOrderNumberField = () => this.page.locator('xpath=(//span[@name="name"] | //div[@name="name"]//span | //h1[@name="name"])[1]').first();
   private readonly quotationStatusField = () => this.page.locator('xpath=//div[contains(@class,"o_statusbar_status")]//button[@aria-checked="true" or @aria-selected="true" or contains(@class,"btn-primary")]').first();
   private readonly totalInCompanyCurrencyField = () => this.page.locator('xpath=//div[@name="currency_amount_total"]//span | //span[@name="currency_amount_total"] | //div[@name="amount_total"]//span[@class="o_stat_value"] | //td[@name="currency_amount_total"] | //span[@name="amount_total"]').first();
+  // "Payer" (partner_id) on the Quotation/Sales Order: readonly link primary, edit-mode input fallback.
+  private readonly payerInput = () => this.page.locator('xpath=//div[@name="partner_id"]//input').first();
+  private readonly payerReadonly = () => this.page.locator('xpath=//a[@name="partner_id"]').or(this.page.locator('xpath=//div[@name="partner_id"]//a')).first();
 
   constructor(page: Page) {
     super(page);
@@ -752,6 +755,26 @@ export class QuotationPage extends BasePage {
   async waitForLockButtonToAppear(timeout: number = 30000): Promise<void> {
     await this.lockButton().waitFor({ state: 'visible', timeout });
     console.log('  ✓ LOCK button has appeared');
+  }
+
+  /**
+   * Read the "Payer" (partner_id) value on the Quotation / Sales Order. Works in readonly (link text)
+   * and edit (input value) modes. Returns '' if not found. Diagnostic helper for the Payer propagation.
+   */
+  async getPayerValue(): Promise<string> {
+    const ro = this.payerReadonly();
+    if (await ro.count().catch(() => 0)) {
+      const t = (await ro.first().innerText().catch(() => '') || '').replace(/\s+/g, ' ').trim();
+      if (t) { console.log(`  - Quotation Payer (readonly): "${t}"`); return t; }
+    }
+    const input = this.payerInput();
+    if (await input.count().catch(() => 0)) {
+      const v = (await input.first().inputValue().catch(() => '') || '').trim();
+      console.log(`  - Quotation Payer (input): "${v}"`);
+      return v;
+    }
+    console.log('  ⚠ Quotation Payer field not found');
+    return '';
   }
 
   /**

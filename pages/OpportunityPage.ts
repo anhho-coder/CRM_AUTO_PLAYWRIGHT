@@ -31,11 +31,31 @@ export class OpportunityPage extends BasePage {
   private readonly salespersonInput = () => this.page.getByRole('textbox', { name: 'Salesperson' }).first();
   private readonly crmDeveloperTab = () => this.page.getByRole('tab', { name: 'CRM Developer' }).first();
   private readonly leadFormInput = () => this.page.locator('xpath=(//input[@name="x_studio_lead_sorce"])[2]');
+  // "IP" (x_studio_ip_lead_source) char field on the Opp form. XPath primary, CSS fallback.
+  private readonly ipInputXPath = () => this.page.locator("xpath=//input[@name='x_studio_ip_lead_source']").first();
+  private readonly ipInputCss = () => this.page.locator("input[name='x_studio_ip_lead_source']").first();
   private readonly saveButton = () => this.page.getByRole('button', { name: 'Save' }).or(this.page.getByRole('button', { name: 'SAVE' })).first();
   private readonly dropdownOption = () => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
   private readonly contactFieldXPath = () => this.page.locator("xpath=(//a[@name='contact_partner_id'])[2]");
   private readonly companyFieldXPath  = () => this.page.locator("xpath=(//a[@name='partner_id'])[2]");
+
+  // --- Chatter composer locators (backend Opp chatter: Send message / Log note). XPath primary, CSS fallback. ---
+  private readonly sendMessageButtonXPath = () => this.page.locator("xpath=//button[contains(@class,'o_chatter_button_new_message')]").first();
+  private readonly sendMessageButtonCss = () => this.page.locator("button.o_chatter_button_new_message").first();
+  private readonly logNoteButtonXPath = () => this.page.locator("xpath=//button[contains(@class,'o_chatter_button_log_note')]").first();
+  private readonly logNoteButtonCss = () => this.page.locator("button.o_chatter_button_log_note").first();
+  private readonly composerTextareaXPath = () => this.page.locator("xpath=//div[contains(@class,'o_thread_composer')]//textarea[contains(@class,'o_composer_text_field')]").first();
+  private readonly composerTextareaCss = () => this.page.locator("div.o_thread_composer textarea.o_composer_text_field").first();
+  private readonly composerSendButtonXPath = () => this.page.locator("xpath=//div[contains(@class,'o_thread_composer')]//button[contains(@class,'o_composer_button_send')]").first();
+  private readonly composerSendButtonCss = () => this.page.locator("div.o_thread_composer button.o_composer_button_send").first();
+  private readonly composerSuggestedPartnersXPath = () => this.page.locator("xpath=//div[contains(@class,'o_thread_composer')]//div[contains(@class,'o_composer_suggested_partners')]").first();
+  private readonly composerSuggestedPartnersCss = () => this.page.locator("div.o_thread_composer div.o_composer_suggested_partners").first();
+  private readonly composerInfoXPath = () => this.page.locator("xpath=//div[contains(@class,'o_thread_composer')]//small[contains(@class,'o_chatter_composer_info')]").first();
   private readonly createdManuallyRow = () => this.page.locator('tr:has-text("Create manually")');
+  // "Create manually" (is_create_manual) boolean checkbox. The whole widget is often hidden
+  // (o_invisible_modifier) on a fresh Opp, so it must be toggled via JS, not a click. XPath primary, CSS fallback.
+  private readonly createManualCheckboxXPath = () => this.page.locator("xpath=//div[@name='is_create_manual']//input[@type='checkbox']").first();
+  private readonly createManualCheckboxCss = () => this.page.locator("div[name='is_create_manual'] input[type='checkbox']").first();
   private readonly dealElementButton = () => this.page.getByRole('button', { name: 'DEAL ELEMENT' }).or(this.page.getByRole('button', { name: 'Deal Element' })).first();
   private readonly newQuotationButton = () => this.page.getByRole('button', { name: /NEW QUOTATION/i }).or(this.page.getByRole('button', { name: /New Quotation/i })).first();
   private readonly resellerInputOpp = () => this.page.locator('xpath=//div[@name="reseller_id"]//input').first();
@@ -206,6 +226,47 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     this.page.locator("xpath=//div/span[@name='expected_revenue_after_probability']").first();
   private readonly probabilityXPath = () =>
     this.page.locator("xpath=//div/span[@name='probability']").first();
+
+  // Assigned Partner tab + field (UC-A-1: Reseller product registration). XPath primary, CSS fallback.
+  private readonly assignedPartnerTabXPath = () =>
+    this.page.locator("xpath=//a[contains(@class,'nav-link') and normalize-space()='Assigned Partner']").first();
+  private readonly assignedPartnerTabCss = () =>
+    this.page.locator("a.nav-link").filter({ hasText: 'Assigned Partner' }).first();
+  private readonly assignedPartnerInputXPath = () =>
+    this.page.locator("xpath=//div[@name='partner_assigned_id']//input[contains(@class,'o_input')]").first();
+  private readonly assignedPartnerInputCss = () =>
+    this.page.locator("div[name='partner_assigned_id'] input.o_input").first();
+  // Readonly (after save) renderings of the Assigned Partner value. Odoo renders a readonly Many2one
+  // as <a name="partner_assigned_id"> (sometimes span/div), NOT a div wrapper - match all forms.
+  private readonly assignedPartnerValueXPath = () =>
+    this.page.locator("xpath=//a[@name='partner_assigned_id'] | //span[@name='partner_assigned_id'] | //div[@name='partner_assigned_id']//a | //div[@name='partner_assigned_id']").first();
+
+  // Internal Notes tab + description textarea. XPath primary, CSS fallback.
+  private readonly internalNotesTabXPath = () =>
+    this.page.locator("xpath=//a[contains(@class,'nav-link') and normalize-space()='Internal Notes']").first();
+  private readonly internalNotesTabCss = () =>
+    this.page.locator("a.nav-link").filter({ hasText: 'Internal Notes' }).first();
+  private readonly internalNotesTextareaXPath = () =>
+    this.page.locator("xpath=//textarea[@name='description']").first();
+  private readonly internalNotesTextareaCss = () =>
+    this.page.locator("textarea[name='description']").first();
+
+  // Customer "Phone" (crm.lead.phone) field on the Opp form. Odoo phone widget:
+  //   readonly -> <a name="phone" href="tel:<value>">value</a> (text/href = "false" when blank);
+  //   edit     -> <input name="phone">.
+  // The field is rendered more than once (visible + invisible blocks), so read across all. XPath primary, CSS fallback.
+  private readonly phoneInputXPath = () => this.page.locator("xpath=//input[@name='phone']").first();
+  private readonly phoneInputCss = () => this.page.locator("input[name='phone']").first();
+  private readonly phoneAnchorsXPath = () => this.page.locator("xpath=//a[@name='phone'] | //span[@name='phone']");
+  private readonly phoneAnchorsCss = () => this.page.locator("a[name='phone'], span[name='phone']");
+  // Customer "Mobile" (crm.lead.mobile) field - same Odoo phone widget as Phone. XPath primary, CSS fallback.
+  private readonly mobileInputXPath = () => this.page.locator("xpath=//input[@name='mobile']").first();
+  private readonly mobileInputCss = () => this.page.locator("input[name='mobile']").first();
+  private readonly mobileAnchorsXPath = () => this.page.locator("xpath=//a[@name='mobile'] | //span[@name='mobile']");
+  private readonly mobileAnchorsCss = () => this.page.locator("a[name='mobile'], span[name='mobile']");
+  // "Expected Closing" (date_deadline) field. Edit: <input name="date_deadline">; readonly: <span name="date_deadline">.
+  private readonly expectedClosingInputXPath = () => this.page.locator("xpath=//input[@name='date_deadline']").first();
+  private readonly expectedClosingSpanXPath = () => this.page.locator("xpath=//span[@name='date_deadline']").first();
 
   constructor(page: Page) {
     super(page);
@@ -451,6 +512,49 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Set the "Create manually" (is_create_manual) boolean to the desired state and confirm it stuck.
+   * The field is frequently hidden (o_invisible_modifier) on a fresh Opp, so a click does not work;
+   * set the checkbox state via JS and dispatch click + change so Odoo's boolean widget registers it
+   * (the value then persists through save). XPath primary, CSS fallback.
+   * @param checked - desired state (false = unchecked / "Create manually" = FALSE)
+   * @returns true if the field ended in the desired state
+   */
+  async setCreatedManually(checked: boolean): Promise<boolean> {
+    let input = this.createManualCheckboxXPath();
+    if (!(await input.count() > 0)) input = this.createManualCheckboxCss();
+    if (!(await input.count() > 0)) {
+      console.log('  ⚠ "Create manually" (is_create_manual) field not found');
+      return false;
+    }
+    const current = await input.isChecked().catch(() => null);
+    if (current === checked) {
+      console.log(`  - "Create manually" already ${checked} - no change needed`);
+      return true;
+    }
+    await input.evaluate((el, value) => {
+      const cb = el as HTMLInputElement;
+      cb.checked = value as boolean;
+      cb.dispatchEvent(new Event('click', { bubbles: true }));
+      cb.dispatchEvent(new Event('change', { bubbles: true }));
+    }, checked);
+    await this.wait(CommonUtils.waitTimes.medium);
+    const after = await input.isChecked().catch(() => null);
+    console.log(`  - "Create manually" set to ${checked} (was ${current}, now ${after})`);
+    return after === checked;
+  }
+
+  /**
+   * Read the current "Create manually" (is_create_manual) checkbox state.
+   * @returns true/false, or null if the field is not present
+   */
+  async isCreatedManuallyChecked(): Promise<boolean | null> {
+    let input = this.createManualCheckboxXPath();
+    if (!(await input.count() > 0)) input = this.createManualCheckboxCss();
+    if (!(await input.count() > 0)) return null;
+    return await input.isChecked().catch(() => null);
+  }
+
+  /**
    * Uncheck "Created Manually" checkbox
    */
   async uncheckCreatedManually() {
@@ -460,8 +564,16 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       const checkbox = row.locator('input[type="checkbox"]').first();
       const isChecked = await checkbox.isChecked();
       if (isChecked) {
-        await row.locator('label, .custom-control').first().click({ force: true });
-        await this.wait(500);
+        // On some Opp forms "Create manually" is checked but hidden (o_invisible_modifier) and
+        // therefore not UI-togglable. Don't force-click a hidden control (it throws); skip gracefully.
+        const control = row.locator('label, .custom-control').first();
+        const controlVisible = await control.isVisible().catch(() => false);
+        if (!controlVisible) {
+          console.log('  ⚠ "Create manually" is checked but hidden (o_invisible_modifier) - cannot toggle via UI; leaving as-is');
+          return false;
+        }
+        await control.click({ force: true });
+        await this.wait(CommonUtils.waitTimes.medium);
         return true;
       } else {
         return true; // Already unchecked
@@ -502,8 +614,16 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       const checkbox = row.locator('input[type="checkbox"]').first();
       const isChecked = await checkbox.isChecked();
       if (isChecked) {
-        await row.locator('label, .custom-control').first().click({ force: true });
-        await this.wait(500);
+        // Skip when the control is hidden (o_invisible_modifier) - a force-click on a non-visible
+        // element throws and it cannot be toggled via the UI anyway.
+        const control = row.locator('label, .custom-control').first();
+        const controlVisible = await control.isVisible().catch(() => false);
+        if (!controlVisible) {
+          console.log('  ⚠ "Create manually" is hidden before save - cannot toggle via UI; leaving as-is');
+          return false;
+        }
+        await control.click({ force: true });
+        await this.wait(CommonUtils.waitTimes.medium);
         return true;
       }
     }
@@ -666,6 +786,51 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       return true;
     }
     return false;
+  }
+
+  /**
+   * Fill the "IP" (x_studio_ip_lead_source) field on the Opportunity form. XPath primary, CSS fallback.
+   * @param ip - the IP value (e.g. from the deal-registration Internal Note)
+   */
+  async fillIP(ip: string): Promise<void> {
+    let input = this.ipInputXPath();
+    const visibleByXPath = await input.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) input = this.ipInputCss();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.scrollIntoViewIfNeeded();
+    await input.fill('');
+    await input.fill(ip);
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /**
+   * Read the "IP" (x_studio_ip_lead_source) value on the Opp form (input value in edit, text in readonly).
+   * @returns the IP string, or "" if not found
+   */
+  async getIpReadonly(): Promise<string> {
+    let input = this.ipInputXPath();
+    if (!(await input.count() > 0)) input = this.ipInputCss();
+    if (await input.count() > 0) {
+      const v = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+      if (v && v.trim()) return v.trim();
+    }
+    const span = this.page.locator("xpath=//span[@name='x_studio_ip_lead_source']").first();
+    if (await span.count() > 0) {
+      return ((await span.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    }
+    return '';
+  }
+
+  /**
+   * Read the deal-registration banner/alert text on the Opp form, e.g.
+   * "This deal has been registered by <partner>. ... has to be approved by <date>.". Returns "" if absent.
+   */
+  async getDealRegistrationBanner(): Promise<string> {
+    const alert = this.page.locator(
+      "xpath=//div[contains(@class,'alert')][contains(normalize-space(.),'deal has been registered') or contains(normalize-space(.),'deal registration')]"
+    ).first();
+    if (!(await alert.count() > 0)) return '';
+    return ((await alert.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
   }
 
   /**
@@ -1105,6 +1270,150 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const chatterLogArea = this.page.locator('.o_thread_message_content, .o_mail_thread');
     await chatterLogArea.first().waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     return await chatterLogArea.allTextContents().then(texts => texts.join(' ')) || '';
+  }
+
+  // ─── Chatter composer (Send message / Log note) ────────────────────────────
+
+  /**
+   * Open the chatter "Send message" composer (posts a customer-visible message to the Opp's followers).
+   * XPath primary, CSS fallback; waits for the composer textarea to render.
+   */
+  async openSendMessageComposer(): Promise<void> {
+    let btn = this.sendMessageButtonXPath();
+    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false))) btn = this.sendMessageButtonCss();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await btn.scrollIntoViewIfNeeded();
+    await btn.click();
+    let ta = this.composerTextareaXPath();
+    if (!(await ta.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) ta = this.composerTextareaCss();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Open the chatter "Log note" composer (posts an internal note, not sent to the customer/followers).
+   * XPath primary, CSS fallback; waits for the composer textarea to render.
+   */
+  async openLogNoteComposer(): Promise<void> {
+    let btn = this.logNoteButtonXPath();
+    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false))) btn = this.logNoteButtonCss();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await btn.scrollIntoViewIfNeeded();
+    await btn.click();
+    let ta = this.composerTextareaXPath();
+    if (!(await ta.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) ta = this.composerTextareaCss();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Read the open composer's body text (the textarea value) - used to verify an empty message is blocked.
+   */
+  async getComposerBodyValue(): Promise<string> {
+    let ta = this.composerTextareaXPath();
+    if (!(await ta.count() > 0)) ta = this.composerTextareaCss();
+    if (!(await ta.count() > 0)) return '';
+    return (await ta.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '';
+  }
+
+  /**
+   * Whether the open composer is still present (textarea visible). Used to confirm an empty Send does
+   * not post and dismiss the composer.
+   */
+  async isComposerOpen(): Promise<boolean> {
+    let ta = this.composerTextareaXPath();
+    if (!(await ta.count() > 0)) ta = this.composerTextareaCss();
+    return await ta.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false);
+  }
+
+  /**
+   * Read the suggested-recipients / "To:" text of the OPEN composer (e.g. "To: Followers of <Opp>"
+   * and the listed recipient partners). Returns "" when not shown. Call after openSendMessageComposer.
+   */
+  async getComposerRecipientsText(): Promise<string> {
+    const parts: string[] = [];
+    const info = this.composerInfoXPath();
+    if (await info.count() > 0) parts.push(((await info.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim());
+    let sp = this.composerSuggestedPartnersXPath();
+    if (!(await sp.count() > 0)) sp = this.composerSuggestedPartnersCss();
+    if (await sp.count() > 0) parts.push(((await sp.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim());
+    return parts.filter(Boolean).join(' | ');
+  }
+
+  /**
+   * Fill the OPEN composer textarea with `message` and press "Send". Waits for the composer to close
+   * (the message posts via RPC and the composer collapses). XPath primary, CSS fallback.
+   * @param message - the body text to post
+   */
+  async fillComposerAndSend(message: string): Promise<void> {
+    let ta = this.composerTextareaXPath();
+    if (!(await ta.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) ta = this.composerTextareaCss();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await ta.scrollIntoViewIfNeeded();
+    await ta.click();
+    await ta.click();
+    await ta.fill('');
+    await ta.fill(message);
+    // Fire keyboard-style events so Odoo's composer widget registers the body (a bare value set does
+    // not always enable Send): type a trailing space then backspace, and dispatch input/change.
+    await ta.evaluate((el) => {
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await this.page.keyboard.press('End').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // The deal-registration Opp form can raise a delayed "Odoo Client Error" popup that overlays the
+    // chatter and would intercept the Send click - clear it right before sending.
+    await this.dismissErrorDialog().catch(() => {});
+
+    // Click "Send" and confirm the composer collapses (= the message posted). The Send button can be
+    // briefly disabled right after typing, so re-click until the composer closes (a few attempts).
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      let send = this.composerSendButtonXPath();
+      if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) send = this.composerSendButtonCss();
+      if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false))) break; // composer already closed
+      await send.scrollIntoViewIfNeeded().catch(() => {});
+      await send.click().catch(() => {});
+      const closed = await ta.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility }).then(() => true).catch(() => false);
+      if (closed) break;
+      console.log(`  - composer still open after Send (attempt ${attempt}); clearing any popup and retrying`);
+      await this.dismissErrorDialog().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    await this.wait(CommonUtils.waitTimes.extraLong);
+  }
+
+  /**
+   * Post a customer-visible message via the chatter "Send message" composer (open + fill + Send).
+   * @param message - the message body to post
+   */
+  async sendChatterMessage(message: string): Promise<void> {
+    await this.openSendMessageComposer();
+    await this.fillComposerAndSend(message);
+  }
+
+  /**
+   * Post an internal note via the chatter "Log note" composer (open + fill + Send).
+   * @param message - the note body to post
+   */
+  async logChatterNote(message: string): Promise<void> {
+    await this.openLogNoteComposer();
+    await this.fillComposerAndSend(message);
+  }
+
+  /**
+   * Press "Send" on the OPEN composer without typing anything (to verify an empty message is rejected).
+   * Returns true if the Send button was clickable and clicked; the caller checks nothing posted.
+   */
+  async clickComposerSend(): Promise<void> {
+    let send = this.composerSendButtonXPath();
+    if (!(await send.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) send = this.composerSendButtonCss();
+    if (await send.count() > 0 && await send.isVisible().catch(() => false)) {
+      await send.scrollIntoViewIfNeeded();
+      await send.click().catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.long);
   }
 
   /**
@@ -2130,6 +2439,385 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const raw = await el.innerText().catch(() => '0');
     const value = parseFloat(raw.trim().replace(/[^0-9.]/g, '')) || 0;
     console.log(`  - Probability: ${value}% (raw: "${raw.trim()}")`);
+    return value;
+  }
+
+  /**
+   * Read the current Opportunity name (input value in edit mode, breadcrumb/text in readonly mode).
+   * @returns the opportunity name string, or empty string if not found
+   */
+  async getOpportunityNameValue(): Promise<string> {
+    try {
+      const input = this.opportunityNameInput();
+      const hasInput = await input.count() > 0 && await input.isVisible().catch(() => false);
+      if (hasInput) {
+        const value = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (value.trim()) return value.trim();
+      }
+      // Readonly fallback: the form title / breadcrumb. Guard with count() so a missing element fails
+      // fast instead of blocking (actionTimeout is 0 in this project).
+      const title = this.page.locator("xpath=(//h1//span[@name='name'])[1] | (//span[@name='name'])[1]").first();
+      if (await title.count() > 0) {
+        const text = await title.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        return text.trim();
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Opportunity name: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Click the "Assigned Partner" tab on the Opportunity form. XPath primary, CSS fallback.
+   */
+  async clickAssignedPartnerTab(): Promise<void> {
+    await this.wait(CommonUtils.waitTimes.medium);
+    let tab = this.assignedPartnerTabXPath();
+    const visibleByXPath = await tab.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) tab = this.assignedPartnerTabCss();
+    await tab.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await tab.scrollIntoViewIfNeeded();
+    await tab.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Set the "Assigned Partner" (partner_assigned_id) Many2one field on the Opportunity form.
+   * Canonical Odoo combobox pattern: clear, type the value, commit with Enter (no autocomplete-click).
+   * @param name - the partner/contact name to assign (e.g. a Reseller company name)
+   */
+  async setAssignedPartner(name: string): Promise<void> {
+    let input = this.assignedPartnerInputXPath();
+    const visibleByXPath = await input.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) input = this.assignedPartnerInputCss();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(name);
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Enter');
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Read the Assigned Partner value. In edit mode reads the input value; in readonly mode (after
+   * save) reads the m2o link/field text. XPath primary, CSS fallback.
+   * @returns the assigned partner display text, or empty string if not found
+   */
+  async getAssignedPartnerValue(): Promise<string> {
+    try {
+      // Edit mode: read the autocomplete input value (guard with count(); actionTimeout is 0 here).
+      let input = this.assignedPartnerInputXPath();
+      if (!(await input.count() > 0)) input = this.assignedPartnerInputCss();
+      if (await input.count() > 0 && await input.isVisible().catch(() => false)) {
+        const value = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (value.trim()) return value.trim();
+      }
+      // Readonly mode (after save): read the m2o link/field text.
+      const readonly = this.assignedPartnerValueXPath();
+      if (await readonly.count() > 0) {
+        const text = await readonly.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        return text.trim();
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Assigned Partner value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Click the "Internal Notes" tab on the Opportunity form. XPath primary, CSS fallback.
+   */
+  async clickInternalNotesTab(): Promise<void> {
+    await this.wait(CommonUtils.waitTimes.medium);
+    let tab = this.internalNotesTabXPath();
+    const visibleByXPath = await tab.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) tab = this.internalNotesTabCss();
+    await tab.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await tab.scrollIntoViewIfNeeded();
+    await tab.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Fill the Internal Notes (description) textarea on the Opportunity form. XPath primary, CSS fallback.
+   * @param text - the internal note / deal-registration text block to enter
+   */
+  async fillInternalNotes(text: string): Promise<void> {
+    let textarea = this.internalNotesTextareaXPath();
+    const visibleByXPath = await textarea.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visibleByXPath) textarea = this.internalNotesTextareaCss();
+    await textarea.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await textarea.click();
+    await textarea.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await textarea.fill(text);
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Read the Internal Notes (description) value. Reads the textarea value in edit mode, or the
+   * field text in readonly mode. XPath primary, CSS fallback.
+   * @returns the internal-notes text, or empty string if not found
+   */
+  async getInternalNotesValue(): Promise<string> {
+    try {
+      // Edit mode (or readonly textarea): read the textarea value (guard with count(); actionTimeout is 0).
+      let textarea = this.internalNotesTextareaXPath();
+      if (!(await textarea.count() > 0)) textarea = this.internalNotesTextareaCss();
+      if (await textarea.count() > 0) {
+        const value = await textarea.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (value.trim()) return value.trim();
+      }
+      // Readonly mode (after save): any element carrying name="description".
+      const readonly = this.page.locator("xpath=//*[@name='description']").first();
+      if (await readonly.count() > 0) {
+        const text = await readonly.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        return text.trim();
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Internal Notes value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Open an Opportunity form by its (already-saved) URL and wait for the form to render.
+   * Used to re-open a record captured earlier (e.g. "launch Opp URL #1"). Navigation only - no locators.
+   * @param url - the full Opportunity form URL (Odoo hash URL with id=...&model=crm.lead&view_type=form)
+   */
+  async openByUrl(url: string): Promise<void> {
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+  }
+
+  /**
+   * Read the customer "Phone" (crm.lead.phone) value on the Opportunity form.
+   * Handles edit mode (<input name="phone">) and readonly mode (Odoo phone widget
+   * <a name="phone" href="tel:<value>">value</a>). An empty phone renders as "false" - normalized to "".
+   * XPath primary, CSS fallback. Reads across all renderings and returns the first non-empty value.
+   * @returns the phone string, or "" if blank/not found
+   */
+  async getPhoneValue(): Promise<string> {
+    const isBlank = (v: string) => !v || v.trim() === '' || v.trim().toLowerCase() === 'false';
+    try {
+      // Edit mode: read the input value.
+      let input = this.phoneInputXPath();
+      if (!(await input.count() > 0)) input = this.phoneInputCss();
+      if (await input.count() > 0 && await input.isVisible().catch(() => false)) {
+        const value = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (!isBlank(value)) return value.trim();
+      }
+      // Readonly mode: read the phone-widget anchor(s) - text first, then the tel: href.
+      let anchors = this.phoneAnchorsXPath();
+      if (!(await anchors.count() > 0)) anchors = this.phoneAnchorsCss();
+      const total = await anchors.count();
+      for (let i = 0; i < total; i++) {
+        const a = anchors.nth(i);
+        const text = (await a.textContent().catch(() => '') || '').trim();
+        if (!isBlank(text)) return text;
+        const href = (await a.getAttribute('href').catch(() => '') || '').trim();
+        if (href.toLowerCase().startsWith('tel:')) {
+          const num = href.slice(4).trim();
+          if (!isBlank(num)) return num;
+        }
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Phone value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Reload the Opp form until the customer Phone equals the expected value (reload-and-retry),
+   * tolerant of a brief delay after a portal-side update.
+   * @param expected - the phone value expected on the Opp form
+   * @param maxAttempts - number of (read + reload) attempts (default 5)
+   * @param interval - wait between reload attempts (default waitTimes.long)
+   * @returns the last phone value read (equals `expected` on success)
+   */
+  async waitForPhoneEquals(
+    expected: string,
+    maxAttempts: number = 5,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<string> {
+    let phone = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      phone = await this.getPhoneValue();
+      console.log(`  - Phone check attempt ${attempt}/${maxAttempts}: "${phone}" (expected "${expected}")`);
+      if (phone === expected) return phone;
+      if (attempt < maxAttempts) {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+        await this.phoneAnchorsXPath().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+        await this.wait(interval);
+      }
+    }
+    return phone;
+  }
+
+  /**
+   * Read the customer "Mobile" (crm.lead.mobile) value on the Opportunity form. Same Odoo phone-widget
+   * rendering as Phone (edit: <input name="mobile">; readonly: <a name="mobile" href="tel:<value>">).
+   * Empty renders as "false" - normalized to "". XPath primary, CSS fallback.
+   * @returns the mobile string, or "" if blank/not found
+   */
+  async getMobileValue(): Promise<string> {
+    const isBlank = (v: string) => !v || v.trim() === '' || v.trim().toLowerCase() === 'false';
+    try {
+      let input = this.mobileInputXPath();
+      if (!(await input.count() > 0)) input = this.mobileInputCss();
+      if (await input.count() > 0 && await input.isVisible().catch(() => false)) {
+        const value = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (!isBlank(value)) return value.trim();
+      }
+      let anchors = this.mobileAnchorsXPath();
+      if (!(await anchors.count() > 0)) anchors = this.mobileAnchorsCss();
+      const total = await anchors.count();
+      for (let i = 0; i < total; i++) {
+        const a = anchors.nth(i);
+        const text = (await a.textContent().catch(() => '') || '').trim();
+        if (!isBlank(text)) return text;
+        const href = (await a.getAttribute('href').catch(() => '') || '').trim();
+        if (href.toLowerCase().startsWith('tel:')) {
+          const num = href.slice(4).trim();
+          if (!isBlank(num)) return num;
+        }
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Mobile value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Reload the Opp form until the customer Mobile equals the expected value (reload-and-retry).
+   * @returns the last mobile value read (equals `expected` on success)
+   */
+  async waitForMobileEquals(
+    expected: string,
+    maxAttempts: number = 5,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<string> {
+    let mobile = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      mobile = await this.getMobileValue();
+      console.log(`  - Mobile check attempt ${attempt}/${maxAttempts}: "${mobile}" (expected "${expected}")`);
+      if (mobile === expected) return mobile;
+      if (attempt < maxAttempts) {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+        await this.wait(interval);
+      }
+    }
+    return mobile;
+  }
+
+  /**
+   * Reload the Opp form until the readonly Email equals the expected value (reload-and-retry),
+   * tolerant of a brief delay after a portal-side update. Uses getEmailReadonly().
+   * @returns the last email value read (equals `expected` on success)
+   */
+  async waitForEmailEquals(
+    expected: string,
+    maxAttempts: number = 5,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<string> {
+    let email = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      email = await this.getEmailReadonly();
+      console.log(`  - Email check attempt ${attempt}/${maxAttempts}: "${email}" (expected "${expected}")`);
+      if (email === expected) return email;
+      if (attempt < maxAttempts) {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+        await this.wait(interval);
+      }
+    }
+    return email;
+  }
+
+  /**
+   * Reload the Opp form until the readonly Company/Customer name CONTAINS the expected substring
+   * (reload-and-retry). Uses getCompanyNameReadonly() (the customer name = crm.lead.partner_name).
+   * @returns the last company-name text read
+   */
+  async waitForCompanyNameContains(
+    expected: string,
+    maxAttempts: number = 5,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<string> {
+    let name = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      name = await this.getCompanyNameReadonly();
+      console.log(`  - Company name check attempt ${attempt}/${maxAttempts}: "${name}" (expected to contain "${expected}")`);
+      if (name.includes(expected)) return name;
+      if (attempt < maxAttempts) {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+        await this.wait(interval);
+      }
+    }
+    return name;
+  }
+
+  /**
+   * Read the "Expected Closing" (date_deadline) value on the Opp form. Edit: input value;
+   * readonly: <span name="date_deadline"> text. Returns the displayed date string, or "" if blank.
+   */
+  async getExpectedClosingValue(): Promise<string> {
+    const isBlank = (v: string) => !v || v.trim() === '' || v.trim().toLowerCase() === 'false';
+    try {
+      const input = this.expectedClosingInputXPath();
+      if (await input.count() > 0 && await input.isVisible().catch(() => false)) {
+        const value = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '';
+        if (!isBlank(value)) return value.trim();
+      }
+      const span = this.expectedClosingSpanXPath();
+      if (await span.count() > 0) {
+        const text = (await span.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '').trim();
+        if (!isBlank(text)) return text;
+      }
+      return '';
+    } catch (error) {
+      console.error(`Error getting Expected Closing value: ${error instanceof Error ? error.message : String(error)}`);
+      return '';
+    }
+  }
+
+  /**
+   * Reload the Opp form until the Expected Closing date, reduced to its digits (so format differences
+   * like 08/15/2026 vs 2026-08-15 don't matter), CONTAINS each digit-group of the expected date
+   * (reload-and-retry). Compares on a normalized digit signature.
+   * @param expectedDate - the date as entered (e.g. "08/15/2026")
+   * @returns the last raw Expected Closing value read
+   */
+  async waitForExpectedClosingMatches(
+    expectedDate: string,
+    maxAttempts: number = 5,
+    interval: number = CommonUtils.waitTimes.long
+  ): Promise<string> {
+    // Normalize to a sorted set of numeric parts (year/month/day) regardless of separators/order.
+    const sig = (s: string) => (s.match(/\d+/g) || []).map((n) => parseInt(n, 10)).filter((n) => n > 0).sort((a, b) => a - b).join('-');
+    const target = sig(expectedDate);
+    let value = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      value = await this.getExpectedClosingValue();
+      console.log(`  - Expected Closing check attempt ${attempt}/${maxAttempts}: "${value}" (sig ${sig(value)} vs target ${target})`);
+      if (target && sig(value) === target) return value;
+      if (attempt < maxAttempts) {
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+        await this.wait(interval);
+      }
+    }
     return value;
   }
 }

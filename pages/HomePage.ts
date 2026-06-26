@@ -39,7 +39,17 @@ export class HomePage extends BasePage {
   async navigateToCRM() {
     //await this.wait(CommonUtils.waitTimes.login);
     await this.crmLink().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
-    await this.crmLink().click();
+
+    // A transient Odoo technical/server-error modal can appear right after login and intercept this
+    // click (it then retries until the test timeout). Clear it first (no-op when absent); if the
+    // click is still intercepted by a late-appearing modal, dismiss and retry once.
+    await this.dismissErrorDialog();
+    try {
+      await this.crmLink().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    } catch {
+      await this.dismissErrorDialog();
+      await this.crmLink().click();
+    }
     await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
 
    // Quoc Anh: (Feb 24, 26) Handle error dialog if it appears

@@ -84,6 +84,32 @@ export class LoginPage extends BasePage {
   }
 
   /**
+   * Log out of the current Odoo session deterministically, then land on the login page.
+   * Use this before logging in as a DIFFERENT user in the same browser context (clearing cookies
+   * alone is racy - the previous session can survive and the new login silently no-ops).
+   */
+  async logout(baseUrl: string, timeout: number = CommonUtils.waitTimes.pageLoad) {
+    await this.goto(`${baseUrl}web/session/logout`);
+    await this.waitForURL('**web/login*', timeout);
+    await this.dismissErrorDialog();
+  }
+
+  /**
+   * Log in WITHOUT waiting for the CRM admin menu. For partner-portal users (e.g. a Reseller) who
+   * land on the "/my" portal instead of the CRM backend - they have no CRM menu, so the standard
+   * login()'s waitForLoginSuccess would time out. The caller waits for the portal's own signal
+   * (e.g. ResellerPortalPage.waitForPortalReady()).
+   */
+  async loginPortalUser(email: string, password: string, timeout: number = CommonUtils.waitTimes.login) {
+    await this.page.setViewportSize({ width: 1920, height: 1080 });
+    await this.waitForLoginPage(timeout);
+    await this.fillEmail(email);
+    await this.fillPassword(password);
+    await this.clickLogin();
+    await this.dismissLocationPermissionDialog();
+  }
+
+  /**
    * Dismiss location permission dialog if it appears
    * Handles the "Know your location" popup that may appear after login
    */

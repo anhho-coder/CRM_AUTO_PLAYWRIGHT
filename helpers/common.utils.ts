@@ -44,6 +44,19 @@ export class CommonUtils {
   }
 
   /**
+   * Generates a random numeric string of exactly the given length.
+   * @param length - number of digits (e.g. 4 -> "0428", 9 -> "531902847")
+   * @returns numeric string of exactly `length` digits
+   */
+  static generateRandomDigits(length: number = 4): string {
+    let result = '';
+    for (let i = 0; i < length; i++) {
+      result += Math.floor(Math.random() * 10).toString();
+    }
+    return result;
+  }
+
+  /**
    * Generates a timestamp-based unique identifier
    * @param prefix - Optional prefix for the identifier
    * @returns Unique identifier string

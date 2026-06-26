@@ -13,6 +13,11 @@ export const users = {
     password: 'Test-Reseller@0123456789012',
     displayName: 'TEST-Reseller#1_Automation_Test',
   },
+  accountance_ic_faye: {
+    username: 'faye.nguyen@nakivo.com',
+    password: 'FNUaT@0123456789012',
+    displayName: 'Faye Nguyen',
+  },
   sale_ic_thomas: {
     username: 'thomas.semerich@nakivo.com',
     password: 'TSUaT@123456789012',
