@@ -88,7 +88,7 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
   });
 
   test('TC.IBSA_1.1.1.1: Verify the lead is assigned to IBSA team if Country=Italy, Nakivo Customer=TRUE, Lead Form=IB NC Leads @smoke-test', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -356,7 +356,7 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
       
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

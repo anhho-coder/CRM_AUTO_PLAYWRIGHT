@@ -82,7 +82,7 @@ test.describe('TC.THD_3.2.1.5.3 - THD Team Assignment for India (Goa) with Nakiv
   // FIXME: Test fails due to bug CRM-9374
   // The lead assignment logic for THD team is not working as expected. Skipping this test until the bug is fixed.
   test.skip('TC.THD_3.2.1.5.3: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE, Country = India and State = Goa (NOT in specific list)', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -237,7 +237,7 @@ test.describe('TC.THD_3.2.1.5.3 - THD Team Assignment for India (Goa) with Nakiv
       console.log('  - Waiting for at least 1.5 minutes for Sales Team and Salesperson to be assigned...');
       
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

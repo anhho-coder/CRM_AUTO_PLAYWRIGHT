@@ -75,7 +75,7 @@ test.describe('TC.CMR_1.2.1.1 - CMR Team Assignment for Ukraine with Partner (Di
     }
   });
   test('TC.CMR_1.2.1.1: Verify the lead is assigned to CMR team if Country=Ukraine, Partner=TRUE, Nakivo Customer=FALSE, Lead Form=License', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -253,7 +253,7 @@ await test.step('Step 8: Wait for Sales Team and Salesperson auto-assignment (up
   console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
   
   const result = await leadPage.waitForSalesTeamAssignment(
-    CommonUtils.waitTimes.cmrTeamAssignment,
+    CommonUtils.waitTimes.assignmentMaxWait,
     config.timeouts.salesTeamAssignment.checkInterval
   );
   

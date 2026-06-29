@@ -90,7 +90,7 @@ test.describe('TC.CMR-7432_1.1.1.2.1 - CMR Team Assignment for Italy-Piedmont wi
   });
 
   test('TC.CMR-7432_1.1.1.2.1: Verify the lead is assigned to CMR team if Country=Italy, State=Piedmont, Lead Form=Download Free Trial', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes contact creation and wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes contact creation and wait time)
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -345,7 +345,7 @@ test.describe('TC.CMR-7432_1.1.1.2.1 - CMR Team Assignment for Italy-Piedmont wi
       
       // Use helper method to wait for assignment
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.cmrTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

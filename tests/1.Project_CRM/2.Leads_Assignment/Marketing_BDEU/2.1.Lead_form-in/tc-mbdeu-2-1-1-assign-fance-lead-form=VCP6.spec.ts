@@ -1,4 +1,4 @@
-﻿import { test, expect } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
@@ -74,7 +74,7 @@ test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan w
   });
 
   test('TC.MBDEU_2.1.1: CRM-9305: Verify the lead is assigned to Marketing - BDEU team if Lead Form="VCP6.5-DCV Study Guide", Country=Afghanistan', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Mark test as expected to fail due to known defect
     //CommonUtils.markTestAsKnownDefect(testInfo, 'CRM-9305');
@@ -197,7 +197,7 @@ test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan w
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
       
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

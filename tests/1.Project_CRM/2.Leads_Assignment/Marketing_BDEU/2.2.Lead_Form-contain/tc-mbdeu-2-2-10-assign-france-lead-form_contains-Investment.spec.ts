@@ -74,7 +74,7 @@ test.describe('TC.MBDEU_2.2.10 - Marketing BDEU Team Assignment for Afghanistan 
   });
 
   test('TC.MBDEU_2.2.10: Verify the lead is assigned to Marketing - BDEU team if Lead Form="TEST Investment:", Country=Afghanistan', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -195,7 +195,7 @@ test.describe('TC.MBDEU_2.2.10 - Marketing BDEU Team Assignment for Afghanistan 
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
       
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

@@ -75,7 +75,7 @@ test.describe('TC.CMR_1.3.1.1 - CMR Team Assignment for Poland with Activated Pa
     }
   });
   test('TC.CMR_1.3.1.1: Verify the lead is assigned to CMR team if Country=Poland, Activated Partner=TRUE, Nakivo Customer=FALSE, Lead Form=License', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -253,7 +253,7 @@ test.describe('TC.CMR_1.3.1.1 - CMR Team Assignment for Poland with Activated Pa
       console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.cmrTeamAssignment;
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait;
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salespersonAssigned = false;

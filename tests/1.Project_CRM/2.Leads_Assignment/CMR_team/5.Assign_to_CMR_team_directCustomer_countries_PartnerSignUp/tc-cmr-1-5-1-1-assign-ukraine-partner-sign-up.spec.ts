@@ -76,7 +76,7 @@ test.describe('TC.CMR_1.5.1.1 - CMR Team Assignment for Ukraine with Partner Sig
     }
   });
   test('TC.CMR_1.5.1.1: Verify the lead is assigned to CMR team if Country=Ukraine, Nakivo Customer=FALSE, Lead Form=Partner Sign up', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Mark this test as linked to known defect CRM-9419
     CommonUtils.markTestAsKnownDefect(testInfo, 'CRM-9419');
@@ -257,7 +257,7 @@ test.describe('TC.CMR_1.5.1.1 - CMR Team Assignment for Ukraine with Partner Sig
       console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.cmrTeamAssignment;
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait;
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salespersonAssigned = false;

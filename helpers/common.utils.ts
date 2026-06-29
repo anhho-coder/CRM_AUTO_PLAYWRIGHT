@@ -191,7 +191,18 @@ export class CommonUtils {
   }
 
   /**
-   * Captures a full-page screenshot and attaches it to the test report
+   * Captures a FULL-content screenshot and attaches it to the test report.
+   *
+   * Odoo renders each screen inside an INNER scroll container (`html`/`body` carry
+   * `overflow:hidden`, and the real scrolling happens in `.o_content` / `.o_action_manager`). As a
+   * result Playwright's plain `fullPage: true` only grabs ONE viewport and clips everything below the
+   * fold - e.g. the invoice "Outstanding credits" / "Paid on ..." section that sits under the totals.
+   *
+   * To capture the WHOLE screen we temporarily neutralise those scroll containers (overflow:visible,
+   * height:auto, max-height:none) so the document grows to its full content height, take the fullPage
+   * shot, then restore the original inline styles. All best-effort: any failure falls back to a normal
+   * screenshot, and the styles are always restored.
+   *
    * @param page - Playwright page object
    * @param testInfo - Playwright TestInfo object
    * @param attachmentName - Name for the attachment in the report
@@ -201,7 +212,41 @@ export class CommonUtils {
     testInfo: TestInfo,
     attachmentName: string
   ): Promise<void> {
+    let expanded = false;
     try {
+      // 1) Expand Odoo's inner scroll containers so the full form (not just one viewport) renders.
+      expanded = await page.evaluate(() => {
+        try {
+          const selectors = [
+            'html', 'body',
+            '.o_web_client', '.o_action_manager', '.o_content', '.o_main_content',
+            '.o_form_view', '.o_form_sheet_bg', '.o_form_sheet',
+            '.o_notebook', '.tab-content', '.o_list_view', '.o_renderer',
+          ];
+          const seen = new Set<HTMLElement>();
+          const store: { el: HTMLElement; css: string }[] = [];
+          selectors.forEach((sel) =>
+            document.querySelectorAll<HTMLElement>(sel).forEach((el) => {
+              if (seen.has(el)) return;
+              seen.add(el);
+              store.push({ el, css: el.style.cssText }); // keep original inline style (page-context only)
+              el.style.setProperty('overflow', 'visible', 'important');
+              el.style.setProperty('height', 'auto', 'important');
+              el.style.setProperty('max-height', 'none', 'important');
+            })
+          );
+          (window as unknown as { __ssRestore?: typeof store }).__ssRestore = store;
+          return true;
+        } catch {
+          return false;
+        }
+      }).catch(() => false);
+
+      if (expanded) {
+        // Let the layout reflow to its full height before the capture.
+        await page.waitForTimeout(CommonUtils.waitTimes.short);
+      }
+
       const screenshot = await page.screenshot({ fullPage: true });
       await testInfo.attach(attachmentName, {
         body: screenshot,
@@ -210,6 +255,15 @@ export class CommonUtils {
       console.log(`📸 Screenshot attached: ${attachmentName}`);
     } catch (err) {
       console.log(`⚠️ Screenshot skipped (${attachmentName}): ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      if (expanded) {
+        // 2) Restore the original inline styles so the tweak never leaks into the test flow.
+        await page.evaluate(() => {
+          const w = window as unknown as { __ssRestore?: { el: HTMLElement; css: string }[] };
+          (w.__ssRestore || []).forEach((t) => { t.el.style.cssText = t.css; });
+          delete w.__ssRestore;
+        }).catch(() => {});
+      }
     }
   }
 
@@ -297,6 +351,13 @@ export class CommonUtils {
     salesTeamAssignment: 300000,
     /** Wait time for lead Salesperson/Sales-Team auto-assignment poll loop (4 minutes) */
     leadAssignmentWait: 240000,
+    /** Dynamic MAX wait for async Salesperson/Sales-Team assignment - 18 minutes. Used by the
+     *  2.Leads_Assignment specs (the assignment cron can take 12+ min). The poll loop breaks early
+     *  once assigned, so this is only the upper bound. Pair with assignmentTestTimeout. */
+    assignmentMaxWait: 1080000,
+    /** Per-test timeout for the 2.Leads_Assignment specs - 25 minutes. Must exceed assignmentMaxWait
+     *  plus the create/navigate steps. (Folder-scoped; does NOT change config.timeouts.test.) */
+    assignmentTestTimeout: 1500000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
     /** Wait time for lead merging process (5 minutes) */

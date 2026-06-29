@@ -67,7 +67,7 @@ test.describe('TC.BDR.1.1.1.2 - BDR Team Assignment for Partner Sign up Lead For
     }
   });
   test('TC.BDR.1.1.1.2: Verify the lead is assigned to BDR team if Lead form = Partner Sign up', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -193,7 +193,7 @@ test.describe('TC.BDR.1.1.1.2 - BDR Team Assignment for Partner Sign up Lead For
       console.log('  - Waiting up to 1.5 minutes for Sales Team to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait; // shared config (was hardcoded 1.5 min)
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salesTeamValue = '';

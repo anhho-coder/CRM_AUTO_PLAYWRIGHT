@@ -85,7 +85,7 @@ test.describe('TC.EAM_1.1.1 - EAM Team Assignment for End User to Bilal Saab', (
   });
 
   test('TC.EAM_1.1.1: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Bilal', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes contact and lead creation)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes contact and lead creation)
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -320,7 +320,7 @@ test.describe('TC.EAM_1.1.1 - EAM Team Assignment for End User to Bilal Saab', (
       console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.eamTeamAssignment;
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait;
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salespersonAssigned = false;

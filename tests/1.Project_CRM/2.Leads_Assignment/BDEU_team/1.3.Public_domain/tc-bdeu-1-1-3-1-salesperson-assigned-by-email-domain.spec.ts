@@ -69,7 +69,7 @@ test.describe('TC.BDEU.1.1.3.1 - Salesperson Assignment by Email Domain (@rocket
   });
 
   test('TC.BDEU.1.1.3.1: Verify the lead is assigned to BDEU team if Email Domain = @rocketmail.com', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });

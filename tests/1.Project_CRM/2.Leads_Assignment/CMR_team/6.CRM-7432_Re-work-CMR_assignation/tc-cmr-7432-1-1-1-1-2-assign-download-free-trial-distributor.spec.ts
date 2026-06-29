@@ -102,7 +102,7 @@ test.describe('TC.CMR-7432_1.1.1.1.2 - CMR Team Assignment for Download Free Tri
     }
   });
   test('TC.CMR-7432_1.1.1.1.2: Verify the lead is assigned to CMR team if Lead form=Download Free Trial, Nakivo Customer=FALSE, Distributor contact selected', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });

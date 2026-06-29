@@ -67,7 +67,7 @@ test.describe('TC.BDEU.2.1.1.5 - BDEU Team Exclusion for WHITE PAPER Lead Form',
     }
   });
   test('TC.BDEU.2.1.1.5: Verify the lead is NOT assigned to BDEU team if Lead form = WHITE PAPER', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -194,7 +194,7 @@ test.describe('TC.BDEU.2.1.1.5 - BDEU Team Exclusion for WHITE PAPER Lead Form',
       console.log('  - Waiting up to 1.5 minutes for Sales Team to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime; // shared config (was hardcoded 1.5 min)
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait; // shared config (was hardcoded 1.5 min)
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salesTeamValue = '';

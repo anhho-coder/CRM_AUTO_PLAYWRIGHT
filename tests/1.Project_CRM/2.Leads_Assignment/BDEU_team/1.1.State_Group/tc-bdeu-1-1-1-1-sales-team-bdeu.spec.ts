@@ -74,7 +74,7 @@ test.describe('TC.BDEU.1.1.1.1 - Lead Assignment to BDEU Team', () => {
   });
 
   test('TC.BDEU.1.1.1.1: Verify the lead is assigned to BDEU team', async ({ page }, testInfo) => {
-    test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // Increase timeout for performance test
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -202,7 +202,7 @@ test.describe('TC.BDEU.1.1.1.1 - Lead Assignment to BDEU Team', () => {
       console.log('  ⏳ Waiting up to 3 minutes for Sales Team to be assigned...');
       
       const startWaitTime = Date.now();
-      const maxWaitTime = config.timeouts.salesTeamAssignment.maxWaitTime;
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait;
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salesTeamValue = '';
