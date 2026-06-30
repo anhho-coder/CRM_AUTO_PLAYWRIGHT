@@ -14,7 +14,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Tags: @smoke-test
  *
  * Command to run:
- * npx playwright test "tests/1.Project_CRM/2.Leads_Assignment/IBSA_team/1.Assing-to-IBSA-team/1.1.Nakivo_Customer=TRUE/1.1.1.Tags-contains-IB_NC_Leads/tc-ibsa-1-1-1-1-assign-italy-nakivo_customer-tags-IBSA_Leads.spec.ts" --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.IBSA\.1:" --project=chromium
  *
  * Run all Smoke tests:
  * npx playwright test --grep "@smoke-test" --project=chromium

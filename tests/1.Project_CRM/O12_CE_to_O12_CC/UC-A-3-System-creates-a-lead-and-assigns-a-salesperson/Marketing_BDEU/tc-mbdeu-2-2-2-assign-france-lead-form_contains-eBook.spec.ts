@@ -13,7 +13,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Tags: @smoke-test
  *
  * Command to run:
- * npx playwright test "tests/1.Project_CRM/2.Leads_Assignment/Marketing_BDEU/2.2.Lead_Form-contain/tc-mbdeu-2-2-2-assign-france-lead-form_contains-eBook.spec.ts" --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.MBDEU\.2:" --project=chromium
  *
  * Run all Smoke tests:
  * npx playwright test --grep "@smoke-test" --project=chromium

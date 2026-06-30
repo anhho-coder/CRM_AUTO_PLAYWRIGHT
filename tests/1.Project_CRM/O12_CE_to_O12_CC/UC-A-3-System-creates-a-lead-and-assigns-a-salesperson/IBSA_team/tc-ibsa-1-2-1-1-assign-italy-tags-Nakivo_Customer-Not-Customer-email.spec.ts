@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and Customer is not set (no Lead email) and Country = Italy
  * 
  * Command to run:
- * npx playwright test "tests/Leads_Assignment/IBSA_team/1.Assing-to-IBSA-team/1.2.Tags-contains-Nakivo_Customer/1.2.1.Customer-email-not-set/tc-ibsa-1-2-1-1-assign-italy-tags-Nakivo_Customer-Not-Customer-email.spec.ts" --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.IBSA\.2:" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Bilal
  * 
  * Command to run:
- * npx playwright test tests/Leads_Assignment/EAM_team/tc-eam-1-1-1-assign-Bilal-end-user.spec.ts --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.EAM\.1:" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "Contacts" button

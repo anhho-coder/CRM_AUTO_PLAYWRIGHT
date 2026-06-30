@@ -14,7 +14,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Tags: @smoke-test
  *
  * Command to run:
- * npx playwright test tests/Leads_Assignment/CMR_team/1.Assign_to_CMR_team/tc-cmr-1-1-1-1-assign-ukraine-activated-partner-deal-registration.spec.ts --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.CMR\.1:" --project=chromium
  *
  * Run all Smoke tests:
  * npx playwright test --grep "@smoke-test" --project=chromium

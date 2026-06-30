@@ -12,7 +12,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * and Nakivo Customer is not set if Lead form = Partner Sign Up
  * 
  * Command to run:
- * npx playwright test tests/Leads_Assignment/CMR_team/5.Assign_to_CMR_team_directCustomer_countries_PartnerSignUp/tc-cmr-1-5-1-1-assign-ukraine-partner-sign-up.spec.ts --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.CMR\.2:" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button

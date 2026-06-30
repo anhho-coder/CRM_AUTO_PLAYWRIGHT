@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to Marketing - BDEU team with Country = Afghanistan if Lead Form = "VCP6.5-DCV Study Guide"
  * 
  * Command to run:
- * npx playwright test "tests/1.Project_CRM/2.Leads_Assignment/Marketing_BDEU/2.1.Lead_form-in/tc-mbdeu-2-1-1-assign-fance-lead-form=VCP6.spec.ts" --project=chromium
+ * npx playwright test --grep "TC\.-A\.3\.MBDEU\.1:" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button
