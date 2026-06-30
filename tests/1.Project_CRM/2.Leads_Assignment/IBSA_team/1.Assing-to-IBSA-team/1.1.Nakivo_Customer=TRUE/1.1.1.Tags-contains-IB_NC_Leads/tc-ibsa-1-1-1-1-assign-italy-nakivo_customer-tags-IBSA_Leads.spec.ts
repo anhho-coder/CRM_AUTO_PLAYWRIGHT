@@ -350,24 +350,30 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - After Setting Lead Form`);
     });
 
+    // Values the Step-7 poll positively confirms; Verification asserts on THESE instead of a
+    // fresh re-read, which can race the form re-render and return "" even after assignment lands.
+    let salesTeamValue = '';
+    let salespersonValue = '';
     // Step 7: Wait for Sales Team and Salesperson auto-assignment
     await test.step('Step 7: Wait for Sales Team and Salesperson auto-assignment', async () => {
       console.log('Step 7: Waiting for Sales Team and Salesperson auto-assignment');
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
-      
+
       const result = await leadPage.waitForSalesTeamAssignment(
         CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
-      
+      salesTeamValue = result.salesTeamValue;
+      salespersonValue = result.salespersonValue;
+
       console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
     });
 
     // Verification: Confirm Sales Team is IBSA and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is IBSA and Salesperson is assigned', async () => {
-      // Verify and log checkpoint results
-      const { salesTeamValue, salespersonValue } = await leadPage.verifySalesTeamAssignment('IBSA');
-      
+      // Reuse the values the Step-7 poll positively confirmed (re-reading the form here can race
+      // its re-render and return "" even though the assignment landed - the build #8 flake).
+
       // Capture screenshot as evidence and attach to report
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - IBSA Team Assignment (Italy with Nakivo Customer and IB NC Leads tag)`);
       
