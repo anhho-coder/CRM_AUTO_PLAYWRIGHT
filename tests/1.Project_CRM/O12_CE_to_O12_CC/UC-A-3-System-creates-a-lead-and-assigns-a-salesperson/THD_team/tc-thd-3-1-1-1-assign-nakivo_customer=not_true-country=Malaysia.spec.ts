@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - THD Team - Malaysia with Nakivo Customer = NOT True
- * Test Case ID: TC.THD_3.1.1.1
+ * Test Case ID: TC.-A.3.THD.1
  * 
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = Malaysia
  * 
@@ -40,7 +40,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any value)
  */
 
-test.describe('TC.THD_3.1.1.1 - THD Team Assignment for Malaysia with Nakivo Customer = NOT True', () => {
+test.describe('TC.-A.3.THD.1 - THD Team Assignment for Malaysia with Nakivo Customer = NOT True', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -80,7 +80,7 @@ test.describe('TC.THD_3.1.1.1 - THD Team Assignment for Malaysia with Nakivo Cus
 
   // FIXME: Test fails due to bug CRM-9374
   // The lead assignment logic for THD team is not working as expected. Skipping this test until the bug is fixed.
-  test('TC.THD_3.1.1.1: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = Malaysia', async ({ page }, testInfo) => {
+  test('TC.-A.3.THD.1: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = Malaysia', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
@@ -135,7 +135,7 @@ test.describe('TC.THD_3.1.1.1 - THD Team Assignment for Malaysia with Nakivo Cus
       console.log('Step 4: Entering lead information');
       
       // Generate unique lead name with TEST prefix
-      leadName = CommonUtils.generateLeadNameWithTestCase('TC.THD_3.1.1.1');
+      leadName = CommonUtils.generateLeadNameWithTestCase('TC.-A.3.THD.1');
       
       // Fill lead name
       await leadPage.fillLeadOpportunity(leadName);
@@ -293,7 +293,7 @@ test.describe('TC.THD_3.1.1.1 - THD Team Assignment for Malaysia with Nakivo Cus
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.THD_3.1.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.THD.1</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
       <div class="info-row"><span class="label">Email:</span> ${leadEmail}</div>

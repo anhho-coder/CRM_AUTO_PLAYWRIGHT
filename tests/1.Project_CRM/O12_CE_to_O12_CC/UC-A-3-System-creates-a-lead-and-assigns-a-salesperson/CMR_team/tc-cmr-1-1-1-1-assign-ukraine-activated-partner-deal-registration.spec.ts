@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - CMR Team - Ukraine with Activated Partner
- * Test Case ID: TC.CMR_1.1.1.1
+ * Test Case ID: TC.-A.3.CMR.1
  * 
  * Summary: Verify the lead is assigned to Sergey Karachin belong to CMR team if Country is Ukraine 
  * and Activated Partner is set and Nakivo Customer is not set and Lead Form = NAKIVO deal registration*
@@ -47,7 +47,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any person)
  */
 
-test.describe('TC.CMR_1.1.1.1 - CMR Team Assignment for Ukraine with Activated Partner @smoke-test', () => {
+test.describe('TC.-A.3.CMR.1 - CMR Team Assignment for Ukraine with Activated Partner @smoke-test', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -69,7 +69,7 @@ test.describe('TC.CMR_1.1.1.1 - CMR Team Assignment for Ukraine with Activated P
     }
   });
 
-  test('TC.CMR_1.1.1.1: Verify the lead is assigned to CMR team if Country=Ukraine, Activated Partner=TRUE, Nakivo Customer=FALSE, Lead Form=NAKIVO deal registration* @smoke-test', async ({ page }, testInfo) => {
+  test('TC.-A.3.CMR.1: Verify the lead is assigned to CMR team if Country=Ukraine, Activated Partner=TRUE, Nakivo Customer=FALSE, Lead Form=NAKIVO deal registration* @smoke-test', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
     
     // Maximize browser window
@@ -393,7 +393,7 @@ test.describe('TC.CMR_1.1.1.1 - CMR Team Assignment for Ukraine with Activated P
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.CMR_1.1.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.CMR.1</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
     </div>

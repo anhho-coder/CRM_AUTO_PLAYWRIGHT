@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - Marketing BDEU Team - Afghanistan with Lead Form "VCP6.5-DCV Study Guide"
- * Test Case ID: TC.MBDEU_2.1.1
+ * Test Case ID: TC.-A.3.MBDEU.1
  * 
  * Summary: Verify the lead is assigned to Marketing - BDEU team with Country = Afghanistan if Lead Form = "VCP6.5-DCV Study Guide"
  * 
@@ -35,7 +35,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any value)
  */
 
-test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan with Lead Form "VCP6.5-DCV Study Guide"', () => {
+test.describe('TC.-A.3.MBDEU.1 - Marketing BDEU Team Assignment for Afghanistan with Lead Form "VCP6.5-DCV Study Guide"', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -73,7 +73,7 @@ test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan w
     }
   });
 
-  test('TC.MBDEU_2.1.1: CRM-9305: Verify the lead is assigned to Marketing - BDEU team if Lead Form="VCP6.5-DCV Study Guide", Country=Afghanistan', async ({ page }, testInfo) => {
+  test('TC.-A.3.MBDEU.1: CRM-9305: Verify the lead is assigned to Marketing - BDEU team if Lead Form="VCP6.5-DCV Study Guide", Country=Afghanistan', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
     
     // Mark test as expected to fail due to known defect
@@ -131,7 +131,7 @@ test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan w
       console.log('Step 4: Entering lead information');
       
       // Generate unique lead name with TEST prefix
-      leadName = CommonUtils.generateLeadNameWithTestCase('TC.MBDEU_2.1.1');
+      leadName = CommonUtils.generateLeadNameWithTestCase('TC.-A.3.MBDEU.1');
       
       // Fill lead name
       await leadPage.fillLeadOpportunity(leadName);
@@ -262,7 +262,7 @@ test.describe('TC.MBDEU_2.1.1 - Marketing BDEU Team Assignment for Afghanistan w
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.MBDEU_2.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.MBDEU.1</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
       <div class="info-row"><span class="label">Email:</span> ${leadEmail}</div>

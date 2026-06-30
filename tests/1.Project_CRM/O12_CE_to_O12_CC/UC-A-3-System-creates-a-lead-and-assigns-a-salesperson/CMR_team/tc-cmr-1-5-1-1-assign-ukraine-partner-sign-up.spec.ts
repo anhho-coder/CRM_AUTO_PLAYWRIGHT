@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - CMR Team - Ukraine with Partner Sign Up Lead Form
- * Test Case ID: TC.CMR_1.5.1.1
+ * Test Case ID: TC.-A.3.CMR.2
  * 
  * Summary: Verify the lead is assigned to Sergey Karachin belong to CMR team if Country is Ukraine 
  * and Nakivo Customer is not set if Lead form = Partner Sign Up
@@ -43,7 +43,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any person)
  */
 
-test.describe('TC.CMR_1.5.1.1 - CMR Team Assignment for Ukraine with Partner Sign Up Lead Form', () => {
+test.describe('TC.-A.3.CMR.2 - CMR Team Assignment for Ukraine with Partner Sign Up Lead Form', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -75,7 +75,7 @@ test.describe('TC.CMR_1.5.1.1 - CMR Team Assignment for Ukraine with Partner Sig
       console.log('  ✓ Page stabilized for screenshot capture');
     }
   });
-  test('TC.CMR_1.5.1.1: Verify the lead is assigned to CMR team if Country=Ukraine, Nakivo Customer=FALSE, Lead Form=Partner Sign up', async ({ page }, testInfo) => {
+  test('TC.-A.3.CMR.2: Verify the lead is assigned to CMR team if Country=Ukraine, Nakivo Customer=FALSE, Lead Form=Partner Sign up', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
     
     // Mark this test as linked to known defect CRM-9419
@@ -489,7 +489,7 @@ test.describe('TC.CMR_1.5.1.1 - CMR Team Assignment for Ukraine with Partner Sig
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.CMR_1.5.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.CMR.2</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
     </div>

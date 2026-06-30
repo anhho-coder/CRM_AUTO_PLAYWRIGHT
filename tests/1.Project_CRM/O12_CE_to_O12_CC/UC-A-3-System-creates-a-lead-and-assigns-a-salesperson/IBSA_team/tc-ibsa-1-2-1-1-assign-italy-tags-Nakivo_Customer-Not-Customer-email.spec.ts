@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - IBSA Team - Italy with Tags "Nakivo Customer" and no email
- * Test Case ID: TC.IBSA_1.2.1.1
+ * Test Case ID: TC.-A.3.IBSA.2
  * 
  * Summary: Verify the lead is assigned to Phoebe Nguyen belong to IBSA team if Tags contains "Nakivo Customer" 
  * and Customer is not set (no Lead email) and Country = Italy
@@ -34,7 +34,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any person)
  */
 
-test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakivo Customer" (No Email)', () => {
+test.describe('TC.-A.3.IBSA.2 - IBSA Team Assignment for Italy with Tags "Nakivo Customer" (No Email)', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -72,7 +72,7 @@ test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakiv
     }
   });
 
-  test('TC.IBSA_1.2.1.1: Verify the lead is assigned to IBSA team if Tags="Nakivo Customer", no email, Country=Italy', async ({ page }, testInfo) => {
+  test('TC.-A.3.IBSA.2: Verify the lead is assigned to IBSA team if Tags="Nakivo Customer", no email, Country=Italy', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 33-min budget covers the up-to-25-min assignment poll
     
     // Maximize browser window
@@ -127,7 +127,7 @@ test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakiv
       
       // Generate unique lead name with TEST prefix (NO EMAIL for this scenario)
       
-      leadName = CommonUtils.generateLeadNameWithTestCase('TC.IBSA_1.2.1.1');
+      leadName = CommonUtils.generateLeadNameWithTestCase('TC.-A.3.IBSA.2');
       
       // Fill lead name
       await leadPage.fillLeadOpportunity(leadName);
@@ -255,7 +255,7 @@ test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakiv
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.IBSA_1.2.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.IBSA.2</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
     </div>

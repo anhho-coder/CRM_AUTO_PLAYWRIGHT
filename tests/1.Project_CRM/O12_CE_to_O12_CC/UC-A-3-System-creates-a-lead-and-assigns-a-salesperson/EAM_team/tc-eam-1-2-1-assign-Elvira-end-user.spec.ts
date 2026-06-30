@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - EAM Team - End User assigned to Bilal Saab
- * Test Case ID: TC.EAM_1.2.1
+ * Test Case ID: TC.-A.3.EAM.2
  * 
  * Summary: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Elvira Fridrikh
  * 
@@ -46,7 +46,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    - The value at "Salesperson" dropdown list is set (any value)
  */
 
-test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (Elvira Fridrikh)', () => {
+test.describe('TC.-A.3.EAM.2 - EAM Team Assignment for End User to Bilal Saab (Elvira Fridrikh)', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -84,7 +84,7 @@ test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (El
     }
   });
 
-  test('TC.EAM_1.2.1: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Elvira Fridrikh', async ({ page }, testInfo) => {
+  test('TC.-A.3.EAM.2: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Elvira Fridrikh', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 33-min budget covers the up-to-25-min assignment poll
     
     // Maximize browser window
@@ -157,7 +157,7 @@ test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (El
       const seconds = String(now.getSeconds()).padStart(2, '0');
       const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
       
-      contactName = `TEST-ContactTC.EAM_1.2.1${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}`;
+      contactName = `TEST-ContactTC.-A.3.EAM.2${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}`;
       endUserEmail = `Test-EndUser@EndUser-company${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}.com`;
       
       // Fill contact name

@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - Marketing BDEU Team - Romania with Lead Form contains "eBook"
- * Test Case ID: TC.MBDEU_2.2.2
+ * Test Case ID: TC.-A.3.MBDEU.2
  * 
  * Summary: Verify the lead is assigned to Marketing - BDEU team with Country = Romania if Lead Form contains "eBook"
  * 
@@ -40,7 +40,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any value)
  */
 
-test.describe('TC.MBDEU_2.2.2 - Marketing BDEU Team Assignment for Afghanistan with Lead Form contains "eBook" @smoke-test', () => {
+test.describe('TC.-A.3.MBDEU.2 - Marketing BDEU Team Assignment for Afghanistan with Lead Form contains "eBook" @smoke-test', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -77,7 +77,7 @@ test.describe('TC.MBDEU_2.2.2 - Marketing BDEU Team Assignment for Afghanistan w
     }
   });
   
-  test('TC.MBDEU_2.2.2: Verify the lead is assigned to Marketing - BDEU team if Lead Form="TEST eBook", Country=Afghanistan @smoke-test', async ({ page }, testInfo) => {
+  test('TC.-A.3.MBDEU.2: Verify the lead is assigned to Marketing - BDEU team if Lead Form="TEST eBook", Country=Afghanistan @smoke-test', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
@@ -132,7 +132,7 @@ test.describe('TC.MBDEU_2.2.2 - Marketing BDEU Team Assignment for Afghanistan w
       console.log('Step 4: Entering lead information');
       
       // Generate unique lead name with TEST prefix
-      leadName = CommonUtils.generateLeadNameWithTestCase('TC.MBDEU_2.2.2');
+      leadName = CommonUtils.generateLeadNameWithTestCase('TC.-A.3.MBDEU.2');
       
       // Fill lead name
       await leadPage.fillLeadOpportunity(leadName);
@@ -263,7 +263,7 @@ test.describe('TC.MBDEU_2.2.2 - Marketing BDEU Team Assignment for Afghanistan w
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.MBDEU_2.2.2</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.MBDEU.2</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
       <div class="info-row"><span class="label">Email:</span> ${leadEmail}</div>

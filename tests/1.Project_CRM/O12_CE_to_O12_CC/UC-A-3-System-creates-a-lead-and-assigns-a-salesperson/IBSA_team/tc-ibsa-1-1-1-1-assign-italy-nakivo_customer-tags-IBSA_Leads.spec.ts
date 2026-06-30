@@ -6,7 +6,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Lead Assignment Test - IBSA Team - Italy with Nakivo Customer and IB NC Leads tag
- * Test Case ID: TC.IBSA_1.1.1.1
+ * Test Case ID: TC.-A.3.IBSA.1
  * 
  * Summary: Verify the lead is assigned to Phoebe Nguyen belong to IBSA team if "Nakivo Customer" = TRUE 
  * and Tags contains "IB NC Leads" and Country = Italy
@@ -49,7 +49,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any person)
  */
 
-test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Customer and IB NC Leads @smoke-test', () => {
+test.describe('TC.-A.3.IBSA.1 - IBSA Team Assignment for Italy with Nakivo Customer and IB NC Leads @smoke-test', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -87,7 +87,7 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
     }
   });
 
-  test('TC.IBSA_1.1.1.1: Verify the lead is assigned to IBSA team if Country=Italy, Nakivo Customer=TRUE, Lead Form=IB NC Leads @smoke-test', async ({ page }, testInfo) => {
+  test('TC.-A.3.IBSA.1: Verify the lead is assigned to IBSA team if Country=Italy, Nakivo Customer=TRUE, Lead Form=IB NC Leads @smoke-test', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 33-min budget covers the up-to-25-min assignment poll
     
     // Maximize browser window
@@ -177,7 +177,7 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
       console.log('Step 5: Entering lead information');
       
       // Generate unique lead name and email with TEST prefix
-      leadName = CommonUtils.generateLeadNameWithTestCase('TC.IBSA_1.1.1.1');
+      leadName = CommonUtils.generateLeadNameWithTestCase('TC.-A.3.IBSA.1');
       emailAddress = CommonUtils.generateEmail();
       
       // Fill lead name
@@ -424,7 +424,7 @@ test.describe('TC.IBSA_1.1.1.1 - IBSA Team Assignment for Italy with Nakivo Cust
     </div>
     
     <div class="info-section">
-      <div class="info-row"><span class="label">Test Case:</span> TC.IBSA_1.1.1.1</div>
+      <div class="info-row"><span class="label">Test Case:</span> TC.-A.3.IBSA.1</div>
       <div class="info-row"><span class="label">Lead ID:</span> ${leadId}</div>
       <div class="info-row"><span class="label">Lead Name:</span> ${leadName}</div>
     </div>
