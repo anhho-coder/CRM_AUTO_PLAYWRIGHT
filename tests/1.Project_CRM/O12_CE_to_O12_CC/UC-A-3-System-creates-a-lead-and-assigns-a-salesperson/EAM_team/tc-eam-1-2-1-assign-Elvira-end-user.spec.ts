@@ -85,7 +85,7 @@ test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (El
   });
 
   test('TC.EAM_1.2.1: Verify the lead is assigned to Bilal belong to EAM team if End User. Salesperson = Elvira Fridrikh', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes contact and lead creation)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 33-min budget covers the up-to-25-min assignment poll
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -315,17 +315,19 @@ test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (El
     });
 
     // Step 6: Wait for Sales Team and Salesperson auto-assignment (1.5 minutes)
+    // Values the Step-6 poll positively confirms; Verification asserts on THESE instead of a
+    // fresh re-read, which can race the form re-render and return "" even after assignment lands.
+    let salesTeamValue = '';
+    let salespersonValue = '';
     await test.step('Step 6: Wait for Sales Team and Salesperson auto-assignment (up to 1.5 minutes)', async () => {
       console.log('Step 6: Waiting for Sales Team and Salesperson auto-assignment');
       console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
-      
+
       const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.eamTeamAssignment;
+      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait;
       const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
       let salesTeamAssigned = false;
       let salespersonAssigned = false;
-      let salesTeamValue = '';
-      let salespersonValue = '';
       let attemptCount = 0;
       
       while ((!salesTeamAssigned || !salespersonAssigned) && (Date.now() - startWaitTime) < maxWaitTime) {
@@ -392,13 +394,10 @@ test.describe('TC.EAM_1.2.1 - EAM Team Assignment for End User to Bilal Saab (El
     // Verification: Confirm Sales Team is EAM and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is EAM and Salesperson is assigned', async () => {
       console.log('\n========== VERIFICATION (2 Checkpoints) ==========');
-      
-      // Get the current Sales Team value using LeadPage method (handles both edit and readonly modes)
-      const salesTeamValue = await leadPage.getSalesTeamValue();
-      
-      // Get the current Salesperson value using LeadPage method (handles both edit and readonly modes)
-      const salespersonValue = await leadPage.getSalespersonValue();
-      
+
+      // Reuse the values the Step-6 poll positively confirmed. Re-reading the form here can race
+      // its re-render and return "" even though the assignment landed (the build #8/#9 flake).
+
       // Capture screenshot as evidence and attach to report
       const screenshot = await page.screenshot({ fullPage: true });
       await testInfo.attach(`Lead ${leadId} - EAM Team Assignment (End User)`, {

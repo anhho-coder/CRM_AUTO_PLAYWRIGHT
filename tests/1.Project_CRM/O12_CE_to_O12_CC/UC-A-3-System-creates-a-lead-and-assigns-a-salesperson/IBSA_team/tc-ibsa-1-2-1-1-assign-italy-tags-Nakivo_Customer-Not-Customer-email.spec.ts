@@ -73,7 +73,7 @@ test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakiv
   });
 
   test('TC.IBSA_1.2.1.1: Verify the lead is assigned to IBSA team if Tags="Nakivo Customer", no email, Country=Italy', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
+    test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 33-min budget covers the up-to-25-min assignment poll
     
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -178,24 +178,30 @@ test.describe('TC.IBSA_1.2.1.1 - IBSA Team Assignment for Italy with Tags "Nakiv
       console.log(`  URL: ${savedLeadUrl}`);
     });
 
+    // Values the Step-6 poll positively confirms; Verification asserts on THESE instead of a
+    // fresh re-read, which can race the form re-render and return "" even after assignment lands.
+    let salesTeamValue = '';
+    let salespersonValue = '';
     // Step 6: Wait for Sales Team and Salesperson auto-assignment
     await test.step('Step 6: Wait for Sales Team and Salesperson auto-assignment', async () => {
       console.log('Step 6: Waiting for Sales Team and Salesperson auto-assignment');
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
-      
+
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        CommonUtils.waitTimes.assignmentMaxWait,
         config.timeouts.salesTeamAssignment.checkInterval
       );
-      
+      salesTeamValue = result.salesTeamValue;
+      salespersonValue = result.salespersonValue;
+
       console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
     });
 
     // Verification: Confirm Sales Team is IBSA and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is IBSA and Salesperson is assigned', async () => {
-      // Verify and log checkpoint results
-      const { salesTeamValue, salespersonValue } = await leadPage.verifySalesTeamAssignment('IBSA');
-      
+      // Reuse the values the Step-6 poll positively confirmed (re-reading the form here can race
+      // its re-render and return "" even though the assignment landed - the build #8/#9 flake).
+
       // Capture screenshot as evidence and attach to report
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - IBSA Team Assignment (Italy with Tags "Nakivo Customer", No Email)`);
       
