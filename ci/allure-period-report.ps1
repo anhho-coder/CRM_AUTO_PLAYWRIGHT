@@ -109,29 +109,60 @@ switch ($Scope) {
 }
 Write-Host "Scope=$Scope  Period=$periodKey  Title='$reportTitle'  bucket-prefixes=$($prefixes -join ', ')"
 
-# ---- Merge every dated bucket that falls inside this period ----
+# ---- Select the BEST build per section (job), then merge only those ----
+# The period report reflects each section's BEST Jenkins job-build, NOT an accumulation
+# of every run (which would drag every historical failure into the aggregate forever).
+# Each dated bucket  C:\allure\periods\results\<date>\<JOB>\  is one build; we group the
+# builds in this period by JOB (= section), score each by unique-test outcomes (retries
+# collapsed by historyId), and keep ONLY the winning build's results:
+#   best = fewest failures  ->  most tests (coverage)  ->  most recent date.
 $merged = Join-Path $Workspace 'allure-merged'
 if (Test-Path -LiteralPath $merged) { Remove-Item -LiteralPath $merged -Recurse -Force }
 New-Item -ItemType Directory -Path $merged | Out-Null
 
-$matchedBuckets = 0
+$statusRank = @{ 'passed' = 0; 'skipped' = 1; 'unknown' = 2; 'broken' = 3; 'failed' = 4 }  # worse = higher
+function Get-BuildScore([string]$buildPath) {
+    # Collapse retries: keep the BEST (min-rank) status per historyId, then count failed/broken.
+    $best = @{}
+    Get-ChildItem -LiteralPath $buildPath -Filter '*-result.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+        try { $o = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { return }
+        $hid = if ($o.historyId) { $o.historyId } elseif ($o.name) { $o.name } else { $_.Name }
+        $st = if ($o.status) { $o.status } else { 'unknown' }
+        if (-not $statusRank.ContainsKey($st)) { $st = 'unknown' }
+        if (-not $best.ContainsKey($hid) -or $statusRank[$st] -lt $statusRank[$best[$hid]]) { $best[$hid] = $st }
+    }
+    $fails = 0; foreach ($s in $best.Values) { if ($s -eq 'failed' -or $s -eq 'broken') { $fails++ } }
+    return [pscustomobject]@{ Fails = $fails; Tests = $best.Count }
+}
+
+$builds = @{}   # job (section) -> list of candidate builds in this period
 if (Test-Path -LiteralPath $resultsRoot) {
     Get-ChildItem -LiteralPath $resultsRoot -Directory | Where-Object {
         $name = $_.Name
         @($prefixes | Where-Object { $name -eq $_ -or $name.StartsWith("$_-") }).Count -gt 0
     } | ForEach-Object {
-        $matchedBuckets++
-        Write-Host "  + bucket $($_.Name)"
-        Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder
-            Get-ChildItem -LiteralPath $_.FullName -Force | ForEach-Object {
-                Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
-            }
+        $date = $_.Name
+        Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder = one build
+            $job = $_.Name; $sc = Get-BuildScore $_.FullName
+            if (-not $builds.ContainsKey($job)) { $builds[$job] = @() }
+            $builds[$job] += [pscustomobject]@{ Job = $job; Date = $date; Path = $_.FullName; Fails = $sc.Fails; Tests = $sc.Tests }
         }
     }
 } else {
     Write-Host 'No dated-bucket root yet (run some section jobs first).'
 }
-Write-Host "Matched $matchedBuckets dated bucket(s) for $periodKey"
+
+$selectedBuilds = 0
+foreach ($job in ($builds.Keys | Sort-Object)) {
+    $best = $builds[$job] | Sort-Object Fails, @{Expression = 'Tests'; Descending = $true }, @{Expression = 'Date'; Descending = $true } | Select-Object -First 1
+    $cands = ($builds[$job] | ForEach-Object { "$($_.Date)=$($_.Fails)f/$($_.Tests)" }) -join ', '
+    Write-Host "  section $job -> best build $($best.Date) (fails=$($best.Fails)/$($best.Tests))  [candidates: $cands]"
+    Get-ChildItem -LiteralPath $best.Path -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
+    }
+    $selectedBuilds++
+}
+Write-Host "Selected $selectedBuilds best-build(s) for $periodKey (one per section/job)"
 
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
 $scopeHist = Join-Path $histRoot $Scope
