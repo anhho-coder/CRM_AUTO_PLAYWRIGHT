@@ -351,14 +351,16 @@ export class CommonUtils {
     salesTeamAssignment: 300000,
     /** Wait time for lead Salesperson/Sales-Team auto-assignment poll loop (4 minutes) */
     leadAssignmentWait: 240000,
-    /** Dynamic MAX wait for async Salesperson/Sales-Team assignment - 25 minutes. Used by the
+    /** Dynamic MAX wait for async Salesperson/Sales-Team assignment - 35 minutes. Used by the
      *  2.Leads_Assignment specs (the assignment cron normally takes ~12 min but a backed-up cron
-     *  window can run longer; observed >18 min). The poll loop breaks early once assigned, so this
-     *  is only the upper bound. Pair with assignmentTestTimeout. */
-    assignmentMaxWait: 1500000,
-    /** Per-test timeout for the 2.Leads_Assignment specs - 33 minutes. Must exceed assignmentMaxWait
-     *  (25 min) plus the create/navigate steps. (Folder-scoped; does NOT change config.timeouts.test.) */
-    assignmentTestTimeout: 1980000,
+     *  window can run longer; observed >25 min on the CRM-9374 THD India-Delhi lead, which false-failed
+     *  at the old 25-min ceiling). The poll loop breaks early once assigned, so raising this only
+     *  extends the ceiling for slow runs - it does NOT slow the normal fast case. Pair with
+     *  assignmentTestTimeout. */
+    assignmentMaxWait: 2100000,
+    /** Per-test timeout for the 2.Leads_Assignment specs - 43 minutes. Must exceed assignmentMaxWait
+     *  (35 min) plus the create/navigate steps. (Folder-scoped; does NOT change config.timeouts.test.) */
+    assignmentTestTimeout: 2580000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
     /** Wait time for lead merging process (5 minutes) */

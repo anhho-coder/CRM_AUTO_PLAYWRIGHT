@@ -78,8 +78,8 @@ test.describe('TC.-A.3.THD.1 - THD Team Assignment for Malaysia with Nakivo Cust
     }
   });
 
-  // FIXME: Test fails due to bug CRM-9374
-  // The lead assignment logic for THD team is not working as expected. Skipping this test until the bug is fixed.
+  // CRM-9374 (Lead from India/Delhi not assigned to THD) is Closed/Done and QA-verified fixed on pre-prod (2026-02-27).
+  // Team/Salesperson assignment is async; the test waits up to CommonUtils.waitTimes.assignmentMaxWait.
   test('TC.-A.3.THD.1: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = Malaysia', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test); // 5 minutes timeout for this test (includes wait time)
     
