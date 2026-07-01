@@ -109,67 +109,63 @@ switch ($Scope) {
 }
 Write-Host "Scope=$Scope  Period=$periodKey  Title='$reportTitle'  bucket-prefixes=$($prefixes -join ', ')"
 
-# ---- Select the BEST build per section (job), then merge only those ----
-# The period report reflects each section's BEST Jenkins job-build, NOT an accumulation
-# of every run (which would drag every historical failure into the aggregate forever).
-# Each dated bucket  C:\allure\periods\results\<date>\<JOB>\  is one build; we group the
-# builds in this period by JOB (= section), score each by unique-test outcomes (retries
-# collapsed by historyId), and keep ONLY the winning build's results:
-#   best = fewest failures  ->  most tests (coverage)  ->  most recent date.
+# ---- Merge all builds, then keep each test's BEST result per section ----
+# The period report reflects, for every section (Allure 'Project' = the suite the user
+# sees), each test's BEST outcome achieved during the period. This is deliberately NOT:
+#   * a raw accumulation (Allure's default keeps every historical failure forever), nor
+#   * a single "best build" (no single full-suite run is ever 100% green - 1-2 different
+#     specs flake on env / slow Odoo page-loads on every run).
+# We merge every dated bucket, then collapse duplicate results by historyId keeping the
+# BEST status (passed < skipped < unknown < broken < failed). historyId embeds the
+# Project, so this is naturally per-section: a spec that passed in ANY build shows green;
+# specs that NEVER passed in the period stay red (genuine failures still surface).
 $merged = Join-Path $Workspace 'allure-merged'
 if (Test-Path -LiteralPath $merged) { Remove-Item -LiteralPath $merged -Recurse -Force }
 New-Item -ItemType Directory -Path $merged | Out-Null
 
-$statusRank = @{ 'passed' = 0; 'skipped' = 1; 'unknown' = 2; 'broken' = 3; 'failed' = 4 }  # worse = higher
-function Get-BuildInfo([string]$buildPath, [string]$fallbackKey) {
-    # Collapse retries (best status per historyId) and detect the build's section = Allure 'Project'
-    # parameter (the suite the user sees). Score = count of tests whose best status is failed/broken.
-    $best = @{}; $project = $null
-    Get-ChildItem -LiteralPath $buildPath -Filter '*-result.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
-        try { $o = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { return }
-        if (-not $project -and $o.parameters) {
-            $p = $o.parameters | Where-Object { $_.name -eq 'Project' } | Select-Object -First 1
-            if ($p) { $project = [string]$p.value }
-        }
-        $hid = if ($o.historyId) { $o.historyId } elseif ($o.name) { $o.name } else { $_.Name }
-        $st = if ($o.status) { $o.status } else { 'unknown' }
-        if (-not $statusRank.ContainsKey($st)) { $st = 'unknown' }
-        if (-not $best.ContainsKey($hid) -or $statusRank[$st] -lt $statusRank[$best[$hid]]) { $best[$hid] = $st }
-    }
-    if (-not $project) { $project = $fallbackKey }
-    $fails = 0; foreach ($s in $best.Values) { if ($s -eq 'failed' -or $s -eq 'broken') { $fails++ } }
-    return [pscustomobject]@{ Section = $project; Fails = $fails; Tests = $best.Count }
-}
+$statusRank = @{ 'passed' = 0; 'skipped' = 1; 'unknown' = 2; 'broken' = 3; 'failed' = 4 }  # lower = better
 
-$builds = @{}   # section (Project) -> list of candidate builds in this period
+# 1) Merge every dated bucket that falls inside this period into the flat allure-merged dir.
+$mergedBuckets = 0
 if (Test-Path -LiteralPath $resultsRoot) {
     Get-ChildItem -LiteralPath $resultsRoot -Directory | Where-Object {
         $name = $_.Name
         @($prefixes | Where-Object { $name -eq $_ -or $name.StartsWith("$_-") }).Count -gt 0
     } | ForEach-Object {
-        $date = $_.Name
-        Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder = one build
-            $info = Get-BuildInfo $_.FullName $_.Name
-            $sec = $info.Section
-            if (-not $builds.ContainsKey($sec)) { $builds[$sec] = @() }
-            $builds[$sec] += [pscustomobject]@{ Section = $sec; Job = $_.Name; Date = $date; Path = $_.FullName; Fails = $info.Fails; Tests = $info.Tests }
+        $mergedBuckets++
+        Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder
+            Get-ChildItem -LiteralPath $_.FullName -Force | ForEach-Object {
+                Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
+            }
         }
     }
 } else {
     Write-Host 'No dated-bucket root yet (run some section jobs first).'
 }
+Write-Host "Merged $mergedBuckets dated bucket(s) for $periodKey"
 
-$selectedBuilds = 0
-foreach ($sec in ($builds.Keys | Sort-Object)) {
-    $best = $builds[$sec] | Sort-Object Fails, @{Expression = 'Tests'; Descending = $true }, @{Expression = 'Date'; Descending = $true } | Select-Object -First 1
-    $cands = ($builds[$sec] | ForEach-Object { "$($_.Date)/$($_.Job)=$($_.Fails)f/$($_.Tests)" }) -join ', '
-    Write-Host "  section [$sec] -> best build $($best.Date)/$($best.Job) (fails=$($best.Fails)/$($best.Tests))  [candidates: $cands]"
-    Get-ChildItem -LiteralPath $best.Path -Force | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
+# 2) Collapse to the BEST result per test (historyId): keep the best-status *-result.json,
+#    delete the worse/duplicate copies from earlier or flakier builds.
+$bestFile = @{}   # historyId -> @{ Path; Rank }
+Get-ChildItem -LiteralPath $merged -Filter '*-result.json' -File | ForEach-Object {
+    $path = $_.FullName
+    try { $o = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json } catch { return }
+    $hid = if ($o.historyId) { $o.historyId } elseif ($o.name) { $o.name } else { $_.Name }
+    $st = if ($o.status) { $o.status } else { 'unknown' }
+    if (-not $statusRank.ContainsKey($st)) { $st = 'unknown' }
+    $rank = $statusRank[$st]
+    if (-not $bestFile.ContainsKey($hid)) {
+        $bestFile[$hid] = @{ Path = $path; Rank = $rank }
     }
-    $selectedBuilds++
+    elseif ($rank -lt $bestFile[$hid].Rank) {
+        Remove-Item -LiteralPath $bestFile[$hid].Path -Force -ErrorAction SilentlyContinue
+        $bestFile[$hid] = @{ Path = $path; Rank = $rank }
+    }
+    else {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
 }
-Write-Host "Selected $selectedBuilds best-build(s) for $periodKey (one per section/suite)"
+Write-Host "Collapsed to $($bestFile.Count) unique test(s) - best result per test per section."
 
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
 $scopeHist = Join-Path $histRoot $Scope
