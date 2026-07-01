@@ -258,7 +258,7 @@ test.describe('CRM-3523_1.2 - Verify a Company contact will be created automatic
     email_Contact1 = '';
   });
 
-  test('CRM-3523_1.2: Verify a Company contact will be created automatically if entering a new Company domain at Lead page', async ({ page }, testInfo) => {    test.skip(true, 'Skipped due to known issue CRM-8929');    test.setTimeout(config.timeouts.test);
+  test('CRM-3523_1.2 [CRM-8929]: Verify a Company contact will be created automatically if entering a new Company domain at Lead page', async ({ page }, testInfo) => {    test.setTimeout(config.timeouts.test);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
 

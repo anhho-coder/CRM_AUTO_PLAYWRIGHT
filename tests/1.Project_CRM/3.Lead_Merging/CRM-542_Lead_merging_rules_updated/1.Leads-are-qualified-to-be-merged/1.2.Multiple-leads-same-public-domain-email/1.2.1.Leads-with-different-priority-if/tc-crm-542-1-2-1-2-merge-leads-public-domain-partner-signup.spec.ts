@@ -133,12 +133,11 @@ test.describe('CRM-542_1.2.1.2 - Lead Merging: Same Public Domain Email with Dif
     }
   });
 
-  test('Verify merging lead happens successfully when leads from same public domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
+  test('[CRM-8929] Verify merging lead happens successfully when leads from same public domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    
-    // Known issue: This test is expected to fail due to defect - related to CRM-8929
+
+    // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     // Company Name should be "Company Name Lead 1" but it's empty after merge
-    test.fail();
     test.info().annotations.push({ type: 'defect', description: 'Related to CRM-8929 - Company Name cleared after merge for Partner signup leads' });
     
     // Maximize browser window

@@ -141,8 +141,8 @@ test.describe('CRM-2178_1.2.1.2 - Lead Merging: Same Public Email with Different
     }
   });
 
-  // FIXME: Test disabled due to bug CRM-8929
-  test.skip('Verify merging leads with same public email and different priority', async ({ page }, testInfo) => {
+  // Un-skipped for CRM-8929 (Closed/Fixed) verification
+  test('[CRM-8929] Verify merging leads with same public email and different priority', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window

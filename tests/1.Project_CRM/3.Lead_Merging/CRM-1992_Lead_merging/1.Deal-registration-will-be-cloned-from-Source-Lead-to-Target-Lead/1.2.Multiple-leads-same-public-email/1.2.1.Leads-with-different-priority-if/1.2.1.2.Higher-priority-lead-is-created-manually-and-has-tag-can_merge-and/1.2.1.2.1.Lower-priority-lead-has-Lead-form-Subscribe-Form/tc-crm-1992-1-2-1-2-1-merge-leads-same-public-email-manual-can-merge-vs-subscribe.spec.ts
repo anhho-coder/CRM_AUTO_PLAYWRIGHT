@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Lead Merging Test - Same Public Email with Different Priority (Manual Can_Merge vs Subscribe Form)
  * Test Case ID: CRM-1992_1.2.1.2.1
  * 
- * ⚠️ KNOWN ISSUE: Blocked by bug CRM-8929 - Test marked with test.fail() until bug is resolved
+ * NOTE: CRM-8929 is Closed/Fixed - un-skipped and run as a normal assertion for fix-verification
  * 
  * Summary: Verify that the merging lead happens successfully when the leads with the same public email 
  * but different priority if a higher priority lead is created manually and has tag "can_merge" and 
@@ -145,10 +145,9 @@ test.describe('CRM-1992_1.2.1.2.1 - Lead Merging: Same Public Email (Manual Can_
     }
   });
 
-  test('CRM-1992_1.2.1.2.1 [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
-    // Known bug: CRM-8929 - Test expected to fail until bug is resolved
+  test('CRM-1992_1.2.1.2.1 [CRM-8929] [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
+    // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     testInfo.annotations.push({ type: 'defect', description: 'CRM-8929' });
-    test.fail(); // Mark as expected to fail due to known defect
     
     test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
     

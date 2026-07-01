@@ -135,9 +135,8 @@ test.describe('CRM-542_1.2.1.1 - Lead Merging: Same Public Domain Email with Dif
   test('Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
-    // Known issue: This test is expected to fail due to defect CRM-8929
+    // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     // Company Name should be empty but it keeps the target lead's Company Name
-    test.fail();
     test.info().annotations.push({ type: 'defect', description: 'CRM-8929' });
     
     // Maximize browser window

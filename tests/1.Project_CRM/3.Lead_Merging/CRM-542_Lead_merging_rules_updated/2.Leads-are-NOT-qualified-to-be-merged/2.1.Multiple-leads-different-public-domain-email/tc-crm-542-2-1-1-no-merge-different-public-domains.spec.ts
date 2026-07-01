@@ -133,12 +133,11 @@ test.describe('CRM-542_2.1.1 - Lead Merging: Different Public Domain Emails (No 
     }
   });
 
-  test('Verify merging leads do NOT happen when leads from different public domain emails', async ({ page }, testInfo) => {
+  test('[CRM-8929] Verify merging leads do NOT happen when leads from different public domain emails', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    
-    // Known issue: This test may fail due to defect - related to CRM-8929
+
+    // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     // Company Name field behavior may be inconsistent
-    test.fail();
     test.info().annotations.push({ type: 'defect', description: 'Related to CRM-8929 - Potential Company Name field inconsistency' });
     
     // Maximize browser window
