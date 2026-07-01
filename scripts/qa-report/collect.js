@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const cfg = require('./config');
-const { collectKpiMetrics } = require('./sources/kpi');
+const { collectKpiMetrics, collectKpiJql } = require('./sources/kpi');
 const { collectJiraMetrics } = require('./sources/support-ticket');
 const { collectTestExecMetrics, quarterlyActualFromDaily } = require('./sources/testexec');
 const { collectTransitionMetrics } = require('./sources/automation-tc');
@@ -36,6 +36,7 @@ async function main() {
     metrics: {},
     quarterly: {},
     worklog: null,
+    kpiJql: {},
   };
 
   // --- Odoo KPI data: quarterly (Actual/Forecast/Goal) + daily range view -----
@@ -52,6 +53,15 @@ async function main() {
   } catch (e) {
     data.sources.odooKpi = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Odoo KPI source failed:', e.message || e);
+  }
+
+  // KPI definition JQL (for the Metrics "JQL per metric" note) — the jira_filter
+  // Odoo runs to fill each KPI, read live each build so an Odoo-side edit follows.
+  // Non-fatal: on failure the note falls back to a plain Odoo-query descriptor.
+  try {
+    data.kpiJql = await collectKpiJql(cfg.KPI_METRICS.map((m) => m.kpiName));
+  } catch (e) {
+    console.error('[collect] KPI JQL read failed (note falls back):', e.message || e);
   }
 
   // --- Jira-sourced metrics (Support tickets created): counted per day by the

@@ -153,6 +153,80 @@ function windowSpans(ranges, def, order = RANGE_ORDER) {
     `<span class="range-window${k === def ? ' is-active' : ''}" data-range="${k}"><b>${esc(ranges[k].from)}</b> → <b>${esc(ranges[k].to)}</b></span>`).join('');
 }
 
+// A hover note (like the Worklog "how columns are computed") that shows the query
+// behind each metric, WITH the date window of the currently-selected range. The
+// per-range variants are pre-rendered and toggled client-side via the same
+// data-range mechanism as the metric cards, so switching range updates the JQL too.
+// Query shape depends on the metric's source list in config: Odoo KPI (a DB query,
+// not a JQL), a `created`-by-reporter Jira JQL, or the per-day worklog / status-
+// transition JQL (which is run per day×tester and summed).
+function jqlNote(metrics, ranges, def, kpiJql) {
+  if (!metrics || !metrics.length) return '';
+  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const reporters = cfg.MEMBERS.map((m) => m.jira).join(', ');
+  const memberNames = cfg.MEMBERS.map((m) => m.name).join(', ');
+  const byKey = (arr) => new Map((arr || []).map((m) => [m.key, m]));
+  const odoo = byKey(cfg.KPI_METRICS), created = byKey(cfg.JIRA_METRICS),
+    worklog = byKey(cfg.JIRA_WORKLOG_METRICS), trans = byKey(cfg.JIRA_TRANSITION_METRICS);
+
+  const queryFor = (meta, r) => {
+    if (odoo.has(meta.key)) {
+      const raw = kpiJql && kpiJql[meta.kpiName];
+      if (raw) {
+        return `Odoo KPI — sums the daily count over date ∈ [${esc(r.from)} … ${esc(r.to)}]. Odoo runs this Jira filter ` +
+          `per tester, per day, to fill ${code('nakivo.kpi.database')}:<br>${code(raw)}<br>` +
+          `<span class="muted">Odoo substitutes: %(reported)s = tester’s Jira user, %(current_day)s = the day, %(during)s = the day window.</span>`;
+      }
+      return `Odoo ${code('nakivo.kpi.database')} · name = ${code(meta.kpiName)} · employee ∈ {${esc(memberNames)}}` +
+        ` · date ∈ [${esc(r.from)} … ${esc(r.to)}] — sum of daily ${code('result_count')} (KPI’s own JQL not available this build).`;
+    }
+    if (created.has(meta.key)) {
+      const m = created.get(meta.key);
+      const types = m.types.map(q).join(', ');
+      const labels = (m.labels || []).map((l) => ` AND labels = ${q(l)}`).join('');
+      const res = (m.excludeResolutions && m.excludeResolutions.length)
+        ? ` AND (resolution is EMPTY OR resolution not in (${m.excludeResolutions.map(q).join(', ')}))` : '';
+      return code(`type in (${types})${labels}${res} AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND reporter in (${reporters})`);
+    }
+    if (worklog.has(meta.key)) {
+      const m = worklog.get(meta.key);
+      return `for each day D in [${esc(r.from)} … ${esc(r.to)}], per tester T: ` +
+        code(`issuetype = ${q(m.issueType)} AND worklogAuthor in (T) AND worklogDate > "D−1" AND worklogDate <= "D"`) +
+        ` <span class="muted">— daily counts summed</span>`;
+    }
+    if (trans.has(meta.key)) {
+      const m = trans.get(meta.key);
+      return `for each day D in [${esc(r.from)} … ${esc(r.to)}], per tester T: ` +
+        code(`${m.scopeJql} AND status changed to (${m.changedToStatus}) during ("D 00:00", "D 23:59") BY T`) +
+        ` <span class="muted">— daily counts summed</span>`;
+    }
+    return '<span class="muted">n/a</span>';
+  };
+
+  const rows = metrics.map((meta) => {
+    const variants = METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) =>
+      `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">${queryFor(meta, ranges[k])}</div>`).join('');
+    return `<li><b>${esc(meta.label)}</b>${variants}</li>`;
+  }).join('');
+
+  const notes = [
+    'The date window matches the range button selected above — switch the range to update every query.',
+    `Team scope: reporter / worklogAuthor / “BY” ∈ {${esc(memberNames)}}.`,
+    'Odoo KPI metrics show the Jira filter from the KPI’s Odoo definition (nakivo.kpi.category.employee · jira_filter), read live each build; Odoo runs it per tester per day and this report sums the resulting daily counts over the range.',
+    'Worklog- & transition-based metrics run one count per day × tester and SUM them, so a test case active on N days counts N times — the range total can exceed the distinct-issue count of a single-window JQL.',
+  ];
+
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for each metric<span class="wlnote-hint"> (for the selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query per metric</div>
+      <ul class="jqllist">${rows}</ul>
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
 function sourceBanner(sources) {
   const bad = Object.entries(sources).filter(([, v]) => v && v.status !== 'ok');
   if (!bad.length) return '';
@@ -335,6 +409,10 @@ body{margin:0;background:#f4f5f7}
 .wlnote-pop ul{margin:0 0 6px;padding-left:18px}
 .wlnote-pop li{margin:3px 0;font-size:12.5px;line-height:1.45}
 .wlnote-pop b{color:#222}
+.wlnote-jql .wlnote-pop{width:min(800px,94vw)}
+.wlnote-pop .jqllist li{margin:9px 0}
+.wlnote-pop code{font-family:Consolas,Menlo,monospace;font-size:11px;background:#f3eefc;color:#4a2072;padding:2px 6px;border-radius:4px;white-space:pre-wrap;word-break:break-word;line-height:1.55;display:inline-block;margin-top:3px}
+.jqlv{display:none}.jqlv.is-active{display:block}
 .wtbl thead th[title]{cursor:help}
 .warn{background:#fff4e0;border-left:4px solid #f0a030;padding:10px 14px;border-radius:6px;margin:12px 0;font-size:13px;color:#8a5a00}
 .viewtabs{display:flex;gap:6px;margin:14px 0 8px}
@@ -415,7 +493,7 @@ const APP_JS = `(function () {
       var v = t.getAttribute('data-viewbtn');
       if (v) { toggleGroup('data-viewbtn', v, '.view'); return; }
       var r = t.getAttribute('data-rangebtn');
-      if (r) { toggleGroup('data-rangebtn', r, '.range-block, .range-window'); return; }
+      if (r) { toggleGroup('data-rangebtn', r, '.range-block, .range-window, .jqlv'); return; }
       t = t.parentNode;
     }
   });
@@ -567,6 +645,7 @@ function main() {
   <div class="view${defView === 'range' ? ' is-active' : ''}" data-view="range">
     <div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(data.ranges, defRange, METRIC_RANGE_ORDER)}</div>
     ${selector(data.ranges, defRange)}
+    ${jqlNote(metrics, data.ranges, defRange, data.kpiJql || {})}
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 

@@ -9,7 +9,7 @@
  * the single source of truth — we only read it.
  */
 const { OdooClient } = require('../lib/odoo');
-const { loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI } = require('../config');
+const { loadOdoo, MEMBERS, KPI_METRICS, MODEL_KPI, KPI_GROUP } = require('../config');
 
 const EMP_IDS = MEMBERS.map((m) => m.employeeId);
 const NAME_BY_ID = Object.fromEntries(MEMBERS.map((m) => [m.employeeId, m.name]));
@@ -56,4 +56,42 @@ function buildDaily(metric, rows) {
   };
 }
 
-module.exports = { collectKpiMetrics };
+/**
+ * Read the JQL that DEFINES each KPI, from Odoo `nakivo.kpi.category.employee`
+ * (field `jira_filter`) — the same query Odoo itself runs (per tester, per day) to
+ * fill nakivo.kpi.database. Used ONLY to DISPLAY the query in the report's "JQL per
+ * metric" note; the numbers still come from nakivo.kpi.database. The stored text is
+ * a template with %(reported)s / %(current_day)s / %(during)s placeholders that Odoo
+ * substitutes at collection time — we show it verbatim.
+ *
+ * Read live each build, so if the team edits a KPI's JQL in Odoo the note follows.
+ *
+ * @param {string[]} kpiNames  KPI Names to fetch (match nakivo.kpi.category.kpi_name).
+ * @returns { [kpiName]: jiraFilterString }
+ */
+async function collectKpiJql(kpiNames) {
+  const client = new OdooClient(loadOdoo());
+  await client.login();
+  const cats = await client.searchRead(
+    'nakivo.kpi.category',
+    [['kpi_name', 'in', kpiNames], ['group', '=', KPI_GROUP]],
+    { fields: ['id', 'kpi_name'] }
+  );
+  if (!cats.length) return {};
+  const nameByCat = Object.fromEntries(cats.map((c) => [c.id, c.kpi_name]));
+  const rows = await client.searchRead(
+    'nakivo.kpi.category.employee',
+    [['category_id', 'in', cats.map((c) => c.id)], ['employee_id', 'in', EMP_IDS]],
+    { fields: ['category_id', 'jira_filter'] }
+  );
+  const out = {};
+  for (const r of rows) {
+    const name = nameByCat[r.category_id && r.category_id[0]];
+    // jira_filter is identical across the two testers per KPI (they differ only via
+    // the %(reported)s placeholder), so the first non-empty one per KPI is enough.
+    if (name && r.jira_filter && !out[name]) out[name] = String(r.jira_filter).trim();
+  }
+  return out;
+}
+
+module.exports = { collectKpiMetrics, collectKpiJql };
