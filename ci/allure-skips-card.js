@@ -174,16 +174,15 @@
       if (!document.querySelector('a.table__row[href^="#suites/"]')) return;   // Overview only
       injectStyle();
       var card = buildCard(data);
-      // Prefer a FULL-WIDTH slot below the widgets grid (the card has 7 columns and
-      // does not fit one masonry column). Fall back to after the Suites widget.
-      var grid = document.querySelector('.widgets-grid');
-      if (grid && grid.parentNode) {
-        grid.parentNode.insertBefore(card, grid.nextSibling);
-        return;
-      }
+      // Place the card directly AFTER the Suites widget (so it sits under Suites and
+      // above Environment in the same column). The 7-column table scrolls
+      // horizontally inside its own .crm-scroll box on narrow columns.
       var suiteRow = document.querySelector('a.table__row[href^="#suites/"]');
       var w = suiteRow && suiteRow.closest ? suiteRow.closest('.widget') : null;
       if (w && w.parentNode) { w.parentNode.insertBefore(card, w.nextSibling); return; }
+      // Fallbacks: below the widgets grid, else the content area.
+      var grid = document.querySelector('.widgets-grid');
+      if (grid && grid.parentNode) { grid.parentNode.insertBefore(card, grid.nextSibling); return; }
       var host = document.getElementById('content') || document.body;
       if (host) host.appendChild(card);
     });
