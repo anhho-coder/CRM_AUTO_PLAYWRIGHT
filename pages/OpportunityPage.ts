@@ -1085,6 +1085,55 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Refresh the Opp form until BOTH the "Company" (partner_id) and "Contact" (contact_partner_id)
+   * fields are populated (non-empty) after save. On a deal-registration Opp, filling Email triggers
+   * background Company/Contact (partner) creation; reading or acting on the record before those exist
+   * yields incomplete partner data (e.g. opening the Deal Element auto-populates an empty/invalid
+   * End User, which then blocks the Deal Element save). Call this AFTER saving the Opp and BEFORE
+   * opening the Deal Element (mirrors the manual "Refresh until Company and Contact are populated").
+   * Reloads up to maxAttempts times, waiting refreshInterval between attempts.
+   * @param maxAttempts - number of reload attempts (default: 12)
+   * @param refreshInterval - wait between reloads (default: searchOppWait = 5s)
+   * @returns { populated, companyValue, contactValue }
+   */
+  async waitForCompanyAndContactPopulated(
+    maxAttempts: number = 12,
+    refreshInterval: number = CommonUtils.waitTimes.searchOppWait
+  ): Promise<{ populated: boolean; companyValue: string; contactValue: string }> {
+    const isFilled = (v: string | null) =>
+      !!v && v.trim() !== '' && v.trim().toLowerCase() !== 'false';
+    let companyValue = '';
+    let contactValue = '';
+
+    // Dismiss any open autocomplete dropdown that could block the reload.
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`  - Company/Contact populate check, attempt ${attempt}/${maxAttempts}`);
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      await this.waitForPageReady(CommonUtils.waitTimes.contactShowing);
+      await this.getContactField().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+
+      companyValue = (await this.getCompanyFieldValue().catch(() => '')) ?? '';
+      contactValue = (await this.getContactFieldValue().catch(() => '')) ?? '';
+      console.log(`    Company: "${companyValue?.trim()}" | Contact: "${contactValue?.trim()}"`);
+
+      if (isFilled(companyValue) && isFilled(contactValue)) {
+        console.log('  ✓ Company and Contact are both populated');
+        return { populated: true, companyValue: companyValue.trim(), contactValue: contactValue.trim() };
+      }
+
+      if (attempt < maxAttempts) {
+        await this.wait(refreshInterval);
+      }
+    }
+
+    console.log('  ⚠ Company and/or Contact were not populated within the allotted attempts');
+    return { populated: false, companyValue: (companyValue ?? '').trim(), contactValue: (contactValue ?? '').trim() };
+  }
+
+  /**
    * Wait for the chatter / log area to contain a specific text.
    * Refreshes the page up to maxAttempts times with an interval between each attempt.
    * @param expectedText - Exact text (substring) to search for in the chatter log
@@ -1338,6 +1387,20 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     if (!(await sp.count() > 0)) sp = this.composerSuggestedPartnersCss();
     if (await sp.count() > 0) parts.push(((await sp.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim());
     return parts.filter(Boolean).join(' | ');
+  }
+
+  /**
+   * Whether the OPEN "Send message" composer offers rich-text formatting - i.e. a contenteditable
+   * editor or a formatting toolbar. For the Odoo 12 backend chatter this is false: the body is a plain
+   * <textarea>. Used to verify the composer has no bold/italic/list controls.
+   */
+  async composerHasRichText(): Promise<boolean> {
+    const ce = await this.page.locator("div.o_thread_composer [contenteditable='true']").count().catch(() => 0);
+    const toolbar = await this.page
+      .locator("div.o_thread_composer .note-toolbar, div.o_thread_composer .o_wysiwyg_wrapper, div.o_thread_composer .btn-toolbar, div.o_thread_composer .note-editable")
+      .count()
+      .catch(() => 0);
+    return ce > 0 || toolbar > 0;
   }
 
   /**

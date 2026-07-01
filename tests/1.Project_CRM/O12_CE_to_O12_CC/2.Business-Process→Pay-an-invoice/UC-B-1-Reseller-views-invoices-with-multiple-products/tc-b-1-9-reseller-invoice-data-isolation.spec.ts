@@ -30,6 +30,20 @@ import { createMultiProductInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } fr
  *  Pre-condition: fresh VALIDATED multi-product invoice (Invoice #2) NOT linked to Reseller_1
  *    (the deal-reg Note's Partner identity lines are blanked and no Assigned Partner is set, so the
  *    invoice Reseller != Reseller_1 - the portal keys visibility off the invoice Reseller field).
+ *
+ *    Internal Note #1 (deal-registration template; key fields, one per line):
+ *      - NAKIVO deal registration*  = <random 4-digit number>
+ *      - Name                       = TEST <current date time>
+ *      - Email                      = Test@company<compact date time>.com
+ *      - Created Date               = <current date time>
+ *      - phone                      = <random 9-digit number>
+ *      - Company                    = Company Name Lead 1
+ *      - Partner Company Name       = (blank - isolation test)
+ *      - IP                         = 128.183.189.157
+ *      - Country                    = United States
+ *    (This test deliberately BLANKS the Partner identity lines and sets no Assigned Partner, so the
+ *     invoice Reseller != Reseller_1. Remaining template lines - Solution used, Edition, License Type,
+ *     etc. - are static defaults.)
  *  Steps to reproduce:
  *    1. Login as Reseller_1
  *    2. Click "My invoices"

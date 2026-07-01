@@ -31,18 +31,19 @@ class CustomReporter {
     }
   }
 
-  onEnd(result) {
+  async onEnd(result) {
     console.log('\n========== CUSTOM REPORTER ENDING ==========');
     console.log(`Has Failures: ${this.hasFailures}`);
     console.log(`Result Status: ${result.status}`);
-    
-    // Wait 3 seconds synchronously
+
+    // Wait for other reporters to finish writing files (e.g. the HTML reporter copying a large
+    // video.webm into data/). Use an ASYNC wait, NOT a busy while-loop: a busy-wait blocks Node's
+    // event loop and starves those pending async file copies, so the folder gets renamed before a
+    // big video finishes copying -> the video never lands in the report's data/ (small ones squeak
+    // by, large ~19-min ones do not). Matches config/custom-reporter.ts.
     console.log('Waiting 3 seconds before rename...');
-    const waitUntil = Date.now() + 3000;
-    while (Date.now() < waitUntil) {
-      // Busy wait
-    }
-    
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
     console.log('Starting folder rename...');
     try {
       this.renameReportFolder();

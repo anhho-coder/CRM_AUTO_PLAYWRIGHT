@@ -155,6 +155,18 @@ export class ResellerPortalPage extends BasePage {
   private readonly invoiceLineFrame = () => this.page.frameLocator('#invoice_html');
   private readonly invoiceLineTableInFrame = () =>
     this.invoiceLineFrame().locator("xpath=//table[@name='invoice_line_table']").first();
+  // "This invoice is paid" success banner in the LEFT column (main document, NOT the iframe):
+  // rendered as <h4 class="text-success">This invoice is paid</h4> inside the .q-page left panel for a
+  // fully-paid invoice. XPath primary (matches the exact text), CSS fallback (any text-success heading).
+  private readonly paidMessageXPath = () =>
+    this.page.locator("xpath=//div[contains(@class,'q-page')]//h4[contains(@class,'text-success') and contains(normalize-space(.),'This invoice is paid')]").first();
+  private readonly paidMessageCss = () =>
+    this.page.locator("h4.text-success").first();
+  // "Amount Due" value cell INSIDE the #invoice_html iframe totals block, e.g.
+  //   <tr class="border-black"><td><strong>Amount Due</strong></td><td class="text-right">$ 0.00</td></tr>
+  // NOTE: this row is NOT an o_total row, so getDetailTotalsBreakdown does not surface it.
+  private readonly detailAmountDueValueInFrame = () =>
+    this.invoiceLineFrame().locator("xpath=//tr[./td/strong[normalize-space()='Amount Due']]/td[contains(@class,'text-right')]").first();
 
   // --- Opportunity detail page "Comment" section (Nakivo p-comments / o_portal_chatter) ---
   // The chatter widget wrapper: <div id="discussion" class="o_portal_chatter" data-res_model="crm.lead" data-res_id="<id>">.
@@ -885,6 +897,97 @@ export class ResellerPortalPage extends BasePage {
     }
     console.log(`  - Portal invoice totals breakdown: ${JSON.stringify(out)}`);
     return out;
+  }
+
+  /**
+   * Whether the "This invoice is paid" success message is shown in the LEFT column of the invoice
+   * detail page (rendered as <h4 class="text-success">This invoice is paid</h4> in the .q-page left
+   * panel for a fully-paid invoice). XPath primary (exact text), CSS fallback (text-success heading
+   * whose text matches). Used by UC-B.8.1.
+   * @param timeout - how long to wait for the message (default: elementAppear)
+   */
+  async isInvoicePaidMessageShown(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<boolean> {
+    let visible = await this.paidMessageXPath().isVisible({ timeout }).catch(() => false);
+    if (!visible) {
+      const txt = ((await this.paidMessageCss().textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      visible = /this invoice is paid/i.test(txt);
+    }
+    console.log(`  - "This invoice is paid" message shown (left column): ${visible}`);
+    return visible;
+  }
+
+  /**
+   * Read the "This invoice is paid" message text from the LEFT column (whitespace-normalised).
+   * Returns "" when the message is absent.
+   */
+  async getInvoicePaidMessage(): Promise<string> {
+    let el = this.paidMessageXPath();
+    if (!(await el.isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false))) el = this.paidMessageCss();
+    if (!(await el.count() > 0)) return '';
+    return ((await el.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Read the "Amount Due" value from the RIGHT-side invoice document (inside the #invoice_html iframe).
+   * For a fully-paid invoice this reads "$ 0.00". Returns the trimmed text, or "" if the row is absent.
+   * The Amount Due row is a border-black row in the totals block - distinct from the o_total rows that
+   * getDetailTotalsBreakdown returns. Used by UC-B.8.1.
+   */
+  async getDetailAmountDue(): Promise<string> {
+    await this.waitForDetailLineTable();
+    const cell = this.detailAmountDueValueInFrame();
+    if (!(await cell.count().catch(() => 0))) {
+      console.log('  - Portal invoice detail "Amount Due" row: NOT FOUND');
+      return '';
+    }
+    const value = ((await cell.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    console.log(`  - Portal invoice detail Amount Due (right side): "${value}"`);
+    return value;
+  }
+
+  /**
+   * Read EVERY row of the right-side totals block (#total) inside the #invoice_html iframe, in document
+   * order, as { label, amount } pairs. Unlike getDetailTotalsBreakdown (which returns only the o_total
+   * rows - Subtotal / Partner Discount / Total), this includes the payment rows too, e.g. a
+   * "Paid on <date>" line and the "Amount Due" row. Used by UC-B.8 to assert a paid invoice shows its
+   * payment. Label reads td[1] (covers <strong> and the <i class="oe_payment_label"> "Paid on ..." node).
+   */
+  async getDetailTotalsAllRows(): Promise<{ label: string; amount: string }[]> {
+    await this.waitForDetailLineTable();
+    const rows = this.invoiceLineFrame().locator("xpath=//div[@id='total']//tr");
+    const n = await rows.count().catch(() => 0);
+    const out: { label: string; amount: string }[] = [];
+    for (let i = 0; i < n; i++) {
+      const row = rows.nth(i);
+      const label = ((await row.locator('xpath=./td[1]').textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+        .replace(/\s+/g, ' ').trim();
+      const amount = ((await row.locator("xpath=./td[contains(@class,'text-right')]").textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+        .replace(/\s+/g, ' ').trim();
+      if (label) out.push({ label, amount });
+    }
+    console.log(`  - Portal invoice #total rows: ${JSON.stringify(out)}`);
+    return out;
+  }
+
+  /**
+   * Count the product lines rendered in the invoice-line table (#invoice_html iframe). A product row
+   * carries a Description cell `td[@name="account_invoice_line_name"]`. Used by UC-B.8 to assert a paid
+   * invoice still lists its product line(s). Returns 0 if the table/rows are absent.
+   */
+  async getDetailProductLineCount(): Promise<number> {
+    await this.waitForDetailLineTable();
+    const count = await this.invoiceLineFrame()
+      .locator("xpath=//table[@name='invoice_line_table']//tbody//tr[.//td[@name='account_invoice_line_name']]")
+      .count()
+      .catch(() => 0);
+    console.log(`  - Portal invoice detail product line count: ${count}`);
+    return count;
   }
 
   // ─── Opportunity detail "Comment" section (UC-C: Reseller posts a customer-visible message) ──

@@ -22,6 +22,9 @@ export const DEAL_REGISTRATION = {
   partnerContactName: 'TEST-Reseller#Automation-Jun10',
   partnerBusinessEmail: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
   partnerPhone: '0256468451',
+  // Backend res.partner id of the Reseller company on pre-prod (hard-configured contact URL, used by
+  // Discount-1.1 Pre-condition #1 to read the reseller's Level). Its Level = "Bronze" (Discount % = 15).
+  partnerContactId: '627556',
   // Customer / lead data (note "Company"/"IP"/"Country" lines + the Opp create-form fields)
   companyName: 'Company Name Lead 1',
   ip: '128.183.189.157',

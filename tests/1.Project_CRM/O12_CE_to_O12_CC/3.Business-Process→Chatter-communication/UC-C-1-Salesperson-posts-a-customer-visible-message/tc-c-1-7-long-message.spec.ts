@@ -27,6 +27,18 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  *
  *  Pre-condition: Login as Salesperson (Thomas); create a NEW deal-registration Opportunity in
  *                 CRM > Pipeline FOR THIS CASE ONLY, uniquely named "TEST TC.-C.1.7 <date time>".
+ *    The deal-registration Internal Note #1 is built from the template, filling the <...> placeholders
+ *    with fresh dynamic values each run (key fields, one per line):
+ *      - NAKIVO deal registration*  = <random 4-digit number>
+ *      - Name                       = TEST <current date time>
+ *      - Email                      = Test@company<compact date time>.com
+ *      - Created Date               = <current date time>
+ *      - phone                      = <random 9-digit number>
+ *      - Company                    = Company Name Lead 1
+ *      - Partner Company Name       = TEST-Reseller#Automation-Jun10
+ *      - IP                         = 128.183.189.157
+ *      - Country                    = United States
+ *    (Remaining template lines - Solution used, Edition, License Type, etc. - are static defaults.)
  *
  *  Steps to reproduce:
  *   1. Open the Opportunity created above (TEST TC.-C.1.7 <current date time>) in CRM > Pipeline

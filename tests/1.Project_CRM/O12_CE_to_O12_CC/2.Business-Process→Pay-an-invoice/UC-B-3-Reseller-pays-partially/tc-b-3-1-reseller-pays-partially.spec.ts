@@ -30,14 +30,35 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  * ---------------------------------------------------------------------------
  *
  *  Pre-condition #1:
- *    Build the deal-registration Internal Note #1 with fresh dynamic values
- *    (test-data/CRM-deal_registration/deal-registration.note.ts -> generateDealRegistrationNote()).
+ *    Build the deal-registration Internal Note #1 from the template, filling the <...> placeholders
+ *    with fresh dynamic values each run (key fields, one per line):
+ *      - NAKIVO deal registration*  = <random 4-digit number>
+ *      - Name                       = TEST <current date time>
+ *      - Email                      = Test@company<compact date time>.com
+ *      - Created Date               = <current date time>
+ *      - phone                      = <random 9-digit number>
+ *      - Company                    = Company Name Lead 1
+ *      - Partner Company Name       = TEST-Reseller#Automation-Jun10
+ *      - IP                         = 128.183.189.157
+ *      - Country                    = United States
+ *    (Remaining template lines - Solution used, Edition, License Type, etc. - are static defaults.)
  *
  *  Pre-condition #2  (as Thomas - ends after the invoice is validated):
- *     1-9. Login as Thomas; CRM > view list > CREATE; enter Opp name / Contact / Company / Email,
- *          Country = United States, State = Maryland, IP (Create manually = FALSE, Sales Team +
- *          Salesperson cleared); CRM Developer Lead form = NAKIVO deal registration*; Assigned Partner
- *          = TEST-Reseller#Automation-Jun10; Internal Note #1; SAVE; refresh until Company + Contact populate.
+ *     1-9. Login as Thomas; CRM > view list > CREATE; enter the Opportunity details:
+ *          - Opp name                 = ...
+ *          - Contact                  = ...
+ *          - Company                  = ...
+ *          - Email                    = ...
+ *          - Country                  = United States
+ *          - State                    = Maryland
+ *          - IP                       = ...
+ *          - Create manually checkbox = FALSE
+ *          - Sales Team               = cleared
+ *          - Salesperson              = cleared
+ *          - CRM Developer Lead form  = NAKIVO deal registration*
+ *          - Assigned Partner         = TEST-Reseller#Automation-Jun10
+ *          - Internal Note            = Internal Note #1
+ *          then SAVE; refresh until Company + Contact populate.
  *    10. Click "Deal Element" button to create a new Deal Element
  *    11. Set Payment terms = Immediate Payment
  *    12. In Order Lines, "Add a product" -> select ONE product (Product#1), Quantity = 1 (small deal, NO approval); SAVE

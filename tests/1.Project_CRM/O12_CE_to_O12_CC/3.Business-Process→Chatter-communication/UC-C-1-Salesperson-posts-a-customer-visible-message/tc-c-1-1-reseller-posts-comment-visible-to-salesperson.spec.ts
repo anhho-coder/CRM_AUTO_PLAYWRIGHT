@@ -25,17 +25,37 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC (mirrors the manual steps - same order, same content):
  *
- *  Pre-condition #1: Build Internal Note #1 from the deal-registration template (dynamic <...>
- *                    placeholders filled fresh each run: random 4-digit, Name, Email, Created
- *                    Date, phone, etc.).
+ *  Pre-condition #1:
+ *    Build the deal-registration Internal Note #1 from the template, filling the <...> placeholders
+ *    with fresh dynamic values each run (key fields, one per line):
+ *      - NAKIVO deal registration*  = <random 4-digit number>
+ *      - Name                       = TEST <current date time>
+ *      - Email                      = Test@company<compact date time>.com
+ *      - Created Date               = <current date time>
+ *      - phone                      = <random 9-digit number>
+ *      - Company                    = Company Name Lead 1
+ *      - Partner Company Name       = TEST-Reseller#Automation-Jun10
+ *      - IP                         = 128.183.189.157
+ *      - Country                    = United States
+ *    (Remaining template lines - Solution used, Edition, License Type, etc. - are static defaults.)
  *
  *  Pre-condition #2 (create the registration as Thomas):
- *   1-9. Use the account of Thomas to login; click "CRM" > "view list"; click "CREATE"; enter
- *        Opp name = TEST + Test Case ID + current date time, Contact name / Company / Email from
- *        Internal Note #1, Country = United States, State = Maryland, IP from Note #1, Create
- *        manually = FALSE, clear Sales Team and Salesperson; CRM Developer tab Lead form = NAKIVO
- *        deal registration*; Assigned Partner tab = TEST-Reseller#Automation-Jun10; Internal Notes
- *        tab = Internal Note #1; press SAVE (= Opp #1); copy the link of Opp #1 (= Link_Opp#1).
+ *   1-9. Use the account of Thomas to login; click "CRM" > "view list"; click "CREATE"; enter the
+ *        Opportunity details:
+ *          - Opp name                   = TEST + Test Case ID + current date time
+ *          - Contact name               = from Internal Note #1
+ *          - Company                    = from Internal Note #1
+ *          - Email                      = from Internal Note #1
+ *          - Country                    = United States
+ *          - State                      = Maryland
+ *          - IP                         = from Note #1
+ *          - Create manually checkbox   = FALSE
+ *          - Sales Team                 = cleared
+ *          - Salesperson                = cleared
+ *          - CRM Developer tab Lead form = NAKIVO deal registration*
+ *          - Assigned Partner tab       = TEST-Reseller#Automation-Jun10
+ *          - Internal Notes tab         = Internal Note #1
+ *        then press SAVE (= Opp #1); copy the link of Opp #1 (= Link_Opp#1).
  *
  *  Steps to reproduce #1 (Reseller posts the comment):
  *   1. Use the account of Reseller_1 (TEST-Reseller#1_Automation_Test) to login successful

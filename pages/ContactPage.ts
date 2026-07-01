@@ -48,6 +48,36 @@ export class ContactPage extends BasePage {
   private readonly activationDateInput = () => this.page.locator('xpath=//input[@name="activation_date"]').first();
   private readonly submitButton = () => this.page.locator('xpath=//button[@name="action_confirm" and contains(normalize-space(),"Submit")]').first();
 
+  // --- Partner program conditions (res.partner.grade) + readonly Level/Discount readers (Discount-1.1) ---
+  // Contacts module control-panel search box.
+  private readonly contactsSearchInput = () =>
+    this.page.locator('xpath=//input[contains(@class,"o_searchview_input")]').first();
+  // First matching contact result (list row OR kanban card) by visible name.
+  private readonly contactResultByName = (name: string) =>
+    this.page.locator(`xpath=//tr[contains(@class,"o_data_row")][contains(normalize-space(.),"${name}")] | //div[contains(@class,"o_kanban_record")][contains(normalize-space(.),"${name}")]`).first();
+  // "Configuration" top-menu dropdown toggle in the Contacts module menu bar (label/xmlid based - env agnostic).
+  private readonly configurationMenuToggle = () =>
+    this.page.locator('xpath=//a[@data-menu-xmlid="contacts.res_partner_menu_config"] | //a[contains(@class,"o_menu_header_lvl_1") and contains(normalize-space(),"Configuration")]').first();
+  // "Partner program conditions" entry inside the Configuration dropdown.
+  private readonly partnerProgramConditionsMenuItem = () =>
+    this.page.locator('xpath=//a[contains(@class,"dropdown-item")][contains(normalize-space(),"Partner program condition")] | //a[contains(@class,"dropdown-item")][contains(normalize-space(),"Partner Program Condition")]').first();
+  // A data row in the Partner program conditions (res.partner.grade) tree, by Level name.
+  private readonly programConditionRowByName = (name: string) =>
+    this.page.locator(`xpath=//tr[contains(@class,"o_data_row")][.//td[normalize-space()="${name}"]]`).first();
+  // Readonly "Level" (grade_id) on the contact form: the POPULATED grade_id link (href -> res.partner.grade),
+  // e.g. <a name="grade_id" href="#id=11&model=res.partner.grade">Bronze</a>. The href filter excludes the
+  // many EMPTY grade_id anchors (href="#") in the Partner-Assignation level-history grid. CSS fallback.
+  private readonly partnerLevelReadonlyXPath = () =>
+    this.page.locator('xpath=//a[@name="grade_id" and contains(@href,"res.partner.grade")]').first();
+  private readonly partnerLevelReadonlyCss = () =>
+    this.page.locator('a[name="grade_id"][href*="res.partner.grade"]').first();
+  // Readonly "Discount %" (discount_id) on the res.partner.grade form: an m2o link to nakivo_sale.discount
+  // whose text IS the percent (e.g. "15.0"). XPath primary (any tag bearing name="discount_id"), CSS fallback.
+  private readonly programDiscountReadonlyXPath = () =>
+    this.page.locator('xpath=//a[@name="discount_id"] | //span[@name="discount_id"] | //div[@name="discount_id"]').first();
+  private readonly programDiscountReadonlyCss = () =>
+    this.page.locator('[name="discount_id"]').first();
+
   // Dropdown option helper (dynamic)
   private readonly dropdownOption = (text: string) => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option').filter({ hasText: text }).first();
 
@@ -1157,5 +1187,139 @@ export class ContactPage extends BasePage {
       await this.page.keyboard.press('Enter');
     });
     await this.wait(500);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Partner Level + Partner program conditions Discount % (Discount-1.1)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Open a contact directly by its backend form URL (the reseller's hard-configured contact URL).
+   * @param url - the res.partner backend form URL (e.g. ".../web#id=<id>&model=res.partner&view_type=form")
+   */
+  async openContactByUrl(url: string): Promise<void> {
+    await this.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Search the Contacts list for a name and open the first matching record (list row or kanban card).
+   * Returns the opened record's backend form URL. Used to capture the reseller's contact URL.
+   * @param name - the contact name to search (e.g. "TEST-Reseller#Automation-Jun10")
+   */
+  async searchAndOpenContact(name: string): Promise<string> {
+    const search = this.contactsSearchInput();
+    await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // Odoo's searchview ignores fill() - it needs real key events to build the "Search Name for: X"
+    // option, which Enter then applies as a name filter. Type via the keyboard.
+    await search.click();
+    await this.page.keyboard.type(name, { delay: 30 });
+    await this.wait(CommonUtils.waitTimes.long); // let the search dropdown render
+    await this.page.keyboard.press('Enter'); // apply "Search Name for: <name>"
+    await this.wait(CommonUtils.waitTimes.long);
+    const row = this.contactResultByName(name);
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await row.click();
+    await this.page.waitForURL(/[#?&]id=\d+/, { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const url = this.page.url();
+    console.log(`  - Opened contact "${name}" -> ${url}`);
+    return url;
+  }
+
+  /**
+   * Read the partner "Level" (grade_id) shown on the contact form, e.g. "Bronze".
+   * The field sits on the "Partner Assignation" tab; reads via textContent so an inactive
+   * (display:none) notebook page is still readable, and falls back to clicking the tab if empty.
+   * @returns the Level name (whitespace-normalised), or "" if not found
+   */
+  async getPartnerLevel(): Promise<string> {
+    const readOnce = async (): Promise<string> => {
+      let el = this.partnerLevelReadonlyXPath();
+      if (!(await el.count().catch(() => 0))) el = this.partnerLevelReadonlyCss();
+      return ((await el.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+    let value = await readOnce();
+    if (!value) {
+      const tab = this.partnerAssignationTab();
+      if (await tab.count().catch(() => 0)) {
+        await tab.click().catch(() => {});
+        await this.wait(CommonUtils.waitTimes.long);
+      }
+      value = await readOnce();
+    }
+    console.log(`  - Partner Level (grade_id): "${value}"`);
+    return value;
+  }
+
+  /**
+   * Navigate Contacts > Configuration > "Partner program conditions" (res.partner.grade tree).
+   * Label/xmlid-based menu navigation so it works regardless of per-DB action ids.
+   */
+  async openPartnerProgramConditions(): Promise<void> {
+    // Primary: deep-link to the action (menu_id=840&action=2224, xmlid
+    // partner_level_management.res_partners_program_conditions - same id on prod and pre-prod).
+    // Set the hash, then reload() so the Odoo web client boots fresh on that hash and loads the action -
+    // a plain goto from another /web#... URL is a same-document hash change and would NOT load the action.
+    const origin = new URL(this.page.url()).origin;
+    await this.goto(`${origin}/web#menu_id=840&action=2224`, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    let ready = await this.programConditionRowByName('Bronze')
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad })
+      .then(() => true)
+      .catch(() => false);
+
+    // Fallback: label/xmlid-based menu navigation if the deep-link did not land on the tree.
+    if (!ready) {
+      console.log('  - Deep-link did not load the grade tree; falling back to the Configuration menu');
+      const toggle = this.configurationMenuToggle();
+      await toggle.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await toggle.click();
+      await this.wait(CommonUtils.waitTimes.standard);
+      const item = this.partnerProgramConditionsMenuItem();
+      await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await item.click();
+      ready = await this.programConditionRowByName('Bronze')
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad })
+        .then(() => true)
+        .catch(() => false);
+    }
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Partner program conditions opened (tree ready: ${ready}) -> ${this.page.url()}`);
+  }
+
+  /**
+   * Open a partner level (res.partner.grade) record from the Partner program conditions tree.
+   * @param levelName - "Basic" | "Bronze" | "Silver" | "Gold"
+   */
+  async openPartnerProgramLevel(levelName: string): Promise<void> {
+    const row = this.programConditionRowByName(levelName);
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await row.click();
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Partner level "${levelName}" opened -> ${this.page.url()}`);
+  }
+
+  /**
+   * Read the "Discount %" (discount_id) value on a res.partner.grade form, e.g. "15.0".
+   * The field is a many2one to nakivo_sale.discount whose display name IS the percent.
+   * @returns the displayed discount value (whitespace-normalised), or "" if not found
+   */
+  async getProgramDiscountPercent(): Promise<string> {
+    let el = this.programDiscountReadonlyXPath();
+    if (!(await el.count().catch(() => 0))) el = this.programDiscountReadonlyCss();
+    await el.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const value = ((await el.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    console.log(`  - Program Discount % (discount_id): "${value}"`);
+    return value;
   }
 }

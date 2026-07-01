@@ -28,7 +28,18 @@ import { createValidatedInvoiceForPartialPayment, deleteCreatedOpportunityAsAdmi
  * ---------------------------------------------------------------------------
  *
  *  Pre-condition #1:
- *    Build the deal-registration Internal Note #1 with fresh dynamic values (generateDealRegistrationNote()).
+ *    Build the deal-registration Internal Note #1 from the template, filling the <...> placeholders
+ *    with fresh dynamic values each run (key fields, one per line):
+ *      - NAKIVO deal registration*  = <random 4-digit number>
+ *      - Name                       = TEST <current date time>
+ *      - Email                      = Test@company<compact date time>.com
+ *      - Created Date               = <current date time>
+ *      - phone                      = <random 9-digit number>
+ *      - Company                    = Company Name Lead 1
+ *      - Partner Company Name       = TEST-Reseller#Automation-Jun10
+ *      - IP                         = 128.183.189.157
+ *      - Country                    = United States
+ *    (Remaining template lines - Solution used, Edition, License Type, etc. - are static defaults.)
  *
  *  Pre-condition #2  (as Thomas - ends after the invoice is validated):
  *    1-18. Login as Thomas; create the deal-registration Opportunity; Deal Element (Immediate Payment +
@@ -39,10 +50,21 @@ import { createValidatedInvoiceForPartialPayment, deleteCreatedOpportunityAsAdmi
  *
  *  Steps to reproduce  (as Faye - accountant):
  *    1. Use the account of Faye (accountant) to login successful, then open Invoice#1 URL
- *    2. Register a partial payment of Installment#1 with "Keep open" (Actually Received = Installment#1), then Validate
- *    3. Register a partial payment of Installment#2 with "Keep open" (Actually Received = Installment#2), then Validate
- *    4. Register a partial payment of Installment#3 with "Keep open" (Actually Received = Installment#3), then Validate
- *    5. Register a payment of Installment#4 (the remaining balance, Actually Received = Installment#4), then Validate
+ *    2. Register a partial payment in the Register Payment popup, then Validate:
+ *          - Payment Amount       = Installment#1
+ *          - Payment Difference   = Keep open
+ *          - Actually Received($) = Installment#1
+ *    3. Register a partial payment in the Register Payment popup, then Validate:
+ *          - Payment Amount       = Installment#2
+ *          - Payment Difference   = Keep open
+ *          - Actually Received($) = Installment#2
+ *    4. Register a partial payment in the Register Payment popup, then Validate:
+ *          - Payment Amount       = Installment#3
+ *          - Payment Difference   = Keep open
+ *          - Actually Received($) = Installment#3
+ *    5. Register a payment of the remaining balance in the Register Payment popup, then Validate:
+ *          - Payment Amount       = Installment#4
+ *          - Actually Received($) = Installment#4
  *
  *  Verification Point:
  *    - Invoice#1 state = "Paid"

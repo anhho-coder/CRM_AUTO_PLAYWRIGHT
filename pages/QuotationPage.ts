@@ -27,6 +27,15 @@ export class QuotationPage extends BasePage {
   // "Payer" (partner_id) on the Quotation/Sales Order: readonly link primary, edit-mode input fallback.
   private readonly payerInput = () => this.page.locator('xpath=//div[@name="partner_id"]//input').first();
   private readonly payerReadonly = () => this.page.locator('xpath=//a[@name="partner_id"]').or(this.page.locator('xpath=//div[@name="partner_id"]//a')).first();
+  // Pricelist (pricelist_id) and Salesperson (user_id) - readonly anchor primary, edit-mode input fallback.
+  private readonly pricelistReadonly = () => this.page.locator('xpath=//a[@name="pricelist_id"]').or(this.page.locator('xpath=//div[@name="pricelist_id"]//input')).first();
+  private readonly salespersonReadonly = () => this.page.locator('xpath=//a[@name="user_id"]').or(this.page.locator('xpath=//div[@name="user_id"]//input')).first();
+  // Grand total (amount_total) in the order totals footer.
+  private readonly amountTotalField = () => this.page.locator('xpath=//span[@name="amount_total"]').or(this.page.locator('span[name="amount_total"]')).first();
+  // "Subscriptions" smart button on a confirmed Sales Order (opens the linked subscription).
+  private readonly subscriptionsSmartButton = () =>
+    this.page.locator('xpath=//button[@name="action_open_subscriptions"]')
+      .or(this.page.locator('button[name="action_open_subscriptions"]')).first();
 
   constructor(page: Page) {
     super(page);
@@ -807,5 +816,148 @@ export class QuotationPage extends BasePage {
       console.log(`  ✗ Error clicking CONFIRM button: ${errorMsg}`);
       throw error;
     }
+  }
+
+  /**
+   * Read the quotation "Payer" (partner_id) NAME only. Odoo renders the partner Many2one as
+   * "Name<br>City<br>Country", so innerText carries the address lines; this keeps only the FIRST
+   * line (the partner name) so it matches the clean payer name shown on the subscription
+   * (Customer / breadcrumb). Edit-mode input value is used as a fallback.
+   */
+  async getPayerName(): Promise<string> {
+    const ro = this.payerReadonly();
+    if (await ro.count().catch(() => 0)) {
+      const raw = ((await ro.first().innerText().catch(() => '')) || '');
+      const firstLine = raw.split('\n')[0].replace(/\s+/g, ' ').trim();
+      if (firstLine) { console.log(`  - Quotation Payer (name): "${firstLine}"`); return firstLine; }
+    }
+    const input = this.payerInput();
+    if (await input.count().catch(() => 0)) {
+      const v = ((await input.first().inputValue().catch(() => '')) || '').trim();
+      console.log(`  - Quotation Payer (input): "${v}"`);
+      return v;
+    }
+    console.log('  ⚠ Quotation Payer field not found');
+    return '';
+  }
+
+  /** Parse a displayed amount like "$ 244.37" / "244.37" / "$&nbsp;244.37" into a number. */
+  private parseAmount(raw: string): number {
+    return parseFloat((raw || '').replace(/ /g, ' ').replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
+  }
+
+  /**
+   * Read the quotation grand Total (amount_total) shown in the order totals footer.
+   * @returns the numeric Total, e.g. 244.37
+   */
+  async getQuotationTotal(): Promise<number> {
+    const field = this.amountTotalField();
+    await field.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const raw = (await field.innerText().catch(() => '')) || '';
+    const value = this.parseAmount(raw);
+    console.log(`  - Quotation Total (amount_total): ${value} (raw: "${raw.replace(/ /g, ' ').trim()}")`);
+    return value;
+  }
+
+  /** Read the quotation Pricelist (pricelist_id) display text. */
+  async getPricelistName(): Promise<string> {
+    const loc = this.pricelistReadonly();
+    if (await loc.count().catch(() => 0)) {
+      const tag = await loc.evaluate((el) => el.tagName.toLowerCase()).catch(() => '');
+      const value = tag === 'input'
+        ? ((await loc.inputValue().catch(() => '')) || '').trim()
+        : ((await loc.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      console.log(`  - Quotation Pricelist: "${value}"`);
+      return value;
+    }
+    console.log('  ⚠ Quotation Pricelist field not found');
+    return '';
+  }
+
+  /** Read the quotation Salesperson (user_id) display text. */
+  async getSalespersonName(): Promise<string> {
+    const loc = this.salespersonReadonly();
+    if (await loc.count().catch(() => 0)) {
+      const tag = await loc.evaluate((el) => el.tagName.toLowerCase()).catch(() => '');
+      const value = tag === 'input'
+        ? ((await loc.inputValue().catch(() => '')) || '').trim()
+        : ((await loc.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      console.log(`  - Quotation Salesperson: "${value}"`);
+      return value;
+    }
+    console.log('  ⚠ Quotation Salesperson field not found');
+    return '';
+  }
+
+  /**
+   * Read a numeric cell on the Order Lines row that matches productCode, located by its column
+   * header text (exact match). The Order Lines columns include "Unit Price", "Discount (%)",
+   * "Partner Discount", "Partner Discount Amount", "Subtotal After All Discounts", "Subtotal".
+   * Header-indexed (scoped to the field name="order_line" table) so it is resilient to column shifts.
+   * @param productCode - text identifying the order line (e.g. "CP-NC-PM-ENP")
+   * @param headerExact - the exact column header text (e.g. "Partner Discount")
+   * @returns the trimmed raw cell text, or '' if not found
+   */
+  async getOrderLineCellByHeader(productCode: string, headerExact: string): Promise<string> {
+    return await this.page.evaluate(
+      ({ productCode, header }) => {
+        const container = document.querySelector('[name="order_line"]');
+        if (!container) return '';
+        const table = container.querySelector('table');
+        if (!table) return '';
+        const ths = Array.from(table.querySelectorAll('thead th'));
+        const idx = ths.findIndex((th) => (th.textContent || '').replace(/\s+/g, ' ').trim() === header);
+        if (idx < 0) return '';
+        const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+        const row = rows.find((r) => (r.textContent || '').includes(productCode));
+        if (!row) return '';
+        const cells = Array.from(row.querySelectorAll('td'));
+        return cells[idx] ? (cells[idx].textContent || '').replace(/\s+/g, ' ').trim() : '';
+      },
+      { productCode, header: headerExact }
+    );
+  }
+
+  /** Read the order line "Unit Price" for the given product code as a number. */
+  async getLineUnitPrice(productCode: string): Promise<number> {
+    const raw = await this.getOrderLineCellByHeader(productCode, 'Unit Price');
+    const value = this.parseAmount(raw);
+    console.log(`  - Quotation line Unit Price (${productCode}): ${value} (raw: "${raw}")`);
+    return value;
+  }
+
+  /** Read the order line "Partner Discount" % for the given product code as a number (LineDiscount#1). */
+  async getLinePartnerDiscount(productCode: string): Promise<number> {
+    const raw = await this.getOrderLineCellByHeader(productCode, 'Partner Discount');
+    const value = this.parseAmount(raw);
+    console.log(`  - Quotation line Partner Discount % (${productCode}): ${value} (raw: "${raw}")`);
+    return value;
+  }
+
+  /** Read the order line "Subtotal After All Discounts" for the given product code as a number (line Sub Total). */
+  async getLineSubtotalAfterAllDiscounts(productCode: string): Promise<number> {
+    const raw = await this.getOrderLineCellByHeader(productCode, 'Subtotal After All Discounts');
+    const value = this.parseAmount(raw);
+    console.log(`  - Quotation line Subtotal After All Discounts (${productCode}): ${value} (raw: "${raw}")`);
+    return value;
+  }
+
+  /**
+   * Click the "Subscriptions" smart button on a confirmed Sales Order to open the linked
+   * subscription detail. Dismisses any "Odoo Client Error" popup first.
+   */
+  async clickSubscriptionsSmartButton(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    await this.dismissErrorDialogWithRetry().catch(() => {});
+    const button = this.subscriptionsSmartButton();
+    await button.waitFor({ state: 'visible', timeout });
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click();
+    console.log('  ✓ Clicked the "Subscriptions" smart button');
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /** Whether the "Subscriptions" smart button is present (confirmed SO with a linked subscription). */
+  async hasSubscriptionsSmartButton(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    return this.subscriptionsSmartButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
   }
 }

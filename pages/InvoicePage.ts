@@ -62,6 +62,28 @@ export class InvoicePage extends BasePage {
   // Register Payment "Payment Journal" (journal_id) - rendered as a native <select> in this wizard.
   private readonly paymentJournalSelect        = () => this.page.locator('xpath=//select[@name="journal_id"]').first();
   private readonly paymentJournalM2OInput      = () => this.page.locator('xpath=//div[@name="journal_id"]//input').first();
+  // Register Payment "Payment Method Type" (payment_method_id) - a vertical RADIO group on the
+  // credit-note refund payment wizard. Options e.g. "Manual" (default) / "Checks". The radio input is
+  // a visually-hidden Bootstrap custom-control, so the clickable target is its sibling <label>.
+  private readonly paymentMethodTypeGroup      = () => this.page.locator('xpath=//div[@name="payment_method_id"]').first();
+  private readonly paymentMethodTypeLabel      = (label: string) => this.page.locator(`xpath=//div[@name="payment_method_id"]//label[normalize-space()="${label}"]`).first();
+  private readonly paymentMethodTypeRadio      = (label: string) => this.page.locator(`xpath=//div[@name="payment_method_id"]//input[@type="radio"][following-sibling::label[normalize-space()="${label}"]]`).first();
+
+  // ── "Add Credit Note" button + refund wizard (account.invoice.refund) ──
+  // The header "Add Credit Note" button is permission-gated: it is rendered-but-hidden
+  // (o_invisible_modifier) for some accountants (e.g. Faye) and VISIBLE for others (e.g. Yulia).
+  // Target the VISIBLE instance (the hidden one carries o_invisible_modifier).
+  private readonly addCreditNoteButton         = () => this.page.locator('xpath=//button[normalize-space(.)="Add Credit Note" and not(contains(@class,"o_invisible_modifier"))]').or(this.page.locator('xpath=//button[@name="281"]')).filter({ visible: true }).first();
+  // Refund wizard "Credit Method" (filter_refund) - vertical radio; option "Create a draft credit note"
+  // = data-value "refund". The radio input is a hidden custom-control, so click its sibling <label>.
+  private readonly creditMethodLabel           = (label: string) => this.page.locator(`xpath=//div[@name="filter_refund"]//label[normalize-space()="${label}"]`).first();
+  private readonly creditMethodRadio           = (dataValue: string) => this.page.locator(`xpath=//div[@name="filter_refund"]//input[@data-value="${dataValue}"]`).first();
+  private readonly creditNoteReasonInput       = () => this.page.locator('xpath=//input[@name="description"]').or(this.page.locator('xpath=//div[@name="description"]//input')).first();
+  // The VISIBLE required date in the wizard is "Credit Note Date" (date_invoice); "Accounting Date"
+  // (date) is hidden by default. Set date_invoice.
+  private readonly creditNoteDateInput         = () => this.page.locator('xpath=//input[@name="date_invoice"]').or(this.page.locator('xpath=//div[@name="date_invoice"]//input')).first();
+  private readonly submitRefundButton          = () => this.page.locator('xpath=//button[@name="invoice_refund"]').or(this.page.locator('xpath=//div[contains(@class,"modal")]//button[normalize-space()="Add Credit Note"]')).first();
+  private readonly firstDataRow                = () => this.page.locator('tr.o_data_row').first();
 
   // ─── Notebook tabs ────────────────────────────────────────────────────────
   private readonly paymentsTabLoc              = () => this.page.locator('xpath=//a[contains(normalize-space(),"Payments")]').first();
@@ -90,6 +112,11 @@ export class InvoicePage extends BasePage {
   // Invoice grand total (footer "Total" = amount_total). For a Reseller this is the net after the
   // automatic Partner Discount (e.g. line gross $101.00 -> net total $85.85).
   private readonly invoiceTotalLoc            = () => this.page.locator('xpath=//span[@name="amount_total"]').first();
+  // ── Invoices LIST view (Customers > Invoices): search box + list table ──
+  // The list <table> itself carries class `o_list_view` in this Odoo 12 build (captured live).
+  private readonly searchViewInput            = () => this.page.locator('xpath=//input[contains(@class,"o_searchview_input")]').or(this.page.locator('input.o_searchview_input')).first();
+  private readonly invoiceListTable           = () => this.page.locator('xpath=//table[contains(@class,"o_list_view")]').or(this.page.locator('table.o_list_view')).first();
+  private readonly anyInvoiceListRow          = () => this.page.locator('xpath=//tr[contains(@class,"o_data_row")]').or(this.page.locator('tr.o_data_row')).first();
   // ── Invoice Order wizard (sale.advance.payment.inv): "What do you want to invoice?" radio ──
   // "Invoiceable lines" = the first option (data-value="delivered"), checked by default. The radio
   // input is visually hidden (Bootstrap custom-control), so click its <label>; the input id has a
@@ -609,6 +636,28 @@ export class InvoicePage extends BasePage {
     console.log('  ⚠ Payment Journal widget not found (neither <select> nor Many2one)');
     return false;
   }
+
+  /**
+   * Read the available "Payment Journal" option labels in the Register Payment wizard (when the
+   * journal is rendered as a native <select>). Read-only diagnostic so a spec can log/verify the
+   * exact journal labels offered (e.g. "Bank Check" vs "Bank Transfer") instead of failing blind.
+   * Returns [] when the journal is not a native <select> (Many2one) or no options are present.
+   * @param timeout - max time to wait for the <select> (default: abnormalWait)
+   */
+  async getPaymentJournalOptions(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string[]> {
+    const sel = this.paymentJournalSelect();
+    const present = await sel.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!present) {
+      console.log('  - Payment Journal options: not a native <select> (Many2one or absent)');
+      return [];
+    }
+    const options = await sel.evaluate((el: HTMLSelectElement) =>
+      Array.from(el.options).map((o) => (o.text || '').trim()).filter(Boolean)
+    ).catch(() => [] as string[]);
+    console.log(`  ✓ Payment Journal options: ${JSON.stringify(options)}`);
+    return options;
+  }
+
   /**
    * Click REGISTER PAYMENT button on the validated invoice
    * @param timeout - Maximum time to wait (default: 20000ms)
@@ -631,6 +680,34 @@ export class InvoicePage extends BasePage {
     await target.click();
     console.log('  - Clicked "Register Payment"');
     await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Whether a "Register Payment" control is available to the current user on this invoice (header
+   * button OR an item under the "Action" cog menu). Used by the negative role check (e.g. a
+   * Salesperson has no Register Payment, only an Accountant does). Closes the Action menu if it
+   * opened it. Does NOT click Register Payment.
+   * @returns true if Register Payment is reachable, false otherwise
+   */
+  async hasRegisterPaymentButton(timeout: number = CommonUtils.waitTimes.long): Promise<boolean> {
+    // Header control first.
+    if (await this.registerPaymentAnyVisible().isVisible({ timeout }).catch(() => false)) {
+      console.log('  - Register Payment: visible in the header');
+      return true;
+    }
+    // Then the "Action" cog menu (some layouts nest it there).
+    const actionBtn = this.actionMenuButton();
+    if (await actionBtn.isVisible({ timeout }).catch(() => false)) {
+      await actionBtn.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+      const inMenu = await this.registerPaymentAnyVisible().isVisible({ timeout }).catch(() => false);
+      await this.page.keyboard.press('Escape').catch(() => {}); // close the menu without selecting
+      await this.wait(CommonUtils.waitTimes.short);
+      console.log(`  - Register Payment: ${inMenu ? 'found under the Action menu' : 'NOT found (header or Action menu)'}`);
+      return inMenu;
+    }
+    console.log('  - Register Payment: NOT available (no header control, no Action menu)');
+    return false;
   }
 
   /**
@@ -664,6 +741,35 @@ export class InvoicePage extends BasePage {
     await receivedField.clear();
     await receivedField.fill(amount);
     console.log(`  - "Actually Received($)" filled with: ${amount}`);
+  }
+
+  /**
+   * Select the "Payment Method Type" (payment_method_id) in the Register Payment dialog - a vertical
+   * radio group present when paying a credit note (refund). Options e.g. "Manual" (the default) /
+   * "Checks". Clicks the visible label (the radio input is a hidden custom-control), then verifies the
+   * matching radio is checked. Idempotent for the default "Manual".
+   * @param methodLabel the method to select, e.g. "Manual"
+   * @returns true once the matching radio is checked (or the group is absent - logged)
+   */
+  async selectPaymentMethodType(methodLabel: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log(`  - Selecting Payment Method Type = "${methodLabel}"`);
+    const present = await this.paymentMethodTypeGroup().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!present) {
+      console.log('  ⚠ "Payment Method Type" group not present in this Register Payment dialog');
+      return false;
+    }
+    const label = this.paymentMethodTypeLabel(methodLabel);
+    const radio = this.paymentMethodTypeRadio(methodLabel);
+    try {
+      await label.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await label.click();
+    } catch {
+      await radio.check({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    const checked = await radio.isChecked().catch(() => false);
+    console.log(`  ${checked ? '✓' : '⚠'} Payment Method Type "${methodLabel}" selected (checked=${checked})`);
+    return checked;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -857,6 +963,269 @@ export class InvoicePage extends BasePage {
 
     console.log(`  ✓ Payments tab column "${headerText}" values: ${JSON.stringify(values)}`);
     return values;
+  }
+
+  /**
+   * Read the whole Payments tab (payment_ids) table as plain text, for robust "contains" assertions
+   * and evidence (UC-B-6: verify the reconciled standalone Payment#1 is listed).
+   * @param timeout - max time to wait for the list (default: abnormalWait)
+   */
+  async getPaymentsTabText(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const list = this.page.locator('xpath=//div[@name="payment_ids"]').first();
+    await list.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const text = await this.page.evaluate(() => {
+      const c = document.querySelector('div[name="payment_ids"]');
+      return c ? (c as HTMLElement).innerText.replace(/\s+/g, ' ').trim() : '';
+    });
+    console.log(`  ✓ Payments tab text: "${text.slice(0, 200)}"`);
+    return text;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Outstanding credits / bank-statement reconciliation (UC-B-6)
+  //   On a posted, open invoice an "Outstanding credits" section lists unreconciled customer
+  //   payment entries (by their Journal Entry name) each with an "Add" control; clicking it
+  //   reconciles that credit against the invoice. After reconciliation a "payments_widget" row
+  //   ("Paid on <date>" + amount) appears and the invoice can post to Paid.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // The outstanding-credits / payments widgets (Odoo 12 'payment' widget) - anchored on field name.
+  private readonly outstandingWidgetLoc = () =>
+    this.page.locator('xpath=//*[@name="outstanding_credits_debits_widget"]')
+      .or(this.page.locator('xpath=//*[contains(@class,"oe_payment") and contains(.,"Outstanding")]')).first();
+  private readonly paymentsWidgetLoc = () =>
+    this.page.locator('xpath=//*[@name="payments_widget"]')
+      .or(this.page.locator('xpath=//table[contains(@class,"o_invoice_payments")]')).first();
+
+  /**
+   * Read the Outstanding-credits section text (the Journal Entry names + amounts shown), for the
+   * "JournalItem#1 appears with an Add button" check and diagnostics. Returns '' if absent.
+   * @param timeout - max time to wait for the widget (default: abnormalWait)
+   */
+  async getOutstandingCreditsText(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const w = this.outstandingWidgetLoc();
+    const visible = await w.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!visible) {
+      console.log('  ⚠ Outstanding-credits section not visible');
+      return '';
+    }
+    const text = (await w.innerText().catch(() => '')).replace(/\s+/g, ' ').trim();
+    console.log(`  ✓ Outstanding-credits section: "${text.slice(0, 300)}"`);
+    return text;
+  }
+
+  /**
+   * Whether the Outstanding-credits section currently lists the given Journal Entry (JournalItem#1).
+   */
+  async isOutstandingCreditPresent(journalItemName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const text = await this.getOutstandingCreditsText(timeout);
+    const present = text.includes(journalItemName);
+    console.log(`  - Outstanding credit "${journalItemName}" present: ${present}`);
+    return present;
+  }
+
+  /**
+   * Click the "Add" control of the Outstanding-credit row matching JournalItem#1, reconciling that
+   * credit against the invoice. Robust to layout: matches the row containing the Journal Entry name,
+   * then clicks an "Add" button/link in that row (falling back to the standard Odoo assign anchor
+   * `.js_assign_outstanding_line` / the journal-name link itself). Waits until reconciliation reflects
+   * (a "payments_widget" row appears).
+   * @param journalItemName - the Journal Entry name (e.g. "BNK1/2026/0715")
+   * @returns true once an Add/assign control was clicked
+   */
+  async addOutstandingCredit(journalItemName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    await this.outstandingWidgetLoc().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.outstandingWidgetLoc().scrollIntoViewIfNeeded().catch(() => {});
+
+    // IMPORTANT: each outstanding credit renders as "Add | journal name | amount", but the whole widget
+    // sits inside the invoice TOTALS <tr>. A naive `//tr[contains(.,NAME)]` also matches that OUTER
+    // totals row, whose first "Add" is the topmost (wrong) credit - which mis-reconciled the wrong one.
+    // Two robust strategies, name-targeted, never "just the first Add":
+    //   (1) the "Add" control immediately PRECEDING the element whose text == the journal name
+    //       (document-order proximity - works whether credits are separate <tr>s or one row), then
+    //   (2) fallback: the "Add" whose INNERMOST ancestor <tr> carries the journal name.
+    const lit = this.xpathLiteral(journalItemName);
+    const ADD = '(self::a or self::button) and (normalize-space()="Add" or contains(@class,"js_assign_outstanding_line") or contains(@class,"outstanding"))';
+    let clicked = false;
+
+    const addBeforeName = this.page.locator(
+      `xpath=(//*[@name="outstanding_credits_debits_widget"]//*[normalize-space(.)=${lit}]/preceding::*[${ADD}])[last()]`
+    ).first();
+    if (await addBeforeName.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+      await addBeforeName.scrollIntoViewIfNeeded().catch(() => {});
+      await addBeforeName.click();
+      clicked = true;
+      console.log(`  ✓ Clicked the "Add" immediately preceding outstanding credit "${journalItemName}"`);
+    } else {
+      const addControls = this.page.locator(
+        'xpath=//*[@name="outstanding_credits_debits_widget"]//a[normalize-space()="Add"]'
+        + ' | //*[@name="outstanding_credits_debits_widget"]//button[normalize-space()="Add"]'
+        + ' | //*[@name="outstanding_credits_debits_widget"]//a[contains(@class,"js_assign_outstanding_line")]'
+        + ' | //*[@name="outstanding_credits_debits_widget"]//a[contains(@class,"outstanding")]'
+      );
+      const count = await addControls.count().catch(() => 0);
+      console.log(`  - Fallback: scanning ${count} "Add" controls for the row carrying "${journalItemName}"`);
+      for (let i = 0; i < count; i++) {
+        const ctl = addControls.nth(i);
+        const rowText = ((await ctl.locator('xpath=ancestor::tr[1]').innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+        if (rowText.includes(journalItemName)) {
+          await ctl.scrollIntoViewIfNeeded().catch(() => {});
+          await ctl.click();
+          clicked = true;
+          console.log(`  ✓ Clicked "Add" for outstanding credit "${journalItemName}" (control #${i})`);
+          break;
+        }
+      }
+    }
+
+    if (!clicked) {
+      // Do NOT click a non-matching Add (that would reconcile the wrong credit). Fail loudly instead.
+      console.log(`  ⚠ No name-matched "Add" control for outstanding credit "${journalItemName}" - not clicking`);
+      return false;
+    }
+
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    await this.dismissErrorDialogWithRetry();
+    const reconciled = await this.paymentsWidgetLoc().isVisible({ timeout }).catch(() => false);
+    console.log(`  - Reconciliation reflected (payments row visible): ${reconciled}`);
+    return true;
+  }
+
+  /**
+   * Read the reconciliation row from the invoice "payments_widget" as TWO separate cells:
+   *   - label  (column 1) e.g. "Paid on 06/29/2026"
+   *   - amount (column 2) e.g. "$ 500.00"
+   * Returns the FIRST payment row. Each cell is read independently so callers can assert the label and
+   * the amount separately (not as one combined string).
+   * @param timeout - max time to wait for the payments widget (default: abnormalWait)
+   */
+  async getReconciliationRow(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{ label: string; amount: string }> {
+    await this.paymentsWidgetLoc().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const cells = await this.page.evaluate(() => {
+      const root =
+        document.querySelector('[name="payments_widget"]') ||
+        document.querySelector('table.o_invoice_payments');
+      if (!root) return { label: '', amount: '' };
+      const row = root.querySelector('table tr') || root.querySelector('tr');
+      if (!row) return { label: '', amount: '' };
+      const tds = Array.from(row.querySelectorAll('td')) as HTMLElement[];
+      const texts = tds.map((td) => (td.innerText || td.textContent || '').replace(/\s+/g, ' ').trim());
+      // Column 1 (label): the "Paid on <date>" cell (or the first non-empty cell as a fallback).
+      const label = texts.find((t) => /paid on/i.test(t)) || texts.find((t) => t.length > 0) || '';
+      // Column 2 (amount): the first cell that carries a currency symbol or a NN.NN figure and is NOT the label.
+      const amount = texts.find((t) => !/paid on/i.test(t) && (/[$€£]/.test(t) || /\d+[.,]\d{2}/.test(t))) || '';
+      return { label, amount };
+    });
+    console.log(`  ✓ Reconciliation row: label="${cells.label}" | amount="${cells.amount}"`);
+    return cells;
+  }
+
+  /**
+   * Read ALL reconciliation rows from the invoice "payments_widget" as { label, amount } pairs
+   * (UC-B-6.3: an invoice settled by two outstanding credits shows two "Paid on ..." rows).
+   * @param timeout - max time to wait for the payments widget (default: abnormalWait)
+   */
+  async getReconciliationRows(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{ label: string; amount: string }[]> {
+    await this.paymentsWidgetLoc().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const rows = await this.page.evaluate(() => {
+      const root = document.querySelector('[name="payments_widget"]') || document.querySelector('table.o_invoice_payments');
+      if (!root) return [] as { label: string; amount: string }[];
+      const trs = Array.from(root.querySelectorAll('tr'));
+      return trs.map((tr) => {
+        const texts = Array.from(tr.querySelectorAll('td')).map((td) => ((td as HTMLElement).innerText || td.textContent || '').replace(/\s+/g, ' ').trim());
+        const label = texts.find((t) => /paid on/i.test(t)) || '';
+        const amount = texts.find((t) => !/paid on/i.test(t) && (/[$€£]/.test(t) || /\d+[.,]\d{2}/.test(t))) || '';
+        return { label, amount };
+      }).filter((r) => r.label || r.amount);
+    });
+    console.log(`  ✓ Reconciliation rows: ${JSON.stringify(rows)}`);
+    return rows;
+  }
+
+  /**
+   * Read the amount shown next to a given Outstanding-credit (matched by its Journal Entry name) in
+   * the Outstanding-credits section. Returns '' when the credit is not listed (UC-B-6.8 leftover).
+   * @param journalItemName - the Journal Entry name (e.g. "BNK1/2026/0715")
+   */
+  async getOutstandingCreditAmount(journalItemName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    await this.outstandingWidgetLoc().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const amount = await this.page.evaluate((name: string) => {
+      const w = document.querySelector('[name="outstanding_credits_debits_widget"]');
+      if (!w) return '';
+      const rows = Array.from(w.querySelectorAll('tr'));
+      for (const r of rows) {
+        const text = ((r as HTMLElement).innerText || r.textContent || '');
+        if (text.includes(name)) {
+          const m = text.replace(/\s+/g, ' ').match(/([$€£]\s?[\d.,]+|\d+[.,]\d{2})/);
+          return m ? m[1].trim() : '';
+        }
+      }
+      return '';
+    }, journalItemName);
+    console.log(`  ✓ Outstanding credit "${journalItemName}" amount: "${amount}"`);
+    return amount;
+  }
+
+  // ── Unreconcile (UC-B-6.5): the info icon opens a popover with an "Unreconcile" button ──
+  private readonly paymentInfoIcon = () => this.page.locator('xpath=//*[@name="payments_widget"]//a[contains(@class,"js_payment_info")]');
+  private readonly unreconcileButton = () => this.page.locator('xpath=//button[contains(@class,"js_unreconcile_payment")]').or(this.page.locator('.popover button', { hasText: /^Unreconcile$/i })).first();
+  private readonly popoverMemoCell = () => this.page.locator('xpath=//div[contains(@class,"popover")]//td[normalize-space()="Memo:"]/following-sibling::td').first();
+
+  /**
+   * Count the reconciliation rows currently shown in the payments_widget.
+   */
+  async getPaymentsWidgetRowCount(timeout: number = CommonUtils.waitTimes.long): Promise<number> {
+    const visible = await this.paymentsWidgetLoc().isVisible({ timeout }).catch(() => false);
+    if (!visible) return 0;
+    return await this.page.evaluate(() => {
+      const root = document.querySelector('[name="payments_widget"]');
+      if (!root) return 0;
+      return Array.from(root.querySelectorAll('tr')).filter((tr) => /paid on/i.test(((tr as HTMLElement).innerText || ''))).length;
+    });
+  }
+
+  /**
+   * Unreconcile a reconciled payment from the invoice: open the payment-row info popover (optionally
+   * the one whose Memo = journalItemName), then click "Unreconcile". Defaults to the FIRST row when no
+   * name is given (single-payment invoices). Waits for the reconciliation to be removed.
+   * @param journalItemName - optional Journal Entry name to target a specific row
+   * @returns true once Unreconcile was clicked
+   */
+  async unreconcilePayment(journalItemName?: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    await this.paymentsWidgetLoc().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const icons = this.paymentInfoIcon();
+    const count = await icons.count().catch(() => 0);
+    if (count === 0) {
+      console.log('  ⚠ No payment info icon found in payments_widget');
+      return false;
+    }
+    // Pick the matching row's info icon (by popover Memo) or default to the first.
+    let chosen = 0;
+    if (journalItemName && count > 1) {
+      for (let i = 0; i < count; i++) {
+        await icons.nth(i).click();
+        await this.wait(CommonUtils.waitTimes.standard);
+        const memo = (await this.popoverMemoCell().innerText().catch(() => '')).trim();
+        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.wait(CommonUtils.waitTimes.short);
+        if (memo.includes(journalItemName)) { chosen = i; break; }
+      }
+    }
+    await icons.nth(chosen).click();
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.unreconcileButton().waitFor({ state: 'visible', timeout });
+    await this.unreconcileButton().click();
+    console.log(`  ✓ Clicked "Unreconcile"${journalItemName ? ` for ${journalItemName}` : ''}`);
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    await this.dismissErrorDialogWithRetry();
+    return true;
+  }
+
+  /** Build a safe XPath string literal (handles embedded quotes via concat()). */
+  private xpathLiteral(s: string): string {
+    if (!s.includes('"')) return `"${s}"`;
+    if (!s.includes("'")) return `'${s}'`;
+    return 'concat("' + s.replace(/"/g, '", \'"\', "') + '")';
   }
 
   /**
@@ -1076,6 +1445,127 @@ export class InvoicePage extends BasePage {
     return value;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Add Credit Note -> refund wizard (account.invoice.refund) - UC-B-7
+  //   The "Add Credit Note" header button (permission-gated; visible for e.g. Yulia) opens a wizard:
+  //   Credit Method (filter_refund radio) / Reason (description) / Credit Note Date (date_invoice).
+  //   Submitting ("Add Credit Note" = invoice_refund) creates the credit note and opens a LIST of the
+  //   invoice's credit notes; open the latest one. The credit note IS an account.invoice (out_refund),
+  //   so its detail screen reuses the InvoicePage readers/actions.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Click the invoice "Add Credit Note" header button (must be visible for the current user) to open
+   * the refund wizard. Throws if the button is not visible (e.g. the user lacks the permission).
+   * @param timeout - max time to wait for the button (default: abnormalWait)
+   */
+  async clickAddCreditNote(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log('  - Looking for the visible "Add Credit Note" button');
+    const btn = this.addCreditNoteButton();
+    await btn.waitFor({ state: 'visible', timeout });
+    await btn.click({ timeout });
+    console.log('  - Clicked "Add Credit Note" (refund wizard opening)');
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog();
+  }
+
+  /**
+   * Select the "Credit Method" (filter_refund) in the refund wizard. Maps the visible label to its
+   * data-value ("Create a draft credit note" -> "refund"). Clicks the label (the radio input is a
+   * hidden custom-control), then verifies the radio is checked.
+   * @param methodLabel e.g. "Create a draft credit note"
+   * @returns true once the matching radio is checked
+   */
+  async selectCreditMethod(methodLabel: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    console.log(`  - Selecting Credit Method = "${methodLabel}"`);
+    const dataValue = /draft/i.test(methodLabel) ? 'refund' : /cancel/i.test(methodLabel) ? 'cancel' : /modify/i.test(methodLabel) ? 'modify' : 'refund';
+    const label = this.creditMethodLabel(methodLabel);
+    const radio = this.creditMethodRadio(dataValue);
+    try {
+      await label.waitFor({ state: 'visible', timeout });
+      await label.click();
+    } catch {
+      await radio.check({ force: true }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.short);
+    const checked = await radio.isChecked().catch(() => false);
+    console.log(`  ${checked ? '✓' : '⚠'} Credit Method "${methodLabel}" selected (checked=${checked})`);
+    return checked;
+  }
+
+  /**
+   * Fill the refund wizard "Reason" (description) field.
+   */
+  async fillCreditNoteReason(reason: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const input = this.creditNoteReasonInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.click();
+    await input.fill('');
+    await input.fill(reason);
+    console.log(`  ✓ Credit note Reason = "${reason}"`);
+  }
+
+  /**
+   * Set the refund wizard date (the VISIBLE required "Credit Note Date" = date_invoice; the wizard's
+   * "Accounting Date" field is hidden). Format MM/DD/YYYY. Closes the datepicker overlay afterwards.
+   */
+  async setCreditNoteAccountingDate(dateMMDDYYYY: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const input = this.creditNoteDateInput();
+    const visible = await input.isVisible({ timeout }).catch(() => false);
+    if (!visible) { console.log('  ⚠ Credit Note Date field not visible - skipping (defaults to today)'); return; }
+    await input.click();
+    await input.fill('');
+    await input.fill(dateMMDDYYYY);
+    // Close the datepicker with Tab (NOT Escape - inside a modal, Escape closes the whole refund wizard).
+    await this.page.keyboard.press('Tab');
+    await this.page.locator('.bootstrap-datetimepicker-widget').first().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+    console.log(`  ✓ Credit Note Date = ${dateMMDDYYYY}`);
+  }
+
+  /**
+   * Click the wizard's "Add Credit Note" submit button (invoice_refund). With Credit Method = "Create a
+   * draft credit note" this creates the credit note and opens a LIST of the invoice's credit note(s).
+   * Waits until that list (or the credit-note form) renders.
+   * @param timeout - max time to wait (default: abnormalWait)
+   */
+  async submitAddCreditNote(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log('  - Submitting the refund wizard ("Add Credit Note")');
+    const btn = this.submitRefundButton();
+    await btn.waitFor({ state: 'visible', timeout });
+    await btn.click({ timeout });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    await this.dismissErrorDialogWithRetry();
+    // The result is a list of the invoice's credit notes (or, in some configs, the credit-note form).
+    await this.page.locator('tr.o_data_row, .o_form_view').first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    console.log('  ✓ Credit note created (list/form opened)');
+  }
+
+  /**
+   * From the credit-notes list that the refund wizard opened, open the just-created credit note. The
+   * list shows the invoice's credit note(s); the wizard creates exactly one per submit, so the first
+   * (latest) data row is CreditNote#1. If a credit-note form is already open (no list), this is a no-op.
+   * Returns the opened credit-note form URL.
+   * @param timeout - max time to wait (default: abnormalWait)
+   */
+  async openLatestCreditNote(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const rowCount = await this.page.locator('tr.o_data_row').count().catch(() => 0);
+    if (rowCount > 0) {
+      console.log(`  - Credit-notes list has ${rowCount} row(s); opening the latest (CreditNote#1)`);
+      await this.firstDataRow().waitFor({ state: 'visible', timeout });
+      await this.firstDataRow().click();
+      await this.wait(CommonUtils.waitTimes.long);
+      await this.dismissErrorDialogWithRetry();
+      await this.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+    } else {
+      console.log('  - No list rows; assuming the credit-note form is already open');
+    }
+    const url = this.page.url();
+    console.log(`  ✓ CreditNote#1 opened (URL: ${url})`);
+    return url;
+  }
+
   /**
    * Read an invoice line's Quantity and Subtotal (the GROSS line amount before the order-level
    * Partner Discount) by product code. Columns on the posted account.invoice line list:
@@ -1097,6 +1587,388 @@ export class InvoicePage extends BasePage {
     const subtotal = ((await this.page.locator(`xpath=${rowXp}/td[10]`).first().innerText().catch(() => '')) || '').trim();
     console.log(`  ✓ Invoice line "${productCode}": qty="${quantity}" subtotal="${subtotal}"`);
     return { quantity, subtotal };
+  }
+
+  /**
+   * Read the GROSS Subtotal of the FIRST (or only) invoice line, without needing the product code.
+   * For a single-product invoice this gross line amount equals the invoice "Subtotal" (the sum of the
+   * product line Amounts before the order-level Partner Discount). Column 10 = Subtotal (see
+   * getInvoiceLineData for the column map).
+   * @returns the trimmed Subtotal text (e.g. "$ 687.00"), or "" if no line is found
+   */
+  async getFirstInvoiceLineSubtotal(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const rowXp = '//div[@name="invoice_line_ids"]//tr[contains(@class,"o_data_row")]';
+    const row = this.page.locator(`xpath=${rowXp}`).first();
+    await row.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const subtotal = ((await this.page.locator(`xpath=(${rowXp})[1]/td[10]`).first().innerText().catch(() => '')) || '').trim();
+    console.log(`  ✓ First invoice line Subtotal (gross): "${subtotal}"`);
+    return subtotal;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Invoices LIST view (Invoicing > Customers > Invoices)
+  //   "Total in Company Currency" is a default column here (it is NOT shown on the invoice form),
+  //   so the exchange-rate check (ExchangeRate-1.1) reads it from the list, not the form.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Open Invoicing > Customers > Invoices (list view) via the menu action hash, dismiss any Odoo
+   * error popup, and wait for the list rows to render.
+   * @param timeout - max time to wait for the list (default: pageLoad)
+   */
+  async openCustomerInvoicesList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    console.log('  - Opening Invoicing > Customers > Invoices');
+    // We may be navigating away from an invoice FORM (possibly mid-edit). A hash-only change does not
+    // re-render the action when we are already in the Odoo web client, so the page can stay on the form.
+    // Null onbeforeunload (avoid a blocking "unsaved changes" prompt), navigate, then force a real reload
+    // so Odoo boots fresh and renders the account.invoice LIST (action=289).
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(`${origin}/web?#menu_id=180&action=289`, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.dismissErrorDialogWithRetry().catch(() => {});
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    // Confirm we actually landed on the LIST (retry the reload once if a list table never appears).
+    let onList = await this.invoiceListTable().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!onList) {
+      console.log('  ⚠ Invoices list table not visible after navigation - reloading once more');
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.dismissErrorDialogWithRetry().catch(() => {});
+      await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+      onList = await this.invoiceListTable().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    }
+    await this.anyInvoiceListRow().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Customer Invoices list opened (list table visible: ${onList})`);
+  }
+
+  /**
+   * Search the Invoices list via the control-panel search box (Search... -> Enter), so the given
+   * invoice shows up in the list. Waits for the list to re-render after filtering.
+   * @param text - the search text (e.g. the Invoice Number)
+   * @param timeout - max time to wait for the search box / list (default: abnormalWait)
+   */
+  async searchInvoiceInList(text: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log(`  - Searching the Invoices list for "${text}"`);
+    const input = this.searchViewInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.click();
+    await input.fill('');
+    await input.fill(text);
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.page.keyboard.press('Enter');
+    // Let the backend filter and the list re-render.
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    console.log(`  ✓ Search submitted for "${text}"`);
+  }
+
+  /**
+   * Read the "Total in Company Currency" value for a given Invoice Number from the Invoices LIST view.
+   * Resolves the "Total in Company Currency" column by header text (resilient to column re-order) and
+   * the row by its Number cell. Returns '' when the invoice row is not found.
+   * @param invoiceNumber - the Invoice Number (e.g. "INV/2026/1711")
+   * @param timeout - max time to wait for the list (default: abnormalWait)
+   * @returns the cell text, e.g. "$ 114.01"
+   */
+  async getTotalInCompanyCurrencyFromList(
+    invoiceNumber: string,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<string> {
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.anyInvoiceListRow().waitFor({ state: 'visible', timeout }).catch(() => {});
+
+    const value = await this.page.evaluate((num: string) => {
+      const table = document.querySelector('table.o_list_view') || document.querySelector('.o_list_view table');
+      if (!table) return '';
+      const headers = Array.from(table.querySelectorAll('thead th'));
+      const colIdx = headers.findIndex((h) => (h.textContent || '').trim().startsWith('Total in Company Currency'));
+      if (colIdx === -1) return '';
+      const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+      for (const r of rows) {
+        const cells = Array.from(r.querySelectorAll('td'));
+        // The Number is the first non-selector data cell; match the row that contains the number text.
+        if (cells.some((td) => (td.textContent || '').replace(/\s+/g, ' ').trim() === num)) {
+          return cells[colIdx] ? (cells[colIdx].textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim() : '';
+        }
+      }
+      return '';
+    }, invoiceNumber).catch(() => '');
+
+    console.log(`  ✓ Total in Company Currency for "${invoiceNumber}" (list): "${value}"`);
+    return value;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Invoices LIST view - "Add Custom Filter" facets + row actions (data-cleanup utilities)
+  //   Odoo 12 "Filters > Add Custom Filter" builds the exact facets seen in the UI:
+  //     Reseller -> operator "is equal to" (default), value = a Many2one autocomplete <input>
+  //     Status   -> operator "is" (default),          value = a native <select>
+  //                 (<span class="o_searchview_extended_prop_value"><select> Draft/Open/
+  //                  In Payment/Paid/Cancelled </select></span>)
+  //   TWO SEPARATE custom filters (two facets) are AND-ed; conditions WITHIN one custom filter
+  //   are OR-ed - so Reseller + Status=Paid must be two separate Apply operations.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  private readonly filtersMenuButton   = () => this.page.locator("xpath=//div[contains(@class,'o_search_options')]//button[normalize-space()='Filters']").first();
+  private readonly addCustomFilterBtn  = () => this.page.locator("xpath=//button[contains(normalize-space(),'Add Custom Filter')] | //a[contains(normalize-space(),'Add Custom Filter')]").first();
+  private readonly cfFieldSelect       = () => this.page.locator("xpath=//select[contains(@class,'o_searchview_extended_prop_field')]").first();
+  private readonly cfOperatorSelect    = () => this.page.locator("xpath=//select[contains(@class,'o_searchview_extended_prop_op')]").first();
+  private readonly cfValueSelect       = () => this.page.locator("xpath=//span[contains(@class,'o_searchview_extended_prop_value')]//select | //select[contains(@class,'o_searchview_extended_prop_value')]").first();
+  private readonly cfValueInput        = () => this.page.locator("xpath=//input[contains(@class,'o_searchview_extended_prop_value')] | //span[contains(@class,'o_searchview_extended_prop_value')]//input").first();
+  private readonly cfApplyButton       = () => this.page.locator("xpath=//div[contains(@class,'o_filters_menu')]//button[normalize-space()='Apply'] | //button[normalize-space()='Apply']").first();
+  private readonly cfDropdownOption    = () => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+  private readonly listDataRow         = () => this.page.locator('tr.o_data_row');
+  private readonly firstRowNumberCell  = () => this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]/td[contains(@class,'o_data_cell')][1]").first();
+  private readonly breadcrumbInvoicesLink = () => this.page.locator("xpath=//li[contains(@class,'breadcrumb-item')]//a[normalize-space()='Invoices']").first();
+  private readonly listPager           = () => this.page.locator('.o_pager_counter, .o_pager').first();
+
+  /**
+   * Open the control-panel "Filters" dropdown on the Invoices list and ensure it is actually OPEN
+   * (the "Add Custom Filter" entry visible). The button is a toggle and the control panel re-renders
+   * after a filter is applied, so a single click can miss / close it - retry until the entry shows.
+   */
+  async openFiltersMenu(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    // Ensure we are on the LIST (the Filters button only exists on the list control panel, not on a
+    // form) and that no loading mask is covering it, before trying to toggle it.
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const btn = this.filtersMenuButton();
+    await btn.waitFor({ state: 'visible', timeout });
+    const add = this.addCustomFilterBtn();
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      if (await add.isVisible().catch(() => false)) return;
+      await btn.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    // Last chance: let the explicit wait surface a clear error if it truly never opened.
+    await add.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long }).catch(() => {});
+  }
+
+  /**
+   * Close the "Filters" dropdown if it is open, so the next "Add Custom Filter" starts from a clean
+   * single-condition editor (a lingering-open editor would make the next condition OR-ed).
+   */
+  async closeFiltersMenu(): Promise<void> {
+    const add = this.addCustomFilterBtn();
+    if (await add.isVisible().catch(() => false)) {
+      await this.filtersMenuButton().click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+    }
+  }
+
+  /**
+   * Apply ONE "Add Custom Filter" facet on the Invoices list (Filters > Add Custom Filter >
+   * pick field > [pick operator] > set value > Apply). The value widget is detected adaptively:
+   *   - a native <select>  (selection field like "Status")  -> selectOption by label
+   *   - an <input>         (m2o / char field)               -> type the value; for an EQUALITY
+   *       operator on a Many2one an autocomplete dropdown appears and its option is picked; for a
+   *       text operator ("contains") the typed text is left as-is (no record pick).
+   * @param fieldLabel exact field label (e.g. "Reseller", "Status")
+   * @param value      the value to match (e.g. the reseller name, "Paid")
+   * @param opts.operator optional operator label to select (e.g. "contains"); default keeps the UI
+   *                      default ("is equal to" for m2o, "is" for selection)
+   */
+  async addInvoiceListCustomFilter(
+    fieldLabel: string,
+    value: string,
+    opts: { operator?: string } = {},
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<void> {
+    console.log(`  - Add Custom Filter: "${fieldLabel}" ${opts.operator ? `[${opts.operator}] ` : ''}= "${value}"`);
+    await this.openFiltersMenu(timeout);
+    const add = this.addCustomFilterBtn();
+    await add.waitFor({ state: 'visible', timeout });
+    await add.click();
+    await this.wait(CommonUtils.waitTimes.standard);
+
+    const field = this.cfFieldSelect();
+    await field.waitFor({ state: 'visible', timeout });
+    await field.selectOption({ label: fieldLabel });
+    await this.wait(CommonUtils.waitTimes.standard); // the value widget re-renders after the field changes
+
+    // Operator (must be set BEFORE reading the value widget - it can change the widget kind for m2o).
+    if (opts.operator) {
+      const op = this.cfOperatorSelect();
+      await op.waitFor({ state: 'visible', timeout });
+      await op.selectOption({ label: opts.operator });
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    const wantRecordPick = !opts.operator || /equal to/i.test(opts.operator); // only pick a m2o record for equality
+
+    // Value: prefer the native <select> (selection field); else type into the <input>.
+    const select = this.cfValueSelect();
+    const isSelect = await select.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (isSelect) {
+      await select.selectOption({ label: value });
+      console.log(`    - Selected "${value}" from the <select>`);
+    } else {
+      const input = this.cfValueInput();
+      await input.waitFor({ state: 'visible', timeout });
+      await input.click();
+      await input.fill('');
+      await input.fill(value);
+      await this.wait(CommonUtils.waitTimes.long);
+      if (wantRecordPick) {
+        const option = this.cfDropdownOption().filter({ hasText: value }).first();
+        const visible = await option.isVisible({ timeout }).catch(() => false);
+        if (visible) {
+          await option.click();
+          console.log(`    - Picked "${value}" from the autocomplete`);
+        } else {
+          await this.page.keyboard.press('Enter');
+          console.log(`    - No autocomplete option; committed "${value}" with Enter`);
+        }
+      } else {
+        // Text operator (e.g. "contains"): leave the typed text; blur so it is captured on Apply.
+        await this.page.keyboard.press('Tab');
+        console.log(`    - Typed "${value}" as a text search (operator "${opts.operator}")`);
+      }
+    }
+
+    await this.wait(CommonUtils.waitTimes.standard);
+    const apply = this.cfApplyButton();
+    await apply.waitFor({ state: 'visible', timeout });
+    await apply.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog().catch(() => {});
+    await this.closeFiltersMenu(); // guarantee a clean menu state for the next custom filter
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Custom Filter applied: "${fieldLabel}" = "${value}"`);
+  }
+
+  /**
+   * Apply the two facets: Reseller matches <name> AND Status = <status>.
+   * IMPORTANT: the Reseller filter uses operator "contains" (name ilike), NOT "is equal to". There
+   * can be MULTIPLE partner records sharing the display name "TEST-Reseller#Automation-Jun10" (test
+   * setup duplicates); "is equal to" pins ONE partner_id and misses records whose reseller_id is a
+   * different same-named partner (observed: Paid Credit Notes were skipped). "contains" matches ALL
+   * same-named reseller partners. The per-record guard still re-checks the reseller on the form.
+   * @param resellerName the reseller partner name (e.g. "TEST-Reseller#Automation-Jun10")
+   * @param status the invoice status label (default "Paid")
+   */
+  async filterInvoicesByResellerAndStatus(resellerName: string, status: string = 'Paid'): Promise<void> {
+    await this.addInvoiceListCustomFilter('Reseller', resellerName, { operator: 'contains' });
+    await this.addInvoiceListCustomFilter('Status', status);
+  }
+
+  /**
+   * Read the pager total (the "Z" in "1-80 / Z"), i.e. the number of records matching the current
+   * filter. Returns -1 when the pager text can't be parsed (unknown). Used to distinguish a
+   * genuinely-empty filtered list from a list that simply hasn't finished re-rendering.
+   */
+  async getListPagerTotal(): Promise<number> {
+    const txt = ((await this.listPager().innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    // Formats: "1-80 / 103", "1-2 / 2", or a bare "2".
+    const m = txt.match(/\/\s*([\d,]+)/) || txt.match(/^([\d,]+)$/);
+    return m ? parseInt(m[1].replace(/,/g, ''), 10) : -1;
+  }
+
+  /**
+   * Count the data rows currently shown in the Invoices list, ROBUST to the slow Odoo re-render after
+   * a filter/navigation. Polls until the list SETTLES:
+   *   - returns the row count as soon as any row is rendered, OR
+   *   - returns 0 only once the pager total confirms an empty result (0 / no pager).
+   * This prevents a FALSE 0 read during the re-render window (observed: pager shows "1-80 / 103"
+   * while the rows have not yet painted), which would otherwise end the cancel loop prematurely.
+   * Note: the row count is capped by the page size (80) - fine for a cancel-until-empty loop.
+   * @param timeout - max time to wait for the list to settle (default: pageLoad)
+   */
+  async getInvoiceListRowCount(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<number> {
+    const step = CommonUtils.waitTimes.long;
+    let rows = 0;
+    for (let waited = 0; waited <= timeout; waited += step) {
+      await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+      rows = await this.listDataRow().count().catch(() => 0);
+      if (rows > 0) return rows;
+      const total = await this.getListPagerTotal();
+      // Genuinely empty only when the pager confirms 0 records (or there is no pager at all).
+      if (rows === 0 && total === 0) return 0;
+      console.log(`  - list not settled yet (rows=${rows}, pager total=${total}); waiting...`);
+      await this.wait(step);
+    }
+    rows = await this.listDataRow().count().catch(() => 0);
+    console.log(`  ⚠ list did not settle within ${timeout}ms; returning row count=${rows}`);
+    return rows;
+  }
+
+  /**
+   * Read the "Number" cell (first data column) of the first row in the Invoices list, e.g.
+   * "INV/2026/1723". Returns '' when the list is empty. Used to detect a stale (not-refreshed)
+   * list and to skip an already-processed row in the cancel loop.
+   */
+  async getFirstRowInvoiceNumber(): Promise<string> {
+    const cell = this.firstRowNumberCell();
+    const visible = await cell.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (!visible) return '';
+    return ((await cell.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Read the "Number" cell (first data column) of EVERY row in the Invoices list, in row order.
+   * Used by the cancel loop to pick the first not-yet-processed invoice (so an un-cancellable one is
+   * skipped instead of retried forever). Empty strings are draft rows with no number yet.
+   */
+  async getAllRowInvoiceNumbers(): Promise<string[]> {
+    const anyRow = await this.listDataRow().first().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (!anyRow) return [];
+    return await this.page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('tr.o_data_row'));
+      return rows.map((r) => {
+        const cells = r.querySelectorAll('td.o_data_cell');
+        return cells[0] ? (cells[0].textContent || '').replace(/\s+/g, ' ').trim() : '';
+      });
+    }).catch(() => [] as string[]);
+  }
+
+  /**
+   * Open the Invoices-list row whose Number equals `number` (into its form). Returns false if no such
+   * row is visible. Invoice numbers are unique, so a text match on the row is safe.
+   */
+  async openInvoiceRowByNumber(number: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const row = this.listDataRow().filter({ hasText: number }).first();
+    const visible = await row.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!visible) {
+      console.log(`  ⚠ Invoices-list row for "${number}" not found`);
+      return false;
+    }
+    await row.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialogWithRetry();
+    await this.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+    return true;
+  }
+
+  /**
+   * Open the first row of the Invoices list (into its form view) and wait for the form to render.
+   */
+  async openFirstInvoiceRow(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const row = this.listDataRow().first();
+    await row.waitFor({ state: 'visible', timeout });
+    await row.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialogWithRetry();
+    await this.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+  }
+
+  /**
+   * Click the "Invoices" breadcrumb link to return from an invoice form back to the (still-filtered)
+   * list. Breadcrumb navigation preserves the search facets (a hard reload would drop them).
+   * Non-throwing: logs a warning if the link is not present.
+   */
+  async clickInvoicesBreadcrumb(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const link = this.breadcrumbInvoicesLink();
+    const visible = await link.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!visible) {
+      console.log('  ⚠ "Invoices" breadcrumb link not found');
+      return;
+    }
+    await link.click();
+    await this.dismissDiscardChangesDialog().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

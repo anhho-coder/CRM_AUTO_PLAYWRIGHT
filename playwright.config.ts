@@ -14,10 +14,43 @@ const minutes = String(now.getMinutes()).padStart(2, '0');
 const seconds = String(now.getSeconds()).padStart(2, '0');
 const TEST_TIMESTAMP = `${year}-${month}-${day}-${hours}${minutes}${seconds}`;
 
-// Extract test folder from command line
+// Derive a MEANINGFUL run label for the report folder name. Priority:
+//   1) a --grep / -g filter -> the Test Case ID it targets (e.g. --grep "TC\.-B\.8\.1:" -> "TC.-B.8.1")
+//   2) a test path          -> the first folder under tests/ (e.g. tests/1.Project_CRM/... -> "1.Project_CRM")
+//   3) fallback             -> "tests"
+// (1) keeps single-TC runs (run by ID, with no path arg) from falling back to the unhelpful "tests" label.
+
+/** Read the value of a --grep / -g argument ("--grep X", "--grep=X", "-g X", "-g=X"); undefined if absent. */
+function getGrepValue(): string | undefined {
+  const argv = process.argv;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--grep' || a === '-g') return argv[i + 1];
+    if (a.startsWith('--grep=')) return a.slice('--grep='.length);
+    if (a.startsWith('-g=')) return a.slice('-g='.length);
+  }
+  return undefined;
+}
+
+/** Turn a --grep regex into a filesystem-safe label, e.g. "TC\.-B\.8\.1:" -> "TC.-B.8.1". */
+function toFolderLabel(value: string): string {
+  return value
+    .replace(/\\(.)/g, '$1')        // unescape regex escapes: \. -> . , \- -> -
+    .replace(/[\\/:*?"<>|]/g, '')   // drop characters illegal in Windows folder names (incl. the trailing ":")
+    .replace(/\s+/g, '_')           // spaces -> underscores
+    .replace(/^_+|_+$/g, '')        // trim leading/trailing underscores
+    .trim();
+}
+
+const grepValue = getGrepValue();
 const testPath = process.argv.find(arg => arg.includes('tests/') || arg.includes('tests\\'));
+const grepLabel = grepValue ? toFolderLabel(grepValue) : '';
+
 let TEST_FOLDER = 'tests';
-if (testPath) {
+if (grepLabel) {
+  // Running by Test Case ID (e.g. --grep "TC\.-B\.8\.1:") -> name the report after that ID.
+  TEST_FOLDER = grepLabel;
+} else if (testPath) {
   const relativePath = testPath.replace(/^.*tests[\/\\]/, '');
   const segments = relativePath.split(/[\/\\]/);
   if (segments.length > 0 && segments[0] !== '') {

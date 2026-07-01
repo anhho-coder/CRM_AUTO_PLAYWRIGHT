@@ -17,3 +17,6 @@ export { InvestmentPage } from './InvestmentPage';
 export { ReAssignationPage } from './ReAssignationPage';
 export { PromotionPage } from './PromotionPage';
 export { ResellerPortalPage } from './ResellerPortalPage';
+export { PaymentPage } from './PaymentPage';
+export { CurrencyPage } from './CurrencyPage';
+export { SubscriptionPage } from './SubscriptionPage';
