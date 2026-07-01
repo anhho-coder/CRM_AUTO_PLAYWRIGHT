@@ -121,21 +121,27 @@ if (Test-Path -LiteralPath $merged) { Remove-Item -LiteralPath $merged -Recurse 
 New-Item -ItemType Directory -Path $merged | Out-Null
 
 $statusRank = @{ 'passed' = 0; 'skipped' = 1; 'unknown' = 2; 'broken' = 3; 'failed' = 4 }  # worse = higher
-function Get-BuildScore([string]$buildPath) {
-    # Collapse retries: keep the BEST (min-rank) status per historyId, then count failed/broken.
-    $best = @{}
+function Get-BuildInfo([string]$buildPath, [string]$fallbackKey) {
+    # Collapse retries (best status per historyId) and detect the build's section = Allure 'Project'
+    # parameter (the suite the user sees). Score = count of tests whose best status is failed/broken.
+    $best = @{}; $project = $null
     Get-ChildItem -LiteralPath $buildPath -Filter '*-result.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
         try { $o = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { return }
+        if (-not $project -and $o.parameters) {
+            $p = $o.parameters | Where-Object { $_.name -eq 'Project' } | Select-Object -First 1
+            if ($p) { $project = [string]$p.value }
+        }
         $hid = if ($o.historyId) { $o.historyId } elseif ($o.name) { $o.name } else { $_.Name }
         $st = if ($o.status) { $o.status } else { 'unknown' }
         if (-not $statusRank.ContainsKey($st)) { $st = 'unknown' }
         if (-not $best.ContainsKey($hid) -or $statusRank[$st] -lt $statusRank[$best[$hid]]) { $best[$hid] = $st }
     }
+    if (-not $project) { $project = $fallbackKey }
     $fails = 0; foreach ($s in $best.Values) { if ($s -eq 'failed' -or $s -eq 'broken') { $fails++ } }
-    return [pscustomobject]@{ Fails = $fails; Tests = $best.Count }
+    return [pscustomobject]@{ Section = $project; Fails = $fails; Tests = $best.Count }
 }
 
-$builds = @{}   # job (section) -> list of candidate builds in this period
+$builds = @{}   # section (Project) -> list of candidate builds in this period
 if (Test-Path -LiteralPath $resultsRoot) {
     Get-ChildItem -LiteralPath $resultsRoot -Directory | Where-Object {
         $name = $_.Name
@@ -143,9 +149,10 @@ if (Test-Path -LiteralPath $resultsRoot) {
     } | ForEach-Object {
         $date = $_.Name
         Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder = one build
-            $job = $_.Name; $sc = Get-BuildScore $_.FullName
-            if (-not $builds.ContainsKey($job)) { $builds[$job] = @() }
-            $builds[$job] += [pscustomobject]@{ Job = $job; Date = $date; Path = $_.FullName; Fails = $sc.Fails; Tests = $sc.Tests }
+            $info = Get-BuildInfo $_.FullName $_.Name
+            $sec = $info.Section
+            if (-not $builds.ContainsKey($sec)) { $builds[$sec] = @() }
+            $builds[$sec] += [pscustomobject]@{ Section = $sec; Job = $_.Name; Date = $date; Path = $_.FullName; Fails = $info.Fails; Tests = $info.Tests }
         }
     }
 } else {
@@ -153,16 +160,16 @@ if (Test-Path -LiteralPath $resultsRoot) {
 }
 
 $selectedBuilds = 0
-foreach ($job in ($builds.Keys | Sort-Object)) {
-    $best = $builds[$job] | Sort-Object Fails, @{Expression = 'Tests'; Descending = $true }, @{Expression = 'Date'; Descending = $true } | Select-Object -First 1
-    $cands = ($builds[$job] | ForEach-Object { "$($_.Date)=$($_.Fails)f/$($_.Tests)" }) -join ', '
-    Write-Host "  section $job -> best build $($best.Date) (fails=$($best.Fails)/$($best.Tests))  [candidates: $cands]"
+foreach ($sec in ($builds.Keys | Sort-Object)) {
+    $best = $builds[$sec] | Sort-Object Fails, @{Expression = 'Tests'; Descending = $true }, @{Expression = 'Date'; Descending = $true } | Select-Object -First 1
+    $cands = ($builds[$sec] | ForEach-Object { "$($_.Date)/$($_.Job)=$($_.Fails)f/$($_.Tests)" }) -join ', '
+    Write-Host "  section [$sec] -> best build $($best.Date)/$($best.Job) (fails=$($best.Fails)/$($best.Tests))  [candidates: $cands]"
     Get-ChildItem -LiteralPath $best.Path -Force | ForEach-Object {
         Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
     }
     $selectedBuilds++
 }
-Write-Host "Selected $selectedBuilds best-build(s) for $periodKey (one per section/job)"
+Write-Host "Selected $selectedBuilds best-build(s) for $periodKey (one per section/suite)"
 
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
 $scopeHist = Join-Path $histRoot $Scope
