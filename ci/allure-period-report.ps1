@@ -218,6 +218,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returne
 # build crm-skips.json from tests\ then inject the client-side card that renders it.
 node (Join-Path $Workspace 'ci\allure-build-skip-index.js') $reportDir (Join-Path $Workspace 'tests')
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skip-index build returned $LASTEXITCODE (continuing)." }
+# Enrich each bug with live Jira status/assignee/updated (token via env JIRA_PAT or
+# file C:\allure\jira-pat.txt; falls back to the committed cache when absent).
+node (Join-Path $Workspace 'ci\allure-fetch-jira-meta.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: jira-meta fetch returned $LASTEXITCODE (continuing)." }
 node (Join-Path $Workspace 'ci\allure-inject-skips-card.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skips-card injection returned $LASTEXITCODE (continuing)." }
 

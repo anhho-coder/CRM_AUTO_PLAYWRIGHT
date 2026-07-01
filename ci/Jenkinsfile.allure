@@ -71,6 +71,9 @@ pipeline {
                 bat 'node ci/allure-inject-suites-columns.js allure-report'
                 // Add the "Skipped Test Cases by Suite" Overview card (data from sources).
                 bat 'node ci/allure-build-skip-index.js allure-report tests'
+                // Enrich bugs with live Jira status/assignee/updated (token via env JIRA_PAT
+                // or file C:\allure\jira-pat.txt; falls back to the committed cache).
+                bat 'node ci/allure-fetch-jira-meta.js allure-report'
                 bat 'node ci/allure-inject-skips-card.js allure-report'
                 powershell '''
                   $ErrorActionPreference = 'Stop'

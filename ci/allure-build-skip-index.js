@@ -144,23 +144,56 @@ for (const file of files) {
 }
 
 const byNum = b => parseInt(b.replace(/\D/g, ''), 10) || 0;
-const suites = Object.values(bySuite).map(s => ({
-  suite: s.suite,
-  count: s.count,
-  bugs: [...s.bugs].sort((a, b) => byNum(a) - byNum(b)),
-  reasons: [...s.reasons],
-  tests: s.tests,
-})).sort((a, b) => b.count - a.count || a.suite.localeCompare(b.suite));
+const NOBUG = '(no bug)';
+
+const suites = Object.values(bySuite).map(s => {
+  // Per-bug breakdown WITHIN the suite: one row per bug, with how many skipped
+  // tests reference it. A test tagged with N bugs contributes to N bug rows, so
+  // the per-bug counts can sum to more than the suite's distinct skip count.
+  // Tests with no bug are grouped into a single "(no bug)" row.
+  const bugMap = {};
+  s.tests.forEach(t => {
+    const keys = (t.bugs && t.bugs.length) ? t.bugs : [NOBUG];
+    keys.forEach(b => {
+      if (!bugMap[b]) bugMap[b] = { bug: b, count: 0, reasons: new Set(), tests: [] };
+      bugMap[b].count += 1;
+      if (t.reason) bugMap[b].reasons.add(t.reason);
+      bugMap[b].tests.push(t.name);
+    });
+  });
+  const bugRows = Object.values(bugMap).map(b => ({
+    bug: b.bug === NOBUG ? null : b.bug,   // null => "(no bug)" row
+    count: b.count,
+    reasons: [...b.reasons],
+    tests: b.tests,
+  })).sort((a, b) => {
+    if (a.bug === null) return 1;          // "(no bug)" last
+    if (b.bug === null) return -1;
+    return byNum(a.bug) - byNum(b.bug);
+  });
+  return {
+    suite: s.suite,
+    count: s.count,
+    bugs: [...s.bugs].sort((a, b) => byNum(a) - byNum(b)),
+    reasons: [...s.reasons],
+    bugRows,
+  };
+}).sort((a, b) => b.count - a.count || a.suite.localeCompare(b.suite));
 
 const allBugs = new Set();
 suites.forEach(s => s.bugs.forEach(b => allBugs.add(b)));
 const totalSkipped = suites.reduce((n, s) => n + s.count, 0);
+const bugKeys = [...allBugs].sort((a, b) => byNum(a) - byNum(b));
 
 const out = {
   generatedAt: new Date().toISOString(),
   jiraBase: JIRA_BASE,
   totalSkipped,
   totalBugs: allBugs.size,
+  bugKeys,               // distinct bug keys -> consumed by allure-fetch-jira-meta.js
+  bugMeta: {},           // bug -> { status, statusCategory, assignee, active, updated }; filled by the Jira fetch
+  bugMetaSource: 'none', // 'jira-live' | 'cache' | 'none'
+  bugMetaAsOf: null,
   suites,
 };
 
