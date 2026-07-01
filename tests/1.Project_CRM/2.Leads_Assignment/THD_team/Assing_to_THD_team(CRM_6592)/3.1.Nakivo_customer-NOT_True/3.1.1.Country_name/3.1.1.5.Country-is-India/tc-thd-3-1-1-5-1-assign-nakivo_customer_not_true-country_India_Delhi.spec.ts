@@ -78,9 +78,8 @@ test.describe('TC.THD_3.1.1.5.1 - THD Team Assignment for India with Delhi State
     }
   });
   
-  // FIXME: Test fails due to bug CRM-9374
-  // The lead assignment logic for THD team is not working as expected. Skipping this test until the bug is fixed.
-  test.skip('TC.THD_3.1.1.5.1: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = India and State = Delhi', async ({ page }, testInfo) => {
+  // PILOT UN-SKIP: bug CRM-9374 is Closed/Done (fixed 2026-02-27) - un-skipped to verify the fix (India-Delhi = exact bug scenario).
+  test('TC.THD_3.1.1.5.1: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = India and State = Delhi', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window

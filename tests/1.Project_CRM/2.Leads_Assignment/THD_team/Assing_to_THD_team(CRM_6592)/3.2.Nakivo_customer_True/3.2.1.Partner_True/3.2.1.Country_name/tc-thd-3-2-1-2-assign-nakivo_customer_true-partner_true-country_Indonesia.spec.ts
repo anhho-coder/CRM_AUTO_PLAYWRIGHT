@@ -83,9 +83,8 @@ test.describe('TC.THD_3.2.1.2 - THD Team Assignment for Indonesia with Nakivo Cu
     }
   });
   
-  // FIXME: Test fails due to bug CRM-9374
-  // The lead assignment logic for THD team is not working as expected. Skipping this test until the bug is fixed.
-  test.skip('TC.THD_3.2.1.2: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE and Country = Indonesia @smoke-test', async ({ page }, testInfo) => {
+  // PILOT UN-SKIP: bug CRM-9374 is Closed/Done (fixed 2026-02-27) - un-skipped to verify the fix (smoke-test canary).
+  test('TC.THD_3.2.1.2: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE and Country = Indonesia @smoke-test', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
