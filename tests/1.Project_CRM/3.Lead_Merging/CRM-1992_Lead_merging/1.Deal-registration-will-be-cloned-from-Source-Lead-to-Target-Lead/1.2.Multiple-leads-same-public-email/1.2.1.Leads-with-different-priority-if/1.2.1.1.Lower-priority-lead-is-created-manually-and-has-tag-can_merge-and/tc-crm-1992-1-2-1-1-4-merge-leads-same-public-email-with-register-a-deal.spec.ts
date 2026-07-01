@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * npx playwright test --grep "CRM-8929" --project=chromium
  * npx playwright test --grep "CRM-10787" --project=chromium
  *
- * NOTE: Skipped due to known defects CRM-8929 and CRM-10787 (declaration-level test.skip).
+ * NOTE: Un-skipped for CRM-10787 (Resolved) + CRM-8929 (Closed) fix-verification; pushed for Jenkins run.
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -132,7 +132,7 @@ test.describe('CRM-1992_1.2.1.1.4 - Lead Merging: Same Public Email with Deal Re
     }
   });
 
-  test.skip('CRM-1992_1.2.1.1.4 [CRM-8929] [CRM-10787]: Verify merging leads with same public email (Created Manually = TRUE, Deal Registration, Register a Deal)', async ({ page }, testInfo) => {
+  test('CRM-1992_1.2.1.1.4 [CRM-8929] [CRM-10787]: Verify merging leads with same public email (Created Manually = TRUE, Deal Registration, Register a Deal)', async ({ page }, testInfo) => {
     
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });

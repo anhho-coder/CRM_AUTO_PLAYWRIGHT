@@ -16,7 +16,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * npx playwright test --grep "CRM-1992_1\.1\.1\.2\.8 -" --project=chromium
  * npx playwright test --grep "CRM-10787" --project=chromium
  *
- * NOTE: Skipped due to known defect CRM-10787 (declaration-level test.skip).
+ * NOTE: Un-skipped for CRM-10787 fix-verification (bug Resolved 2026-06-04); pushed for Jenkins run.
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -145,7 +145,7 @@ test.describe('CRM-1992_1.1.1.2.8 - Lead Merging: Same Company Email with Deal R
     }
   });
 
-  test.skip('CRM-1992_1.1.1.2.8 [CRM-10787]: Verify merging leads with same company email (Created Manually = TRUE, Tag = Can_Merge, Microsoft 365 and Data Protection Risks in Shared)', async ({ page }, testInfo) => {
+  test('CRM-1992_1.1.1.2.8 [CRM-10787]: Verify merging leads with same company email (Created Manually = TRUE, Tag = Can_Merge, Microsoft 365 and Data Protection Risks in Shared)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window
