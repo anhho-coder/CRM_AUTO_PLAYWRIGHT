@@ -33,7 +33,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *     lead and in the contact! Ensure it has no commas, spaces, etcetera, or multiple emails."
  */
 
-test.describe.skip('CRM-4001_3.1.1.2 [CRM-10617] - Verify Log note shows warning message when having phone number instead of email on Opp', () => {
+test.describe('CRM-4001_3.1.1.2 [CRM-10617] - Verify Log note shows warning message when having phone number instead of email on Opp', () => {
 
   const tcId    = 'CRM-4001_3.1.1.2';
   const oppName = `TEST Opp 1 ${tcId}`;
