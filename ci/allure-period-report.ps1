@@ -170,6 +170,11 @@ if ($reportTitle -and (Test-Path -LiteralPath $summaryPath)) {
     Write-Host "Set report title -> $reportTitle"
 }
 
+# ---- Add "Total TC" + "Run Time" columns to the Overview Suites widget ----
+# (client-side DOM enhancement; must run after generate, before the freeze copy).
+node (Join-Path $Workspace 'ci\allure-inject-suites-columns.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returned $LASTEXITCODE (continuing)." }
+
 # ---- Update the rolling history from the freshly generated report ----
 $genHist = Join-Path $reportDir 'history'
 if (Test-Path -LiteralPath $genHist) {

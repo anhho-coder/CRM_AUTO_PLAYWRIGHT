@@ -67,6 +67,8 @@ pipeline {
                 // Custom Categories: bucket failures by real cause (automation vs business rule).
                 bat 'copy /Y "ci\\allure-categories.json" "allure-merged\\categories.json"'
                 bat 'npx allure generate allure-merged --clean -o allure-report'
+                // Add "Total TC" + "Run Time" columns to the Overview Suites widget.
+                bat 'node ci/allure-inject-suites-columns.js allure-report'
                 powershell '''
                   $ErrorActionPreference = 'Stop'
                   # Persist this report so its history seeds the next run.
