@@ -213,6 +213,14 @@ if ($reportTitle -and (Test-Path -LiteralPath $summaryPath)) {
 node (Join-Path $Workspace 'ci\allure-inject-suites-columns.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returned $LASTEXITCODE (continuing)." }
 
+# ---- Add the "Skipped Test Cases by Suite" Overview card ----
+# Reason + blocking bug of each intentional skip live only in the sources, so we
+# build crm-skips.json from tests\ then inject the client-side card that renders it.
+node (Join-Path $Workspace 'ci\allure-build-skip-index.js') $reportDir (Join-Path $Workspace 'tests')
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skip-index build returned $LASTEXITCODE (continuing)." }
+node (Join-Path $Workspace 'ci\allure-inject-skips-card.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skips-card injection returned $LASTEXITCODE (continuing)." }
+
 # ---- Update the rolling history from the freshly generated report ----
 $genHist = Join-Path $reportDir 'history'
 if (Test-Path -LiteralPath $genHist) {

@@ -69,6 +69,9 @@ pipeline {
                 bat 'npx allure generate allure-merged --clean -o allure-report'
                 // Add "Total TC" + "Run Time" columns to the Overview Suites widget.
                 bat 'node ci/allure-inject-suites-columns.js allure-report'
+                // Add the "Skipped Test Cases by Suite" Overview card (data from sources).
+                bat 'node ci/allure-build-skip-index.js allure-report tests'
+                bat 'node ci/allure-inject-skips-card.js allure-report'
                 powershell '''
                   $ErrorActionPreference = 'Stop'
                   # Persist this report so its history seeds the next run.
