@@ -1,8 +1,9 @@
 {
   "_comment": "Fallback snapshot of Jira metadata for skip-blocking bugs, used by ci/allure-fetch-jira-meta.js when no live Jira token is available on the agent. Refresh by re-running the Jira fetch or updating manually.",
-  "asOf": "2026-07-01T09:00:00+07:00",
+  "asOf": "2026-07-02T09:00:00+07:00",
   "bugs": {
     "CRM-8929": { "status": "Closed",   "statusCategory": "done", "assignee": "Vitalii Ivanov", "active": true,  "updated": "2026-05-11T10:20:37.000+0300" },
+    "CRM-11289": { "status": "Open",    "statusCategory": "new",  "assignee": "Vitalii Ivanov", "active": true,  "updated": "2026-07-02T05:48:15.767+0300" },
     "CRM-8930": { "status": "Open",     "statusCategory": "new",  "assignee": "Thang Vo",       "active": true,  "updated": "2026-01-12T08:47:40.000+0200" },
     "CRM-9059": { "status": "Open",     "statusCategory": "new",  "assignee": "Jase Ngo",       "active": false, "updated": "2026-01-28T06:57:18.000+0200" },
     "CRM-9374": { "status": "Closed",   "statusCategory": "done", "assignee": "Thuat Phung",    "active": true,  "updated": "2026-03-20T10:32:26.000+0200" },

@@ -422,38 +422,100 @@ export class PaymentPage extends BasePage {
   }
 
   /**
-   * Click the payment CANCEL button (button[name="cancel"]) - moves a posted/reconciled payment to the
-   * "cancelled" state. No confirmation wizard exists for this action; an optional confirm dialog is
-   * dismissed defensively if one ever appears. Returns false if the CANCEL button is not visible
-   * (e.g. the payment is Draft or already Cancelled), so the caller can skip it.
+   * Click the payment CANCEL button (button[name="cancel"]) and confirm the payment reaches the
+   * "cancelled" state. Returns true only when the payment is Cancelled; false when it cannot be
+   * cancelled (Draft/already Cancelled, or the cancel does not take effect after retries).
+   *
+   * Handling the two observed failure modes on this NAKIVO-customised action (some payments cancel
+   * cleanly, a subset do not):
+   *   (1) an "Odoo Client Error" dialog surfaces (sometimes a beat AFTER the click), or
+   *   (2) the click is a SILENT no-op - no dialog, state stays "Posted".
+   * Each attempt: click, then poll up to ~12s for an outcome (Cancelled | error dialog | no change).
+   * On an error or a no-op, capture any dialog detail (expand "See details"), dismiss it, reload the
+   * form, and RETRY. After `maxAttempts` the payment is reported un-cancellable so the caller records it
+   * and moves on (never getting stuck) - this is how the client error is "handled" for a cleanup run.
    */
-  async clickCancelPayment(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
-    console.log('  - Looking for the CANCEL button');
-    const button = this.cancelPaymentButton();
-    const visible = await button.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
-    if (!visible) {
-      console.log('  ⚠ CANCEL button not visible (payment is not in a cancellable state)');
-      return false;
+  async clickCancelPayment(maxAttempts: number = 3, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const preStatus = await this.getStatus().catch(() => '');
+      if (/cancel/i.test(preStatus)) {
+        console.log(`  ✓ Payment already Cancelled (status="${preStatus}")`);
+        return true;
+      }
+
+      const button = this.cancelPaymentButton();
+      const visible = await button.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+      if (!visible) {
+        console.log(`  ⚠ CANCEL button not visible (status="${preStatus}") - not in a cancellable state`);
+        return false;
+      }
+
+      await button.click();
+      console.log(`  - Clicked "CANCEL" button (attempt ${attempt}/${maxAttempts})`);
+      // Defensive: dismiss a confirmation dialog only if one appears (the arch declares no <confirm>).
+      const ok = this.cancelConfirmOkButton();
+      if (await ok.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+        await ok.click().catch(() => {});
+        console.log('  - Confirmed cancellation (clicked OK on the confirmation dialog)');
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+
+      // Poll up to ~12s for an outcome: Cancelled | error dialog | no change.
+      let errText = '';
+      for (let i = 0; i < 6; i++) {
+        if (process.env.CANCEL_DEBUG) {
+          const rawDlg = await this.readVisibleDialogText();
+          const rawSt = await this.getStatus().catch(() => '');
+          console.log(`    [debug poll ${i + 1}/6] status="${rawSt}" dialog="${rawDlg.slice(0, 200)}"`);
+        }
+        errText = await this.expandAndReadErrorDialog();
+        if (errText) break;
+        const st = await this.getStatus().catch(() => '');
+        if (/cancel/i.test(st)) {
+          console.log(`  ✓ Payment Cancelled (status="${st}")`);
+          return true;
+        }
+        await this.wait(CommonUtils.waitTimes.long);
+      }
+
+      // Not cancelled this attempt: either an error dialog (errText) or a silent no-op.
+      if (errText) {
+        console.warn(`  ⚠ CANCEL raised an error dialog (attempt ${attempt}/${maxAttempts}): "${errText.slice(0, 400)}"`);
+        await this.dismissErrorDialogWithRetry();
+      } else {
+        console.warn(`  ⚠ CANCEL had no effect - status still not Cancelled (attempt ${attempt}/${maxAttempts})`);
+      }
+      if (attempt < maxAttempts) {
+        // Reload the form fresh and retry - clears a transient client error or a missed click.
+        await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+        await this.dismissErrorDialogWithRetry();
+        await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.pageLoad);
+        await this.wait(CommonUtils.waitTimes.long);
+      }
     }
-    await button.click();
-    console.log('  - Clicked "CANCEL" button');
-    // Defensive: dismiss a confirmation dialog only if one appears (the arch declares no <confirm>).
-    const ok = this.cancelConfirmOkButton();
-    if (await ok.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
-      await ok.click().catch(() => {});
-      console.log('  - Confirmed cancellation (clicked OK on the confirmation dialog)');
+    // Exhausted attempts - final status check (the cancel may still have landed server-side).
+    const finalStatus = await this.getStatus().catch(() => '');
+    console.warn(`  ⚠ CANCEL did not take effect after ${maxAttempts} attempts (status="${finalStatus}")`);
+    return /cancel/i.test(finalStatus);
+  }
+
+  /**
+   * If a visible ERROR modal is shown, expand its "See details" (to reveal the traceback) and return the
+   * full dialog text. Returns '' when there is no visible error dialog (a benign/absent dialog).
+   */
+  async expandAndReadErrorDialog(): Promise<string> {
+    const first = await this.readVisibleDialogText();
+    if (!first || !/error|occurred|traceback|cannot|exception|not allowed|invalid/i.test(first)) return '';
+    // Reveal the traceback for a more actionable log line.
+    const seeDetails = this.page
+      .locator('.modal, .o_dialog')
+      .locator('xpath=.//*[normalize-space()="See details" or contains(normalize-space(),"See details")]')
+      .first();
+    if (await seeDetails.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+      await seeDetails.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
     }
-    await this.wait(CommonUtils.waitTimes.standard);
-    // Some payments raise an "Odoo Client/Server Error" on cancel (the action fails and the payment
-    // stays Posted). Capture the dialog text so the caller/log knows WHY, then dismiss it and report
-    // failure so the caller does not falsely count it as cancelled.
-    const errText = await this.readVisibleDialogText();
-    await this.dismissErrorDialogWithRetry();
-    if (errText && /error|cannot|not allowed|invalid|traceback|exception/i.test(errText)) {
-      console.warn(`  ⚠ CANCEL raised an error dialog: "${errText.slice(0, 300)}"`);
-      return false;
-    }
-    return true;
+    return await this.readVisibleDialogText();
   }
 
   /**

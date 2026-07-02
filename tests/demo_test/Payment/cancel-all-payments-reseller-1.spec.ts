@@ -176,23 +176,17 @@ test.describe('UTIL-CANCEL-PAYMENTS-RESELLER1 - Cancel all Payments of Reseller_
           console.warn(`  ⚠ "${target.key}": Partner not readable from the form - proceeding (list is filtered to Reseller_1, key is unique).`);
         }
 
-        // --- Step 5: press CANCEL ---
+        // --- Step 5: press CANCEL (clickCancelPayment confirms the payment reaches "Cancelled",
+        //     retrying past a transient "Odoo Client Error" / a silent no-op) ---
         console.log(`  - Cancelling payment "${target.key}" (Partner="${partner}", Status="${status}")`);
-        const clicked = await paymentPage.clickCancelPayment();
+        const cancelledOk = await paymentPage.clickCancelPayment();
         processedKeys.add(target.key);
-        if (!clicked) {
-          failedToCancel.add(target.key);
-          console.warn(`  ⚠ "${target.key}" could NOT be cancelled (CANCEL errored or unavailable) - recorded, skipping`);
-          continue;
-        }
-
-        const afterStatus = await paymentPage.waitForPaymentStatus('Cancel');
-        if (/Cancel/i.test(afterStatus)) {
+        if (cancelledOk) {
           cancelled++;
           console.log(`  ✓ payment "${target.key}" Cancelled (${cancelled} total)`);
         } else {
           failedToCancel.add(target.key);
-          console.warn(`  ⚠ "${target.key}" still "${afterStatus}" after CANCEL - recorded as not-cancellable`);
+          console.warn(`  ⚠ "${target.key}" could NOT be cancelled (errored / no-op after retries) - recorded, skipping`);
         }
         // Step 6: loop -> the next pass re-filters fresh.
       }

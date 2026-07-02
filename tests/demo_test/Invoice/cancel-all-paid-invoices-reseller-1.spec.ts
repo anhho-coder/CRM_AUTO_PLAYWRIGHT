@@ -59,6 +59,15 @@ const RESELLER_1_NAME = DEAL_REGISTRATION.partnerCompanyName; // "TEST-Reseller#
 // Override for a small validation run, e.g. CANCEL_MAX=2 npx playwright test ...
 const MAX_ITERATIONS = Number(process.env.CANCEL_MAX) || 500;
 
+// Extra account.invoice ids to cancel by DIRECT navigation, for reseller_1 Paid records that the
+// reseller-name filter CANNOT surface. Reason: reseller_1's data on pre-prod includes a duplicate
+// partner (id 627556) that shares the display name "TEST-Reseller#Automation-Jun10" but is NOT
+// returned by name search (its own name differs), so no Reseller/Payer/Commercial-Entity name filter
+// reaches its records. Its Paid Credit Notes are therefore cancelled by id. Override via
+// CANCEL_EXTRA_IDS="196722,196716". Each is still guarded (must be a Paid reseller_1 record).
+const EXTRA_IDS: string[] = (process.env.CANCEL_EXTRA_IDS || '196722,196716')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
 /** Classify a record by its Number: "CN/..." = Credit Note, "INV/..." = Invoice. */
 const recordKind = (num: string): string =>
   /^CN\b|^CN\//i.test(num) ? 'Credit Note' : /^INV\b|^INV\//i.test(num) ? 'Invoice' : 'record';
@@ -184,13 +193,46 @@ test.describe('UTIL-CANCEL-PAID-RESELLER1 - Cancel all Paid Invoices & Credit No
       console.log(`\nCancel loop finished: ${cancelled} record(s) cancelled for Reseller_1 (${cancelledInvoices} Invoice(s), ${cancelledCreditNotes} Credit Note(s))`);
     });
 
+    const extraNotCancelled: string[] = [];
+    await test.step('Steps 4-6 (by id): Cancel reseller_1 Paid records not reachable by the name filter', async () => {
+      if (EXTRA_IDS.length === 0) { console.log('  - No EXTRA_IDS to process'); return; }
+      console.log(`Processing ${EXTRA_IDS.length} extra id(s) by direct navigation: ${JSON.stringify(EXTRA_IDS)}`);
+      for (const id of EXTRA_IDS) {
+        await invoicePage.openInvoiceById(id);
+        await invoicePage.dismissErrorDialogWithRetry();
+        const num = await invoicePage.getInvoiceNumber().catch(() => `id=${id}`);
+        const reseller = await invoicePage.getReseller().catch(() => '');
+        const status = await invoicePage.getInvoiceStatus().catch(() => '');
+        const kind = recordKind(num);
+        // GUARD: only cancel a Paid record belonging to Reseller_1.
+        if (!reseller.includes(RESELLER_1_NAME) || !/Paid/i.test(status)) {
+          if (/Cancel/i.test(status)) { console.log(`  - id=${id} "${num}" already ${status} - skipping`); continue; }
+          console.warn(`  ⚠ SKIP id=${id} "${num}": Reseller="${reseller}", Status="${status}" - not a Reseller_1 Paid record.`);
+          continue;
+        }
+        console.log(`  - Cancelling ${kind} "${num}" (id=${id}, Reseller="${reseller}", Status="${status}")`);
+        await invoicePage.clickCancelInvoice();
+        await invoicePage.dismissErrorDialogWithRetry();
+        const afterStatus = await invoicePage.waitForInvoiceStatus('Cancel');
+        if (/Cancel/i.test(afterStatus)) {
+          cancelled++;
+          if (kind === 'Credit Note') cancelledCreditNotes++; else if (kind === 'Invoice') cancelledInvoices++;
+          console.log(`  ✓ ${kind} "${num}" Cancelled (${cancelled} total)`);
+        } else {
+          extraNotCancelled.push(`${num} (id=${id}) status="${afterStatus}"`);
+          console.warn(`  ⚠ ${kind} "${num}" not Cancelled (status="${afterStatus}")`);
+        }
+      }
+    });
+
     await test.step('Verification: no Paid Invoices or Credit Notes remain for Reseller_1', async () => {
       await filterFresh();
       const remaining = await invoicePage.getInvoiceListRowCount();
       const remainingNums = await invoicePage.getAllRowInvoiceNumbers();
-      console.log(`  - Cancelled ${cancelled} record(s) (${cancelledInvoices} Invoice(s), ${cancelledCreditNotes} Credit Note(s)). Remaining Paid for Reseller_1: ${remaining} ${JSON.stringify(remainingNums)}`);
+      console.log(`  - Cancelled ${cancelled} record(s) (${cancelledInvoices} Invoice(s), ${cancelledCreditNotes} Credit Note(s)). Remaining Paid for Reseller_1 (name filter): ${remaining} ${JSON.stringify(remainingNums)}`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - no Paid records remain').catch(() => {});
-      expect(remaining, `No Paid Invoices/Credit Notes should remain for Reseller_1 ("${RESELLER_1_NAME}")`).toBe(0);
+      expect(remaining, `No Paid Invoices/Credit Notes should remain for Reseller_1 ("${RESELLER_1_NAME}") via the name filter`).toBe(0);
+      expect(extraNotCancelled, `All EXTRA_IDS should be cancelled (still Paid: ${JSON.stringify(extraNotCancelled)})`).toEqual([]);
       console.log('✅ All Paid Invoices and Credit Notes of Reseller_1 cancelled');
     });
   });

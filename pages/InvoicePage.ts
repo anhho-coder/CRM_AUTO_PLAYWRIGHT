@@ -1619,25 +1619,26 @@ export class InvoicePage extends BasePage {
   async openCustomerInvoicesList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     const origin = new URL(this.page.url()).origin;
     console.log('  - Opening Invoicing > Customers > Invoices');
-    // We may be navigating away from an invoice FORM (possibly mid-edit). A hash-only change does not
-    // re-render the action when we are already in the Odoo web client, so the page can stay on the form.
-    // Null onbeforeunload (avoid a blocking "unsaved changes" prompt), navigate, then force a real reload
-    // so Odoo boots fresh and renders the account.invoice LIST (action=289).
+    // Null onbeforeunload first (we may be leaving a form) to avoid a blocking "unsaved changes" prompt.
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${origin}/web?#menu_id=180&action=289`, { waitUntil: 'domcontentloaded' });
-    await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    // Explicitly request the LIST view (view_type=list). Without it, navigating from a FORM of the
+    // same action can keep the form view mounted.
+    await this.page.goto(`${origin}/web?#action=289&model=account.invoice&view_type=list&menu_id=148`, { waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialogWithRetry().catch(() => {});
-    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
-    // Confirm we actually landed on the LIST (retry the reload once if a list table never appears).
-    let onList = await this.invoiceListTable().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+    // Land on the LIST. A hash-only nav from a FORM may not re-render the action, so reload ONLY when
+    // the list table did not appear (an UNCONDITIONAL reload was found to leave the list-view re-render
+    // fragile for a later custom-filter apply). Detect with a bounded wait, not the full page-load timeout.
+    let onList = await this.invoiceListTable().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).then(() => true).catch(() => false);
     if (!onList) {
-      console.log('  ⚠ Invoices list table not visible after navigation - reloading once more');
+      console.log('  ⚠ Invoices list not rendered by hash nav - forcing a reload');
+      await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
       await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       await this.dismissErrorDialogWithRetry().catch(() => {});
-      await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+      await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
       onList = await this.invoiceListTable().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
     }
-    await this.anyInvoiceListRow().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.anyInvoiceListRow().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
     console.log(`  ✓ Customer Invoices list opened (list table visible: ${onList})`);
   }
@@ -1722,6 +1723,7 @@ export class InvoicePage extends BasePage {
   private readonly firstRowNumberCell  = () => this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]/td[contains(@class,'o_data_cell')][1]").first();
   private readonly breadcrumbInvoicesLink = () => this.page.locator("xpath=//li[contains(@class,'breadcrumb-item')]//a[normalize-space()='Invoices']").first();
   private readonly listPager           = () => this.page.locator('.o_pager_counter, .o_pager').first();
+  private readonly listNoContent       = () => this.page.locator('.o_view_nocontent, .oe_view_nocontent, .o_nocontent_help').first();
 
   /**
    * Open the control-panel "Filters" dropdown on the Invoices list and ensure it is actually OPEN
@@ -1734,15 +1736,16 @@ export class InvoicePage extends BasePage {
     await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
     await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
     const btn = this.filtersMenuButton();
-    await btn.waitFor({ state: 'visible', timeout });
     const add = this.addCustomFilterBtn();
-    for (let attempt = 1; attempt <= 5; attempt++) {
+    // Tolerant: poll for the "Add Custom Filter" entry, clicking the Filters toggle whenever it is
+    // visible. Does NOT hard-fail if the toggle is briefly absent (control panel re-render / slow list).
+    for (let attempt = 1; attempt <= 8; attempt++) {
       if (await add.isVisible().catch(() => false)) return;
-      await btn.click().catch(() => {});
+      if (await btn.isVisible().catch(() => false)) await btn.click().catch(() => {});
       await this.wait(CommonUtils.waitTimes.standard);
     }
-    // Last chance: let the explicit wait surface a clear error if it truly never opened.
-    await add.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long }).catch(() => {});
+    // Last chance: surface a clear error if it truly never opened.
+    await add.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
   }
 
   /**
@@ -1883,9 +1886,11 @@ export class InvoicePage extends BasePage {
       rows = await this.listDataRow().count().catch(() => 0);
       if (rows > 0) return rows;
       const total = await this.getListPagerTotal();
-      // Genuinely empty only when the pager confirms 0 records (or there is no pager at all).
-      if (rows === 0 && total === 0) return 0;
-      console.log(`  - list not settled yet (rows=${rows}, pager total=${total}); waiting...`);
+      const noContent = await this.listNoContent().isVisible().catch(() => false);
+      // Genuinely empty when the "no content" placeholder is shown (reliable, even if the pager is
+      // stale at a pre-filter count), OR the pager confirms 0 records / there is no pager.
+      if (rows === 0 && (noContent || total === 0)) return 0;
+      console.log(`  - list not settled yet (rows=${rows}, pager total=${total}, noContent=${noContent}); waiting...`);
       await this.wait(step);
     }
     rows = await this.listDataRow().count().catch(() => 0);
@@ -1920,6 +1925,19 @@ export class InvoicePage extends BasePage {
         return cells[0] ? (cells[0].textContent || '').replace(/\s+/g, ' ').trim() : '';
       });
     }).catch(() => [] as string[]);
+  }
+
+  /**
+   * Open an invoice/credit-note form directly by its database id (account.invoice). Used to reach
+   * records that a name-based reseller filter cannot surface - e.g. a reseller_1 Credit Note whose
+   * reseller_id is a duplicate-named partner not returned by name search.
+   */
+  async openInvoiceById(id: number | string, timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(`${origin}/web?#id=${id}&action=289&model=account.invoice&view_type=form`, { waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialogWithRetry();
+    await this.waitForPageLoad(timeout);
   }
 
   /**

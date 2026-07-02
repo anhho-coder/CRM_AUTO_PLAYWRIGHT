@@ -257,8 +257,8 @@ test.describe('CRM-3523_2.1.1 - Verify a Company contact will be created automat
     email_Contact1 = '';
   });
 
-  test('CRM-3523_2.1.1 [CRM-11289]: Verify a Company contact will be created automatically if entering a public domain at Opp page', async ({ page }, testInfo) => {
-    test.skip(true, 'Skipped due to bug CRM-11289 - Company Name cleared on Opp page with public domain');
+  // Skipped due to bug CRM-11289 - Company Name cleared on Opp page with public domain
+  test.skip('CRM-3523_2.1.1 [CRM-11289]: Verify a Company contact will be created automatically if entering a public domain at Opp page', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     await page.setViewportSize({ width: 1920, height: 1080 });
