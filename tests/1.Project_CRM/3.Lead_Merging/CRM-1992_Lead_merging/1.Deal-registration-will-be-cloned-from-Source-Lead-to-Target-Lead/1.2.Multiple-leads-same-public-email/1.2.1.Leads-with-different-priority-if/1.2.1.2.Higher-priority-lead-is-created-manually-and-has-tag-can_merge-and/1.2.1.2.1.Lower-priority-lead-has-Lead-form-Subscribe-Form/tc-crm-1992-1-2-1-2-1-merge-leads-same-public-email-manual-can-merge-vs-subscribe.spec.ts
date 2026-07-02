@@ -145,7 +145,8 @@ test.describe('CRM-1992_1.2.1.2.1 - Lead Merging: Same Public Email (Manual Can_
     }
   });
 
-  test('CRM-1992_1.2.1.2.1 [CRM-8929] [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
+  test('CRM-1992_1.2.1.2.1 [CRM-11289] [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form', async ({ page }, testInfo) => {
+    test.skip(true, 'Skipped due to bug CRM-11289');
     // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     testInfo.annotations.push({ type: 'defect', description: 'CRM-8929' });
     

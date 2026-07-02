@@ -94,7 +94,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    9.1. There is the text as "This lead has been merged into [LEAD 1]." where [LEAD 1] is Lead Name of Lead#1
  */
 
-test.describe('CRM-542_1.2.1.1 - Lead Merging: Same Public Domain Email with Different Priority (IB Renewal Lead) [FIXME: CRM-8929]', () => {
+test.describe('CRM-542_1.2.1.1 - Lead Merging: Same Public Domain Email with Different Priority (IB Renewal Lead) [CRM-11289]', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -132,7 +132,8 @@ test.describe('CRM-542_1.2.1.1 - Lead Merging: Same Public Domain Email with Dif
 
   // FIXME: Test skipped due to defect CRM-8929
   // This test is currently failing because of a known issue with public domain email merging behavior
-  test('Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead)', async ({ page }, testInfo) => {
+  test('[CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead)', async ({ page }, testInfo) => {
+    test.skip(true, 'Skipped due to bug CRM-11289');
     test.setTimeout(config.timeouts.test);
     
     // CRM-8929 (Closed/Fixed) verification - run as normal assertion

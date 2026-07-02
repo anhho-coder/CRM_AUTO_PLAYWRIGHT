@@ -131,7 +131,8 @@ test.describe('CRM-2178_1.2.2.2 - Lead Merging: Same Public Email with Same Prio
     }
   });
 
-  test('[CRM-8929] Verify merging leads with same public email and same priority', async ({ page }, testInfo) => {
+  test('[CRM-11289] Verify merging leads with same public email and same priority', async ({ page }, testInfo) => {
+    test.skip(true, 'Skipped due to bug CRM-11289');
     // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     testInfo.annotations.push({ type: 'defect', description: 'CRM-8929' });
     

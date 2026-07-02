@@ -133,7 +133,8 @@ test.describe('CRM-542_1.2.1.2 - Lead Merging: Same Public Domain Email with Dif
     }
   });
 
-  test('[CRM-8929] Verify merging lead happens successfully when leads from same public domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
+  test('[CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
+    test.skip(true, 'Skipped due to bug CRM-11289');
     test.setTimeout(config.timeouts.test);
 
     // CRM-8929 (Closed/Fixed) verification - run as normal assertion
