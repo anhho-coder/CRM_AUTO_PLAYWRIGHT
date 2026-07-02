@@ -59,6 +59,36 @@ function firstStringArg(line) {
   return m ? m[2] : '';
 }
 
+// All quoted string literals on a line, in order (handles ' " and ` quoting).
+function stringArgs(line) {
+  const out = [];
+  const re = /(['"`])((?:\\.|(?!\1).)*)\1/g;
+  let m;
+  while ((m = re.exec(line))) out.push(m[2]);
+  return out;
+}
+
+// Is this the CONDITIONAL skip-modifier form `test.skip(cond, 'reason')` used
+// INSIDE a test body, rather than the static `test.skip('title', fn)`? It is
+// conditional when the first argument after `(` is not a quoted string.
+function isConditionalSkip(line) {
+  const m = line.match(/test\.skip\s*\(\s*(.)/);
+  return !!m && !/['"`]/.test(m[1]);
+}
+
+// For a conditional skip, the test title lives on the enclosing `test(...)` /
+// `test.only(...)` declaration above it (the skip is the first statement in the
+// body). Scan upward for the nearest such line and return its title. Stops at a
+// previous test.skip boundary (a different test) and gives up after 40 lines.
+function enclosingTestTitle(lines, idx) {
+  for (let j = idx - 1; j >= 0 && j >= idx - 40; j--) {
+    const t = lines[j];
+    if (/(^|[^.\w])test\.skip\s*\(/.test(t)) return '';               // a different test's skip
+    if (/(^|[^.\w])test(\.only|\.fixme)?\s*\(/.test(t)) return firstStringArg(t);
+  }
+  return '';
+}
+
 // Contiguous `//` line-comment block immediately above `idx` (the skip's reason).
 // Block comments (/* ... */) are intentionally ignored: those are file/test
 // headers, not skip reasons.
@@ -129,10 +159,22 @@ for (const file of files) {
     const isTestSkip = !isDescribeSkip && /(^|[^.\w])test\.skip\s*\(/.test(line);
     if (!isDescribeSkip && !isTestSkip) continue;
 
-    const title = firstStringArg(line);
+    let title = firstStringArg(line);
     const comment = precedingComment(lines, i);
-    const bugs = new Set([...bugsFrom(title), ...bugsFromComment(comment)]);
-    const reason = cleanReason(comment) || reasonFromTitle(title);
+
+    // Conditional skip modifier `test.skip(cond, 'reason')` inside a test body:
+    // the real title (with its [CRM-####] tag) is on the enclosing test(...) line,
+    // and the reason is this line's own string argument (bare CRM-#### resolves too).
+    let condReason = '';
+    if (isTestSkip && isConditionalSkip(line)) {
+      const encl = enclosingTestTitle(lines, i);
+      if (encl) title = encl;
+      const args = stringArgs(line);
+      condReason = args.length ? args[args.length - 1] : '';
+    }
+
+    const bugs = new Set([...bugsFrom(title), ...bugsFromComment(comment), ...bugsFromComment(condReason)]);
+    const reason = cleanReason(comment) || reasonFromTitle(title) || cleanReason(condReason);
 
     if (isDescribeSkip) {
       // A skipped describe block counts each test() inside it as one skipped TC,
