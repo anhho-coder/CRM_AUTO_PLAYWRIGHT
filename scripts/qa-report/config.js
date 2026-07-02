@@ -74,12 +74,23 @@ function loadJira() {
   );
 }
 
+// The Jira base URL WITHOUT needing credentials — used to build browse links (the
+// STUCK issue list) that render.js embeds in the page. Same default as loadJira()
+// but never throws, so the links work even in a Jira-less render.
+function jiraBaseUrl() {
+  return (process.env.JIRA_URL || 'http://jira.nakivo.com').replace(/\/+$/, '');
+}
+
 // --- CRM QA team members ------------------------------------------------------
 // employeeId -> the Nakivo01 Odoo hr.employee (KPI source); jira -> the Jira
 // username (worklog author). Names must match across both so the two pages agree.
+// `workload` = the tester's capacity factor, used ONLY by the "Executed test cases
+// per day" per-man-day denominator (man-days = worklog hours ÷ 8 × workload — see
+// JIRA_DERIVED_METRICS). Anh Ho is the QA Manager (25% on test execution); Thuat
+// Phung 50%. It does not affect any other metric.
 const MEMBERS = [
-  { name: 'Anh Ho', employeeId: 1051, jira: 'anh.ho' },
-  { name: 'Thuat Phung', employeeId: 1333, jira: 'thuat.phung' },
+  { name: 'Anh Ho', employeeId: 1051, jira: 'anh.ho', workload: 0.25 },
+  { name: 'Thuat Phung', employeeId: 1333, jira: 'thuat.phung', workload: 0.5 },
 ];
 
 // --- KPI metrics sourced from nakivo.kpi.database ----------------------------
@@ -158,6 +169,100 @@ const JIRA_WORKLOG_METRICS = [
   },
 ];
 
+// --- Jira UNIQUE (single-window) worklog metrics (Metrics Report, By range) ---
+// The DEDUPLICATED counterpart to JIRA_WORKLOG_METRICS. Where "Manual Test cases
+// executed" counts per DAY and SUMS (a test case worked on N days counts N times),
+// these count the DISTINCT test cases a tester logged work on across the WHOLE
+// range with ONE window query per (range × tester) — so a test case counts ONCE no
+// matter how many days it was touched. Because a distinct-over-range count is NOT
+// additive, they are collected directly per range (sources/unique-testexec.js), not
+// through the generic daily-sum aggregate() path, and they appear in the "By range"
+// view only (no additive Quarterly card). The single-window JQL per tester T is:
+//   [project = <project> AND] issuetype = "<issueType>"
+//     AND worklogAuthor in (T) AND worklogDate > "<from − 1 day>" AND worklogDate <= "<to>"
+// `project` (optional) adds a `project = <project>` clause — the team's sample JQL
+// scopes it to CRM (the issue type is effectively CRM-only regardless). `issueType`
+// is the test-case type; `kpiName` is just the card subtitle.
+const JIRA_UNIQUE_METRICS = [
+  {
+    key: 'uniqueTcExecuted',
+    label: 'Unique Executed Test Cases',
+    issueType: 'Post-EA - Test Case',
+    project: 'CRM',
+    kpiName: 'Jira · Distinct Post-EA - Test Cases with a worklog in the range (per tester)',
+  },
+];
+
+// --- Jira DERIVED metrics (computed from another metric, no direct fetch) -----
+// "Executed test cases per day": a RATE built from the DISTINCT executed count
+// (its `numeratorKey` metric in JIRA_UNIQUE_METRICS) divided by two denominators,
+// following Slide #9 ("PRODUCTIVITY — Executed test cases per day") of the QA
+// Quarterly Review deck:
+//   • Per calendar-day = executed ÷ working days. Working days = Mon–Fri dates in
+//     the range MINUS Vietnamese public holidays that fall on a working day (the
+//     dashboard already tracks these — sources/holidays.js; e.g. Q2 = 65 − 3 = 62).
+//   • Per man-day = executed ÷ test-case-execution man-days ("pure execution
+//     speed"), where per tester T:
+//         man-days(T) = (test-case worklog hours by T ÷ WORK_HOURS_PER_DAY) × workload(T)
+//     `workload` is T's capacity factor on MEMBERS (Thuat 0.5, Anh 0.25). The
+//     effort source is worklog HOURS on `issueType` issues (the same issues the
+//     numerator counts) — so the denominator mirrors the numerator's scope.
+// The numerator is REUSED from the already-collected `numeratorKey` metric (no
+// extra distinct-count queries); only the man-day denominator needs a new fetch
+// (test-case worklog hours per day × tester — sources/executed-per-day.js). A rate
+// is not additive, so it is collected per range ("By range" view only). The
+// canonical total/byEmployee/series carry the PER-CALENDAR-DAY rate (so generic
+// code degrades gracefully); the PER-MAN-DAY rate rides alongside in `manDay` and a
+// per-tester `byTester` breakdown, both surfaced by render.js's custom per-day card.
+const WORK_HOURS_PER_DAY = 8;
+const JIRA_DERIVED_METRICS = [
+  {
+    key: 'executedTcPerDay',
+    label: 'Executed test cases per day',
+    numeratorKey: 'uniqueTcExecuted', // distinct executed count from JIRA_UNIQUE_METRICS
+    issueType: 'Post-EA - Test Case', // execution-effort worklog source (man-day denominator)
+    project: 'CRM',
+    perDay: true,                     // render.js uses the two-column per-day card
+    kpiName: 'Jira · distinct executed ÷ working days (per calendar-day) and ÷ execution man-days (per man-day)',
+  },
+];
+
+// --- Jira FRD / I2L delivery metric (FRD/Spec Review/I2L page, slide-style) ---
+// A DISTINCT-over-range count of the spec-review / I2L issues the team logged work
+// on, split into "done" vs "in progress" — the whole-team version of the QA
+// Quarterly Review deck's "FRD / I2L — Q2 done & in progress" slide (Slide #15).
+// Rendered as slide-style stat cards (Worked / Done / In progress), NOT the standard
+// by-tester+trend card. Per (range × metric) the collector runs ONE window count
+// (like JIRA_UNIQUE_METRICS — a distinct-over-range count is not additive) for each
+// of two JQLs, then derives the third:
+//   worked     = [labels = <each label> AND] worklogAuthor in (<team>)
+//                  AND worklogDate > "<from − 1 day>" AND worklogDate <= "<to>"
+//   done       = worked issues whose statusCategory = <doneStatusCategory>  (Resolved / Closed)
+//   inProgress = worked − done                                       (Open / In Progress / Reopened)
+//   estimates  = worked AND (assignee NOT in <team> OR a comment matches an estimateMarker)
+//   breakdown  = the worked issues classified by the QA activity in their summary
+//                (FRD / Spec review / I2L) — the slide's "N FRD · N Spec review · N I2L" line
+// (worklogDate > "from − 1 day" == worklogDate >= "from", written as the team's
+// sample JQL: `... worklogDate > 2026-03-31 AND worklogDate <= 2026-06-30`.)
+// `labels` (one or more) scopes the issue set; the team's sample uses the single
+// label QA-FRD/I2L/Spec and NO project filter (the label spans NJM + CRM), so none
+// is applied. `estimateMarkers` are comment substrings that mark a QA estimate table
+// ("estimation" alone misses tables that don't spell the word — e.g. CRM-8285's
+// "Manday (hour)"/"TOTAL TIME" table — so both are matched). `kpiName` is just the
+// card subtitle. Whole-team only (a spec worked on by both testers counts once) — no
+// per-tester split, since the per-tester distinct counts don't sum to the team union.
+// See sources/frd.js for the worked-set fetch + activity classification.
+const JIRA_FRD_METRICS = [
+  {
+    key: 'frdI2lProgress',
+    label: 'FRD / I2L — done & in progress (whole team)',
+    kpiName: 'Jira · Distinct QA-FRD/I2L/Spec issues with a worklog in the range (worked / done / in progress / estimates)',
+    labels: ['QA-FRD/I2L/Spec'],
+    doneStatusCategory: 'Done',            // statusCategory counted as "done"; everything else = "in progress"
+    estimateMarkers: ['estimation', 'Manday'], // comment substrings that mark a QA estimate table
+  },
+];
+
 // --- Jira STATUS-TRANSITION metrics (Metrics Report page, BOTH views) ---------
 // Counted by a status TRANSITION, per day × tester, by running the team's exact
 // per-day JQL once per (day, tester) as a cheap maxResults=0 count — the same
@@ -190,6 +295,103 @@ const JIRA_TRANSITION_METRICS = [
   },
 ];
 
+// --- Jira SPLIT metrics (Metrics Report · Automation test page, "By range") ---
+// A metric that PARTITIONS an already-collected status-transition daily series at a
+// cutoff date into two halves, rendered as slide-style stat cards. It performs NO
+// extra Jira queries: it reuses the daily series of `sourceKey` (a
+// JIRA_TRANSITION_METRICS entry that collect.js already fetched) and, for each range,
+// sums the days BEFORE the cutoff (legacy) vs ON/AFTER it (the split half). Because
+// the split is range-relative (the cutoff may fall inside, before, or after a range),
+// it is computed directly per range from the daily series — see
+// sources/automation-split.js. "By range" view only (no Quarterly card).
+//
+// "Test cases automated — with vs without Claude" = Slide #16 of the QA Quarterly
+// Review deck. `claudeCutoff` is the team's Claude-adoption date — the first Claude
+// co-authored commit in CRM_AUTO_PLAYWRIGHT (2026-06-05) — so an automation-scope test
+// case whose status changed to Resolved ON/AFTER that day counts as automated WITH
+// Claude, and one resolved before it as legacy (without Claude). `sourceKey` points at
+// the transition metric whose daily series is partitioned, so "Total" always equals
+// that card ("Automation Test cases created") for the same range.
+const JIRA_SPLIT_METRICS = [
+  {
+    key: 'automationTcClaudeSplit',
+    label: 'Test cases automated — with vs without Claude',
+    kpiName: 'Jira · Automation-scope TCs resolved, split at Claude adoption (2026-06-05)',
+    split: true,                       // render.js → slide-style stat cards (splitRangeSection)
+    sourceKey: 'automationTcCreated',  // the JIRA_TRANSITION_METRICS daily series to partition
+    claudeCutoff: '2026-06-05',        // resolved >= cutoff → WITH Claude; < cutoff → legacy (without)
+  },
+];
+
+// --- Jira LIST metrics (QA CRM · Jira · Dashboard page) -----------------------
+// A metric whose value is a LIST of issues, not a count aggregated per day. The
+// "QA CRM - Jira - Dashboard" page (the leftmost tab / default landing) renders
+// each entry as a headline total + per-assignee split + a table of the matching
+// issues. Collected directly per range in sources/stuck.js (only for the two
+// quarter ranges the page offers) because the value is a point-in-time snapshot,
+// not an additive daily series.
+//
+// "STUCK — Dev done, QA not tested": issues Dev has finished (currently in the
+// `currentStatus` = Resolved) that QA has not yet verified/advanced — assigned to
+// the team, EXCLUDING the team's own test/support issue types. The team's exact
+// JQL (assembled per range in sources/stuck.js) is:
+//   assignee in (<team Jira users>) AND status = <currentStatus>
+//     AND issuetype not in (<excludeIssueTypes>)
+//     AND status changed to (<changedToStatus>) during ("<from> 00:00","<to> 23:59")
+// The `status = Resolved` clause is point-in-time (the issue must STILL be Resolved
+// now, i.e. still waiting on QA); the `during` window bounds WHEN it became resolved
+// to the selected quarter. "Days stuck" (computed in the source) = today minus the
+// issue's resolution date. `kpiName` is the card subtitle.
+const JIRA_LIST_METRICS = [
+  {
+    key: 'stuckDevDoneQaNotTested',
+    label: 'STUCK — Dev done, QA not tested',
+    kpiName: 'Jira · Resolved issues still awaiting QA verification (by assignee)',
+    currentStatus: 'Resolved',
+    excludeIssueTypes: ['Post-EA - Test Case', 'Post-EA - Support Ticket', 'Post-EA - Support Ticket - Investigation'],
+    changedToStatus: 'resolved',
+  },
+];
+
+// --- "Executed Test Cases per main feature" (Manual test page, "By range") ----
+// A grouped bar chart (Executed vs Passed) per Xray Test Repository module, for the
+// WHOLE TEAM (all MEMBERS). Like JIRA_UNIQUE_METRICS it counts DISTINCT test cases per
+// range with ONE JQL per module (a test case counts ONCE no matter how many days it was
+// touched — NOT the per-day sum used by "Manual Test cases executed") — matching the
+// team's own "567 in Q2" query. For each range × module it runs two cheap maxResults=0
+// counts (see sources/feature-exec.js):
+//   EXECUTED: project = <project> AND issuetype = "<issueType>"
+//             AND worklogAuthor in (<team>) AND worklogDate > "<from − 1 day>" AND worklogDate <= "<to>"
+//             AND issue in testRepositoryFolderTests("<project>", "<repoRoot>/<module>", "true")
+//   PASSED:   EXECUTED  +  " AND " + passedJql
+// The "Other" bar = the same window with `issue not in testRepositoryFolderTests(
+// "<project>","<repoRoot>","true")` — test cases executed but filed outside the repoRoot
+// tree. Rendered ONLY on the Manual test page, in the "By range" view, reacting to the
+// same range buttons as the other metrics. Stored under data.featureExec (its grouped
+// bar chart doesn't fit the standard by-tester/trend metric card).
+const FEATURE_EXEC = {
+  key: 'featureExec',
+  label: 'Executed Test Cases per main feature',
+  project: 'CRM',
+  issueType: 'Post-EA - Test Case',
+  // "Passed" = the test case reached a Done state (status Resolved or Closed).
+  // Confirmed with the team 2026-07-02: a still-Open executed TC counts as
+  // executed-but-not-passed (the Executed/Passed split of the OA report). Uses
+  // statusCategory (not a resolution name) so both Resolved and Closed count.
+  passedJql: 'statusCategory = Done',
+  repoRoot: 'CRM test',   // top Test Repository folder that holds the module folders
+  otherLabel: 'Other',    // catch-all bar: TCs executed but outside `repoRoot`
+  // The module folders under `repoRoot` (Xray Test Repository). Their counts sum to
+  // the repoRoot total; edit this list if the repository folders change. A module
+  // with 0 executed in the selected range is simply not drawn.
+  modules: [
+    'Leave module', 'Sales Report + Performance', 'Lead Merging', 'Contact module',
+    'Leads Assigment', 'Investments module', 'Report module', 'CRM module', 'R&E module',
+    'License module', 'Helpdesk module', 'Exhibition module', 'KPI module', 'Sales module',
+    'Payroll module', 'Approval Module', 'Webshop', 'Replica DB VM', 'Security',
+  ],
+};
+
 // --- Report sections (the "Manual test" / "Automation test" tabs) ------------
 // The 3rd tab, "Worklog allocation", is the separate worklog page. Each section
 // lists its metric keys IN DISPLAY ORDER; render.js builds one page per section
@@ -197,16 +399,38 @@ const JIRA_TRANSITION_METRICS = [
 // Metrics with no calc yet — support tickets verified, automation TCs executed,
 // automation run frequency — are simply not listed, so they don't render until
 // added here (and wired in collect.js).
+// The "QA CRM - Jira - Dashboard" section (kind: 'list') is the LEFTMOST tab and
+// the default landing page (index.html); render.js gives it its own list-style
+// layout (headline + issue table) rather than the count-card layout the other
+// sections use, and offers only the This/Last quarter ranges.
 const SECTIONS = [
+  {
+    key: 'jiraDashboard',
+    label: 'QA CRM - Jira - Dashboard',
+    kind: 'list',
+    metricKeys: ['stuckDevDoneQaNotTested'],
+  },
+  {
+    // Slide #15 of the QA Quarterly Review deck — "FRD / I2L — Q2 done & in progress",
+    // whole-team. Sits to the LEFT of "Manual test" (right of the dashboard landing).
+    // kind: 'frd' → render.js gives it the slide-style stat-card layout (Worked /
+    // Done / In progress), range-selectable, defaulting to the previous complete
+    // quarter (the "Q2" snapshot). Not a landing page. See JIRA_FRD_METRICS.
+    key: 'frd',
+    label: 'FRD/Spec Review/I2L',
+    kind: 'frd',
+    defaultRange: 'lastQuarter',
+    metricKeys: ['frdI2lProgress'],
+  },
   {
     key: 'manual',
     label: 'Manual test',
-    metricKeys: ['testCasesNewCreated', 'manualTcExecuted', 'bugsValidReported', 'bugsFixVerified', 'supportTicketCreated'],
+    metricKeys: ['testCasesNewCreated', 'manualTcExecuted', 'uniqueTcExecuted', 'executedTcPerDay', 'bugsValidReported', 'bugsFixVerified', 'supportTicketCreated'],
   },
   {
     key: 'automation',
     label: 'Automation test',
-    metricKeys: ['automationTcCreated', 'bugsFoundByAutomation'],
+    metricKeys: ['automationTcCreated', 'automationTcClaudeSplit', 'bugsFoundByAutomation'],
   },
 ];
 
@@ -310,7 +534,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_TRANSITION_METRICS, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, FEATURE_EXEC, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

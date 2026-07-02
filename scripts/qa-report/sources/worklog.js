@@ -169,11 +169,12 @@ async function collectWorklog(ranges, now, leaveEntries = []) {
 
   // 6) Aggregate into each selectable range. Also expose the per-day breakdown so
   //    the page can recompute a client-side custom date range without re-fetching.
-  //    Skip 'lastYear' (a Metrics-Report-only range): the worklog page only seeds
-  //    THIS year's data, so a lastYear bucket would just be an all-zero dead block.
+  //    Skip 'lastYear' and 'lastQuarter' (Metrics-Report-only ranges): the worklog
+  //    page renders only the 4 base ranges, so these buckets would never be shown
+  //    (lastYear would also just be an all-zero dead block, given only this year is seeded).
   const out = {};
   for (const r of Object.values(ranges)) {
-    if (r.key === 'lastYear') continue;
+    if (r.key === 'lastYear' || r.key === 'lastQuarter') continue;
     out[r.key] = aggregateRange(entries, r);
   }
   const daily = collapse(entries).map((e) => ({ d: e.date, t: e.tester, c: e.col, h: e.hours }));

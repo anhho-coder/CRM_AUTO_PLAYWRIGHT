@@ -22,10 +22,14 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
 const fmt = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
 const EMP_COLORS = ['#6a3093', '#1e7e34', '#c0392b', '#2c7be5'];
 const RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'thisYear'];
-// The Metrics "By range" view adds "Last year" (full previous calendar year). The
-// Worklog page stays on RANGE_ORDER — it only seeds this-year data, so showing a
-// Last year button there would be empty. Hence Last year is Metrics-Report-only.
-const METRIC_RANGE_ORDER = [...RANGE_ORDER, 'lastYear'];
+// The Metrics "By range" view adds "Last quarter" (previous complete quarter, after
+// This quarter) and "Last year" (full previous calendar year, at the end). The
+// Worklog page stays on RANGE_ORDER — it only seeds this-year data, so those extra
+// buttons would be empty there. Hence both are Metrics-Report-only.
+const METRIC_RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'lastQuarter', 'thisYear', 'lastYear'];
+// The QA CRM · Jira · Dashboard (STUCK) page offers only the two quarter ranges,
+// default This quarter — matching the team's Q2 sample JQL.
+const STUCK_RANGE_ORDER = ['thisQuarter', 'lastQuarter'];
 const BAR_COLORS = { actual: '#1f4e96', forecast: '#1f4e96', current: '#27ae9a', goal: '#e8843c' };
 // Worklog column colours (by config key); anything unmapped falls back to the palette.
 const WL_COLORS = {
@@ -96,9 +100,14 @@ function quarterlySection(meta, q, lead) {
 
 /* -------------------------------- Range view --------------------------------- */
 
-function seriesChart(series) {
+// Trend bars, STACKED per tester (same colours as the "By tester" bars). Each
+// bucket's height is its total; the segments split it by tester (bottom-up in
+// `members` order). The total is labelled on top; each segment carries a hover
+// title. Falls back to a single bar if per-tester data (byEmp) is unavailable.
+function seriesChart(series, members) {
   if (!series || !series.length) return '<p class="muted">No data in this range.</p>';
-  const W = 680, H = 150, pad = 26, n = series.length;
+  const emps = (members && members.length) ? members : null;
+  const W = 680, H = 150, pad = 26, n = series.length, plot = H - 2 * pad;
   const maxV = Math.max(1, ...series.map((s) => s.value));
   const step = (W - 2 * pad) / n;
   const bw = Math.max(5, Math.min(40, step - 6));
@@ -106,13 +115,29 @@ function seriesChart(series) {
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">`;
   series.forEach((d, i) => {
     const bx = pad + i * step + (step - bw) / 2;
-    const h = (d.value / maxV) * (H - 2 * pad);
     const baseY = H - pad;
-    s += `<rect x="${bx.toFixed(1)}" y="${(baseY - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="#a044ff"/>`;
-    if (d.value > 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${(baseY - h - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="#555">${fmt(d.value)}</text>`;
+    const totalH = (d.value / maxV) * plot;
+    if (emps && d.byEmp) {
+      let yb = baseY; // stack bottom-up
+      emps.forEach((name, j) => {
+        const v = d.byEmp[name] || 0;
+        if (v <= 0) return;
+        const hh = (v / maxV) * plot;
+        yb -= hh;
+        s += `<rect x="${bx.toFixed(1)}" y="${yb.toFixed(1)}" width="${bw.toFixed(1)}" height="${hh.toFixed(1)}" fill="${EMP_COLORS[j % EMP_COLORS.length]}"><title>${esc(name)}: ${fmt(v)}</title></rect>`;
+      });
+    } else {
+      s += `<rect x="${bx.toFixed(1)}" y="${(baseY - totalH).toFixed(1)}" width="${bw.toFixed(1)}" height="${totalH.toFixed(1)}" rx="2" fill="#a044ff"/>`;
+    }
+    if (d.value > 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${(baseY - totalH - 4).toFixed(1)}" font-size="9" text-anchor="middle" fill="#555">${fmt(d.value)}</text>`;
     if (i % labelEvery === 0) s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${H - 6}" font-size="11" font-weight="700" text-anchor="middle" fill="#555">${esc(d.label)}</text>`;
   });
-  return s + '</svg>';
+  s += '</svg>';
+  if (emps) {
+    s += '<div class="tlegend">' + emps.map((name, j) =>
+      `<span class="tl"><span class="sw" style="background:${EMP_COLORS[j % EMP_COLORS.length]}"></span>${esc(name)}</span>`).join('') + '</div>';
+  }
+  return s;
 }
 
 function employeeBars(byEmployee) {
@@ -124,18 +149,61 @@ function employeeBars(byEmployee) {
   }).join('') + '</div>';
 }
 
-function rangeBlock(agg, active) {
+function rangeBlock(agg, active, members) {
   return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
     <div class="grid">
       <div class="bignum"><div class="v">${fmt(agg.total)}</div><div class="l">${esc(agg.label.toLowerCase())}</div></div>
       <div class="bycol"><div class="subh">By tester</div>${employeeBars(agg.byEmployee)}</div>
     </div>
-    <div class="subh">Trend</div>${seriesChart(agg.series)}
+    <div class="subh">Trend</div>${seriesChart(agg.series, members)}
   </div>`;
 }
 
-function rangeSection(meta, m, def, lead) {
-  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def)).join('\n');
+function rangeSection(meta, m, def, lead, members) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def, members)).join('\n');
+  return `<section class="metric${lead ? ' lead' : ''}">
+    <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+  </section>`;
+}
+
+// --- Custom "By range" card for the DERIVED rate metric "Executed test cases per
+// day" (config.perDay). Shows two headline rates — per calendar-day and per man-day
+// — a per-tester table with the inputs behind each, and a per-calendar-day trend.
+// See sources/executed-per-day.js for the range shape (workingDays, byTester,
+// manDay, canonical total/byEmployee = the per-calendar-day rate).
+function perDayBlock(agg, active, members) {
+  const md = agg.manDay || { total: 0, byEmployee: [], manDaysTotal: 0 };
+  const rows = (agg.byTester || []).map((r) => `<tr>` +
+    `<td class="pdname">${esc(r.name)}</td>` +
+    `<td>${fmt(r.executed)}</td>` +
+    `<td>${fmt(agg.workingDays)}</td>` +
+    `<td class="pdrate">${fmt(r.calPerDay)}</td>` +
+    `<td>${fmt(r.execHours)}</td>` +
+    `<td>${Math.round((r.workload || 0) * 100)}%</td>` +
+    `<td>${fmt(r.manDays)}</td>` +
+    `<td class="pdrate">${fmt(r.manDayPerDay)}</td></tr>`).join('');
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    <div class="grid">
+      <div class="bignum"><div class="v">${fmt(agg.total)}</div><div class="l">executed / calendar-day</div></div>
+      <div class="bignum"><div class="v">${fmt(md.total)}</div><div class="l">executed / man-day</div></div>
+      <div class="pdmeta bycol">
+        <div>Working days in range: <b>${fmt(agg.workingDays)}</b> <span class="muted">(Mon–Fri − VN public holidays)</span></div>
+        <div>Test-case execution man-days (team): <b>${fmt(md.manDaysTotal)}</b></div>
+      </div>
+    </div>
+    <div class="subh">By tester</div>
+    <div class="pdwrap"><table class="pdtbl">
+      <thead><tr><th>Tester</th><th>Executed</th><th>Working days</th><th>/ cal-day</th><th>Exec hours</th><th>Workload</th><th>Man-days</th><th>/ man-day</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p class="muted pdnote">Per calendar-day = executed ÷ working days (per-tester rates sum to the team total — shared denominator). Per man-day = executed ÷ (exec hours ÷ ${cfg.WORK_HOURS_PER_DAY} × workload); the team figure is the BLENDED rate (Σ executed ÷ Σ man-days), so it is not the sum of the per-tester rates.</p>
+    <div class="subh">Trend · executed / calendar-day</div>${seriesChart(agg.series, members)}
+  </div>`;
+}
+
+function perDayRangeSection(meta, m, def, lead, members) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => perDayBlock(m.ranges[k], k === def, members)).join('\n');
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
     ${blocks}
@@ -168,7 +236,13 @@ function jqlNote(metrics, ranges, def, kpiJql) {
   const memberNames = cfg.MEMBERS.map((m) => m.name).join(', ');
   const byKey = (arr) => new Map((arr || []).map((m) => [m.key, m]));
   const odoo = byKey(cfg.KPI_METRICS), created = byKey(cfg.JIRA_METRICS),
-    worklog = byKey(cfg.JIRA_WORKLOG_METRICS), trans = byKey(cfg.JIRA_TRANSITION_METRICS);
+    worklog = byKey(cfg.JIRA_WORKLOG_METRICS), unique = byKey(cfg.JIRA_UNIQUE_METRICS),
+    frd = byKey(cfg.JIRA_FRD_METRICS),
+    derived = byKey(cfg.JIRA_DERIVED_METRICS), trans = byKey(cfg.JIRA_TRANSITION_METRICS),
+    split = byKey(cfg.JIRA_SPLIT_METRICS);
+  // Day before an ISO date: worklogDate > (from − 1 day) == worklogDate >= from,
+  // written the way the team's sample "Unique Executed Test Cases" JQL is.
+  const dayBefore = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
 
   const queryFor = (meta, r) => {
     if (odoo.has(meta.key)) {
@@ -195,11 +269,47 @@ function jqlNote(metrics, ranges, def, kpiJql) {
         code(`issuetype = ${q(m.issueType)} AND worklogAuthor in (T) AND worklogDate > "D−1" AND worklogDate <= "D"`) +
         ` <span class="muted">— daily counts summed</span>`;
     }
+    if (unique.has(meta.key)) {
+      const m = unique.get(meta.key);
+      const proj = m.project ? `project = ${m.project} AND ` : '';
+      return `per tester T, ONE window query: ` +
+        code(`${proj}issuetype = ${q(m.issueType)} AND worklogAuthor in (T) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`) +
+        ` <span class="muted">— DISTINCT test cases, counted once per range (not summed)</span>`;
+    }
+    if (frd.has(meta.key)) {
+      const m = frd.get(meta.key);
+      const labels = (m.labels || []).map((l) => `labels = ${q(l)}`).join(' AND ');
+      const scope = labels ? `${labels} AND ` : '';
+      const markers = (m.estimateMarkers || ['estimation', 'Manday']).map((x) => `comment ~ ${q(x)}`).join(' OR ');
+      return `worked — ONE window query for the whole team: ` +
+        code(`${scope}worklogAuthor in (${reporters}) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`) +
+        `<br>done — the same, plus ` + code(`AND statusCategory = ${q(m.doneStatusCategory || 'Done')}`) +
+        `<br>estimates provided — the same, plus ` + code(`AND (assignee not in (${reporters})${markers ? ` OR ${markers}` : ''})`) +
+        `<br><span class="muted">in progress = worked − done. Worked is split FRD / Spec review / I2L by the QA activity in the summary. DISTINCT issues, counted once for the team per range (not per tester, not summed).</span>`;
+    }
     if (trans.has(meta.key)) {
       const m = trans.get(meta.key);
       return `for each day D in [${esc(r.from)} … ${esc(r.to)}], per tester T: ` +
         code(`${m.scopeJql} AND status changed to (${m.changedToStatus}) during ("D 00:00", "D 23:59") BY T`) +
         ` <span class="muted">— daily counts summed</span>`;
+    }
+    if (split.has(meta.key)) {
+      const m = split.get(meta.key);
+      const src = trans.get(m.sourceKey) || {};
+      const scope = src.scopeJql || '"Automation scope" = yes';
+      const changed = src.changedToStatus || 'resolved';
+      return `for each day D in [${esc(r.from)} … ${esc(r.to)}], per tester T: ` +
+        code(`${scope} AND status changed to (${changed}) during ("D 00:00", "D 23:59") BY T`) +
+        `<br><span class="muted">daily counts summed, then split at ${esc(m.claudeCutoff)}: with Claude = D ≥ ${esc(m.claudeCutoff)}, legacy = D &lt; ${esc(m.claudeCutoff)}, total = both (no extra query — reuses “Automation Test cases created”).</span>`;
+    }
+    if (derived.has(meta.key)) {
+      const m = derived.get(meta.key);
+      const proj = m.project ? `project = ${m.project} AND ` : '';
+      const workloads = cfg.MEMBERS.map((mm) => `${esc(mm.name)} ${Math.round((mm.workload || 0) * 100)}%`).join(', ');
+      return `a RATE — numerator is the DISTINCT executed count (per tester T, ONE window query): ` +
+        code(`${proj}issuetype = ${q(m.issueType)} AND worklogAuthor in (T) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`) +
+        `<br><span class="muted">Per calendar-day = executed ÷ working days (Mon–Fri in [${esc(r.from)} … ${esc(r.to)}] minus VN public holidays). ` +
+        `Per man-day = executed ÷ (test-case worklog hours ÷ ${cfg.WORK_HOURS_PER_DAY} × workload; ${workloads}).</span>`;
     }
     return '<span class="muted">n/a</span>';
   };
@@ -215,6 +325,9 @@ function jqlNote(metrics, ranges, def, kpiJql) {
     `Team scope: reporter / worklogAuthor / “BY” ∈ {${esc(memberNames)}}.`,
     'Odoo KPI metrics show the Jira filter from the KPI’s Odoo definition (nakivo.kpi.category.employee · jira_filter), read live each build; Odoo runs it per tester per day and this report sums the resulting daily counts over the range.',
     'Worklog- & transition-based metrics run one count per day × tester and SUM them, so a test case active on N days counts N times — the range total can exceed the distinct-issue count of a single-window JQL.',
+    '“Unique Executed Test Cases” instead runs ONE window query per tester over the whole range, so a test case worked on many days counts ONCE — it is the distinct-count counterpart of “Manual Test cases executed” (which sums per day and can be larger). Its trend bars are per-bucket distinct counts, so they need not sum to the range total.',
+    '“Executed test cases per day” is a RATE derived from that distinct count: per calendar-day = executed ÷ working days (Mon–Fri minus VN public holidays), and per man-day = executed ÷ test-case-execution man-days, where man-days = test-case worklog hours ÷ 8 × the tester’s workload. The per-man-day team figure is the blended rate (Σ executed ÷ Σ man-days).',
+    '“Test cases automated — with vs without Claude” adds no query: it re-uses the “Automation Test cases created” daily series and splits each range at the team’s Claude-adoption date (2026-06-05, first Claude co-authored commit) — with Claude = resolved on/after it, legacy = before it, Total = both (so Total matches that card for the same range).',
   ];
 
   return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for each metric<span class="wlnote-hint"> (for the selected range — hover)</span>
@@ -234,13 +347,282 @@ function sourceBanner(sources) {
     bad.map(([k, v]) => `${esc(k)} (${esc(v.message || 'error')})`).join('; ') + '</div>';
 }
 
+/* --------------------- QA CRM · Jira · Dashboard (STUCK) ---------------------- */
+// A LIST metric: the "STUCK — Dev done, QA not tested" card shows a headline total
+// + a per-assignee split + a table of the Resolved-but-not-tested issues (data from
+// sources/stuck.js: ranges[key] = { total, byEmployee, issues:[{key,summary,type,
+// assignee,resolved,daysStuck}] }). Renders like slide 17 of the QA Quarterly deck.
+
+// One row per stuck issue (most-stuck first). Key links to Jira; "days stuck" turns
+// red past 30 days to flag the long-waiting ones.
+function stuckIssueTable(agg, jiraBase) {
+  if (!agg.issues || !agg.issues.length) {
+    return '<p class="muted">No stuck issues in this range — nothing is waiting on QA. 🎉</p>';
+  }
+  const rows = agg.issues.map((it) => {
+    const url = `${jiraBase}/browse/${encodeURIComponent(it.key)}`;
+    const days = it.daysStuck == null ? '—' : it.daysStuck;
+    const hot = it.daysStuck != null && it.daysStuck >= 30 ? ' stuck-hot' : '';
+    return `<tr>
+      <td class="skey"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(it.key)}</a></td>
+      <td class="ssum">${esc(it.summary)}</td>
+      <td class="stype">${esc(it.type)}</td>
+      <td class="sasg">${esc(it.assignee)}</td>
+      <td class="sres num">${esc(it.resolved || '—')}</td>
+      <td class="sdays num${hot}">${days}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="stuckwrap"><table class="stucktbl">
+    <thead><tr><th>Key</th><th>Summary</th><th>Type</th><th>Assignee</th><th class="num">Resolved</th><th class="num">Days stuck</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function stuckRangeBlock(agg, active, jiraBase) {
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    <div class="grid">
+      <div class="bignum"><div class="v">${fmt(agg.total)}</div><div class="l">stuck</div></div>
+      <div class="bycol"><div class="subh">By assignee</div>${employeeBars(agg.byEmployee)}</div>
+    </div>
+    <div class="subh">Dev done (Resolved) · waiting on QA — most stuck first</div>
+    ${stuckIssueTable(agg, jiraBase)}
+  </div>`;
+}
+
+function stuckSection(meta, m, def, jiraBase) {
+  const blocks = STUCK_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => stuckRangeBlock(m.ranges[k], k === def, jiraBase)).join('\n');
+  return `<section class="metric lead">
+    <h2>${esc(meta.label)} <span class="pill">primary</span> <span class="muted">· ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+  </section>`;
+}
+
+function stuckSelector(ranges, def) {
+  return '<div class="ranges">' + STUCK_RANGE_ORDER.filter((k) => ranges[k]).map((k) =>
+    `<button type="button" data-rangebtn="${k}" class="${k === def ? 'active' : ''}">${esc(ranges[k].label)}</button>`).join('') + '</div>';
+}
+
+// The JQL-per-range hover note for the STUCK metric (mirrors jqlNote's styling but
+// for this single list metric, whose query is a status snapshot, not a daily count).
+function stuckJqlNote(meta, ranges, def) {
+  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const users = cfg.MEMBERS.map((m) => m.jira).join(', ');
+  const names = cfg.MEMBERS.map((m) => m.name).join(', ');
+  const excl = meta.excludeIssueTypes.map(q).join(', ');
+  const variants = STUCK_RANGE_ORDER.filter((k) => ranges[k]).map((k) => {
+    const r = ranges[k];
+    const jql = `assignee in (${users}) AND status = ${meta.currentStatus} AND issuetype not in (${excl}) ` +
+      `AND status changed to (${meta.changedToStatus}) during (${q(`${r.from} 00:00`)}, ${q(`${r.to} 23:59`)})`;
+    return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">${code(jql)}</div>`;
+  }).join('');
+  const notes = [
+    'A “stuck” issue = Dev has finished it (it is currently in <b>Resolved</b>) but QA has not yet verified/advanced it — assigned to the team, excluding the team’s own Test-Case / Support-Ticket issue types.',
+    '“Days stuck” = today − the issue’s resolution date.',
+    'The range window bounds WHEN the issue entered Resolved; the status = Resolved clause is point-in-time, so only issues STILL sitting in Resolved appear.',
+    `Team scope: assignee ∈ {${esc(names)}}. Sorted most-stuck first.`,
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for this metric<span class="wlnote-hint"> (for the selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query</div>
+      <ul class="jqllist"><li><b>${esc(meta.label)}</b>${variants}</li></ul>
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+/* ------------------------- FRD / Spec Review / I2L --------------------------- */
+// Slide #15 of the QA Quarterly Review deck, whole-team. A slide-style stat-card card
+// (NOT the count/trend layout): headline "worked" (with a FRD/Spec review/I2L split
+// line, like the slide's "16 I2L + 5 FRD") + "done" + "in progress" + "estimates
+// provided", range-selectable, defaulting to the previous complete quarter (the "Q2"
+// snapshot). Data per range from sources/frd.js: ranges[key] =
+// { worked, done, inProgress, estimates, breakdown:{frd,specReview,i2l,other} }.
+
+// The sub-line under "worked": "N FRD · N Spec review · N I2L" (only non-zero buckets).
+function frdBreakdownLine(bd) {
+  if (!bd) return 'distinct issues logged';
+  const parts = [];
+  if (bd.frd) parts.push(`${bd.frd} FRD`);
+  if (bd.specReview) parts.push(`${bd.specReview} Spec review`);
+  if (bd.i2l) parts.push(`${bd.i2l} I2L`);
+  if (bd.other) parts.push(`${bd.other} other`);
+  return parts.length ? parts.join(' · ') : 'distinct issues logged';
+}
+
+function frdBlock(agg, active) {
+  const card = (v, label, sub, cls) =>
+    `<div class="frdcard ${cls}"><div class="fv">${fmt(v)}</div><div class="fl">${esc(label)}</div><div class="fsub">${esc(sub)}</div></div>`;
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    <div class="frdcards">
+      ${card(agg.worked, 'FRD / I2L worked', frdBreakdownLine(agg.breakdown), 'lead')}
+      ${card(agg.done, 'Done', 'resolved / closed', 'done')}
+      ${card(agg.inProgress, 'In progress', 'open / in progress / reopened', 'prog')}
+      ${card(agg.estimates || 0, 'Estimates provided', 'assignee ≠ QA, or QA gave an estimate', 'est')}
+    </div>
+  </div>`;
+}
+
+function frdSection(meta, m, def) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => frdBlock(m.ranges[k], k === def)).join('\n');
+  return `<section class="metric lead">
+    <h2>${esc(meta.label)} <span class="pill">primary</span> <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+    <p class="muted frdnote">Distinct Jira issues labelled QA-FRD/I2L/Spec that the team logged work on in the selected range — counted ONCE for the team (a spec worked on by both testers is not double-counted). <b>Worked</b> is split by the QA activity in the summary (FRD / Spec review / I2L). <b>Done</b> = statusCategory Done (Resolved / Closed); <b>In progress</b> = everything else (Open / In Progress / Reopened); Worked = Done + In progress. <b>Estimates provided</b> = worked specs whose assignee is not a QA team member (handed back after estimating) OR that carry a QA estimate comment.</p>
+  </section>`;
+}
+
+/* --------- Test cases automated — with vs without Claude (SPLIT card) --------- */
+// Slide #16 stat cards for the SPLIT metric (config.split): three cards — Legacy
+// (without Claude) / With Claude / Total — partitioning a transition metric's daily
+// series at the Claude-adoption cutoff. Reuses the .frdcards / .frdcard styles and the
+// .range-block / data-range range switcher, so it reacts to the same range buttons as
+// every other "By range" card. See sources/automation-split.js for the range shape.
+function splitBlock(agg, active) {
+  const card = (v, label, sub, cls) =>
+    `<div class="frdcard ${cls}"><div class="fv">${fmt(v)}</div><div class="fl">${esc(label)}</div><div class="fsub">${esc(sub)}</div></div>`;
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    <div class="frdcards">
+      ${card(agg.withoutClaude, 'Automated w/o Claude (legacy)', `${agg.pctWithout}% · resolved before ${esc(agg.claudeCutoff)}`, 'est')}
+      ${card(agg.withClaude, 'Automated with Claude', `${agg.pctWith}% · resolved from ${esc(agg.claudeCutoff)}`, 'lead')}
+      ${card(agg.total, 'Total automated', 'Automation scope = Yes', 'done')}
+    </div>
+  </div>`;
+}
+
+function splitRangeSection(meta, m, def, lead, members) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => splitBlock(m.ranges[k], k === def)).join('\n');
+  return `<section class="metric${lead ? ' lead' : ''}">
+    <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+    <p class="muted frdnote">Automation-scope test cases (<code>"Automation scope" = yes</code>) counted on the day their status changed to <b>Resolved</b>, summed over the selected range and split at the team's Claude-adoption date <b>${esc(meta.claudeCutoff)}</b> (first Claude co-authored commit in CRM_AUTO_PLAYWRIGHT). <b>With Claude</b> = resolved on/after the cutoff; <b>without Claude (legacy)</b> = before it; <b>Total</b> = both — the same signal as “Automation Test cases created”, so Total matches that card for the same range.</p>
+  </section>`;
+}
+
+/* ------------------ Executed Test Cases per main feature --------------------- */
+// A grouped bar chart (Executed vs Passed) per Xray Test Repository module — the CRM
+// version of the OA report's "Executed test cases per feature" slide. Whole-team. Data
+// per range from sources/feature-exec.js: featureExec.ranges[key] = { features:[{name,
+// executed, passed, isOther?}], totalExecuted, totalPassed }. Rendered ONLY on the
+// Manual test page, "By range" view, reacting to the same range buttons as the other
+// metrics (its per-range blocks share the .range-block / data-range mechanism).
+const FEAT_EXEC_COLOR = '#2f6cb0'; // Executed (blue)
+const FEAT_PASS_COLOR = '#2e8b4f'; // Passed   (green)
+
+// Round a max value up to a "nice" axis top (5, 10, 20, 50, 100, 200, 500, 1000, …).
+function niceCeil(v) {
+  if (v <= 5) return 5;
+  const pow = Math.pow(10, Math.floor(Math.log10(v)));
+  const n = v / pow;
+  const step = n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10;
+  return step * pow;
+}
+
+function featureExecLegend() {
+  return `<div class="flegend">` +
+    `<span class="fl"><span class="sw" style="background:${FEAT_EXEC_COLOR}"></span>Executed</span>` +
+    `<span class="fl"><span class="sw" style="background:${FEAT_PASS_COLOR}"></span>Passed</span>` +
+    `</div>`;
+}
+
+// Vertical grouped bars: one group per feature, an Executed + a Passed bar each, value
+// labels on top, and the (truncated, full-name-on-hover) module name rotated below.
+// The SVG is sized to its content and lives in an overflow-x:auto wrapper so many
+// modules scroll rather than squash. Passed ⊆ Executed, so the y-axis top follows the
+// executed max.
+function featureExecChart(features) {
+  if (!features || !features.length) return '<p class="muted">No executions in this range.</p>';
+  const n = features.length;
+  const padL = 40, padR = 16, padT = 22, padB = 96, groupW = 62, bw = 20, gap = 5;
+  const W = padL + padR + n * groupW, H = 320;
+  const base = H - padB, plotH = H - padT - padB;
+  const top = niceCeil(Math.max(1, ...features.map((f) => f.executed)));
+  const yOf = (v) => base - (v / top) * plotH;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Executed vs passed per feature">`;
+  const ticks = 4;
+  for (let t = 0; t <= ticks; t++) {
+    const val = Math.round((top * t) / ticks), yy = yOf(val);
+    s += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#ececec"/>`;
+    s += `<text x="${padL - 6}" y="${(yy + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#aaa">${val}</text>`;
+  }
+  features.forEach((f, i) => {
+    const cx = padL + i * groupW + groupW / 2;
+    const ex = cx - bw - gap / 2, px = cx + gap / 2;
+    const eh = (f.executed / top) * plotH, ph = (f.passed / top) * plotH;
+    s += `<rect x="${ex.toFixed(1)}" y="${(base - eh).toFixed(1)}" width="${bw}" height="${eh.toFixed(1)}" fill="${FEAT_EXEC_COLOR}"><title>${esc(f.name)} — Executed ${f.executed}</title></rect>`;
+    s += `<rect x="${px.toFixed(1)}" y="${(base - ph).toFixed(1)}" width="${bw}" height="${ph.toFixed(1)}" fill="${FEAT_PASS_COLOR}"><title>${esc(f.name)} — Passed ${f.passed}</title></rect>`;
+    s += `<text x="${(ex + bw / 2).toFixed(1)}" y="${(base - eh - 4).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${FEAT_EXEC_COLOR}">${f.executed}</text>`;
+    s += `<text x="${(px + bw / 2).toFixed(1)}" y="${(base - ph - 4).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${FEAT_PASS_COLOR}">${f.passed}</text>`;
+    const label = f.name.length > 20 ? `${f.name.slice(0, 19)}…` : f.name;
+    s += `<text x="${cx.toFixed(1)}" y="${base + 12}" font-size="9" text-anchor="end" fill="#666" transform="rotate(-40 ${cx.toFixed(1)} ${base + 12})">${esc(label)}<title>${esc(f.name)}</title></text>`;
+  });
+  s += '</svg>';
+  return `<div class="fchart-wrap">${s}</div>`;
+}
+
+// The JQL-per-range hover note (mirrors jqlNote's styling), toggled per range with the
+// same data-range mechanism as the chart blocks.
+function featureExecNote(fe, def) {
+  const fx = cfg.FEATURE_EXEC;
+  const users = cfg.MEMBERS.map((m) => m.jira).join(', ');
+  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const dayBefore = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+  const variants = METRIC_RANGE_ORDER.filter((k) => fe.ranges[k]).map((k) => {
+    const r = fe.ranges[k];
+    const base = `project = ${fx.project} AND issuetype = ${q(fx.issueType)} AND worklogAuthor in (${users}) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`;
+    const exec = `${base} AND issue in testRepositoryFolderTests(${q(fx.project)}, ${q(`${fx.repoRoot}/<module>`)}, "true")`;
+    return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">` +
+      `<div><b>Executed</b> (per module): ${code(exec)}</div>` +
+      `<div><b>Passed</b>: ${code(`${exec} AND ${fx.passedJql}`)}</div>` +
+      `<div><b>Other</b>: swap the folder clause for ${code(`issue not in testRepositoryFolderTests(${q(fx.project)}, ${q(fx.repoRoot)}, "true")`)}</div>` +
+      `</div>`;
+  }).join('');
+  const notes = [
+    'Counts DISTINCT test cases per range (one JQL per module), so a test case counts ONCE — not the per-day sum used by “Manual Test cases executed”.',
+    `Passed = the test case is Resolved/Closed (${esc(fx.passedJql)}); a still-Open executed TC is executed-but-not-passed.`,
+    'Modules come from the Xray Test Repository (current folder membership); a module with 0 executed in the range is not drawn. “Other” = executed test cases filed outside the CRM test tree.',
+    'Whole team (worklogAuthor ∈ the QA team). The date window follows the range button selected above.',
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How executed &amp; passed are counted<span class="wlnote-hint"> (per selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query per feature (module)</div>
+      ${variants}
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((x) => `<li>${x}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+function featureExecSection(fe, def) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => fe.ranges[k]).map((k) => {
+    const r = fe.ranges[k];
+    const caption = r.features.length
+      ? `<div class="fcaption">Total: <b>${fmt(r.totalExecuted)}</b> executed · <b>${fmt(r.totalPassed)}</b> passed · ${r.features.length} feature${r.features.length === 1 ? '' : 's'}</div>`
+      : '';
+    return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
+      ${featureExecLegend()}
+      ${featureExecChart(r.features)}
+      ${caption}
+    </div>`;
+  }).join('\n');
+  return `<section class="metric lead">
+    <h2>${esc(fe.label)} <span class="pill">whole team</span> <span class="muted">· distinct Post-EA Test Cases with a worklog in range, by Xray Test Repository module · Passed = Resolved/Closed</span></h2>
+    ${featureExecNote(fe, def)}
+    ${blocks}
+  </section>`;
+}
+
 /* ----------------------------- Worklog allocation ---------------------------- */
 
 function pageNav(active) {
   const tab = (href, key, label) =>
     `<a href="${href}" class="pgtab${active === key ? ' active' : ''}">${esc(label)}</a>`;
   return `<div class="pagenav">` +
-    tab('index.html', 'manual', 'Manual test') +
+    tab('index.html', 'jiraDashboard', 'QA CRM - Jira - Dashboard') +
+    tab('frd.html', 'frd', 'FRD/Spec Review/I2L') +
+    tab('manual.html', 'manual', 'Manual test') +
     tab('automation.html', 'automation', 'Automation test') +
     tab('worklog.html', 'worklog', 'Worklog allocation') +
     `</div>`;
@@ -453,6 +835,44 @@ h2{margin:0 0 12px;font-size:17px}
 .track{flex:1;background:#eee;border-radius:6px;height:14px;overflow:hidden}
 .fill{height:100%;border-radius:6px}
 .empval{width:42px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.tlegend{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 2px;font-size:12px;color:#555}
+.tlegend .tl{display:flex;align-items:center;gap:6px}
+.tlegend .sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.pdmeta{font-size:13px;color:#444;display:flex;flex-direction:column;gap:6px}
+.pdwrap{overflow-x:auto}
+.pdtbl{border-collapse:collapse;font-size:13px;min-width:520px}
+.pdtbl th,.pdtbl td{padding:6px 12px;text-align:right;border-bottom:1px solid #eee;font-variant-numeric:tabular-nums}
+.pdtbl th:first-child,.pdtbl td:first-child{text-align:left}
+.pdtbl thead th{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.03em}
+.pdtbl .pdname{font-weight:700}
+.pdtbl .pdrate{font-weight:800;color:#6a3093}
+.pdnote{font-size:11px;margin:8px 0 0}
+.stuckwrap{overflow-x:auto}
+.stucktbl{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 4px}
+.stucktbl th,.stucktbl td{padding:7px 9px;border-bottom:1px solid #eee;text-align:left;vertical-align:top}
+.stucktbl thead th{color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:#f3eefc;border-bottom:2px solid #d9c9ee;white-space:nowrap}
+.stucktbl td.num,.stucktbl th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stucktbl td.skey{white-space:nowrap;font-weight:700}
+.stucktbl td.skey a{color:#6a3093;text-decoration:none}
+.stucktbl td.skey a:hover{text-decoration:underline}
+.stucktbl td.ssum{min-width:280px;color:#333}
+.stucktbl td.stype,.stucktbl td.sasg{white-space:nowrap;color:#555}
+.stucktbl td.sdays{font-weight:700;color:#444}
+.stucktbl td.sdays.stuck-hot{color:#c0392b}
+.stucktbl tbody tr:hover{background:#faf7ff}
+.frdcards{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px}
+.frdcard{flex:1;min-width:170px;background:#faf7fe;border:1px solid #ece3fa;border-radius:12px;padding:18px 22px}
+.frdcard.lead{background:linear-gradient(135deg,#6a3093,#a044ff);border:none;color:#fff}
+.frdcard .fv{font-size:48px;font-weight:800;line-height:1;color:#6a3093}
+.frdcard.lead .fv{color:#fff}
+.frdcard.done .fv{color:#1e7e34}
+.frdcard.prog .fv{color:#e8843c}
+.frdcard.est .fv{color:#2c7be5}
+.frdcard .fl{font-size:14px;font-weight:700;margin-top:10px;color:#444}
+.frdcard.lead .fl{color:#fff}
+.frdcard .fsub{font-size:11px;color:#8a8a8a;margin-top:3px}
+.frdcard.lead .fsub{color:rgba(255,255,255,.85)}
+.frdnote{font-size:11px;margin:14px 0 0;line-height:1.5}
 .foot{margin-top:24px;color:#999;font-size:11px}
 .pagenav{display:flex;gap:8px;margin-top:12px}
 .pagenav .pgtab{font-size:13px;font-weight:600;padding:7px 14px;border-radius:8px;text-decoration:none;color:#fff;background:rgba(255,255,255,.18)}
@@ -478,6 +898,12 @@ h2{margin:0 0 12px;font-size:17px}
 .legend{list-style:none;margin:0;padding:0;font-size:12px}
 .legend li{display:flex;align-items:center;gap:7px;margin:4px 0}
 .legend .sw{width:12px;height:12px;border-radius:2px;display:inline-block;flex:none}
+.fchart-wrap{overflow-x:auto;padding-bottom:4px}
+.flegend{display:flex;gap:18px;margin:2px 0 8px;font-size:12px;color:#555}
+.flegend .fl{display:flex;align-items:center;gap:6px}
+.flegend .sw{width:12px;height:12px;border-radius:2px;display:inline-block}
+.fcaption{margin-top:8px;font-size:12.5px;color:#555}
+.fcaption b{color:#333}
 `;
 
 const APP_JS = `(function () {
@@ -605,7 +1031,7 @@ function main() {
   // Metric metadata by key (Odoo KPI + all Jira-sourced metrics) so each section
   // page can pull exactly the metrics it lists in config.SECTIONS, in that order.
   const metaByKey = {};
-  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS]
+  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_FRD_METRICS, ...cfg.JIRA_TRANSITION_METRICS, ...cfg.JIRA_SPLIT_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_LIST_METRICS]
     .forEach((m) => { metaByKey[m.key] = m; });
 
   const subline = `Team: ${esc(data.members.join(', '))} · Manager: Anh Ho` +
@@ -624,7 +1050,14 @@ function main() {
     const quarterlySections = metrics.filter((m) => data.quarterly && data.quarterly[m.key])
       .map((m, i) => quarterlySection(m, data.quarterly[m.key], i === 0)).join('\n');
     const rangeSections = metrics.filter((m) => data.metrics[m.key])
-      .map((m, i) => rangeSection(m, data.metrics[m.key], defRange, i === 0)).join('\n');
+      .map((m, i) => {
+        const fn = m.split ? splitRangeSection : m.perDay ? perDayRangeSection : rangeSection;
+        return fn(m, data.metrics[m.key], defRange, i === 0, data.members);
+      }).join('\n');
+    // The "Executed Test Cases per main feature" grouped bar chart is a Manual-test-page
+    // extra (its own data shape), shown at the top of the "By range" view only.
+    const featureExecHtml = (navKey === 'manual' && data.featureExec && data.featureExec.ranges)
+      ? featureExecSection(data.featureExec, defRange) : '';
     return `${docHead(title)}
 <div class="hero">
   <h1>CRM QA Team — ${esc(section.label)}</h1>
@@ -646,6 +1079,7 @@ function main() {
     <div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(data.ranges, defRange, METRIC_RANGE_ORDER)}</div>
     ${selector(data.ranges, defRange)}
     ${jqlNote(metrics, data.ranges, defRange, data.kpiJql || {})}
+    ${featureExecHtml}
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 
@@ -659,6 +1093,61 @@ function main() {
   const automationSec = cfg.SECTIONS.find((s) => s.key === 'automation');
   const manualHtml = metricsPageHtml(manualSec, 'manual', 'CRM QA — Manual test');
   const automationHtml = metricsPageHtml(automationSec, 'automation', 'CRM QA — Automation test');
+
+  // --- QA CRM · Jira · Dashboard page (index.html — the leftmost / default landing).
+  // A list-style page (not the count-card layout): each JIRA_LIST_METRICS metric
+  // (currently just STUCK) renders as a headline total + per-assignee split + a table
+  // of the matching issues, over This/Last quarter. See stuckSection above.
+  const jiraDashSec = cfg.SECTIONS.find((s) => s.key === 'jiraDashboard');
+  const jiraBase = data.jiraBaseUrl || 'http://jira.nakivo.com';
+  const stuckDef = 'thisQuarter';
+  const jdMetrics = jiraDashSec ? jiraDashSec.metricKeys.map((k) => metaByKey[k]).filter(Boolean) : [];
+  const stuckSections = jdMetrics.filter((m) => data.metrics[m.key])
+    .map((m) => stuckSection(m, data.metrics[m.key], stuckDef, jiraBase)).join('\n');
+  const stuckNotes = jdMetrics.filter((m) => data.metrics[m.key])
+    .map((m) => stuckJqlNote(m, data.ranges, stuckDef)).join('\n');
+  const jiraDashboardHtml = `${docHead('CRM QA — Jira Dashboard')}
+<div class="hero">
+  <h1>CRM QA Team — ${esc(jiraDashSec ? jiraDashSec.label : 'QA CRM - Jira - Dashboard')}</h1>
+  <div class="sub">${subline}</div>
+  ${pageNav('jiraDashboard')}
+</div>
+<div class="wrap">
+  ${sourceBanner(data.sources)}
+  <div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, stuckDef, STUCK_RANGE_ORDER)}</div>
+  ${stuckSelector(data.ranges, stuckDef)}
+  ${stuckNotes}
+  ${stuckSections || '<p class="muted">No Jira dashboard data available.</p>'}
+  <div class="foot">Source: Jira — issues currently in <code>Resolved</code> assigned to the QA team (excluding the team’s Test-Case / Support-Ticket types) that became resolved in the selected quarter · regenerated daily · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
+  // --- FRD / Spec Review / I2L page (frd.html) -------------------------------
+  // Slide #15 stat cards (worked / done / in progress), range-selectable, defaulting
+  // to the previous complete quarter (the "Q2" snapshot). Sits left of Manual test,
+  // right of the Jira Dashboard landing. Whole-team; no Quarterly-KPI sub-view.
+  const frdSec = cfg.SECTIONS.find((s) => s.key === 'frd');
+  const frdDef = (frdSec && frdSec.defaultRange && data.ranges[frdSec.defaultRange]) ? frdSec.defaultRange : defRange;
+  const frdMetrics = frdSec ? frdSec.metricKeys.map((k) => metaByKey[k]).filter(Boolean) : [];
+  const frdSections = frdMetrics.filter((m) => data.metrics[m.key])
+    .map((m) => frdSection(m, data.metrics[m.key], frdDef)).join('\n');
+  const frdHtml = `${docHead('CRM QA — FRD/Spec Review/I2L')}
+<div class="hero">
+  <h1>CRM QA Team — ${esc(frdSec ? frdSec.label : 'FRD/Spec Review/I2L')}</h1>
+  <div class="sub">${subline}</div>
+  ${pageNav('frd')}
+</div>
+<div class="wrap">
+  ${sourceBanner(data.sources)}
+  <div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, frdDef, METRIC_RANGE_ORDER)}</div>
+  ${selector(data.ranges, frdDef)}
+  ${jqlNote(frdMetrics, data.ranges, frdDef, data.kpiJql || {})}
+  ${frdSections || '<p class="muted">No FRD/I2L data available.</p>'}
+  <div class="foot">Source: Jira — distinct issues labelled QA-FRD/I2L/Spec with a team worklog in the selected range, split by status category (Done vs in progress) · regenerated daily · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
 
   // --- Worklog allocation page (worklog.html) --------------------------------
   // Embed the per-day worklog data + per-column colours so app.js can recompute
@@ -696,10 +1185,12 @@ ${wlDataScript}
   fs.mkdirSync(cfg.OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'styles.css'), CSS);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'app.js'), APP_JS);
-  fs.writeFileSync(path.join(cfg.OUT_DIR, 'index.html'), manualHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'index.html'), jiraDashboardHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'frd.html'), frdHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'manual.html'), manualHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'automation.html'), automationHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'worklog.html'), worklogHtml);
-  console.log(`[render] Wrote index.html (Manual) + automation.html + worklog.html (+ styles.css, app.js)`);
+  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html (+ styles.css, app.js)`);
 }
 
 main();

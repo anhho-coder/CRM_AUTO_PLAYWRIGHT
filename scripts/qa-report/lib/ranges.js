@@ -6,6 +6,7 @@
  *   lastWeek    – previous completed Mon–Sun (default)   – daily buckets
  *   thisMonth   – 1st of this month → today              – daily buckets
  *   thisQuarter – 1st of this quarter → today            – weekly buckets
+ *   lastQuarter – previous complete calendar quarter     – weekly buckets
  *   thisYear    – Jan 1 → today                          – monthly buckets
  *   lastYear    – Jan 1 → Dec 31 of last year            – monthly buckets
  */
@@ -29,10 +30,16 @@ function computeRanges(now) {
   const prevMon = new Date(thisMon); prevMon.setUTCDate(thisMon.getUTCDate() - 7);
   const prevSun = new Date(prevMon); prevSun.setUTCDate(prevMon.getUTCDate() + 6);
   const qStart = Math.floor(m / 3) * 3;
+  // Previous complete quarter: the quarter before the current one. When the current
+  // quarter is Q1 (qStart === 0) it wraps to Q4 of last year. `to` = last day of the
+  // quarter via day-0-of-next-month (JS rolls month 12 into Jan of the next year).
+  const lqStart = qStart === 0 ? 9 : qStart - 3;
+  const lqYear = qStart === 0 ? y - 1 : y;
   return {
     lastWeek: { key: 'lastWeek', label: 'Last week', from: isoDate(prevMon), to: isoDate(prevSun), bucket: 'day' },
     thisMonth: { key: 'thisMonth', label: 'This month', from: isoDate(new Date(Date.UTC(y, m, 1))), to: today, bucket: 'day' },
     thisQuarter: { key: 'thisQuarter', label: 'This quarter', from: isoDate(new Date(Date.UTC(y, qStart, 1))), to: today, bucket: 'week' },
+    lastQuarter: { key: 'lastQuarter', label: 'Last quarter', from: isoDate(new Date(Date.UTC(lqYear, lqStart, 1))), to: isoDate(new Date(Date.UTC(lqYear, lqStart + 3, 0))), bucket: 'week' },
     thisYear: { key: 'thisYear', label: 'This year', from: isoDate(new Date(Date.UTC(y, 0, 1))), to: today, bucket: 'month' },
     lastYear: { key: 'lastYear', label: 'Last year', from: isoDate(new Date(Date.UTC(y - 1, 0, 1))), to: isoDate(new Date(Date.UTC(y - 1, 11, 31))), bucket: 'month' },
   };
@@ -65,15 +72,22 @@ function aggregate(daily, members, range) {
     if (range.bucket === 'month') { key = d.date.slice(0, 7); label = MONTHS[Number(key.slice(5, 7)) - 1]; }
     else if (range.bucket === 'week') { key = isoDate(mondayOf(new Date(d.date + 'T00:00:00Z'))); label = key.slice(5); }
     else { key = d.date; label = d.date.slice(5); }
-    if (!(key in buckets)) { buckets[key] = { label, value: 0 }; order.push(key); }
+    if (!(key in buckets)) { buckets[key] = { label, value: 0, byEmp: {} }; members.forEach((m) => { buckets[key].byEmp[m] = 0; }); order.push(key); }
     buckets[key].value += sum;
+    for (const m of members) buckets[key].byEmp[m] += (d.byEmp[m] || 0);
   }
 
   return {
     key: range.key, label: range.label, from: range.from, to: range.to,
     total: round(total),
     byEmployee: members.map((m) => ({ name: m, value: round(byEmp[m]) })),
-    series: order.sort().map((k) => ({ label: buckets[k].label, value: round(buckets[k].value) })),
+    // Each trend bucket keeps its per-tester split (byEmp) so the page can render a
+    // stacked-by-tester trend; `value` stays the bucket total for the top label.
+    series: order.sort().map((k) => ({
+      label: buckets[k].label,
+      value: round(buckets[k].value),
+      byEmp: Object.fromEntries(members.map((m) => [m, round(buckets[k].byEmp[m])])),
+    })),
   };
 }
 

@@ -32,6 +32,7 @@ Implemented (sourced from Odoo `nakivo.kpi.database`, the team's daily KPI table
 | Test cases created | `Test Cases - New Created` | Odoo KPI DB |
 | Support Ticket created | *(Jira — see below)* | Jira (`createdDate` × `reporter`) |
 | Automation Test cases created | *(Jira — see below)* | Jira (status → Resolved transition × tester) |
+| Test cases automated — with vs without Claude | *(Jira — see below)* | Derived: *Automation Test cases created* split at the 2026-06-05 Claude cutoff |
 
 Scope = QA team members **Anh Ho** (employee 1051) and **Thuat Phung** (1333).
 Each metric shows the period total, a per-tester split, and a daily trend across
@@ -92,6 +93,22 @@ tester costs 1 query instead of 365. It shows in the **By range** view; add
 *(Verified 2026-06-18 against Jira: 425 YTD for Anh Ho — Jan 13, Feb 13, Mar 209,
 Apr 71, May 88, Jun 31 — and 0 for Thuat Phung. The folder clause would give 394
 YTD; the +31 are June test cases not yet in the "CRM automation" folder.)*
+
+**Test cases automated — with vs without Claude** (`JIRA_SPLIT_METRICS` in
+`config.js`, `sources/automation-split.js`) is Slide #16 of the QA Quarterly Review
+deck, rendered as three stat cards on the **Automation test** page ("By range" view):
+*Automated w/o Claude (legacy)* · *Automated with Claude* · *Total automated*. It
+adds **no** Jira query — it re-uses the *Automation Test cases created* daily series
+(`sourceKey`) and, for each range, splits it at the team's Claude-adoption date
+`claudeCutoff` (`2026-06-05`, the first Claude co-authored commit in
+`CRM_AUTO_PLAYWRIGHT`): a test case whose status changed to Resolved **on/after** the
+cutoff counts as *with Claude*, one **before** it as *legacy*, and *Total* = both (so
+Total equals the "Automation Test cases created" card for the same range). The cutoff
+may fall inside a range (Q2: Apr 1–Jun 4 legacy, Jun 5–Jun 30 with Claude), before it
+(a range entirely after adoption → all with Claude), or after it (a pre-adoption range
+like Last year → all legacy). *(Verified 2026-07-02 against Jira for Q2 2026 / last
+quarter: Total 304 = with Claude 145 (Jun 5–30) + legacy 159 (Apr+May); Thuat Phung 0,
+so whole-team = Anh Ho.)*
 
 Planned (see the approved plan / `scripts/qa-report/sources/`): Features in test,
 FRD/Specs, TCs executed, AI/automation activity (from Jira, Confluence and the
@@ -172,8 +189,47 @@ KPI metrics. Add `quarterly: true` to a `JIRA_METRICS` entry to ALSO show it in 
 Quarterly view — `collect.js` then calls `quarterlyActualFromDaily` to fill
 `data.quarterly[key]` (an actual-only card: `kpis: null`, so no QoQ/QvG/QvQY boxes).
 `JIRA_WORKLOG_METRICS` always fill `data.quarterly`. `render.js` lists `KPI_METRICS`
-+ `JIRA_METRICS` + `JIRA_WORKLOG_METRICS` together and the Quarterly view shows only
-the metrics that have a `data.quarterly` entry.
++ `JIRA_METRICS` + `JIRA_WORKLOG_METRICS` + `JIRA_UNIQUE_METRICS` + `JIRA_DERIVED_METRICS`
++ `JIRA_TRANSITION_METRICS` together and the Quarterly view shows only the metrics that
+have a `data.quarterly` entry.
+
+For a **distinct-over-range** (deduplicated) count, add to `JIRA_UNIQUE_METRICS`
+(`{ key, label, issueType, project?, kpiName }`) — the worked example is **Unique
+Executed Test Cases**. Unlike `JIRA_WORKLOG_METRICS` ("Manual Test cases executed"),
+which counts per day and SUMS (a test case worked on N days counts N times), this
+runs ONE window JQL per (range × tester) — `[project = <p> AND] issuetype =
+"<issueType>" AND worklogAuthor in (T) AND worklogDate > "<from − 1 day>" AND
+worklogDate <= "<to>"` — so a test case counts ONCE. A distinct-over-range count is
+NOT additive, so `sources/unique-testexec.js` builds each range's total/by-tester
+directly (not via `aggregate()`) plus a per-bucket distinct trend, and `collect.js`
+assigns it straight into `data.metrics[key].ranges`. It shows in the **By range**
+view only (no additive Quarterly card).
+
+For a **DERIVED rate** (a ratio of two other numbers, not a fetch of its own), add to
+`JIRA_DERIVED_METRICS` (`{ key, label, numeratorKey, issueType, project?, perDay: true,
+kpiName }`) — the worked example is **Executed test cases per day** (Slide #9 of the QA
+Quarterly Review deck). Its numerator is REUSED from the `numeratorKey` metric (here
+`uniqueTcExecuted`, the distinct executed count), so it adds no distinct-count queries.
+Two rates per range:
+
+- **Per calendar-day** = executed ÷ working days, where working days = Mon–Fri dates in
+  the range minus Vietnamese public holidays that fall on a working day (reuses
+  `sources/holidays.fetchHolidayDates`; e.g. Q2 = 65 − 3 = 62).
+- **Per man-day** = executed ÷ test-case-execution man-days, where per tester T
+  `man-days(T) = (test-case worklog hours by T ÷ WORK_HOURS_PER_DAY) × workload(T)` and
+  `workload` is T's capacity factor on `MEMBERS` (Thuat 0.5, Anh 0.25). The only fetch is
+  the man-day effort — the per-day test-case worklog HOURS per tester
+  (`sources/executed-per-day.collectExecEffortDaily`, summed into ranges via
+  `aggregate()`).
+
+`sources/executed-per-day.buildExecutedPerDay` puts the **per-calendar-day** rate in the
+canonical `total`/`byEmployee`/`series` (so per-tester rates sum to the team total —
+shared denominator) and the **per-man-day** rate in `manDay` + a per-tester `byTester`
+breakdown (the team man-day figure is the BLENDED rate `Σexecuted ÷ Σman-days`, not the
+sum of per-tester rates). `render.js` renders `perDay: true` metrics with the two-column
+`perDayRangeSection` card. **By range** view only. NB: the man-day fetch re-reads
+test-case-issue worklogs over ~1.5 years each build (same load profile as
+`sources/worklog`); an incremental cache is a possible follow-up.
 
 ## Worklog allocation page
 

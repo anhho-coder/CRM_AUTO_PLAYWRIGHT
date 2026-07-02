@@ -13,7 +13,13 @@ const cfg = require('./config');
 const { collectKpiMetrics, collectKpiJql } = require('./sources/kpi');
 const { collectJiraMetrics } = require('./sources/support-ticket');
 const { collectTestExecMetrics, quarterlyActualFromDaily } = require('./sources/testexec');
+const { collectUniqueMetrics } = require('./sources/unique-testexec');
+const { collectFrdMetrics } = require('./sources/frd');
+const { collectFeatureExec } = require('./sources/feature-exec');
+const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = require('./sources/executed-per-day');
 const { collectTransitionMetrics } = require('./sources/automation-tc');
+const { buildAutomationClaudeSplit } = require('./sources/automation-split');
+const { collectStuckMetrics } = require('./sources/stuck');
 const { collectQuarterly } = require('./sources/quarterly');
 const { collectWorklog } = require('./sources/worklog');
 const { collectLeave } = require('./sources/leave');
@@ -32,10 +38,12 @@ async function main() {
     ranges,
     defaultView: 'quarterly',
     defaultRange: 'lastWeek',
+    jiraBaseUrl: cfg.jiraBaseUrl(), // for the STUCK issue-list browse links
     sources: {},
     metrics: {},
     quarterly: {},
     worklog: null,
+    featureExec: null,
     kpiJql: {},
   };
 
@@ -106,6 +114,81 @@ async function main() {
     console.error('[collect] Jira test-exec source failed:', e.message || e);
   }
 
+  // --- Jira UNIQUE (single-window) metric(s) (Unique Executed Test Cases): the
+  //     DEDUPLICATED count of DISTINCT test cases each tester logged work on within
+  //     a range, via ONE window JQL per (range × tester) — a test case counts once
+  //     no matter how many days it was touched (cf. the per-day-summed "Manual Test
+  //     cases executed"). A distinct-over-range count is not additive, so it is
+  //     collected directly per range (not via aggregate()); the module also computes
+  //     a per-bucket distinct trend. "By range" view only. Wrapped independently so
+  //     a Jira failure here never blocks the rest of the report.
+  try {
+    const uniq = await collectUniqueMetrics(ranges, members);
+    for (const m of cfg.JIRA_UNIQUE_METRICS) {
+      const d = uniq[m.key];
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+    }
+    data.sources.jiraUniqueTc = { status: 'ok', source: 'jira distinct test-case worklogs' };
+  } catch (e) {
+    data.sources.jiraUniqueTc = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira unique test-case source failed:', e.message || e);
+  }
+
+  // --- Jira FRD / I2L metric(s) (FRD/Spec Review/I2L page): the DISTINCT count of
+  //     spec-review / I2L issues the team logged work on in a range, split into
+  //     worked / done / in progress via ONE window count per JQL (a distinct-over-
+  //     range count is not additive, so collected directly per range like the unique
+  //     metric). Whole-team only. Wrapped independently so a Jira failure here never
+  //     blocks the rest of the report.
+  try {
+    const frd = await collectFrdMetrics(ranges, members);
+    for (const m of cfg.JIRA_FRD_METRICS) {
+      const d = frd[m.key];
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+    }
+    data.sources.jiraFrd = { status: 'ok', source: 'jira FRD/I2L worklog issues' };
+  } catch (e) {
+    data.sources.jiraFrd = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira FRD/I2L source failed:', e.message || e);
+  }
+
+  // --- Jira FEATURE-EXEC (Executed Test Cases per main feature): the DISTINCT count
+  //     of test cases the team executed (worklog in range) per Xray Test Repository
+  //     module, split into executed vs passed (statusCategory = Done) via one window
+  //     count per (range × module × metric). Whole-team; rendered as a grouped bar
+  //     chart on the Manual test page ("By range"). Stored under data.featureExec (a
+  //     custom shape, not the standard by-tester/trend card). Wrapped independently so
+  //     a Jira failure here never blocks the rest of the report.
+  try {
+    data.featureExec = await collectFeatureExec(ranges);
+    data.sources.jiraFeatureExec = { status: 'ok', source: 'jira test-case executions per repository module' };
+  } catch (e) {
+    data.sources.jiraFeatureExec = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira feature-exec source failed:', e.message || e);
+  }
+
+  // --- Jira DERIVED metric(s) (Executed test cases per day): a RATE, not a fetch.
+  //     Numerator = the DISTINCT executed count already collected above (each
+  //     metric's numeratorKey → data.metrics[...]); denominators = working days
+  //     (Mon–Fri minus VN public holidays) for per-calendar-day, and test-case
+  //     worklog HOURS ÷ 8 × workload for per-man-day. Only the man-day effort needs
+  //     a fetch (collectExecEffortDaily). Skipped per metric if its numerator is
+  //     absent (the unique source failed). Wrapped independently.
+  try {
+    const years = [now.getUTCFullYear(), now.getUTCFullYear() - 1];
+    const holidaySet = await holidaySetForYears(years);
+    for (const m of cfg.JIRA_DERIVED_METRICS) {
+      const numerator = data.metrics[m.numeratorKey];
+      if (!numerator) { console.error(`[collect] ${m.label}: numerator '${m.numeratorKey}' missing — skipped.`); continue; }
+      const execDaily = await collectExecEffortDaily(m, fetchStart(now), isoDate(now));
+      data.metrics[m.key] = buildExecutedPerDay(m, ranges, numerator, execDaily, holidaySet, members);
+    }
+    data.sources.jiraExecPerDay = { status: 'ok', source: 'jira test-case worklog hours (derived rate)' };
+  } catch (e) {
+    data.sources.jiraExecPerDay = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira executed-per-day source failed:', e.message || e);
+  }
+
   // --- Jira status-transition metric(s) (Automation Test cases created): for each
   //     day × tester, the count of automation test cases whose status changed to
   //     Resolved that day (the team's exact per-day JQL), summed into the selectable
@@ -121,10 +204,37 @@ async function main() {
       data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
       if (m.quarterly) data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, members, now);
     }
+    // Derived split (no extra Jira fetch): the "with vs without Claude" stat cards
+    // partition a transition metric's daily series at the Claude-adoption cutoff,
+    // reusing atDaily[sourceKey].daily fetched just above (see sources/automation-split.js).
+    for (const m of cfg.JIRA_SPLIT_METRICS) {
+      const src = atDaily[m.sourceKey];
+      if (!src) { console.error(`[collect] ${m.label}: source '${m.sourceKey}' missing — skipped.`); continue; }
+      data.metrics[m.key] = buildAutomationClaudeSplit(m, src.daily, ranges, members);
+    }
     data.sources.jiraAutomationTc = { status: 'ok', source: 'jira automation test-case transitions' };
   } catch (e) {
     data.sources.jiraAutomationTc = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Jira automation test-case source failed:', e.message || e);
+  }
+
+  // --- Jira LIST metric(s) (STUCK — Dev done, QA not tested): issues currently in
+  //     Resolved (assigned to the team, excluding the team's test/support types)
+  //     that became resolved within the range — Dev finished but QA hasn't verified.
+  //     Collected directly per range as a LIST (key/summary/assignee/days stuck),
+  //     only for This quarter + Last quarter (the ranges the Jira Dashboard offers).
+  //     Wrapped independently so a Jira failure here never blocks the rest.
+  try {
+    const stuckRanges = { thisQuarter: ranges.thisQuarter, lastQuarter: ranges.lastQuarter };
+    const stuck = await collectStuckMetrics(stuckRanges, now);
+    for (const m of cfg.JIRA_LIST_METRICS) {
+      const d = stuck[m.key];
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+    }
+    data.sources.jiraStuck = { status: 'ok', source: 'jira resolved-but-not-tested issues' };
+  } catch (e) {
+    data.sources.jiraStuck = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira stuck source failed:', e.message || e);
   }
 
   // --- Worklog allocation page: Jira worklogs (label columns) + the
@@ -175,12 +285,18 @@ async function main() {
   fs.writeFileSync(path.join(cfg.DATA_DIR, 'status.txt'), overall);
 
   console.log(`[collect] status=${overall}; default range lastWeek ${ranges.lastWeek.from}..${ranges.lastWeek.to}`);
-  for (const m of [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_TRANSITION_METRICS]) {
+  for (const m of [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_TRANSITION_METRICS]) {
     const v = data.metrics[m.key];
     if (!v) continue;
     const lw = v.ranges.lastWeek;
     console.log(`[collect]   ${m.label} (last week): ${lw.total} (` +
       lw.byEmployee.map((e) => `${e.name} ${e.value}`).join(', ') + ')');
+  }
+  for (const m of cfg.JIRA_LIST_METRICS) {
+    const v = data.metrics[m.key];
+    if (!v) continue;
+    const tq = v.ranges.thisQuarter, lq = v.ranges.lastQuarter;
+    console.log(`[collect]   ${m.label}: thisQuarter ${tq ? tq.total : 'n/a'}, lastQuarter ${lq ? lq.total : 'n/a'}`);
   }
   if (data.worklog) {
     const lw = data.worklog.ranges.lastWeek;
