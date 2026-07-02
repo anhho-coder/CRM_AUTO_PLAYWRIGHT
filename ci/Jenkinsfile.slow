@@ -178,6 +178,7 @@ pipeline {
                 // ffmpeg still is not there, so tests never run against a missing encoder.
                 // Bump the ffmpeg-#### revision here and in the repo when Playwright is upgraded.
                 bat '''@echo off
+setlocal enabledelayedexpansion
 set "FF=C:\\pw-browsers\\ffmpeg-1011"
 rem Guard on Playwright's INSTALLATION_COMPLETE marker (written only after a
 rem SUCCESSFUL extraction) so a half-extracted/partial ffmpeg from an aborted
@@ -189,7 +190,20 @@ if not exist "%FF%\\INSTALLATION_COMPLETE" (
 ) else (
   echo ffmpeg already present - skipping copy
 )
-if exist "%FF%\\ffmpeg-win64.exe" (echo ffmpeg OK) else (echo ERROR: ffmpeg missing after copy & exit /b 1)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+rem A freshly-copied .exe can be EBUSY on first spawn while AV scans it, which would
+rem make EVERY test error at browserContext.newPage (video spawns ffmpeg per page).
+rem Poll ffmpeg -version until it runs so the AV lock clears BEFORE tests start; fail
+rem fast if it never becomes runnable (then a C:\\pw-browsers AV exclusion is needed).
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
 '''
             }
         }
