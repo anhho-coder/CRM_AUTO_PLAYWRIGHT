@@ -225,6 +225,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: jira-meta fetch returned $LASTEX
 node (Join-Path $Workspace 'ci\allure-inject-skips-card.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skips-card injection returned $LASTEXITCODE (continuing)." }
 
+# ---- Add the "Bugs found by automation test" Overview card ----
+# Bug set = a Jira query (label QA-CRM_Automation); resolved at build time (token
+# via env JIRA_PAT or file C:\allure\jira-pat.txt; falls back to the committed cache).
+node (Join-Path $Workspace 'ci\allure-fetch-automation-bugs.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs fetch returned $LASTEXITCODE (continuing)." }
+node (Join-Path $Workspace 'ci\allure-inject-automation-bugs-card.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs-card injection returned $LASTEXITCODE (continuing)." }
+
 # ---- Update the rolling history from the freshly generated report ----
 $genHist = Join-Path $reportDir 'history'
 if (Test-Path -LiteralPath $genHist) {

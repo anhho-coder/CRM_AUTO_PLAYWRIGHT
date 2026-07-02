@@ -1,0 +1,205 @@
+{
+  "_comment": "Fallback snapshot for the Bugs-found-by-automation card, used by ci/allure-fetch-automation-bugs.js when no live Jira token is on the agent. JQL: project=CRM AND issuetype in (Bug,Bug [Maintenance]) AND labels=QA-CRM_Automation.",
+  "asOf": "2026-07-02T09:30:00+07:00",
+  "jql": "project = CRM AND issuetype in (\"Bug\",\"Bug [Maintenance]\") AND labels = QA-CRM_Automation ORDER BY updated DESC",
+  "bugs": [
+    {
+      "key": "CRM-11289",
+      "summary": "Only \"Company name\" disappear after creating Lead with public domain",
+      "status": "Open",
+      "statusCategory": "new",
+      "assignee": "Vitalii Ivanov",
+      "active": true,
+      "updated": "2026-07-02T05:48:15.000+0300"
+    },
+    {
+      "key": "CRM-9374",
+      "summary": "Pre-production - Lead from India - Delhi does not assign to THD as expected",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Thuat Phung",
+      "active": true,
+      "updated": "2026-07-01T12:10:46.000+0300"
+    },
+    {
+      "key": "CRM-10617",
+      "summary": "When the the Opp created automatically with invalid email in style of Phone number, there is no warning message on Log note of Opp",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Vitalii Ivanov",
+      "active": true,
+      "updated": "2026-07-01T10:32:51.000+0300"
+    },
+    {
+      "key": "CRM-10450",
+      "summary": "Several special characters are not treated as invalid email",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-06-26T08:58:44.000+0300"
+    },
+    {
+      "key": "CRM-11014",
+      "summary": "Preprod - The Lead does not link existing Contact",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-06-16T19:20:54.000+0300"
+    },
+    {
+      "key": "CRM-10150",
+      "summary": "The Opp cannot transfer to Qualified stage even though the required Deal Element has been created",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Thuat Phung",
+      "active": true,
+      "updated": "2026-06-15T11:58:29.000+0300"
+    },
+    {
+      "key": "CRM-10787",
+      "summary": "Automation bug - Lead Merging does not happen if one of Lead is created manually and tag = Can_Merge",
+      "status": "Resolved",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-06-04T17:49:27.000+0300"
+    },
+    {
+      "key": "CRM-10069",
+      "summary": "Spec issue on Investiment module - We need to have the appropriate warning message when importing invalid data for \"Industry\", \"Country\", \"State\", \"Sales team\" and \"Salesperson\" column",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Thuat Phung",
+      "active": true,
+      "updated": "2026-05-25T05:18:13.000+0300"
+    },
+    {
+      "key": "CRM-8929",
+      "summary": "Company name, Job Position, Contact role, Website disappear after creating Lead with public domain",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Vitalii Ivanov",
+      "active": true,
+      "updated": "2026-05-11T10:20:37.000+0300"
+    },
+    {
+      "key": "CRM-9857",
+      "summary": "The audience which is invalid email still be imported to Investment successful",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Vitalii Ivanov",
+      "active": true,
+      "updated": "2026-04-14T12:11:41.000+0300"
+    },
+    {
+      "key": "CRM-9855",
+      "summary": "The file missing \"Company\" field got error message while importing audience to Investment",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-04-14T10:54:32.000+0300"
+    },
+    {
+      "key": "CRM-9854",
+      "summary": "The there is no error message on Investment if importing audience file missing information for \"Investment ID\" field ",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-04-14T10:39:50.000+0300"
+    },
+    {
+      "key": "CRM-9419",
+      "summary": "The Lead assigned to CMD team unexpectedly",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Thuat Phung",
+      "active": true,
+      "updated": "2026-03-20T10:46:25.000+0200"
+    },
+    {
+      "key": "CRM-9305",
+      "summary": "The Lead with \"Lead form\" textbox = VCP6.5-DCV Study Guide is assigned to CMR team sometimes",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-03-09T10:12:21.000+0200"
+    },
+    {
+      "key": "CRM-9421",
+      "summary": "The Lead with the Lead form = \"IT Infrastructure Monitoring Insights and Best Practices\" assigned to CMR team instead of Marketing - BDEU",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-02-26T09:08:10.000+0200"
+    },
+    {
+      "key": "CRM-9252",
+      "summary": "Lead merging - The copied State from Source Lead is transfered to Target Lead incorrectly",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-02-09T09:32:30.000+0200"
+    },
+    {
+      "key": "CRM-8618",
+      "summary": "[Automation] - Sometimes the Lead Assignment rule does not happen",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2026-02-06T08:22:57.000+0200"
+    },
+    {
+      "key": "CRM-9059",
+      "summary": "The Lead that is full filled Salesperson and Sales Team is merged to a same email Lead that is different value at these 2 fields",
+      "status": "Open",
+      "statusCategory": "new",
+      "assignee": "Jase Ngo",
+      "active": false,
+      "updated": "2026-01-28T06:57:18.000+0200"
+    },
+    {
+      "key": "CRM-8930",
+      "summary": "Job Position, Contact role, Website , Street disappear after creating Lead with Business domain",
+      "status": "Open",
+      "statusCategory": "new",
+      "assignee": "Thang Vo",
+      "active": true,
+      "updated": "2026-01-12T08:47:40.000+0200"
+    },
+    {
+      "key": "CRM-8950",
+      "summary": "System Error on Sign-off when I tried to creating Lead since 2pm Jan 09, 2026",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Khang Nguyen Thai Duy",
+      "active": true,
+      "updated": "2026-01-12T08:24:46.000+0200"
+    },
+    {
+      "key": "CRM-8549",
+      "summary": "Cannnot save a Contact which selected Salesperson",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Anh Ho",
+      "active": true,
+      "updated": "2025-12-17T09:35:50.000+0200"
+    },
+    {
+      "key": "CRM-8179",
+      "summary": "Error displays when I played as Max to approve a >4k USD Quotation",
+      "status": "Closed",
+      "statusCategory": "done",
+      "assignee": "Thuat Phung",
+      "active": true,
+      "updated": "2025-11-20T04:53:10.000+0200"
+    }
+  ]
+}

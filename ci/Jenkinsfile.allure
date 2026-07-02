@@ -75,6 +75,9 @@ pipeline {
                 // or file C:\allure\jira-pat.txt; falls back to the committed cache).
                 bat 'node ci/allure-fetch-jira-meta.js allure-report'
                 bat 'node ci/allure-inject-skips-card.js allure-report'
+                // Add the "Bugs found by automation test" card (Jira query, label QA-CRM_Automation).
+                bat 'node ci/allure-fetch-automation-bugs.js allure-report'
+                bat 'node ci/allure-inject-automation-bugs-card.js allure-report'
                 powershell '''
                   $ErrorActionPreference = 'Stop'
                   # Persist this report so its history seeds the next run.
