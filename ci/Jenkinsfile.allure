@@ -74,6 +74,9 @@ pipeline {
                 // Enrich bugs with live Jira status/assignee/updated (token via env JIRA_PAT
                 // or file C:\allure\jira-pat.txt; falls back to the committed cache).
                 bat 'node ci/allure-fetch-jira-meta.js allure-report'
+                // Split the grey "skipped" bar's OTHER half: did-not-run tests
+                // (timeout / aborted / cascade), with an inferred reason + fix.
+                bat 'node ci/allure-build-didnotrun-index.js allure-report tests'
                 bat 'node ci/allure-inject-skips-card.js allure-report'
                 // Add the "Bugs found by automation test" card (Jira query, label QA-CRM_Automation).
                 bat 'node ci/allure-fetch-automation-bugs.js allure-report'

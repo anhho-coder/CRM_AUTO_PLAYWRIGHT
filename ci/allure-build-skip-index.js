@@ -98,6 +98,11 @@ function cleanReason(comment) {
 }
 
 const bySuite = {};
+// Basenames of every spec that DELIBERATELY skips in code. Consumed by
+// allure-build-didnotrun-index.js to tell intentional skips apart from
+// did-not-run skips at the spec-file level (title matching is unreliable —
+// describe.skip inner tests can scan as "(untitled)").
+const skipFilesSet = new Set();
 function addSkip(suite, name, reason, bugs, relFile) {
   if (!bySuite[suite]) bySuite[suite] = { suite, count: 0, bugs: new Set(), reasons: new Set(), tests: [] };
   const s = bySuite[suite];
@@ -112,6 +117,7 @@ for (const file of files) {
   let text;
   try { text = fs.readFileSync(file, 'utf8'); } catch (e) { continue; }
   if (!/test\.skip\s*\(|test\.describe\.skip\s*\(/.test(text)) continue;
+  skipFilesSet.add(path.basename(file).toLowerCase());
 
   const lines = text.split(/\r?\n/);
   const suite = suiteFromPath(file);
@@ -190,6 +196,7 @@ const out = {
   jiraBase: JIRA_BASE,
   totalSkipped,
   totalBugs: allBugs.size,
+  skipFiles: [...skipFilesSet].sort(),   // spec basenames with a static skip -> allure-build-didnotrun-index.js
   bugKeys,               // distinct bug keys -> consumed by allure-fetch-jira-meta.js
   bugMeta: {},           // bug -> { status, statusCategory, assignee, active, updated }; filled by the Jira fetch
   bugMetaSource: 'none', // 'jira-live' | 'cache' | 'none'

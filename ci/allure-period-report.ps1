@@ -222,6 +222,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skip-index build returned $LASTE
 # file C:\allure\jira-pat.txt; falls back to the committed cache when absent).
 node (Join-Path $Workspace 'ci\allure-fetch-jira-meta.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: jira-meta fetch returned $LASTEXITCODE (continuing)." }
+# Split the grey "skipped" bar's OTHER half: did-not-run tests (timeout / aborted /
+# cascade), with an inferred reason + suggested fix -> crm-didnotrun.json (section 1.2).
+node (Join-Path $Workspace 'ci\allure-build-didnotrun-index.js') $reportDir (Join-Path $Workspace 'tests')
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: didnotrun-index build returned $LASTEXITCODE (continuing)." }
 node (Join-Path $Workspace 'ci\allure-inject-skips-card.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: skips-card injection returned $LASTEXITCODE (continuing)." }
 
