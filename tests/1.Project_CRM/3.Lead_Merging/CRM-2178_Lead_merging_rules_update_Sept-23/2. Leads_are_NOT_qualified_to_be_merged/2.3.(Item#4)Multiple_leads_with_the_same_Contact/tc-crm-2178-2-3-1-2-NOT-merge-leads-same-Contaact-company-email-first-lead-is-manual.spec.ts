@@ -7,8 +7,10 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead Merging Test - Same Contact with Contact.Level NOT set
  * Test Case ID: CRM-2178_2.3.1.1
- * 
- * Summary: Verify that the merging lead does NOT happen when the leads with the same Contact 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-07-02
+ *
+ * Summary: Verify that the merging lead does NOT happen when the leads with the same Contact
  * and associated Contact.Level is NOT set
  * 
  * Command to run:
@@ -78,7 +80,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 
  * Steps to reproduce:
  * III. Verify on Lead#1:
- * 1. Wait for 1 minute for Lead Merging NOT happened
+ * 1. Wait for 5 minutes for Lead Merging NOT happened
  * 2. Open the Lead 1 using URL_Lead#1
  * 3. Verify the following:
  *    3.1. Tag field contains 1 value: "Can_Merge"
@@ -88,6 +90,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    3.5. State dropdown list = Flanders
  *    3.6. Sales Team dropdown list has a value or not
  *    3.7. Email textbox = Email_Contact#1
+ *    3.8. The Log note does not contains term "This lead has been merged into"
  * 4. Click at "CRM Developer" tab at the bottom of page and verify the following:
  *    4.1. Lead form textbox = BLANK
  *    4.2. Active checkbox = TRUE
@@ -127,6 +130,12 @@ test.describe('CRM-2178_2.3.1.1 - Lead Merging: Same Contact with Contact.Level 
   test.afterEach(async ({ page }, testInfo) => {
     // If test failed, wait for page to stabilize before Playwright takes automatic screenshot
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
+      // Surface WHY the test failed (the assertion reason), not just the stabilize wait
+      const failureReason = testInfo.error?.message?.split('\n').slice(0, 8).join('\n').trim();
+      if (failureReason) {
+        console.log('❌ TEST FAILED - reason:');
+        console.log(`   ${failureReason.replace(/\n/g, '\n   ')}`);
+      }
       console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       
       // Wait for any loading spinners to disappear
@@ -421,11 +430,11 @@ test.describe('CRM-2178_2.3.1.1 - Lead Merging: Same Contact with Contact.Level 
     });
 
     // STEP 1: Wait and verify Lead Merging does NOT happen
-    await test.step('Step 1: Wait for 1 minute for Lead Merging NOT happened', async () => {
+    await test.step('Step 1: Wait for 5 minutes for Lead Merging NOT happened', async () => {
       console.log('\n=== STEP 1: WAIT AND VERIFY LEAD MERGING DOES NOT HAPPEN ===');
-      console.log('⏳ Waiting 60 seconds to confirm NO lead merging occurs...');
-      
-      await page.waitForTimeout(60000);
+      console.log('⏳ Waiting 5 minutes to confirm NO lead merging occurs (async merge window)...');
+
+      await page.waitForTimeout(CommonUtils.waitTimes.leadMergeObservation);
       
       console.log('✓ Wait complete - proceeding to verification (expecting NO merging)\n');
     });
@@ -497,9 +506,29 @@ test.describe('CRM-2178_2.3.1.1 - Lead Merging: Same Contact with Contact.Level 
       // Step 3.7: Verify Email (should be email1, same as Contact #1)
       await test.step('Step 3.7: Email textbox = Email_Contact#1', async () => {
         const email = await leadPage.getEmailReadonly();
-        
+
         expect(email).toContain(email1);
         console.log(`  ✓ Step 3.7: Email = ${email1} (Email_Contact#1)`);
+      });
+
+      // Step 3.8: Verify the Log note does NOT contain the merge message (NO MERGING occurred)
+      await test.step('Step 3.8: The Log note does not contain "This lead has been merged into"', async () => {
+        const logText = await leadPage.getChatterLogText();
+        const wasMerged = logText.includes('This lead has been merged into');
+
+        if (wasMerged) {
+          const mergeNote = (logText.match(/This lead has been merged into[^\r\n]*/) || [])[0]?.trim()
+            || 'This lead has been merged into <another lead>';
+          console.log(`  ❌ Step 3.8 FAILED: Lead #1 WAS merged - Log note says: "${mergeNote}"`);
+          console.log(`     -> Known bug CRM-9059: leads with the same Contact (Contact.Level NOT set) must NOT be merged.`);
+        } else {
+          console.log(`  ✓ Step 3.8: Log note does NOT contain "This lead has been merged into" (no merge)`);
+        }
+
+        expect(
+          wasMerged,
+          'Lead #1 Log note contains "This lead has been merged into" - the two leads WERE merged, which must NOT happen (known bug CRM-9059)'
+        ).toBe(false);
       });
     });
 

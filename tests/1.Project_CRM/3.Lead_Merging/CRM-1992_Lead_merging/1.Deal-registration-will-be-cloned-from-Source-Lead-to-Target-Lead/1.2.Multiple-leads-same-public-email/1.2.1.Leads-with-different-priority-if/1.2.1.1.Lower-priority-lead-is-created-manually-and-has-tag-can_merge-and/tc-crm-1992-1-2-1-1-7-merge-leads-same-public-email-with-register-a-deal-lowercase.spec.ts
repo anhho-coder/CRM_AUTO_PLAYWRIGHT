@@ -120,6 +120,12 @@ test.describe('CRM-1992_1.2.1.1.7 - Lead Merging: Same Public Email with Deal Re
 
   test.afterEach(async ({ page }, testInfo) => {
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
+      // Surface WHY the test failed (the assertion reason), not just the stabilize wait
+      const failureReason = testInfo.error?.message?.split('\n').slice(0, 8).join('\n').trim();
+      if (failureReason) {
+        console.log('❌ TEST FAILED - reason:');
+        console.log(`   ${failureReason.replace(/\n/g, '\n   ')}`);
+      }
       console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       const spinnerLocator = page.locator('.o_loading, .oe_loading, [class*="loading"]');
       await page.waitForTimeout(3000);

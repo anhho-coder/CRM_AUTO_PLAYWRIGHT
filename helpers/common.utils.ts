@@ -363,6 +363,8 @@ export class CommonUtils {
     assignmentTestTimeout: 2580000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
+    /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */
+    leadMergeObservation: 300000,
     /** Wait time for lead merging process (5 minutes) */
     leadMerging: 60000,
     /** Short wait - 300ms (for quick UI updates, dropdowns) */

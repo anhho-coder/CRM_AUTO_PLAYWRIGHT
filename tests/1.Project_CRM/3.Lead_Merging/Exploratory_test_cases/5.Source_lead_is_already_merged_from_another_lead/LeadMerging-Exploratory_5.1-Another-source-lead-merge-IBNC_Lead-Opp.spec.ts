@@ -154,6 +154,12 @@ test.describe('LeadMerging-Exploratory_5.1 - Source Lead Already Merged from Ano
   test.afterEach(async ({ page }, testInfo) => {
     // If test failed, wait for page to stabilize before Playwright takes automatic screenshot
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
+      // Surface WHY the test failed (the assertion reason), not just the stabilize wait
+      const failureReason = testInfo.error?.message?.split('\n').slice(0, 8).join('\n').trim();
+      if (failureReason) {
+        console.log('❌ TEST FAILED - reason:');
+        console.log(`   ${failureReason.replace(/\n/g, '\n   ')}`);
+      }
       console.log('⚠️ Test failed - waiting for page to stabilize before screenshot...');
       
       // Wait for any loading spinners to disappear
