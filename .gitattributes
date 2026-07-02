@@ -1,0 +1,6 @@
+# Ship Playwright's ffmpeg binary for CI verbatim: the Jenkins agent's AV stalls
+# CDN zip extraction, so the pipeline copies this committed binary into
+# C:\pw-browsers instead of running `npx playwright install ffmpeg`. Force binary
+# handling so no checkout (on the agent especially) ever CRLF-mangles the executable.
+*.exe binary
+ci/ffmpeg/** binary

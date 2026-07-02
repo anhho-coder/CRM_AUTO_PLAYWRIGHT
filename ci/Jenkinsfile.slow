@@ -165,17 +165,29 @@ pipeline {
             }
         }
 
-        stage('Install ffmpeg (for video recording)') {
+        stage('Ensure ffmpeg present (for video recording)') {
             steps {
-                // Video recording (video:'retain-on-failure' in playwright.config.ts)
-                // needs Playwright's ffmpeg. Unlike the 90-150 MB browser zips that
-                // stall on this agent's AV during extraction, ffmpeg is a single ~2 MB
-                // binary that extracts fine. It installs into PLAYWRIGHT_BROWSERS_PATH
-                // (C:\pw-browsers, shared with the main Jenkinsfile) and later builds
-                // skip the download once it's present. Without this, the slow suites
-                // would only get video by side-effect of a main-Jenkinsfile job having
-                // populated ffmpeg first, so keep this stage for self-contained builds.
-                bat 'npx playwright install ffmpeg'
+                // Video recording (video:'retain-on-failure' in playwright.config.ts) needs
+                // Playwright's ffmpeg. `npx playwright install ffmpeg` downloads fine but this
+                // agent's AV STALLS the zip extraction indefinitely (same failure as the big
+                // browser zips), so we cannot install from the CDN. Instead we ship the
+                // ~3.5 MB ffmpeg-win64.exe in the repo (ci/ffmpeg/ffmpeg-1011) and copy it into
+                // the Playwright browsers cache (PLAYWRIGHT_BROWSERS_PATH = C:\pw-browsers,
+                // shared with the main Jenkinsfile) - a plain file copy is unaffected by the
+                // extraction stall. Idempotent (copies only when absent) and fails fast if
+                // ffmpeg still is not there, so tests never run against a missing encoder.
+                // Bump the ffmpeg-#### revision here and in the repo when Playwright is upgraded.
+                bat '''@echo off
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\ffmpeg-win64.exe" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if exist "%FF%\\ffmpeg-win64.exe" (echo ffmpeg OK) else (echo ERROR: ffmpeg missing after copy & exit /b 1)
+'''
             }
         }
 
