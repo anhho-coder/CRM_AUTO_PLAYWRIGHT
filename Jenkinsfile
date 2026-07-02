@@ -33,6 +33,16 @@ pipeline {
             defaultValue: '',
             description: 'Optional Playwright --grep regex matched on test TITLES (the CRM-XXXX_X.X.X: prefix). Runs every matching test across all sections on chrome-headless. Combine several IDs with | to re-run an exact set. Ignored when SPEC or JIRA_PATH is set. Precedence: SPEC > JIRA_PATH > GREP > PROJECT.'
         )
+        choice(
+            name: 'ROUTE_GATE',
+            choices: ['auto', 'failfast', 'retry', 'off'],
+            description: 'Pre-prod VPN route pre-flight, run on the dedicated "probe" node. auto = retry when triggered by timer/upstream (unattended) else fail-fast; failfast = abort in ~30s if the pre-prod route is down; retry = re-probe up to ROUTE_GATE_MIN minutes then abort; off = skip. Nightly/weekend launchers should pass ROUTE_GATE=retry.'
+        )
+        string(
+            name: 'ROUTE_GATE_MIN',
+            defaultValue: '15',
+            description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry). Re-probes every 60s up to this many minutes, then aborts with "ABORTED: pre-prod VPN route down".'
+        )
     }
 
     environment {
@@ -69,6 +79,59 @@ pipeline {
     }
 
     stages {
+        stage('Pre-prod route gate') {
+            // Runs on the dedicated 'probe' node (1 executor, EXCLUSIVE) so the route
+            // probe can never be starved by the 3 shared executors. Aborting here (instead
+            // of launching the run) prevents a whole build of ERR_CONNECTION_* garbage when
+            // the VPN route to pre-prod (10.220.222.100) is down. Modes (param ROUTE_GATE):
+            //   failfast = probe once; abort in ~30s if the route is down
+            //   retry    = re-probe every 60s up to ROUTE_GATE_MIN minutes, then abort
+            //   auto     = retry when unattended (timer/upstream cause) else failfast
+            //   off      = skip the gate
+            agent { label 'probe' }
+            steps {
+                script {
+                    def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    if (mode == 'auto') {
+                        def unattended = false
+                        try {
+                            unattended = currentBuild.getBuildCauses().any {
+                                def c = (it._class ?: '')
+                                c.contains('TimerTrigger') || c.contains('SCMTrigger') || c.contains('UpstreamCause')
+                            }
+                        } catch (ignored) { unattended = false }
+                        mode = unattended ? 'retry' : 'failfast'
+                    }
+                    if (mode == 'off') {
+                        echo 'ROUTE_GATE=off -> skipping the pre-prod route pre-flight.'
+                    } else {
+                        def budget = 0
+                        if (mode == 'retry') {
+                            def m = (params.ROUTE_GATE_MIN ?: '15').trim()
+                            budget = m.isInteger() ? m.toInteger() : 15
+                        }
+                        echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
+                        def routeUp = {
+                            return bat(returnStatus: true,
+                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                        }
+                        def waited = 0
+                        def up = routeUp()
+                        while (!up && waited < budget) {
+                            echo "  route DOWN (waited ${waited}/${budget} min) - vpn-watchdog may reconnect; re-probing in 60s..."
+                            sleep(time: 60, unit: 'SECONDS')
+                            waited++
+                            up = routeUp()
+                        }
+                        if (!up) {
+                            error("ABORTED: pre-prod VPN route down (mode=${mode}, waited ${waited} min). Test run NOT launched to avoid ERR_CONNECTION garbage - re-run when the route is back (see the CRM-Connectivity-Check job).")
+                        }
+                        echo "Pre-prod route UP (Reply from 10.220.222.100)" + (waited > 0 ? " after ${waited} min" : "") + " -> proceeding to build & test."
+                    }
+                }
+            }
+        }
+
         stage('Checkout (long-path safe)') {
             steps {
                 // Let git create paths > 260 chars on Windows, then check out.
@@ -81,31 +144,6 @@ pipeline {
             steps {
                 bat 'node --version'
                 bat 'npm --version'
-            }
-        }
-
-        stage('Connectivity check (VPN / pre-prod)') {
-            // Informational: the CRM tests require the agent to reach the
-            // internal pre-prod host. If this warns, the agent has no VPN
-            // route and every test will time out at the login step.
-            steps {
-                powershell '''
-                    try {
-                        $r = Invoke-WebRequest -Uri 'http://pre-production.nakivo.site/' -UseBasicParsing -TimeoutSec 20 -MaximumRedirection 0 -ErrorAction Stop
-                        Write-Host "OK - pre-prod reachable (HTTP $($r.StatusCode))"
-                    } catch [System.Net.WebException] {
-                        # A redirect (301) still proves reachability.
-                        if ($_.Exception.Response) {
-                            Write-Host "OK - pre-prod reachable (HTTP $([int]$_.Exception.Response.StatusCode))"
-                        } else {
-                            Write-Host "##### WARNING: pre-prod NOT reachable - check VPN/network on this agent #####"
-                            Write-Host $_.Exception.Message
-                        }
-                    } catch {
-                        Write-Host "##### WARNING: pre-prod NOT reachable - check VPN/network on this agent #####"
-                        Write-Host $_.Exception.Message
-                    }
-                '''
             }
         }
 
