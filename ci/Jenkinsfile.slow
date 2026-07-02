@@ -179,7 +179,10 @@ pipeline {
                 // Bump the ffmpeg-#### revision here and in the repo when Playwright is upgraded.
                 bat '''@echo off
 set "FF=C:\\pw-browsers\\ffmpeg-1011"
-if not exist "%FF%\\ffmpeg-win64.exe" (
+rem Guard on Playwright's INSTALLATION_COMPLETE marker (written only after a
+rem SUCCESSFUL extraction) so a half-extracted/partial ffmpeg from an aborted
+rem `install` is repaired by a fresh copy rather than skipped.
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
   echo Placing ffmpeg from repo - CDN extraction stalls on this agent
   if not exist "%FF%" mkdir "%FF%"
   copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
