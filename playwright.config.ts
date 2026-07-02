@@ -155,13 +155,15 @@ export default defineConfig({
     },
     {
       // CI project: runs on the agent's installed Google Chrome (channel:'chrome')
-      // so no Playwright browser is downloaded/extracted. video:'off' also avoids
-      // the ffmpeg download. Use with: --project=chrome-headless
+      // so no Playwright browser is downloaded/extracted. Video is retained only
+      // for failing tests (screenshot stays 'on' for every test via the shared
+      // `use` block); the Jenkinsfile installs Playwright's small ffmpeg binary so
+      // recording works on the agent. Use with: --project=chrome-headless
       name: 'chrome-headless',
       use: { ...devices['Desktop Chrome'],
         channel: 'chrome',
         headless: true,
-        video: 'off',
+        video: 'retain-on-failure',
       },
     },
 
@@ -170,32 +172,32 @@ export default defineConfig({
     {
       name: 'SalesReport_Performance',
       testDir: './tests/1.Project_CRM/1.SalesReport_Performance',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
     {
       name: 'Leads_Assignment',
       testDir: './tests/1.Project_CRM/2.Leads_Assignment',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
     {
       name: 'Lead_Merging',
       testDir: './tests/1.Project_CRM/3.Lead_Merging',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
     {
       name: 'Investments',
       testDir: './tests/1.Project_CRM/4.Investments',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
     {
       name: 'CRM_Module',
       testDir: './tests/1.Project_CRM/9.CRM_Module',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
     {
       name: 'O12',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'off' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
 
     // {

@@ -127,6 +127,17 @@ pipeline {
             }
         }
 
+        stage('Install ffmpeg (for video recording)') {
+            steps {
+                // Video recording (video:'retain-on-failure' in playwright.config.ts)
+                // needs Playwright's ffmpeg. Unlike the 90-150 MB browser zips that
+                // stall on this agent's AV during extraction, ffmpeg is a single ~2 MB
+                // binary that extracts fine. It installs into PLAYWRIGHT_BROWSERS_PATH
+                // (C:\pw-browsers) and later builds skip the download once it's present.
+                bat 'npx playwright install ffmpeg'
+            }
+        }
+
         stage('Run Playwright test (headless on Chrome)') {
             steps {
                 script {
