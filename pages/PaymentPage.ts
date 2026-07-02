@@ -51,6 +51,9 @@ export class PaymentPage extends BasePage {
   private readonly statusBar             = () => this.page.locator('.o_statusbar_status').first();
   private readonly journalItemsButton    = () => this.page.locator('xpath=//button[@name="button_journal_entries"]').or(this.page.locator('.oe_stat_button', { hasText: /Journal Items/i })).first();
   private readonly invoicesSmartButton   = () => this.page.locator('xpath=//button[@name="button_invoices"]').or(this.page.locator('.oe_stat_button', { hasText: /Invoices/i })).first();
+  // "Payment Matching" smart button (open_payment_matching_screen) - visible ONLY when move_reconciled=false
+  // (i.e. the payment is NOT fully reconciled). Its absence => the payment is reconciled.
+  private readonly paymentMatchingButton = () => this.page.locator('xpath=//button[@name="open_payment_matching_screen"]').first();
   private readonly firstDataRow          = () => this.page.locator('tr.o_data_row').first();
   // "Journal Entry" (move_id) on the account.move.line form - readonly link.
   private readonly moveIdLink            = () => this.page.locator('xpath=//a[@name="move_id"]').or(this.page.locator('xpath=//div[@name="move_id"]')).first();
@@ -516,6 +519,44 @@ export class PaymentPage extends BasePage {
       await this.wait(CommonUtils.waitTimes.short);
     }
     return await this.readVisibleDialogText();
+  }
+
+  /**
+   * DIAGNOSTIC: press CANCEL once (no retry, no pre-dismiss) and report what happens - the full dialog
+   * text (traceback via "See details" when present) and the status after ~16s. Used to investigate why
+   * a specific payment refuses to cancel. Does not mutate anything beyond the single click.
+   */
+  async probeCancelOutcome(): Promise<{ clicked: boolean; dialogText: string; statusAfter: string }> {
+    const statusBefore = await this.getStatus().catch(() => '');
+    const button = this.cancelPaymentButton();
+    const visible = await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (!visible) {
+      return { clicked: false, dialogText: '', statusAfter: statusBefore };
+    }
+    await button.click();
+    let dialogText = '';
+    for (let i = 0; i < 8; i++) {
+      await this.wait(CommonUtils.waitTimes.long);
+      dialogText = await this.expandAndReadErrorDialog();
+      if (dialogText) break;
+      const st = await this.getStatus().catch(() => '');
+      if (/cancel/i.test(st)) break;
+    }
+    const statusAfter = await this.getStatus().catch(() => '');
+    return { clicked: true, dialogText, statusAfter };
+  }
+
+  /**
+   * DIAGNOSTIC: read the reconciliation / linkage signals on the OPEN payment form:
+   *   - reconciled       : true when the "Payment Matching" button is ABSENT (move_reconciled=true)
+   *   - invoicesCount    : the "Invoices" smart-button count (payments registered from an invoice)
+   *   - hasJournalItems  : whether the "Journal Items" smart button is present
+   */
+  async readPaymentLinkage(): Promise<{ reconciled: boolean; invoicesCount: number; hasJournalItems: boolean }> {
+    const matchingVisible = await this.paymentMatchingButton().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    const invoicesCount = await this.getInvoicesSmartButtonCount().catch(() => 0);
+    const hasJournalItems = await this.journalItemsButton().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    return { reconciled: !matchingVisible, invoicesCount, hasJournalItems };
   }
 
   /**
