@@ -142,6 +142,13 @@ export class LeadPage extends BasePage {
       .or(this.mergePickerDialog().locator('xpath=.//input[contains(@placeholder,"Search")]')).first();
   private readonly mergePickerFirstRow = () =>
     this.mergePickerDialog().locator('xpath=.//tr[contains(@class,"o_data_row")][1]').first();
+  // All data rows in the "Add: Opportunities" picker (used to count how many the email filter produced)
+  private readonly mergePickerDataRows = () =>
+    this.mergePickerDialog().locator('xpath=.//tr[contains(@class,"o_data_row")]');
+  // A picker data row whose Sales Team cell equals the given team - the picker has no name column, so the
+  // Sales Team distinguishes Opp#1 (e.g. CMR) from a background-scored opportunity on the same domain (e.g. IBSA)
+  private readonly mergePickerRowByTeam = (team: string) =>
+    this.mergePickerDialog().locator(`xpath=.//tr[contains(@class,"o_data_row")][.//td[normalize-space()="${team}"]]`).first();
   // A picker data row whose cells contain both the given Salesperson and Sales Team (matches Lead#1's assignment)
   private readonly mergePickerRowByPersonAndTeam = (salesperson: string, salesTeam: string) =>
     this.mergePickerDialog().locator(`xpath=.//tr[contains(@class,"o_data_row")][.//td[contains(normalize-space(),"${salesperson}")] and .//td[contains(normalize-space(),"${salesTeam}")]]`).first();
@@ -416,6 +423,74 @@ export class LeadPage extends BasePage {
     await this.mergePickerSelectButton().click({ timeout: t }).catch(() => {});
     await this.mergePickerDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility });
     await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Merge sub-flow (CRM-10066): in the conversion wizard "Opportunities" section, click "Add a line",
+   * filter the "Add: Opportunities" picker by the existing Opportunity's email (faithful to the bug's
+   * step 5), then select Opp#1 by its Sales Team. Filtering by email can return several opportunities
+   * that share the same company domain (e.g. a background-scored opportunity created from the Lead itself),
+   * and the picker has NO opportunity-name column - so the Sales Team cell is used to pick the exact Opp#1
+   * (e.g. CMR) and skip the noise (e.g. an IBSA-team scored opp). Every candidate row is logged for diagnosis.
+   * @param email     - the unique email of the existing Opportunity to merge into (Lead#1 shares only its domain)
+   * @param salesTeam - Opp#1's Sales Team (e.g. 'CMR'), used to pick the exact picker row
+   * @returns rowCount (rows the email filter produced) and selectedByTeam (whether Opp#1's row was matched by team)
+   */
+  async addOpportunityToMergeByEmailAndTeam(
+    email: string,
+    salesTeam: string
+  ): Promise<{ rowCount: number; selectedByTeam: boolean }> {
+    const t = CommonUtils.waitTimes.elementVisibility; // bound each interaction so a mislocate fails fast (not at the test timeout)
+
+    // 1. Open the "Add: Opportunities" picker via the "Add a line" link in the Opportunities section
+    const addLine = this.mergeAddLineLink();
+    await addLine.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await addLine.click({ timeout: t });
+    await this.mergePickerDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // 2. Filter the picker by email. Odoo's searchview only reacts to real key events,
+    //    so use pressSequentially + Enter (fill() does not trigger the search).
+    const search = this.mergePickerSearchInput();
+    await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await search.click({ timeout: t });
+    await search.clear({ timeout: t }).catch(() => {});
+    await search.pressSequentially(email, { delay: 10 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await search.press('Enter');
+    await this.wait(CommonUtils.waitTimes.searchOppWait);
+
+    const rowCount = await this.mergePickerDataRows().count().catch(() => 0);
+    const rowTexts = await this.mergePickerDataRows().allInnerTexts().catch(() => [] as string[]);
+    rowTexts.forEach((txt, i) =>
+      console.log(`  - Picker row ${i + 1} (email filter): ${txt.replace(/\s+/g, ' ').trim().substring(0, 120)}`)
+    );
+
+    // 3. Select the row whose Sales Team = Opp#1's team (e.g. CMR). Do NOT fall back to an arbitrary row -
+    //    picking the wrong opportunity would silently corrupt the merge target.
+    const target = this.mergePickerRowByTeam(salesTeam);
+    const selectedByTeam = await target.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    if (!selectedByTeam) {
+      console.log(`  - No picker row with Sales Team "${salesTeam}" found among the email-filtered rows`);
+      return { rowCount, selectedByTeam: false };
+    }
+    await target.scrollIntoViewIfNeeded({ timeout: t }).catch(() => {});
+
+    // Tick the row's checkbox (use check() so it reliably toggles and enables the "Select" button),
+    // falling back to clicking the row's selector cell if the input is not a standard checkbox.
+    const checkbox = target.locator('input[type="checkbox"]').first();
+    await checkbox.check({ force: true, timeout: t }).catch(async () => {
+      await target.locator('td').first().click({ timeout: t, force: true }).catch(() => {});
+    });
+    await this.wait(CommonUtils.waitTimes.short);
+
+    // Confirm the selection; the picker MUST close (no silent catch on the wait) so a stuck picker
+    // surfaces here instead of blocking the later "Create Opportunity" click.
+    await this.mergePickerSelectButton().click({ timeout: t }).catch(() => {});
+    await this.mergePickerDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.standard);
+
+    return { rowCount, selectedByTeam: true };
   }
 
   /**
