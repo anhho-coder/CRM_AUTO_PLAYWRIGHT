@@ -240,10 +240,11 @@ test.describe('CRM-10066_2.2 - Manual merge (Convert to Opportunity) into two Op
 
       // Get the chatter once (reload-and-retry until the Lead#1 merge note appears), then check both notes in it.
       const leadMerge = await opportunityPage.waitForChatterContaining(`Merged lead : ${lead1Name}`, 3, CommonUtils.waitTimes.long);
-      const opp2Merged = leadMerge.chatterText.includes(`Merged lead : ${opp2Name}`);
+      // A merged OPPORTUNITY is logged as "Merged opportunity : <name>" (a merged LEAD uses "Merged lead : <name>").
+      const opp2Merged = leadMerge.chatterText.includes(`Merged opportunity : ${opp2Name}`);
       const stageNewVisible = await opportunityPage.isStageNewVisible();
       console.log(`  - Opp#1 log shows "Merged lead : Lead#1": ${leadMerge.found}`);
-      console.log(`  - Opp#1 log shows "Merged lead : Opp#2" : ${opp2Merged}`);
+      console.log(`  - Opp#1 log shows "Merged opportunity : Opp#2" : ${opp2Merged}`);
       console.log(`  - Opp#1 shows Stage "New"               : ${stageNewVisible}`);
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Merge completed (Opp#1 master result)');
@@ -254,7 +255,7 @@ test.describe('CRM-10066_2.2 - Manual merge (Convert to Opportunity) into two Op
       console.log(`     Actual (found)      : ${leadMerge.found ? 'FOUND' : 'NOT FOUND'}`);
       console.log(`     Result              : ${leadMerge.found ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #2 - Master Opp records the merged Opp#2:');
-      console.log(`     Expected (contains) : "Merged lead : ${opp2Name}"`);
+      console.log(`     Expected (contains) : "Merged opportunity : ${opp2Name}"`);
       console.log(`     Actual (found)      : ${opp2Merged ? 'FOUND' : 'NOT FOUND'}`);
       console.log(`     Result              : ${opp2Merged ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #3 - Master Opp still shows Stage "New":');
@@ -264,7 +265,7 @@ test.describe('CRM-10066_2.2 - Manual merge (Convert to Opportunity) into two Op
       console.log('===============================================');
 
       expect(leadMerge.found, `Verify #1 FAILED - master Opp should record "Merged lead : ${lead1Name}"`).toBeTruthy();
-      expect(opp2Merged, `Verify #2 FAILED - master Opp should record "Merged lead : ${opp2Name}"`).toBeTruthy();
+      expect(opp2Merged, `Verify #2 FAILED - master Opp should record "Merged opportunity : ${opp2Name}"`).toBeTruthy();
       expect(stageNewVisible, 'Verify #3 FAILED - master Opp should still show Stage "New"').toBeTruthy();
       console.log('OVERALL: PASS - Lead merged into two Opportunities successfully');
     });

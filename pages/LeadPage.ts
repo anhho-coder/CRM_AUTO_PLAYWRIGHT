@@ -156,6 +156,9 @@ export class LeadPage extends BasePage {
   // A picker data row whose cells contain both the given Salesperson and Sales Team (matches Lead#1's assignment)
   private readonly mergePickerRowByPersonAndTeam = (salesperson: string, salesTeam: string) =>
     this.mergePickerDialog().locator(`xpath=.//tr[contains(@class,"o_data_row")][.//td[contains(normalize-space(),"${salesperson}")] and .//td[contains(normalize-space(),"${salesTeam}")]]`).first();
+  // A picker data row whose cells contain the given text (Lead#1's Opportunity name or email)
+  private readonly mergePickerRowByText = (text: string) =>
+    this.mergePickerDialog().locator(`xpath=.//tr[contains(@class,"o_data_row")][.//td[contains(normalize-space(),"${text}")]]`).first();
   private readonly mergePickerSelectButton = () =>
     this.mergePickerDialog().locator('xpath=.//button[normalize-space()="Select" or normalize-space()="SELECT"]')
       .or(this.mergePickerDialog().locator('xpath=.//footer//button[contains(@class,"btn-primary")]')).first();
@@ -439,14 +442,15 @@ export class LeadPage extends BasePage {
 
   /**
    * Merge sub-flow (TC.-A.4.2.1): in the conversion wizard "Opportunities" section, click "Add a line",
-   * filter the "Add: Opportunities" picker by Lead#1's exact email, then select the FIRST row in the list.
-   * Faithful to the scenario when Lead#2 shares only the DOMAIN of Lead#1 (different local part): the
-   * picker filtered by Lead#1's email returns Lead#1's opportunity (Lead#2's own opp has a different email
-   * and is not offered), so the first row is the correct merge target.
-   * @param email - Lead#1's exact email to filter the picker by
-   * @returns rowCount - number of rows the email filter produced (for diagnostics/assertions)
+   * search the "Add: Opportunities" picker for Lead#1, then select the row identified by its Opportunity
+   * NAME or email. The picker's search facet is the Opportunity (name) field, so an email string does not
+   * match - we search by the opportunity NAME (and retry by email as a fallback), then pick the row whose
+   * cells contain the name (else the email, else the first row).
+   * @param oppName - Lead#1's Opportunity name (e.g. "TEST Lead 1 TC.-A.4.2.1")
+   * @param email   - Lead#1's email (fallback search term / alternative row matcher)
+   * @returns rowCount - number of rows the search produced (for diagnostics/assertions)
    */
-  async addOpportunityToMergeByEmailSelectFirst(email: string): Promise<{ rowCount: number }> {
+  async addOpportunityToMergeByNameOrEmail(oppName: string, email: string): Promise<{ rowCount: number }> {
     const t = CommonUtils.waitTimes.elementVisibility; // bound each interaction so a mislocate fails fast (not at the test timeout)
 
     // 1. Open the "Add: Opportunities" picker via the "Add a line" link in the Opportunities section
@@ -456,25 +460,41 @@ export class LeadPage extends BasePage {
     await this.mergePickerDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
     await this.wait(CommonUtils.waitTimes.medium);
 
-    // 2. Filter the picker by Lead#1's email. Odoo's searchview only reacts to real key events,
-    //    so use pressSequentially + Enter (fill() does not trigger the search).
+    // Local helper: type a term into the picker searchview and submit. Odoo's searchview only reacts to
+    // real key events, so use pressSequentially + Enter (fill() does not trigger the search).
     const search = this.mergePickerSearchInput();
     await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
-    await search.click({ timeout: t });
-    await search.clear({ timeout: t }).catch(() => {});
-    await search.pressSequentially(email, { delay: 10 });
-    await this.wait(CommonUtils.waitTimes.long);
-    await search.press('Enter');
-    await this.wait(CommonUtils.waitTimes.searchOppWait);
+    const runSearch = async (term: string) => {
+      await search.click({ timeout: t });
+      await search.clear({ timeout: t }).catch(() => {});
+      await search.pressSequentially(term, { delay: 10 });
+      await this.wait(CommonUtils.waitTimes.long);
+      await search.press('Enter');
+      await this.wait(CommonUtils.waitTimes.searchOppWait);
+      return this.mergePickerDataRows().count().catch(() => 0);
+    };
 
-    const rowCount = await this.mergePickerDataRows().count().catch(() => 0);
+    // 2. Search by Lead#1's Opportunity NAME; if that returns nothing, retry by email.
+    let rowCount = await runSearch(oppName);
+    if (rowCount === 0) {
+      console.log(`  - No picker rows for Opportunity name "${oppName}"; retrying search by email "${email}"`);
+      rowCount = await runSearch(email);
+    }
+
     const rowTexts = await this.mergePickerDataRows().allInnerTexts().catch(() => [] as string[]);
     rowTexts.forEach((txt, i) =>
-      console.log(`  - Picker row ${i + 1} (email filter): ${txt.replace(/\s+/g, ' ').trim().substring(0, 120)}`)
+      console.log(`  - Picker row ${i + 1}: ${txt.replace(/\s+/g, ' ').trim().substring(0, 120)}`)
     );
 
-    // 3. Select the FIRST row in the list (the scenario's "select the first Lead in list").
-    const target = this.mergePickerFirstRow();
+    // 3. Select Lead#1 by Opportunity NAME, else by email, else fall back to the first row.
+    let target = this.mergePickerRowByText(oppName);
+    if (!(await target.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false))) {
+      target = this.mergePickerRowByText(email);
+    }
+    if (!(await target.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false))) {
+      console.log(`  ⚠ No picker row matched name/email; selecting the first row`);
+      target = this.mergePickerFirstRow();
+    }
     await target.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
     await target.scrollIntoViewIfNeeded({ timeout: t }).catch(() => {});
 
