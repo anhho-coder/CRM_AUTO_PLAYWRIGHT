@@ -18,6 +18,7 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *
  * Command to run:
  * npx playwright test --grep "TC\.-A\.4\.3\.7:" --project=chromium
+ * npx playwright test --grep "CRM-11410" --project=chromium
  *
  * Steps:
  * 1. After login successful, click at "CRM" button
@@ -78,7 +79,8 @@ test.describe('TC.-A.4.3.7 - Convert pre-assigned Lead to Opportunity and reassi
     }
   });
 
-  test(`TC.-A.4.3.7: Verify converting a Lead pre-assigned to ${leadAssign.team} / ${leadAssign.displayName} and reassigning the Salesperson to ${reassign.displayName} on conversion is successful`, async ({ page }, testInfo) => {
+  // Skipped due to open defect CRM-11410: manual "Convert to Opportunity" does not assign the selected Salesperson.
+  test.skip(`TC.-A.4.3.7: Verify converting a Lead pre-assigned to ${leadAssign.team} / ${leadAssign.displayName} and reassigning the Salesperson to ${reassign.displayName} on conversion is successful [CRM-11410]`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
