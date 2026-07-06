@@ -25,8 +25,6 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *    - Lead name        = TEST Lead 1 + TC ID
  *    - Company Name     = Company Name Lead 1
  *    - Email            = Company email (Test@company + current date + current time .com)
- *    - Country          = United States
- *    - State            = Connecticut
  *    - Sales Team       = cleared
  *    - Salesperson      = cleared
  *    - Created manually = FALSE
@@ -115,8 +113,6 @@ test.describe('TC.-A.4.3.8 - Convert Lead to Opportunity with Sales Team from sa
       await leadPage.fillLeadOpportunity(leadName);
       await leadPage.fillCompanyName('Company Name Lead 1');
       await leadPage.fillEmail(emailAddress);
-      await leadPage.selectCountry('United States');
-      await leadPage.selectState('Connecticut');
       await leadPage.clearSalesTeam();
       await leadPage.clearSalesperson();
       await leadPage.uncheckCreatedManually();

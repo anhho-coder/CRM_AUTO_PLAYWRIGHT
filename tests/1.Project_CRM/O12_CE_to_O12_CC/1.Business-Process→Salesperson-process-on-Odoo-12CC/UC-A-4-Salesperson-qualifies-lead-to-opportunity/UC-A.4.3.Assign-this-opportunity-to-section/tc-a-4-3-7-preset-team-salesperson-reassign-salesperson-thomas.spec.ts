@@ -27,8 +27,6 @@ import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
  *    - Lead name        = TEST Lead 1 + TC ID
  *    - Company Name     = Company Name Lead 1
  *    - Email            = Company email (Test@company + current date + current time .com)
- *    - Country          = United States
- *    - State            = Connecticut
  *    - Sales Team       = Marketing - BDEU   (set on the Lead, from salesteam.users)
  *    - Salesperson      = Sergey Stiblin     (set on the Lead, from salesteam.users)
  *    - Created manually = FALSE
@@ -121,8 +119,6 @@ test.describe('TC.-A.4.3.7 - Convert pre-assigned Lead to Opportunity and reassi
       await leadPage.fillLeadOpportunity(leadName);
       await leadPage.fillCompanyName('Company Name Lead 1');
       await leadPage.fillEmail(emailAddress);
-      await leadPage.selectCountry('United States');
-      await leadPage.selectState('Connecticut');
       // Pre-assign Sales Team + Salesperson on the Lead (instead of clearing them)
       await leadPage.selectSalesTeam(leadAssign.team);
       await leadPage.selectSalesperson(leadAssign.displayName);
