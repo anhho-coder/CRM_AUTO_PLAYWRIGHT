@@ -190,6 +190,15 @@ const JIRA_UNIQUE_METRICS = [
     issueType: 'Post-EA - Test Case',
     project: 'CRM',
     kpiName: 'Jira · Distinct Post-EA - Test Cases with a worklog in the range (per tester)',
+    // Card-level ℹ️ hover (render.js's rangeSection shows it when `note` is set)
+    // explaining why the headline total (SUM of per-tester distinct counts) can exceed
+    // a single combined `worklogAuthor in (team)` query — added per request 2026-07-03.
+    noteTitle: 'How this total is counted',
+    note: [
+      "The big number is the SUM of each tester's DISTINCT executed test cases (one per-tester window query, by worklogAuthor).",
+      'A test case executed by BOTH testers is counted once for each tester, so this team total can be higher than a single combined query (worklogAuthor in (all testers)), which lists each test case only once.',
+      'The gap therefore equals the test cases executed by more than one tester — counted once per tester here, but once overall in a single combined query.',
+    ],
   },
 ];
 
@@ -353,6 +362,43 @@ const JIRA_LIST_METRICS = [
   },
 ];
 
+// --- Jira DEFECT-QUALITY metric (QA CRM · Jira · Dashboard page, slide-style) --
+// Slide #10 of the QA Quarterly Review deck ("QUALITY — Defect quality — created in
+// Q2 / Leaked defects list"), the CRM-team version. Rendered on the Jira Dashboard
+// landing page (its OWN full 6-range selector, independent of the STUCK metric's
+// quarter-only one) as slide-style stat cards — Bugs created / Leaked defects /
+// Leakage rate — plus a "Leaked defects list" table. Two of the team's saved JQLs
+// per range, assembled in sources/defect-quality.js:
+//   Bugs created (per tester, by reporter):
+//     type in (<bugTypes>) AND created > "<from − 1 day>" AND created <= "<to>"
+//       AND reporter = T
+//       AND (status in (<bugStatuses>) OR resolution changed to (<bugResolvedTransitions>))
+//   Leaked defects (whole team):
+//     labels in (<leakLabel>) AND "<leakField>" is not EMPTY
+//       AND createdDate >= "<from>" AND createdDate <= "<to>" AND priority in (<leakPriorities>)
+// Both JQLs are reproduced VERBATIM from the team's samples (Anh's decision
+// 2026-07-02: match the saved filters literally, INCLUDING their date-boundary
+// behaviour — `created > from−1day` lets in the day before `from` and, as a datetime
+// vs bare-date comparison, drops `to`'s daytime — rather than "correcting" them).
+// Verified live for Last quarter (Q2 2026): bugs created 170 (Anh Ho 30 / Thuat Phung
+// 140), leaked 4 (all P1) → 2.4% leakage. Whole-team (bugs split by reporter; leaked
+// is a whole-team classification, not per-reporter). `kpiName` is the card subtitle.
+const JIRA_DEFECT_METRICS = [
+  {
+    key: 'defectQualityCreated',
+    label: 'Defect quality — created',
+    kpiName: 'Jira · Bugs created (by reporter) vs leaked defects (QA-Ticket_verification, P1–P3)',
+    // "Bugs created" definition (the team's saved filter):
+    bugTypes: ['Bug [uncategorised]', 'Bug [Maintenance]', 'Bug', 'Sub-Bug', 'Post-EA - Support Ticket'],
+    bugStatuses: ['Open', 'Reopened', 'In Progress'],
+    bugResolvedTransitions: ['Fixed', 'Done', "Won't fix", 'Unresolved', "Won't Do"],
+    // "Defect leakage" definition (the team's saved filter):
+    leakLabel: 'QA-Ticket_verification',
+    leakField: 'Leaked defect priority', // custom field; `is not EMPTY` marks a classified leak
+    leakPriorities: ['Blocker (P1)', 'Critical (P2)', 'Major (P3)'],
+  },
+];
+
 // --- "Executed Test Cases per main feature" (Manual test page, "By range") ----
 // A grouped bar chart (Executed vs Passed) per Xray Test Repository module, for the
 // WHOLE TEAM (all MEMBERS). Like JIRA_UNIQUE_METRICS it counts DISTINCT test cases per
@@ -381,14 +427,25 @@ const FEATURE_EXEC = {
   passedJql: 'statusCategory = Done',
   repoRoot: 'CRM test',   // top Test Repository folder that holds the module folders
   otherLabel: 'Other',    // catch-all bar: TCs executed but outside `repoRoot`
-  // The module folders under `repoRoot` (Xray Test Repository). Their counts sum to
-  // the repoRoot total; edit this list if the repository folders change. A module
-  // with 0 executed in the selected range is simply not drawn.
+  // The bars (Xray Test Repository features). A plain STRING is shorthand for the
+  // single folder "<repoRoot>/<name>". An OBJECT { name, paths:[…] } lets a bar span
+  // several FULL repository paths — e.g. "CRM module" counts both its manual folder
+  // and its automation folder, and "Migration Odoo 12CE to 12CC" is its own top-level
+  // folder (not under repoRoot). "Other" = grand total − Σ bars, so a test case in no
+  // configured bar still shows up. A bar with 0 executed in the range is not drawn.
+  // Edit this list if the repository folders change.
   modules: [
     'Leave module', 'Sales Report + Performance', 'Lead Merging', 'Contact module',
-    'Leads Assigment', 'Investments module', 'Report module', 'CRM module', 'R&E module',
+    'Leads Assigment', 'Investments module', 'Report module',
+    // "CRM module" spans its manual folder AND its automation folder, so automation
+    // test cases executed for the CRM module count in the SAME bar (per request 2026-07-03).
+    { name: 'CRM module', paths: ['CRM test/CRM module', 'CRM automation/CRM module'] },
+    'R&E module',
     'License module', 'Helpdesk module', 'Exhibition module', 'KPI module', 'Sales module',
     'Payroll module', 'Approval Module', 'Webshop', 'Replica DB VM', 'Security',
+    // Own top-level Test Repository folder (not under repoRoot) → its own bar, pulled
+    // out of "Other" (per request 2026-07-03).
+    { name: 'Migration Odoo 12CE to 12CC', paths: ['Migration Odoo 12CE to 12CC'] },
   ],
 };
 
@@ -534,7 +591,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, FEATURE_EXEC, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, FEATURE_EXEC, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

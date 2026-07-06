@@ -84,6 +84,34 @@ function testerTable(byTester, total, currentLabel) {
   </table>`;
 }
 
+/* ----------------------------- Deep-link anchors ----------------------------- */
+// Give every metric card a stable #anchor (from its config key, else its label) plus
+// a click-to-copy 🔗 link, so a shared URL like manual.html#m-uniqueTcExecuted opens
+// scrolled to — and briefly highlighting — that metric. Applied by wrapping each
+// section builder's OUTPUT (at the call sites in main), so the builders stay untouched.
+// The matching scroll/copy behaviour lives in APP_JS (focusId + the data-anchor click
+// branch). `suffix` keeps the id unique when the same metric is rendered in two views
+// on one page (e.g. the Quarterly card uses '-q' so it does not clash with the By-range
+// card of the same key).
+function slugify(s) {
+  return String(s == null ? '' : s).trim().toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+}
+function metricId(meta) {
+  // A config key (e.g. "uniqueTcExecuted") is already a valid id token — use it
+  // verbatim so anchors stay recognizable; only slugify the label fallback.
+  const key = meta && meta.key;
+  if (key && /^[A-Za-z0-9_-]+$/.test(key)) return 'm-' + key;
+  return 'm-' + (slugify(meta && meta.label) || 'metric');
+}
+function withAnchor(meta, html, suffix) {
+  const id = metricId(meta) + (suffix || '');
+  const link = `<a class="anchor" href="#${id}" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a>`;
+  return html
+    .replace(/<section class="metric/, `<section id="${id}" class="metric`)
+    .replace('</h2>', `${link}</h2>`);
+}
+
 function quarterlySection(meta, q, lead) {
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(q.kpiName)}</span></h2>
@@ -159,10 +187,27 @@ function rangeBlock(agg, active, members) {
   </div>`;
 }
 
+// Optional card-level ℹ️ hover, shown when a metric's config carries a `note` (a
+// string or an array of bullet strings) — reuses the .wlnote popover style. Used e.g.
+// by "Unique Executed Test Cases" to explain why its total (sum of per-tester distinct
+// counts) can exceed a single combined worklogAuthor-in-(team) query.
+function metricNote(meta) {
+  if (!meta || !meta.note) return '';
+  const items = Array.isArray(meta.note) ? meta.note : [meta.note];
+  const title = meta.noteTitle || 'How this is counted';
+  return `<div class="wlnote" tabindex="0">ℹ️ ${esc(title)}<span class="wlnote-hint"> (hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">${esc(title)}</div>
+      <ul>${items.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
 function rangeSection(meta, m, def, lead, members) {
   const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def, members)).join('\n');
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${metricNote(meta)}
     ${blocks}
   </section>`;
 }
@@ -432,6 +477,95 @@ function stuckJqlNote(meta, ranges, def) {
   </div>`;
 }
 
+/* ------------------- Defect quality — created (QUALITY) ---------------------- */
+// Slide #10 of the QA Quarterly Review deck ("QUALITY — Defect quality — created in
+// Q2 / Leaked defects list"), CRM-team version, shown on the Jira Dashboard page in
+// its OWN full 6-range scope (independent of the STUCK metric's quarter-only one).
+// Slide-style stat cards — Bugs created / Leaked defects / Leakage rate — plus a
+// "Leaked defects list" table. Data per range from sources/defect-quality.js:
+// ranges[key] = { bugsCreated, byEmployee, leaked, leakRate, priorityBreakdown, leakedIssues }.
+
+// The "Leaked defects list" table (highest priority first). Reuses the .stucktbl style.
+function defectLeakedTable(agg, jiraBase) {
+  if (!agg.leakedIssues || !agg.leakedIssues.length) {
+    return '<p class="muted">No leaked defects (P1–P3) classified in this range. 🎉</p>';
+  }
+  const rows = agg.leakedIssues.map((it) => {
+    const url = `${jiraBase}/browse/${encodeURIComponent(it.key)}`;
+    return `<tr>
+      <td class="skey"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(it.key)}</a></td>
+      <td class="ssum">${esc(it.summary)}</td>
+      <td class="stype">${esc(it.priority)}</td>
+      <td class="sasg">${esc(it.reporter)}</td>
+      <td class="sres num">${esc(it.created || '—')}</td>
+    </tr>`;
+  }).join('');
+  return `<div class="stuckwrap"><table class="stucktbl">
+    <thead><tr><th>Key</th><th>Summary</th><th>Priority</th><th>Reporter</th><th class="num">Created</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table></div>`;
+}
+
+function defectQualityBlock(agg, active, jiraBase) {
+  // `v` is already display-formatted (a count or "N%"), so it is interpolated raw.
+  const card = (v, label, sub, cls) =>
+    `<div class="frdcard ${cls}"><div class="fv">${v}</div><div class="fl">${esc(label)}</div><div class="fsub">${esc(sub)}</div></div>`;
+  const split = (agg.byEmployee || []).map((e) => `${e.name} ${e.value}`).join(' · ') || 'by reporter';
+  const pr = agg.priorityBreakdown || { p1: 0, p2: 0, p3: 0 };
+  const prLine = `${pr.p1} P1 · ${pr.p2} P2 · ${pr.p3} P3`;
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    <div class="frdcards">
+      ${card(fmt(agg.bugsCreated), 'Bugs created', split, 'lead')}
+      ${card(fmt(agg.leaked), 'Leaked defects', prLine, 'prog')}
+      ${card(`${agg.leakRate}%`, 'Leakage rate', 'leaked ÷ bugs created', 'est')}
+    </div>
+    <div class="subh">Leaked defects list · highest priority first</div>
+    ${defectLeakedTable(agg, jiraBase)}
+  </div>`;
+}
+
+function defectQualitySection(meta, m, def, jiraBase) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => defectQualityBlock(m.ranges[k], k === def, jiraBase)).join('\n');
+  return `<section class="metric lead">
+    <h2>${esc(meta.label)} <span class="pill">primary</span> <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+    <p class="muted frdnote"><b>Bugs created</b> = the team's saved "bugs created" filter, split per tester by reporter and summed. <b>Leaked defects</b> = bugs labelled QA-Ticket_verification whose "Leaked defect priority" is set (a defect that escaped QA), prioritised P1–P3 — a whole-team classification, not per reporter. <b>Leakage rate</b> = leaked ÷ bugs created. Both queries reproduce the team's saved JQL verbatim (bugs created uses <code>created &gt; (from − 1 day)</code>, matching what Jira shows). The list shows every leaked defect in the range, highest priority first.</p>
+  </section>`;
+}
+
+// The JQL-per-range hover note for the Defect-quality metric (mirrors stuckJqlNote).
+function defectJqlNote(meta, ranges, def) {
+  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const users = cfg.MEMBERS.map((m) => m.jira).join(', ');
+  const names = cfg.MEMBERS.map((m) => m.name).join(', ');
+  const dayBefore = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
+  const types = meta.bugTypes.map(q).join(', ');
+  const statuses = meta.bugStatuses.map(q).join(', ');
+  const trans = meta.bugResolvedTransitions.map(q).join(', ');
+  const prios = meta.leakPriorities.map(q).join(', ');
+  const variants = METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) => {
+    const r = ranges[k];
+    const bugs = `type in (${types}) AND created > ${q(dayBefore(r.from))} AND created <= ${q(r.to)} AND reporter in (${users}) AND (status in (${statuses}) OR resolution changed to (${trans}))`;
+    const leaked = `labels in (${q(meta.leakLabel)}) AND ${q(meta.leakField)} is not EMPTY AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND priority in (${prios})`;
+    return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}"><b>Bugs created</b> (per tester, summed):<br>${code(bugs)}<br><b>Leaked defects</b> (whole team):<br>${code(leaked)}</div>`;
+  }).join('');
+  const notes = [
+    'Bugs created is split per tester by <b>reporter</b> and summed; leaked defects is a whole-team classification (the “Leaked defect priority” field is set), not per reporter.',
+    'Leakage rate = leaked ÷ bugs created (P1–P3 leaked defects over all bugs created in the range).',
+    'These reproduce the team’s saved filters verbatim: <b>bugs created</b> uses <code>created &gt; (from − 1 day)</code>, so it includes the day before the range start and, being a datetime compared to a bare date, drops the end day’s daytime — matching the count seen in Jira.',
+    `Team scope: reporter ∈ {${esc(names)}}. Leaked defects sorted highest priority first.`,
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for this metric<span class="wlnote-hint"> (for the selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query</div>
+      <ul class="jqllist"><li><b>${esc(meta.label)}</b>${variants}</li></ul>
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((n) => `<li>${n}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
 /* ------------------------- FRD / Spec Review / I2L --------------------------- */
 // Slide #15 of the QA Quarterly Review deck, whole-team. A slide-style stat-card card
 // (NOT the count/trend layout): headline "worked" (with a FRD/Spec review/I2L split
@@ -574,15 +708,16 @@ function featureExecNote(fe, def) {
     const base = `project = ${fx.project} AND issuetype = ${q(fx.issueType)} AND worklogAuthor in (${users}) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`;
     const exec = `${base} AND issue in testRepositoryFolderTests(${q(fx.project)}, ${q(`${fx.repoRoot}/<module>`)}, "true")`;
     return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">` +
-      `<div><b>Executed</b> (per module): ${code(exec)}</div>` +
+      `<div><b>Executed</b> (per feature): ${code(exec)}</div>` +
       `<div><b>Passed</b>: ${code(`${exec} AND ${fx.passedJql}`)}</div>` +
-      `<div><b>Other</b>: swap the folder clause for ${code(`issue not in testRepositoryFolderTests(${q(fx.project)}, ${q(fx.repoRoot)}, "true")`)}</div>` +
+      `<div><b>Other</b> = grand total (same window, no folder clause) − Σ of all feature bars.</div>` +
       `</div>`;
   }).join('');
   const notes = [
-    'Counts DISTINCT test cases per range (one JQL per module), so a test case counts ONCE — not the per-day sum used by “Manual Test cases executed”.',
+    'Counts DISTINCT test cases per range (one JQL per feature), so a test case counts ONCE — not the per-day sum used by “Manual Test cases executed”.',
     `Passed = the test case is Resolved/Closed (${esc(fx.passedJql)}); a still-Open executed TC is executed-but-not-passed.`,
-    'Modules come from the Xray Test Repository (current folder membership); a module with 0 executed in the range is not drawn. “Other” = executed test cases filed outside the CRM test tree.',
+    'A feature (bar) maps to one or more Xray Test Repository folders (current membership): “CRM module” also counts its automation folder (CRM automation/CRM module); “Migration Odoo 12CE to 12CC” is its own top-level folder. A bar with 0 executed in the range is not drawn.',
+    '“Other” = the range grand total minus the sum of the bars, i.e. executed test cases that fall in no configured feature folder. Σ(bars) + Other = the grand total.',
     'Whole team (worklogAuthor ∈ the QA team). The date window follows the range button selected above.',
   ];
   return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How executed &amp; passed are counted<span class="wlnote-hint"> (per selected range — hover)</span>
@@ -806,8 +941,14 @@ body{margin:0;background:#f4f5f7}
 .ranges button{font-family:inherit;font-size:13px;padding:7px 14px;border:1px solid #d9c9ee;background:#fff;color:#6a3093;border-radius:20px;cursor:pointer}
 .ranges button:hover{background:#f3eefc}
 .ranges button.active{background:#6a3093;color:#fff;border-color:#6a3093}
-section.metric{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:16px 0}
+section.metric{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:16px 0;scroll-margin-top:16px}
 section.metric.lead{border:2px solid #a044ff}
+.anchor{margin-left:8px;font-size:13px;line-height:1;text-decoration:none;opacity:.32;cursor:pointer;vertical-align:middle}
+.anchor:hover,.anchor:focus{opacity:1}
+@keyframes cardflash{0%{box-shadow:0 0 0 3px #a044ff,0 1px 4px rgba(0,0,0,.08)}100%{box-shadow:0 0 0 0 rgba(160,68,255,0),0 1px 4px rgba(0,0,0,.08)}}
+section.metric.anchor-flash{animation:cardflash 1.7s ease-out}
+.copytoast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#6a3093;color:#fff;font-size:13px;font-weight:600;padding:9px 18px;border-radius:20px;box-shadow:0 6px 20px rgba(0,0,0,.25);opacity:0;transition:opacity .2s;z-index:100;pointer-events:none}
+.copytoast.show{opacity:1}
 h2{margin:0 0 12px;font-size:17px}
 .muted{color:#999;font-weight:400;font-size:12px}
 .pill{background:#f3eefc;color:#8e44ad;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;vertical-align:middle}
@@ -913,13 +1054,37 @@ const APP_JS = `(function () {
     var els = document.querySelectorAll(selector);
     for (var j = 0; j < els.length; j++) els[j].classList.toggle('is-active', els[j].getAttribute('data-view') === val || els[j].getAttribute('data-range') === val);
   }
+  // Range switching is normally page-global (one selector drives every metric on the
+  // page). When a range button lives inside a .rangescope, it drives ONLY the blocks in
+  // that scope — so a page can carry two independent range selectors (e.g. the Jira
+  // Dashboard's quarter-only STUCK metric alongside the full-range Defect-quality one).
+  function toggleRangeScoped(scope, val) {
+    var btns = scope.querySelectorAll('[data-rangebtn]');
+    for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].getAttribute('data-rangebtn') === val);
+    var els = scope.querySelectorAll('.range-block, .range-window, .jqlv');
+    for (var j = 0; j < els.length; j++) els[j].classList.toggle('is-active', els[j].getAttribute('data-range') === val);
+  }
   document.addEventListener('click', function (e) {
     var t = e.target;
     while (t && t.getAttribute) {
+      if (t.hasAttribute && t.hasAttribute('data-anchor')) {
+        e.preventDefault();
+        var aid = (t.getAttribute('href') || '').replace(/^#/, '');
+        copyText(location.origin + location.pathname + location.search + '#' + aid);
+        toast('Link copied');
+        if (history.replaceState) history.replaceState(null, '', '#' + aid);
+        focusId(aid);
+        return;
+      }
       var v = t.getAttribute('data-viewbtn');
       if (v) { toggleGroup('data-viewbtn', v, '.view'); return; }
       var r = t.getAttribute('data-rangebtn');
-      if (r) { toggleGroup('data-rangebtn', r, '.range-block, .range-window, .jqlv'); return; }
+      if (r) {
+        var scope = t.closest ? t.closest('.rangescope') : null;
+        if (scope) toggleRangeScoped(scope, r);
+        else toggleGroup('data-rangebtn', r, '.range-block, .range-window, .jqlv');
+        return;
+      }
       t = t.parentNode;
     }
   });
@@ -1018,6 +1183,59 @@ const APP_JS = `(function () {
   }
   function onPick() { compute(); toggleGroup('data-rangebtn', 'custom', '.range-block, .range-window'); }
   if (startEl && endEl) { startEl.addEventListener('change', onPick); endEl.addEventListener('change', onPick); }
+
+  // --- Deep-link anchors (scroll + click-to-copy) ---------------------------
+  // A shared URL like manual.html#m-uniqueTcExecuted opens scrolled to that metric.
+  function copyText(text) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText && window.isSecureContext) {
+        navigator.clipboard.writeText(text)['catch'](function () { legacyCopy(text); });
+        return;
+      }
+    } catch (err) {}
+    legacyCopy(text); // http (e.g. the Jenkins host) has no Clipboard API → execCommand
+  }
+  function legacyCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.left = '0'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    try { document.execCommand('copy'); } catch (err) {}
+    document.body.removeChild(ta);
+  }
+  var toastEl = null, toastTimer = null;
+  function toast(msg) {
+    if (!toastEl) { toastEl = document.createElement('div'); toastEl.className = 'copytoast'; document.body.appendChild(toastEl); }
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 1600);
+  }
+  function flash(el) {
+    el.classList.remove('anchor-flash');
+    void el.offsetWidth; // reflow so the animation restarts on a repeat click
+    el.classList.add('anchor-flash');
+    setTimeout(function () { el.classList.remove('anchor-flash'); }, 1800);
+  }
+  function focusId(id) {
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (!el) return;
+    // If the card sits in a hidden "Quarterly KPI / By range" view tab, activate it first.
+    var view = el.closest ? el.closest('.view') : null;
+    if (view && !view.classList.contains('is-active')) {
+      var vkey = view.getAttribute('data-view');
+      if (vkey) toggleGroup('data-viewbtn', vkey, '.view');
+    }
+    setTimeout(function () {
+      try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      catch (err) { el.scrollIntoView(); }
+      flash(el);
+    }, 60);
+  }
+  function focusHash() { focusId((location.hash || '').replace(/^#/, '')); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', focusHash);
+  else focusHash();
+  window.addEventListener('hashchange', focusHash);
 })();
 `;
 
@@ -1031,7 +1249,7 @@ function main() {
   // Metric metadata by key (Odoo KPI + all Jira-sourced metrics) so each section
   // page can pull exactly the metrics it lists in config.SECTIONS, in that order.
   const metaByKey = {};
-  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_FRD_METRICS, ...cfg.JIRA_TRANSITION_METRICS, ...cfg.JIRA_SPLIT_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_LIST_METRICS]
+  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_FRD_METRICS, ...cfg.JIRA_TRANSITION_METRICS, ...cfg.JIRA_SPLIT_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_LIST_METRICS, ...cfg.JIRA_DEFECT_METRICS]
     .forEach((m) => { metaByKey[m.key] = m; });
 
   const subline = `Team: ${esc(data.members.join(', '))} · Manager: Anh Ho` +
@@ -1048,16 +1266,16 @@ function main() {
   const metricsPageHtml = (section, navKey, title) => {
     const metrics = section.metricKeys.map((k) => metaByKey[k]).filter(Boolean);
     const quarterlySections = metrics.filter((m) => data.quarterly && data.quarterly[m.key])
-      .map((m, i) => quarterlySection(m, data.quarterly[m.key], i === 0)).join('\n');
+      .map((m, i) => withAnchor(m, quarterlySection(m, data.quarterly[m.key], i === 0), '-q')).join('\n');
     const rangeSections = metrics.filter((m) => data.metrics[m.key])
       .map((m, i) => {
         const fn = m.split ? splitRangeSection : m.perDay ? perDayRangeSection : rangeSection;
-        return fn(m, data.metrics[m.key], defRange, i === 0, data.members);
+        return withAnchor(m, fn(m, data.metrics[m.key], defRange, i === 0, data.members));
       }).join('\n');
     // The "Executed Test Cases per main feature" grouped bar chart is a Manual-test-page
     // extra (its own data shape), shown at the top of the "By range" view only.
     const featureExecHtml = (navKey === 'manual' && data.featureExec && data.featureExec.ranges)
-      ? featureExecSection(data.featureExec, defRange) : '';
+      ? withAnchor(data.featureExec, featureExecSection(data.featureExec, defRange)) : '';
     return `${docHead(title)}
 <div class="hero">
   <h1>CRM QA Team — ${esc(section.label)}</h1>
@@ -1100,12 +1318,35 @@ function main() {
   // of the matching issues, over This/Last quarter. See stuckSection above.
   const jiraDashSec = cfg.SECTIONS.find((s) => s.key === 'jiraDashboard');
   const jiraBase = data.jiraBaseUrl || 'http://jira.nakivo.com';
+
+  // Defect quality — created (Slide #10): its OWN full 6-range scope, defaulting to
+  // the dashboard's default range (Last week). Wrapped in .rangescope so its selector
+  // drives only its own cards — independent of the STUCK metric's quarter-only one.
+  const dqDef = data.ranges[defRange] ? defRange : 'lastQuarter';
+  const dqMetrics = cfg.JIRA_DEFECT_METRICS.map((m) => metaByKey[m.key]).filter((m) => m && data.metrics[m.key]);
+  const defectScope = dqMetrics.map((meta) => `<div class="rangescope">
+  <div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, dqDef, METRIC_RANGE_ORDER)}</div>
+  ${selector(data.ranges, dqDef)}
+  ${defectJqlNote(meta, data.ranges, dqDef)}
+  ${withAnchor(meta, defectQualitySection(meta, data.metrics[meta.key], dqDef, jiraBase))}
+</div>`).join('\n');
+
+  // STUCK — Dev done, QA not tested: its own quarter-only scope (This/Last quarter).
   const stuckDef = 'thisQuarter';
   const jdMetrics = jiraDashSec ? jiraDashSec.metricKeys.map((k) => metaByKey[k]).filter(Boolean) : [];
   const stuckSections = jdMetrics.filter((m) => data.metrics[m.key])
-    .map((m) => stuckSection(m, data.metrics[m.key], stuckDef, jiraBase)).join('\n');
+    .map((m) => withAnchor(m, stuckSection(m, data.metrics[m.key], stuckDef, jiraBase))).join('\n');
   const stuckNotes = jdMetrics.filter((m) => data.metrics[m.key])
     .map((m) => stuckJqlNote(m, data.ranges, stuckDef)).join('\n');
+  const stuckScope = stuckSections ? `<div class="rangescope">
+  <div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, stuckDef, STUCK_RANGE_ORDER)}</div>
+  ${stuckSelector(data.ranges, stuckDef)}
+  ${stuckNotes}
+  ${stuckSections}
+</div>` : '';
+
+  const jiraDashBody = [defectScope, stuckScope].filter(Boolean).join('\n') ||
+    '<p class="muted">No Jira dashboard data available.</p>';
   const jiraDashboardHtml = `${docHead('CRM QA — Jira Dashboard')}
 <div class="hero">
   <h1>CRM QA Team — ${esc(jiraDashSec ? jiraDashSec.label : 'QA CRM - Jira - Dashboard')}</h1>
@@ -1114,11 +1355,8 @@ function main() {
 </div>
 <div class="wrap">
   ${sourceBanner(data.sources)}
-  <div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, stuckDef, STUCK_RANGE_ORDER)}</div>
-  ${stuckSelector(data.ranges, stuckDef)}
-  ${stuckNotes}
-  ${stuckSections || '<p class="muted">No Jira dashboard data available.</p>'}
-  <div class="foot">Source: Jira — issues currently in <code>Resolved</code> assigned to the QA team (excluding the team’s Test-Case / Support-Ticket types) that became resolved in the selected quarter · regenerated daily · self-contained page.</div>
+  ${jiraDashBody}
+  <div class="foot">Source: Jira — “Defect quality — created” (bugs created by reporter vs leaked defects labelled QA-Ticket_verification, P1–P3) and “STUCK — Dev done, QA not tested” (issues still in <code>Resolved</code> awaiting QA) · regenerated daily · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;
@@ -1131,7 +1369,7 @@ function main() {
   const frdDef = (frdSec && frdSec.defaultRange && data.ranges[frdSec.defaultRange]) ? frdSec.defaultRange : defRange;
   const frdMetrics = frdSec ? frdSec.metricKeys.map((k) => metaByKey[k]).filter(Boolean) : [];
   const frdSections = frdMetrics.filter((m) => data.metrics[m.key])
-    .map((m) => frdSection(m, data.metrics[m.key], frdDef)).join('\n');
+    .map((m) => withAnchor(m, frdSection(m, data.metrics[m.key], frdDef))).join('\n');
   const frdHtml = `${docHead('CRM QA — FRD/Spec Review/I2L')}
 <div class="hero">
   <h1>CRM QA Team — ${esc(frdSec ? frdSec.label : 'FRD/Spec Review/I2L')}</h1>

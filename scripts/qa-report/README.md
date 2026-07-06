@@ -110,6 +110,29 @@ like Last year → all legacy). *(Verified 2026-07-02 against Jira for Q2 2026 /
 quarter: Total 304 = with Claude 145 (Jun 5–30) + legacy 159 (Apr+May); Thuat Phung 0,
 so whole-team = Anh Ho.)*
 
+**Defect quality — created** (`JIRA_DEFECT_METRICS` in `config.js`,
+`sources/defect-quality.js`) is Slide #10 of the QA Quarterly Review deck ("QUALITY —
+Defect quality — created / Leaked defects list"), rendered on the **QA CRM · Jira ·
+Dashboard** landing page as three slide-style stat cards — *Bugs created* · *Leaked
+defects* · *Leakage rate* — plus a "Leaked defects list" table. It has its OWN full
+6-range selector (Last week … Last year), independent of the STUCK metric's
+quarter-only one on the same page (each selector is wrapped in a `.rangescope` so it
+drives only its own cards). Per range it runs two of the team's saved JQLs: **bugs
+created** — `type in (…) AND created > "<from − 1 day>" AND created <= "<to>" AND
+reporter = T AND (status in (Open, Reopened, "In Progress") OR resolution changed to
+(…))` — counted per tester and summed; and **leaked defects** — `labels in
+(QA-Ticket_verification) AND "Leaked defect priority" is not EMPTY AND createdDate >=
+"<from>" AND createdDate <= "<to>" AND priority in ("Blocker (P1)","Critical
+(P2)","Major (P3)")` — fetched as an issue list (whole team, not per reporter). Both
+queries reproduce the team's saved filters **verbatim**, including their bare-date
+boundaries (Anh's decision 2026-07-02: match the filters, not "correct" them —
+`created > (from − 1)` includes the day before the range start and, as a datetime vs
+bare-date comparison, drops the end day's daytime). *Leakage rate* = leaked ÷ bugs
+created. *(Verified 2026-07-02 against Jira for Q2 2026 / last quarter: bugs created
+170 — Anh Ho 30 / Thuat Phung 140 — and 4 leaked, all P1 → 2.4% leakage. The
+day-inclusive window would give 161; the +9 is 10 bugs dated 2026-03-31 the `>` lower
+bound lets in, minus 1 on 2026-06-30.)*
+
 Planned (see the approved plan / `scripts/qa-report/sources/`): Features in test,
 FRD/Specs, TCs executed, AI/automation activity (from Jira, Confluence and the
 Playwright suite).

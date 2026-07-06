@@ -20,6 +20,7 @@ const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = requ
 const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { buildAutomationClaudeSplit } = require('./sources/automation-split');
 const { collectStuckMetrics } = require('./sources/stuck');
+const { collectDefectQuality } = require('./sources/defect-quality');
 const { collectQuarterly } = require('./sources/quarterly');
 const { collectWorklog } = require('./sources/worklog');
 const { collectLeave } = require('./sources/leave');
@@ -237,6 +238,25 @@ async function main() {
     console.error('[collect] Jira stuck source failed:', e.message || e);
   }
 
+  // --- Jira DEFECT-QUALITY metric (Defect quality — created; Jira Dashboard page):
+  //     two of the team's saved JQLs per range — "Bugs created" (count per tester,
+  //     by reporter) and "Leaked defects" (whole-team issue list) — with the leakage
+  //     rate + a P1/P2/P3 breakdown derived from the leaked list. Slide-style stat
+  //     cards + a leaked-defects table. Collected directly per range for ALL ranges
+  //     (its own full 6-range selector), like sources/frd.js. Wrapped independently so
+  //     a Jira failure here never blocks the rest.
+  try {
+    const dq = await collectDefectQuality(ranges);
+    for (const m of cfg.JIRA_DEFECT_METRICS) {
+      const d = dq[m.key];
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+    }
+    data.sources.jiraDefectQuality = { status: 'ok', source: 'jira bugs created + leaked defects' };
+  } catch (e) {
+    data.sources.jiraDefectQuality = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira defect-quality source failed:', e.message || e);
+  }
+
   // --- Worklog allocation page: Jira worklogs (label columns) + the
   //     FTO/SL/Holiday column = Odoo hr.leave (FTO/SL) + VN public holidays.
   //     Each source is wrapped independently so one failure never blocks the rest.
@@ -297,6 +317,13 @@ async function main() {
     if (!v) continue;
     const tq = v.ranges.thisQuarter, lq = v.ranges.lastQuarter;
     console.log(`[collect]   ${m.label}: thisQuarter ${tq ? tq.total : 'n/a'}, lastQuarter ${lq ? lq.total : 'n/a'}`);
+  }
+  for (const m of cfg.JIRA_DEFECT_METRICS) {
+    const v = data.metrics[m.key];
+    if (!v) continue;
+    const lq = v.ranges.lastQuarter;
+    if (lq) console.log(`[collect]   ${m.label} (last quarter): bugs created ${lq.bugsCreated} (` +
+      lq.byEmployee.map((e) => `${e.name} ${e.value}`).join(', ') + `), leaked ${lq.leaked} (${lq.leakRate}%)`);
   }
   if (data.worklog) {
     const lw = data.worklog.ranges.lastWeek;
