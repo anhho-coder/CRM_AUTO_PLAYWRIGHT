@@ -11,8 +11,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * =============================================================================
  *  Test Case ID     : CRM-10066_1.1
  *  Jira             : CRM-10066  (Bug [Maintenance], Critical (P2), status Resolved)
- *  Automation-Type  : new
- *  Automation-Date  : 2026-07-03
+ *  Automation-Type  : refactored
+ *  Automation-Date  : 2026-07-06
  *  Test Repository  : N/A - defect verification (bug has no Xray manual steps; steps taken from the bug description)
  * -----------------------------------------------------------------------------
  *  Summary:
@@ -313,13 +313,25 @@ test.describe('CRM-10066_1.1 - Manual merge via "Convert to Opportunity" option 
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Merge completed (Opp#1 result)');
 
+      // ===== VERIFY ===== (expected vs actual for each verification point, then assert)
+      console.log('==================== VERIFY ====================');
+      console.log('  Verify #1 - Opp#1 log records the merged Lead#1:');
+      console.log(`     Expected (contains) : "Merged lead : ${lead1Name}"`);
+      console.log(`     Actual (found)      : ${mergeLog.found ? 'FOUND' : 'NOT FOUND'}`);
+      console.log(`     Result              : ${mergeLog.found ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #2 - Opp#1 still shows Stage "New" after the merge:');
+      console.log('     Expected            : Stage "New" visible = true');
+      console.log(`     Actual              : Stage "New" visible = ${stageNewVisible}`);
+      console.log(`     Result              : ${stageNewVisible ? 'PASS' : 'FAIL'}`);
+      console.log('===============================================');
+
       expect(
         mergeLog.found,
-        `Opp#1 log should record "Merged lead : ${lead1Name}" (CRM-10066 fixed - manual merge completed)`
+        `Verify #1 FAILED - Opp#1 log should record "Merged lead : ${lead1Name}" (CRM-10066 fixed - manual merge completed)`
       ).toBeTruthy();
-      expect(stageNewVisible, 'Opp#1 should still show Stage "New" after the merge').toBeTruthy();
+      expect(stageNewVisible, 'Verify #2 FAILED - Opp#1 should still show Stage "New" after the merge').toBeTruthy();
 
-      console.log('PASS - Manual merge via "Convert to Opportunity" completed successfully (CRM-10066 fixed)');
+      console.log('OVERALL: PASS - Manual merge via "Convert to Opportunity" completed successfully (CRM-10066 fixed)');
     });
   });
 });
