@@ -204,17 +204,22 @@ test.describe('CRM-10066_3.1 - Manual merge leaves no active duplicate (source L
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - CREATE OPPORTUNITY clicked');
     });
 
-    await test.step('Step 7: Observe the SOURCE Lead#1 - it must be consumed (archived), no active duplicate', async () => {
-      console.log('Step 7: Verifying the source Lead#1 was consumed by the merge (archived, no active duplicate)');
-      // Open the merged (archived) source Lead via the dedicated action so an inactive record still shows.
+    await test.step('Step 7: Observe result - merge completed AND source Lead consumed (no active duplicate)', async () => {
+      console.log('Step 7: Verifying the merge completed and left no active duplicate');
+
+      // (a) Master Opp#1 records the merge with this custom build's wording "Merged lead : <Lead#1>"
+      //     (the source-side stock note "This lead has been merged into ..." is NOT posted here).
+      console.log(`  - Opening master Opp#1: ${opp1Url}`);
+      await page.goto(opp1Url, { waitUntil: 'domcontentloaded' });
+      await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner).catch(() => {});
+      await page.waitForTimeout(CommonUtils.waitTimes.long);
+      const mergeOnMaster = await opportunityPage.waitForChatterContaining(`Merged lead : ${lead1Name}`, 3, CommonUtils.waitTimes.long);
+      console.log(`  - Opp#1 log shows "Merged lead : Lead#1": ${mergeOnMaster.found}`);
+
+      // (b) Source Lead#1 is archived (Active = false) - no separate active duplicate remains.
+      //     Open the merged (inactive) source Lead via the dedicated action so it still shows.
       lead1Url = await leadPage.navigateToMergedLeadWithAction682(lead1Url, lead1Id, config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.long);
-
-      // (a) Source Lead#1 log records it was merged into Opp#1 (so the merge did happen)
-      const mergedIntoOpp = await leadPage.hasTargetLeadMergeMessage(opp1Name);
-      console.log(`  - Lead#1 log shows "This lead has been merged into ${opp1Name}": ${mergedIntoOpp}`);
-
-      // (b) Source Lead#1 is archived (Active = false) - no separate active duplicate remains
       await leadPage.clickCRMDeveloperTab();
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const isActive = await leadPage.isActiveChecked();
@@ -223,19 +228,19 @@ test.describe('CRM-10066_3.1 - Manual merge leaves no active duplicate (source L
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Source Lead#1 archived (result)');
 
       console.log('==================== VERIFY ====================');
-      console.log('  Verify #1 - Source Lead#1 is archived (no active duplicate left):');
+      console.log('  Verify #1 - Merge completed (master Opp#1 records the merged Lead#1):');
+      console.log(`     Expected (contains) : "Merged lead : ${lead1Name}"`);
+      console.log(`     Actual (found)      : ${mergeOnMaster.found ? 'FOUND' : 'NOT FOUND'}`);
+      console.log(`     Result              : ${mergeOnMaster.found ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #2 - Source Lead#1 is archived (no active duplicate left):');
       console.log('     Expected            : Active = false');
       console.log(`     Actual              : Active = ${isActive}`);
       console.log(`     Result              : ${!isActive ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #2 - Source Lead#1 records it was merged into Opp#1:');
-      console.log(`     Expected (contains) : "This lead has been merged into ${opp1Name}"`);
-      console.log(`     Actual (found)      : ${mergedIntoOpp ? 'FOUND' : 'NOT FOUND'}`);
-      console.log(`     Result              : ${mergedIntoOpp ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
 
-      expect(isActive, 'Verify #1 FAILED - the merged source Lead#1 should be archived (Active=false), leaving no active duplicate').toBeFalsy();
-      expect(mergedIntoOpp, `Verify #2 FAILED - Lead#1 log should record "This lead has been merged into ${opp1Name}"`).toBeTruthy();
-      console.log('OVERALL: PASS - Manual merge consumed the source Lead (no active duplicate left)');
+      expect(mergeOnMaster.found, `Verify #1 FAILED - master Opp#1 should record "Merged lead : ${lead1Name}" (merge completed)`).toBeTruthy();
+      expect(isActive, 'Verify #2 FAILED - the merged source Lead#1 should be archived (Active=false), leaving no active duplicate').toBeFalsy();
+      console.log('OVERALL: PASS - Merge completed and consumed the source Lead (no active duplicate left)');
     });
   });
 });
