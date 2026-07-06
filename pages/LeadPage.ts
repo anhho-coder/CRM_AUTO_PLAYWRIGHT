@@ -129,6 +129,10 @@ export class LeadPage extends BasePage {
   private readonly createOpportunityButton = () =>
     this.page.locator('xpath=//div[contains(@class,"modal-content")]//button[normalize-space()="Create Opportunity"]')
       .or(this.page.locator('.modal-content button[name="action_apply"]')).first();
+  // Conversion wizard Discard/Cancel button (to abort the conversion without applying)
+  private readonly convertWizardCancelButton = () =>
+    this.page.locator('xpath=//div[contains(@class,"modal-content")]//footer//button[normalize-space()="Discard" or normalize-space()="Cancel" or normalize-space()="Close"]')
+      .or(this.page.locator('.modal-content footer button.o_form_button_cancel, .modal-content .modal-footer button.btn-secondary, .modal-content button.close')).first();
   // Merge sub-flow: "Add a line" in the wizard Opportunities section + the "Add: Opportunities" picker dialog
   private readonly mergeAddLineLink = () =>
     this.page.locator('xpath=//div[contains(@class,"modal-content") or contains(@class,"o_dialog")]//a[normalize-space()="Add a line"] | //div[contains(@class,"modal-content") or contains(@class,"o_dialog")]//button[normalize-space()="Add a line"]')
@@ -371,6 +375,14 @@ export class LeadPage extends BasePage {
   }
 
   /**
+   * Whether the record currently shows the "Convert to Opportunity" header button - i.e. it is still an
+   * un-converted Lead (used to confirm a cancelled conversion left the Lead unchanged).
+   */
+  async isConvertToOpportunityButtonVisible(): Promise<boolean> {
+    return await this.convertToOpportunityButton().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+  }
+
+  /**
    * Merge sub-flow: in the conversion wizard "Opportunities" section, click "Add a line",
    * search the "Add: Opportunities" picker by email, select the opportunity whose Salesperson
    * and Sales Team match Lead#1's assignment, and confirm so it is added to the merge list
@@ -423,6 +435,64 @@ export class LeadPage extends BasePage {
     await this.mergePickerSelectButton().click({ timeout: t }).catch(() => {});
     await this.mergePickerDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility });
     await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /**
+   * Merge sub-flow (TC.-A.4.2.1): in the conversion wizard "Opportunities" section, click "Add a line",
+   * filter the "Add: Opportunities" picker by Lead#1's exact email, then select the FIRST row in the list.
+   * Faithful to the scenario when Lead#2 shares only the DOMAIN of Lead#1 (different local part): the
+   * picker filtered by Lead#1's email returns Lead#1's opportunity (Lead#2's own opp has a different email
+   * and is not offered), so the first row is the correct merge target.
+   * @param email - Lead#1's exact email to filter the picker by
+   * @returns rowCount - number of rows the email filter produced (for diagnostics/assertions)
+   */
+  async addOpportunityToMergeByEmailSelectFirst(email: string): Promise<{ rowCount: number }> {
+    const t = CommonUtils.waitTimes.elementVisibility; // bound each interaction so a mislocate fails fast (not at the test timeout)
+
+    // 1. Open the "Add: Opportunities" picker via the "Add a line" link in the Opportunities section
+    const addLine = this.mergeAddLineLink();
+    await addLine.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await addLine.click({ timeout: t });
+    await this.mergePickerDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // 2. Filter the picker by Lead#1's email. Odoo's searchview only reacts to real key events,
+    //    so use pressSequentially + Enter (fill() does not trigger the search).
+    const search = this.mergePickerSearchInput();
+    await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await search.click({ timeout: t });
+    await search.clear({ timeout: t }).catch(() => {});
+    await search.pressSequentially(email, { delay: 10 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await search.press('Enter');
+    await this.wait(CommonUtils.waitTimes.searchOppWait);
+
+    const rowCount = await this.mergePickerDataRows().count().catch(() => 0);
+    const rowTexts = await this.mergePickerDataRows().allInnerTexts().catch(() => [] as string[]);
+    rowTexts.forEach((txt, i) =>
+      console.log(`  - Picker row ${i + 1} (email filter): ${txt.replace(/\s+/g, ' ').trim().substring(0, 120)}`)
+    );
+
+    // 3. Select the FIRST row in the list (the scenario's "select the first Lead in list").
+    const target = this.mergePickerFirstRow();
+    await target.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await target.scrollIntoViewIfNeeded({ timeout: t }).catch(() => {});
+
+    // Tick the row's checkbox (use check() so it reliably toggles and enables the "Select" button),
+    // falling back to clicking the row's selector cell if the input is not a standard checkbox.
+    const checkbox = target.locator('input[type="checkbox"]').first();
+    await checkbox.check({ force: true, timeout: t }).catch(async () => {
+      await target.locator('td').first().click({ timeout: t, force: true }).catch(() => {});
+    });
+    await this.wait(CommonUtils.waitTimes.short);
+
+    // Confirm the selection; the picker MUST close (no silent catch on the wait) so a stuck picker
+    // surfaces here instead of blocking the later "Create Opportunity" click.
+    await this.mergePickerSelectButton().click({ timeout: t }).catch(() => {});
+    await this.mergePickerDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.elementVisibility });
+    await this.wait(CommonUtils.waitTimes.standard);
+
+    return { rowCount };
   }
 
   /**
@@ -504,6 +574,25 @@ export class LeadPage extends BasePage {
     await btn.click({ timeout: CommonUtils.waitTimes.elementVisibility });
     await this.convertWizardDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Cancel/Discard the conversion wizard without applying it (used to verify that aborting the merge
+   * leaves the Lead and the target Opportunity unchanged). Clicks the wizard Discard/Cancel button,
+   * falling back to Escape (which also closes the Odoo conversion modal), then waits for it to close.
+   */
+  async cancelConvertWizard() {
+    const t = CommonUtils.waitTimes.elementVisibility;
+    const btn = this.convertWizardCancelButton();
+    const visible = await btn.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (visible) {
+      await btn.click({ timeout: t }).catch(() => {});
+    } else {
+      // No explicit Discard/Cancel button - Escape closes the conversion modal in Odoo
+      await this.page.keyboard.press('Escape').catch(() => {});
+    }
+    await this.convertWizardDialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
   }
 
   /**
@@ -1977,6 +2066,20 @@ export class LeadPage extends BasePage {
   }
 
   /**
+   * Build two emails that share the SAME DOMAIN but have DIFFERENT local parts
+   * (Lead1@... vs Lead2@...), used to test the merge-by-shared-DOMAIN detection.
+   * Domain template: company<date>-<time>.com (unique per run).
+   * @returns { lead1Email, lead2Email, domain }
+   */
+  generateSameDomainEmails(): { lead1Email: string; lead2Email: string; domain: string } {
+    const currentDateTime = new Date().toISOString().replace(/[-:]/g, '').replace('T', '_').split('.')[0];
+    const dateTimeParts = currentDateTime.split('_');
+    const emailDateTime = `${dateTimeParts[0]}-${dateTimeParts[1]}`;
+    const domain = `company${emailDateTime}.com`;
+    return { lead1Email: `Lead1@${domain}`, lead2Email: `Lead2@${domain}`, domain };
+  }
+
+  /**
    * Create a complete lead with all required fields
    */
   async createLead(data: {
@@ -2407,6 +2510,59 @@ export class LeadPage extends BasePage {
       console.error(`Error getting Contact Name (readonly): ${error instanceof Error ? error.message : String(error)}`);
       return '';
     }
+  }
+
+  /**
+   * Wait until the async-linked Contact appears on the saved Lead screen.
+   * After saving a Lead whose Email matches an existing Contact, Odoo links the
+   * partner/Contact in the background; once linked, the Lead's Company Name row shows
+   * the Contact's name. Call this AFTER saving the Lead and BEFORE relying on the linked
+   * Contact. Reloads up to maxAttempts times, waiting refreshInterval between attempts,
+   * capped by totalMaxTime. It waits (does not assert) - the caller's later checks assert.
+   * @param expectedContactName - the Contact name expected to appear on the Lead (Company Name)
+   * @param maxAttempts - number of reload attempts (default: 5)
+   * @param refreshInterval - wait between reloads (default: contactCreationWait = 60s)
+   * @param totalMaxTime - hard cap for all attempts (default: contactRefreshTotalWait = 5 min)
+   * @returns { appeared, companyNameValue }
+   */
+  async waitForContactToAppear(
+    expectedContactName: string,
+    maxAttempts: number = 5,
+    refreshInterval: number = CommonUtils.waitTimes.contactCreationWait,
+    totalMaxTime: number = CommonUtils.waitTimes.contactRefreshTotalWait
+  ): Promise<{ appeared: boolean; companyNameValue: string }> {
+    const startTime = Date.now();
+    let companyNameValue = '';
+
+    // Dismiss any open autocomplete dropdown that could block the reload.
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      console.log(`  - Contact-on-Lead check, attempt ${attempt}/${maxAttempts}`);
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      await this.waitForPageReady(CommonUtils.waitTimes.contactShowing);
+
+      companyNameValue = await this.getCompanyNameReadonly();
+      console.log(`    Company Name on Lead: "${companyNameValue}"`);
+
+      if (companyNameValue.toLowerCase().includes(expectedContactName.toLowerCase())) {
+        console.log(`  ✓ Contact "${expectedContactName}" has appeared on the Lead screen`);
+        return { appeared: true, companyNameValue };
+      }
+
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= totalMaxTime) {
+        console.log(`  ⚠ Reached total max wait for the Contact to appear on the Lead`);
+        break;
+      }
+      if (attempt < maxAttempts) {
+        await this.wait(refreshInterval);
+      }
+    }
+
+    console.log(`  ⚠ Contact "${expectedContactName}" did not appear on the Lead within the allotted attempts`);
+    return { appeared: false, companyNameValue };
   }
 
   /**
