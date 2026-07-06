@@ -118,11 +118,10 @@ test.describe('CRM-10066_1.1 - Manual merge via "Convert to Opportunity" option 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  // Skipped by request due to bug CRM-10066 (declaration-level skip so fixtures never launch the browser).
-  // NOTE: this test currently PASSES - CRM-10066 was verified fixed on 2026-07-03 (the manual merge completes:
-  // Opp#1 gets a "Merged lead : <Lead>" log note + "Merged Leads" smart button). Re-enable by changing
-  // `test.skip(` back to `test(` when the skip is no longer wanted.
-  test.skip('CRM-10066_1.1: Verify manual merging using "Convert to Opportunity" option completes successfully', async ({ page }, testInfo) => {
+  // CRM-10066 verified FIXED (the manual merge completes: Opp#1 gets a "Merged lead : <Lead>" log note
+  // + "Merged Leads" smart button, Stage New). To skip for the bug, change `test(` to `test.skip(`
+  // (declaration-level, so fixtures never launch the browser).
+  test('CRM-10066_1.1: Verify manual merging using "Convert to Opportunity" option completes successfully', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Maximize browser window
