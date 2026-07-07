@@ -147,6 +147,14 @@ if (Test-Path -LiteralPath $resultsRoot) {
 node (Join-Path $Workspace 'ci\allure-relabel-suites.js') $merged
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXITCODE (continuing)." }
 
+# ---- Keep only the ENV-AWARE latest result per unique test ----
+# Section 2 must show each test's latest REAL outcome and Section 1 the unique-test count.
+# A period bucket holds many runs of the same test; per historyId we keep the latest
+# NON-env result (VPN/DNS/connection drops demoted), falling back to an env result only if
+# the test never ran cleanly in the window. Redundant result files are deleted pre-generate.
+node (Join-Path $Workspace 'ci\allure-dedupe-latest.js') $merged
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: latest-per-test dedupe returned $LASTEXITCODE (continuing)." }
+
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
 $scopeHist = Join-Path $histRoot $Scope
 if (Test-Path -LiteralPath $scopeHist) {
