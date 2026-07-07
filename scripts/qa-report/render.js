@@ -107,9 +107,13 @@ function metricId(meta) {
 function withAnchor(meta, html, suffix) {
   const id = metricId(meta) + (suffix || '');
   const link = `<a class="anchor" href="#${id}" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a>`;
-  return html
-    .replace(/<section class="metric/, `<section id="${id}" class="metric`)
-    .replace('</h2>', `${link}</h2>`);
+  const label = esc(meta && meta.label);
+  let out = html.replace(/<section class="metric/, `<section id="${id}" class="metric`);
+  // Place the 🔗 right AFTER the metric name (before the pill / the long "· KPI: …"
+  // subtitle) so it reads as "beside the name", not buried at the end of the header.
+  if (label && out.indexOf('<h2>' + label) !== -1) out = out.replace('<h2>' + label, '<h2>' + label + ' ' + link);
+  else out = out.replace('</h2>', `${link}</h2>`); // fallback: end of the header
+  return out;
 }
 
 function quarterlySection(meta, q, lead) {
@@ -950,7 +954,7 @@ body{margin:0;background:#f4f5f7}
 .ranges button.active{background:#6a3093;color:#fff;border-color:#6a3093}
 section.metric{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:16px 0;scroll-margin-top:16px}
 section.metric.lead{border:2px solid #a044ff}
-.anchor{margin-left:8px;font-size:13px;line-height:1;text-decoration:none;opacity:.32;cursor:pointer;vertical-align:middle}
+.anchor{margin-left:6px;font-size:15px;line-height:1;text-decoration:none;opacity:.6;cursor:pointer;vertical-align:middle}
 .anchor:hover,.anchor:focus{opacity:1}
 @keyframes cardflash{0%{box-shadow:0 0 0 3px #a044ff,0 1px 4px rgba(0,0,0,.08)}100%{box-shadow:0 0 0 0 rgba(160,68,255,0),0 1px 4px rgba(0,0,0,.08)}}
 section.metric.anchor-flash{animation:cardflash 1.7s ease-out}
