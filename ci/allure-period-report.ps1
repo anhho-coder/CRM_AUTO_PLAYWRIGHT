@@ -147,6 +147,15 @@ if (Test-Path -LiteralPath $resultsRoot) {
 node (Join-Path $Workspace 'ci\allure-relabel-suites.js') $merged
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXITCODE (continuing)." }
 
+# ---- Capture the RAW all-runs statistic BEFORE dedupe collapses reruns ----
+# Section 1 (Overview summary) must count EVERY run this period (a test that failed 5x
+# and passed once = 6), while Section 2 (Suites) shows it as 1 unique test. `allure generate`
+# runs on the DEDUPED set, so we snapshot the pre-dedupe stat here and write it back into
+# widgets/summary.json after generate (see allure-apply-allruns.js below).
+$allRunsStash = Join-Path $Workspace 'allure-allruns-summary.json'
+node (Join-Path $Workspace 'ci\allure-capture-allruns.js') $merged $allRunsStash
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: all-runs capture returned $LASTEXITCODE (continuing)." }
+
 # ---- Keep only the ENV-AWARE latest result per unique test ----
 # Section 2 must show each test's latest REAL outcome and Section 1 the unique-test count.
 # A period bucket holds many runs of the same test; per historyId we keep the latest
@@ -191,6 +200,14 @@ if ($reportTitle -and (Test-Path -LiteralPath $summaryPath)) {
     [System.IO.File]::WriteAllText($summaryPath, $raw, (New-Object System.Text.UTF8Encoding $false))
     Write-Host "Set report title -> $reportTitle"
 }
+
+# ---- Section 1 = ALL runs: write the pre-dedupe stat back into the summary widget ----
+# `allure generate` counted each test once (deduped set). Overwrite widgets/summary.json's
+# statistic (+ time span) with the raw all-runs numbers captured above, so the Overview
+# headline count and pass-rate donut reflect every run this period. Section 2 (Suites) is
+# generated from suites.json and stays one row per unique test case.
+node (Join-Path $Workspace 'ci\allure-apply-allruns.js') $reportDir $allRunsStash
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: all-runs apply returned $LASTEXITCODE (continuing)." }
 
 # ---- Add "Total TC" + "Run Time" columns to the Overview Suites widget ----
 # (client-side DOM enhancement; must run after generate, before the freeze copy).

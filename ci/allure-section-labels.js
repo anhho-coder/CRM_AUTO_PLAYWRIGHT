@@ -2,8 +2,8 @@
  * CRM Allure customization (client-side, runs inside the generated report).
  *
  * Labels the two sections the QA team cares about on the Overview:
- *   Section 1 -> the summary widget (total test cases run in the period + donut)
- *   Section 2 -> the "Suites" widget (latest result per suite)
+ *   Section 1 -> the summary widget (EVERY run this period incl. reruns + donut)
+ *   Section 2 -> the "Suites" widget (latest result per suite, one row per unique test case)
  * by prepending a small eyebrow header to each of those two widgets.
  *
  * Pure DOM enhancement, no build step. Idempotent, and re-applies itself when
@@ -54,7 +54,7 @@
   function enhance() {
     // Section 2: the Suites widget (its rows link to #suites/<uid>)
     var suitesRow = document.querySelector('a.table__row[href^="#suites/"]');
-    if (suitesRow) label(suitesRow.closest('.widget'), 'Section 2', 'Latest result per suite');
+    if (suitesRow) label(suitesRow.closest('.widget'), 'Section 2', 'Latest result per suite by unique test case');
 
     // Section 1: the summary widget = the one showing "N test cases" + the donut chart
     var widgets = document.querySelectorAll('.widget');
