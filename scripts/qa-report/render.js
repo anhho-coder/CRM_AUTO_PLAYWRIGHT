@@ -1081,10 +1081,19 @@ const APP_JS = `(function () {
       if (t.hasAttribute && t.hasAttribute('data-anchor')) {
         e.preventDefault();
         var aid = (t.getAttribute('href') || '').replace(/^#/, '');
-        copyText(location.origin + location.pathname + location.search + '#' + aid);
-        toast('Link copied');
-        if (history.replaceState) history.replaceState(null, '', '#' + aid);
-        focusId(aid);
+        var sec = t.closest ? t.closest('section.metric') : null;
+        var rng = activeRangeOf(sec);                 // preserve the SELECTED range in the link
+        var frag = '#' + aid + (rng ? '&r=' + encodeURIComponent(rng) : '');
+        var lbl = '';
+        if (rng) {
+          var sc = sec && sec.closest ? sec.closest('.rangescope') : null;
+          var btn = (sc || document).querySelector('[data-rangebtn="' + rng + '"]');
+          if (btn) lbl = btn.textContent;
+        }
+        copyText(location.origin + location.pathname + location.search + frag);
+        toast('Link copied' + (lbl ? ' · ' + lbl : ''));
+        if (history.replaceState) history.replaceState(null, '', frag);
+        focusId(aid, rng);
         return;
       }
       var v = t.getAttribute('data-viewbtn');
@@ -1227,7 +1236,38 @@ const APP_JS = `(function () {
     el.classList.add('anchor-flash');
     setTimeout(function () { el.classList.remove('anchor-flash'); }, 1800);
   }
-  function focusId(id) {
+  // Parse "#<id>&r=<rangeKey>" → {id, range}. Bare "#<id>" (old links) → range ''.
+  function parseHash(h) {
+    h = (h || '').replace(/^#/, '');
+    if (!h) return { id: '', range: '' };
+    var parts = h.split('&'), range = '';
+    for (var i = 1; i < parts.length; i++) {
+      var kv = parts[i].split('=');
+      if (kv[0] === 'r' && kv[1]) { try { range = decodeURIComponent(kv[1]); } catch (err) { range = kv[1]; } }
+    }
+    return { id: parts[0], range: range };
+  }
+  // The range currently shown for a metric card (its active .range-block); '' for a
+  // Quarterly card (no range-block).
+  function activeRangeOf(section) {
+    if (!section || !section.querySelector) return '';
+    var b = section.querySelector('.range-block.is-active');
+    return b ? (b.getAttribute('data-range') || '') : '';
+  }
+  // Select a range for the metric's scope (rangescope-aware) — reuses the SAME toggles
+  // the range buttons use, so buttons + "Showing …" windows + JQL notes update too.
+  function applyRange(section, range) {
+    // Guard against a tampered/old/typo'd hash: reject a non-token range (also keeps it
+    // safe to embed in the querySelector below), and ignore a range that has no button on
+    // this page/scope — leave the server default rather than toggling every block off.
+    if (!section || !range || !/^[A-Za-z0-9_-]+$/.test(range)) return;
+    var scope = section.closest ? section.closest('.rangescope') : null;
+    var root = scope || document;
+    if (!root.querySelector('[data-rangebtn="' + range + '"]')) return;
+    if (scope) toggleRangeScoped(scope, range);
+    else toggleGroup('data-rangebtn', range, '.range-block, .range-window, .jqlv');
+  }
+  function focusId(id, range) {
     if (!id) return;
     var el = document.getElementById(id);
     if (!el) return;
@@ -1237,13 +1277,14 @@ const APP_JS = `(function () {
       var vkey = view.getAttribute('data-view');
       if (vkey) toggleGroup('data-viewbtn', vkey, '.view');
     }
+    if (range) applyRange(el, range); // el IS the <section>; restore the shared range
     setTimeout(function () {
       try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       catch (err) { el.scrollIntoView(); }
       flash(el);
     }, 60);
   }
-  function focusHash() { focusId((location.hash || '').replace(/^#/, '')); }
+  function focusHash() { var p = parseHash(location.hash); focusId(p.id, p.range); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', focusHash);
   else focusHash();
   window.addEventListener('hashchange', focusHash);
