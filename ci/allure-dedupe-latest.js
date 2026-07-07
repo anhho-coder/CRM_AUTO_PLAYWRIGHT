@@ -36,8 +36,21 @@ try { files = fs.readdirSync(dir); } catch (e) {
   console.log(`dedupe-latest: results dir not found: ${dir}`); process.exit(0);
 }
 
-// group result files by historyId
-const groups = new Map();          // hid -> [{file, o, time, env}]
+// Project/run-independent identity of a test, so N runs of the SAME test collapse to 1
+// (Allure's historyId does NOT: it bakes in the project-relative fullName + the Project
+// param, so the same test run as --project=<Section> vs a SPEC chunk on chrome-headless,
+// or after a line-number-shifting edit, gets DIFFERENT historyIds and is counted twice).
+// Key = <section-relative spec path, line:col stripped> :: <test title>.
+function testKey(o) {
+  let full = String(o.fullName || '').replace(/\\/g, '/');
+  full = full.replace(/:\d+(:\d+)?$/, '');              // drop trailing :line[:col]
+  full = full.replace(/^.*?1\.Project_CRM\/[^/]+\//, ''); // strip ".../1.Project_CRM/<section>/" (chunk runs carry it, section runs don't)
+  full = full.replace(/^tests\//, '');
+  return full + '::' + String(o.name || '');
+}
+
+// group result files by project-independent test identity
+const groups = new Map();          // key -> [{file, time, env}]
 let resultCount = 0;
 for (const f of files) {
   if (!f.endsWith('-result.json')) continue;
@@ -45,11 +58,11 @@ for (const f of files) {
   const p = path.join(dir, f);
   let o;
   try { o = JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { continue; }
-  const hid = o.historyId || (String(o.fullName || '') + '|' + String(o.name || f));
+  const key = testKey(o) || f;
   const time = Number(o.stop || o.start || 0);
   const rec = { file: p, time, env: isEnvFail(o) };
-  if (!groups.has(hid)) groups.set(hid, []);
-  groups.get(hid).push(rec);
+  if (!groups.has(key)) groups.set(key, []);
+  groups.get(key).push(rec);
 }
 
 let kept = 0, deleted = 0, envOnly = 0;
