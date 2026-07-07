@@ -400,19 +400,21 @@ const JIRA_DEFECT_METRICS = [
 ];
 
 // --- "Executed Test Cases per main feature" (Manual test page, "By range") ----
-// A grouped bar chart (Executed vs Passed) per Xray Test Repository module, for the
-// WHOLE TEAM (all MEMBERS). Like JIRA_UNIQUE_METRICS it counts DISTINCT test cases per
-// range with ONE JQL per module (a test case counts ONCE no matter how many days it was
-// touched — NOT the per-day sum used by "Manual Test cases executed") — matching the
-// team's own "567 in Q2" query. For each range × module it runs two cheap maxResults=0
-// counts (see sources/feature-exec.js):
+// A grouped bar chart (Executed vs Passed) per Xray Test Repository module. Like
+// JIRA_UNIQUE_METRICS it counts DISTINCT test cases PER TESTER and SUMS across the team
+// (a test case executed by two testers counts once per tester, i.e. twice — NOT the
+// per-day sum used by "Manual Test cases executed"), so the totals match the per-person
+// figures and the "Unique Executed Test Cases" card (Σ per-tester distinct = 802 in Q2),
+// NOT the whole-team distinct union (782). For each range × module × tester it runs cheap
+// maxResults=0 counts (see sources/feature-exec.js):
 //   EXECUTED: project = <project> AND issuetype = "<issueType>"
-//             AND worklogAuthor in (<team>) AND worklogDate > "<from − 1 day>" AND worklogDate <= "<to>"
+//             AND worklogAuthor in (<one tester>) AND worklogDate > "<from − 1 day>" AND worklogDate <= "<to>"
 //             AND issue in testRepositoryFolderTests("<project>", "<repoRoot>/<module>", "true")
-//   PASSED:   EXECUTED  +  " AND " + passedJql
-// The "Other" bar = the same window with `issue not in testRepositoryFolderTests(
-// "<project>","<repoRoot>","true")` — test cases executed but filed outside the repoRoot
-// tree. Rendered ONLY on the Manual test page, in the "By range" view, reacting to the
+//   PASSED / FAILED / ABORTED:  EXECUTED  +  " AND " + passedJql / failedJql / abortedJql
+//   (each of the above is run once per tester and the resulting counts summed)
+// The "Other" bar = the range grand total (same window, no folder clause) minus Σ of the
+// feature bars, computed per outcome — the test cases executed but in no configured bar.
+// Rendered ONLY on the Manual test page, in the "By range" view, reacting to the
 // same range buttons as the other metrics. Stored under data.featureExec (its grouped
 // bar chart doesn't fit the standard by-tester/trend metric card).
 const FEATURE_EXEC = {
@@ -420,11 +422,17 @@ const FEATURE_EXEC = {
   label: 'Executed Test Cases per main feature',
   project: 'CRM',
   issueType: 'Post-EA - Test Case',
-  // "Passed" = the test case reached a Done state (status Resolved or Closed).
-  // Confirmed with the team 2026-07-02: a still-Open executed TC counts as
-  // executed-but-not-passed (the Executed/Passed split of the OA report). Uses
-  // statusCategory (not a resolution name) so both Resolved and Closed count.
-  passedJql: 'statusCategory = Done',
+  // Passed / Failed / Aborted come from the Xray test-run outcome field TestRunStatus
+  // (the real execution result), NOT the Jira workflow status — confirmed with the team
+  // 2026-07-03. These three partition the executed set (a TC with a worklog but no run
+  // yet — TestRunStatus TODO/EXECUTING — counts in Executed but in none of the three, so
+  // Passed+Failed+Aborted can be ≤ Executed). The Q2 whole-team DISTINCT partition was
+  // PASS 736 + FAIL 33 + ABORTED 13 = 782 = Executed; with per-tester summing the Executed
+  // total is 802 (the 20 test cases both testers ran are counted twice) and the outcome
+  // bars grow likewise. Each outcome is AND-ed onto the per-bar EXECUTED query.
+  passedJql: 'TestRunStatus = PASS',
+  failedJql: 'TestRunStatus = FAIL',
+  abortedJql: 'TestRunStatus in (aborted)',
   repoRoot: 'CRM test',   // top Test Repository folder that holds the module folders
   otherLabel: 'Other',    // catch-all bar: TCs executed but outside `repoRoot`
   // The bars (Xray Test Repository features). A plain STRING is shorthand for the

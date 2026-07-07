@@ -635,14 +635,20 @@ function splitRangeSection(meta, m, def, lead, members) {
 }
 
 /* ------------------ Executed Test Cases per main feature --------------------- */
-// A grouped bar chart (Executed vs Passed) per Xray Test Repository module — the CRM
-// version of the OA report's "Executed test cases per feature" slide. Whole-team. Data
-// per range from sources/feature-exec.js: featureExec.ranges[key] = { features:[{name,
-// executed, passed, isOther?}], totalExecuted, totalPassed }. Rendered ONLY on the
-// Manual test page, "By range" view, reacting to the same range buttons as the other
-// metrics (its per-range blocks share the .range-block / data-range mechanism).
-const FEAT_EXEC_COLOR = '#2f6cb0'; // Executed (blue)
-const FEAT_PASS_COLOR = '#2e8b4f'; // Passed   (green)
+// A grouped bar chart per Xray Test Repository module showing four outcomes —
+// Executed, Passed, Failed, Aborted (Passed/Failed/Aborted from Xray TestRunStatus) —
+// the CRM version of the OA report's "Executed test cases per feature" slide.
+// Whole-team. Data per range from sources/feature-exec.js: featureExec.ranges[key] =
+// { features:[{name, executed, passed, failed, aborted, isOther?}], totalExecuted,
+// totalPassed, totalFailed, totalAborted }. Rendered ONLY on the Manual test page,
+// "By range" view, reacting to the same range buttons as the other metrics (its
+// per-range blocks share the .range-block / data-range mechanism).
+const FEAT_SERIES = [
+  { key: 'executed', label: 'Executed', color: '#2f6cb0' }, // blue
+  { key: 'passed', label: 'Passed', color: '#2e8b4f' },     // green
+  { key: 'failed', label: 'Failed', color: '#c0392b' },     // red
+  { key: 'aborted', label: 'Aborted', color: '#9aa0a6' },   // grey
+];
 
 // Round a max value up to a "nice" axis top (5, 10, 20, 50, 100, 200, 500, 1000, …).
 function niceCeil(v) {
@@ -655,25 +661,26 @@ function niceCeil(v) {
 
 function featureExecLegend() {
   return `<div class="flegend">` +
-    `<span class="fl"><span class="sw" style="background:${FEAT_EXEC_COLOR}"></span>Executed</span>` +
-    `<span class="fl"><span class="sw" style="background:${FEAT_PASS_COLOR}"></span>Passed</span>` +
+    FEAT_SERIES.map((sd) => `<span class="fl"><span class="sw" style="background:${sd.color}"></span>${esc(sd.label)}</span>`).join('') +
     `</div>`;
 }
 
-// Vertical grouped bars: one group per feature, an Executed + a Passed bar each, value
-// labels on top, and the (truncated, full-name-on-hover) module name rotated below.
-// The SVG is sized to its content and lives in an overflow-x:auto wrapper so many
-// modules scroll rather than squash. Passed ⊆ Executed, so the y-axis top follows the
-// executed max.
+// Vertical grouped bars: one group per feature with an Executed / Passed / Failed /
+// Aborted bar (FEAT_SERIES), value labels on top (0s omitted to cut clutter), and the
+// (truncated, full-name-on-hover) module name rotated below. The SVG is sized to its
+// content and lives in an overflow-x:auto wrapper so many modules scroll rather than
+// squash. Passed/Failed/Aborted ⊆ Executed, so the y-axis top follows the executed max.
 function featureExecChart(features) {
   if (!features || !features.length) return '<p class="muted">No executions in this range.</p>';
   const n = features.length;
-  const padL = 40, padR = 16, padT = 22, padB = 96, groupW = 62, bw = 20, gap = 5;
+  const padL = 40, padR = 16, padT = 22, padB = 96, bw = 16, gap = 4, ns = FEAT_SERIES.length;
+  const groupInner = ns * bw + (ns - 1) * gap;
+  const groupW = groupInner + 16;
   const W = padL + padR + n * groupW, H = 320;
   const base = H - padB, plotH = H - padT - padB;
-  const top = niceCeil(Math.max(1, ...features.map((f) => f.executed)));
+  const top = niceCeil(Math.max(1, ...features.map((f) => f.executed || 0)));
   const yOf = (v) => base - (v / top) * plotH;
-  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Executed vs passed per feature">`;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Executed / passed / failed / aborted per feature">`;
   const ticks = 4;
   for (let t = 0; t <= ticks; t++) {
     const val = Math.round((top * t) / ticks), yy = yOf(val);
@@ -681,13 +688,13 @@ function featureExecChart(features) {
     s += `<text x="${padL - 6}" y="${(yy + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#aaa">${val}</text>`;
   }
   features.forEach((f, i) => {
-    const cx = padL + i * groupW + groupW / 2;
-    const ex = cx - bw - gap / 2, px = cx + gap / 2;
-    const eh = (f.executed / top) * plotH, ph = (f.passed / top) * plotH;
-    s += `<rect x="${ex.toFixed(1)}" y="${(base - eh).toFixed(1)}" width="${bw}" height="${eh.toFixed(1)}" fill="${FEAT_EXEC_COLOR}"><title>${esc(f.name)} — Executed ${f.executed}</title></rect>`;
-    s += `<rect x="${px.toFixed(1)}" y="${(base - ph).toFixed(1)}" width="${bw}" height="${ph.toFixed(1)}" fill="${FEAT_PASS_COLOR}"><title>${esc(f.name)} — Passed ${f.passed}</title></rect>`;
-    s += `<text x="${(ex + bw / 2).toFixed(1)}" y="${(base - eh - 4).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${FEAT_EXEC_COLOR}">${f.executed}</text>`;
-    s += `<text x="${(px + bw / 2).toFixed(1)}" y="${(base - ph - 4).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${FEAT_PASS_COLOR}">${f.passed}</text>`;
+    const gx = padL + i * groupW, startX = gx + (groupW - groupInner) / 2, cx = gx + groupW / 2;
+    FEAT_SERIES.forEach((sd, j) => {
+      const v = f[sd.key] || 0;
+      const x = startX + j * (bw + gap), h = (v / top) * plotH;
+      s += `<rect x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" fill="${sd.color}"><title>${esc(f.name)} — ${sd.label} ${v}</title></rect>`;
+      if (v > 0) s += `<text x="${(x + bw / 2).toFixed(1)}" y="${(base - h - 4).toFixed(1)}" font-size="8" font-weight="700" text-anchor="middle" fill="${sd.color}">${v}</text>`;
+    });
     const label = f.name.length > 20 ? `${f.name.slice(0, 19)}…` : f.name;
     s += `<text x="${cx.toFixed(1)}" y="${base + 12}" font-size="9" text-anchor="end" fill="#666" transform="rotate(-40 ${cx.toFixed(1)} ${base + 12})">${esc(label)}<title>${esc(f.name)}</title></text>`;
   });
@@ -705,22 +712,22 @@ function featureExecNote(fe, def) {
   const dayBefore = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
   const variants = METRIC_RANGE_ORDER.filter((k) => fe.ranges[k]).map((k) => {
     const r = fe.ranges[k];
-    const base = `project = ${fx.project} AND issuetype = ${q(fx.issueType)} AND worklogAuthor in (${users}) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`;
+    const base = `project = ${fx.project} AND issuetype = ${q(fx.issueType)} AND worklogAuthor in (<tester>) AND worklogDate > ${q(dayBefore(r.from))} AND worklogDate <= ${q(r.to)}`;
     const exec = `${base} AND issue in testRepositoryFolderTests(${q(fx.project)}, ${q(`${fx.repoRoot}/<module>`)}, "true")`;
     return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">` +
-      `<div><b>Executed</b> (per feature): ${code(exec)}</div>` +
-      `<div><b>Passed</b>: ${code(`${exec} AND ${fx.passedJql}`)}</div>` +
+      `<div><b>Executed</b> (per feature — run once per tester [${esc(users)}], then summed): ${code(exec)}</div>` +
+      `<div><b>Passed</b>: ${code(`… AND ${fx.passedJql}`)} &nbsp;·&nbsp; <b>Failed</b>: ${code(`… AND ${fx.failedJql}`)} &nbsp;·&nbsp; <b>Aborted</b>: ${code(`… AND ${fx.abortedJql}`)}</div>` +
       `<div><b>Other</b> = grand total (same window, no folder clause) − Σ of all feature bars.</div>` +
       `</div>`;
   }).join('');
   const notes = [
-    'Counts DISTINCT test cases per range (one JQL per feature), so a test case counts ONCE — not the per-day sum used by “Manual Test cases executed”.',
-    `Passed = the test case is Resolved/Closed (${esc(fx.passedJql)}); a still-Open executed TC is executed-but-not-passed.`,
+    'Counts distinct test cases PER TESTER and sums them (one JQL per feature × outcome × tester), so a test case executed by BOTH testers counts once per tester (i.e. twice). This matches the per-person figures and the “Unique Executed Test Cases” card (Σ per-tester distinct = 802 in Q2), NOT the whole-team distinct union (782), and NOT the per-day sum used by “Manual Test cases executed”.',
+    'Passed / Failed / Aborted come from the Xray run outcome (TestRunStatus = PASS / FAIL / aborted), NOT the Jira workflow status. A test case worked on but not yet run (TestRunStatus TODO/EXECUTING) counts in Executed only, so Passed+Failed+Aborted can be ≤ Executed.',
     'A feature (bar) maps to one or more Xray Test Repository folders (current membership): “CRM module” also counts its automation folder (CRM automation/CRM module); “Migration Odoo 12CE to 12CC” is its own top-level folder. A bar with 0 executed in the range is not drawn.',
-    '“Other” = the range grand total minus the sum of the bars, i.e. executed test cases that fall in no configured feature folder. Σ(bars) + Other = the grand total.',
-    'Whole team (worklogAuthor ∈ the QA team). The date window follows the range button selected above.',
+    '“Other” = the range grand total minus the sum of the bars (computed per outcome). Σ(bars) + Other = the grand total.',
+    'Counted per tester (worklogAuthor = each of the QA team) and summed. The date window follows the range button selected above.',
   ];
-  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How executed &amp; passed are counted<span class="wlnote-hint"> (per selected range — hover)</span>
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How executed / passed / failed / aborted are counted<span class="wlnote-hint"> (per selected range — hover)</span>
     <div class="wlnote-pop">
       <div class="wlnote-h">Query per feature (module)</div>
       ${variants}
@@ -734,7 +741,7 @@ function featureExecSection(fe, def) {
   const blocks = METRIC_RANGE_ORDER.filter((k) => fe.ranges[k]).map((k) => {
     const r = fe.ranges[k];
     const caption = r.features.length
-      ? `<div class="fcaption">Total: <b>${fmt(r.totalExecuted)}</b> executed · <b>${fmt(r.totalPassed)}</b> passed · ${r.features.length} feature${r.features.length === 1 ? '' : 's'}</div>`
+      ? `<div class="fcaption">Total: <b>${fmt(r.totalExecuted)}</b> executed · <b>${fmt(r.totalPassed)}</b> passed · <b>${fmt(r.totalFailed)}</b> failed · <b>${fmt(r.totalAborted)}</b> aborted · ${r.features.length} feature${r.features.length === 1 ? '' : 's'}</div>`
       : '';
     return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
       ${featureExecLegend()}
@@ -743,7 +750,7 @@ function featureExecSection(fe, def) {
     </div>`;
   }).join('\n');
   return `<section class="metric lead">
-    <h2>${esc(fe.label)} <span class="pill">whole team</span> <span class="muted">· distinct Post-EA Test Cases with a worklog in range, by Xray Test Repository module · Passed = Resolved/Closed</span></h2>
+    <h2>${esc(fe.label)} <span class="pill">Σ per tester</span> <span class="muted">· Post-EA Test Cases with a worklog in range, counted per tester and summed, by Xray Test Repository module · Passed/Failed/Aborted = Xray TestRunStatus</span></h2>
     ${featureExecNote(fe, def)}
     ${blocks}
   </section>`;
