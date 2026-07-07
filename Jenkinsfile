@@ -329,15 +329,16 @@ echo ffmpeg OK
                 Write-Host "WARNING: could not stash Allure results: $($_.Exception.Message)"
               }
             '''
-            // Also drop a DATE-stamped copy under C:\allure\periods\results\<yyyy-MM-dd>\<JOB>\
+            // Also drop a DATE-stamped copy under C:\allure\periods\results\<yyyy-MM-dd>\<JOB>\<BUILD>\
             // (separate tree, NOT scanned by the Total report). The per-period Allure jobs
-            // (CRM-Allure-Daily/Monthly/Quarterly/Yearly) freeze a completed period from these,
-            // so you can open "yesterday's / last month's" report the next day. Overwrites this
-            // job's slice for today, so a day's bucket = that job's last run of the day.
+            // (CRM-Allure-Daily/Weekly/Monthly/Quarterly/Yearly) freeze a completed period from these.
+            // Keyed by BUILD_NUMBER so a chunked section (O12 runs as many SPEC builds, each a
+            // disjoint slice) does NOT overwrite its own earlier slices — every build survives and
+            // the period report UNIONS them into the full suite (latest-per-test).
             powershell '''
               try {
                 $day  = (Get-Date).ToString('yyyy-MM-dd')
-                $dest = "C:\\allure\\periods\\results\\$day\\$env:JOB_BASE_NAME"
+                $dest = "C:\\allure\\periods\\results\\$day\\$env:JOB_BASE_NAME\\$env:BUILD_NUMBER"
                 if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
                 New-Item -ItemType Directory -Path $dest -Force | Out-Null
                 if (Test-Path allure-results) {

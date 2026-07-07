@@ -109,67 +109,43 @@ switch ($Scope) {
 }
 Write-Host "Scope=$Scope  Period=$periodKey  Title='$reportTitle'  bucket-prefixes=$($prefixes -join ', ')"
 
-# ---- Select the BEST build per section (job), then merge only those ----
-# The period report reflects each section's BEST Jenkins job-build, NOT an accumulation
-# of every run (which would drag every historical failure into the aggregate forever).
-# Each dated bucket  C:\allure\periods\results\<date>\<JOB>\  is one build; we group the
-# builds in this period by JOB (= section), score each by unique-test outcomes (retries
-# collapsed by historyId), and keep ONLY the winning build's results:
-#   best = fewest failures  ->  most tests (coverage)  ->  most recent date.
+# ---- Merge EVERY build in the window (UNION), latest-per-test ----
+# The report shows, per SUITE, the LATEST result of each unique test that ran in the period
+# (Section 2), plus the period's unique-test total (Section 1). Chunked sections therefore
+# CANNOT be reduced to one "best build": O12 runs as ~16 SPEC builds, each covering a
+# DISJOINT slice of the 152 tests, so keeping only one build would show ~10 tests. Instead we
+# UNION every build's raw results and let Allure collapse same-historyId retries to the LATEST
+# attempt (by stop time). This is bounded to THIS period's dated buckets, so a fixed test's
+# old failure never leaks past the window.
 $merged = Join-Path $Workspace 'allure-merged'
 if (Test-Path -LiteralPath $merged) { Remove-Item -LiteralPath $merged -Recurse -Force }
 New-Item -ItemType Directory -Path $merged | Out-Null
 
-$statusRank = @{ 'passed' = 0; 'skipped' = 1; 'unknown' = 2; 'broken' = 3; 'failed' = 4 }  # worse = higher
-function Get-BuildInfo([string]$buildPath, [string]$fallbackKey) {
-    # Collapse retries (best status per historyId) and detect the build's section = Allure 'Project'
-    # parameter (the suite the user sees). Score = count of tests whose best status is failed/broken.
-    $best = @{}; $project = $null
-    Get-ChildItem -LiteralPath $buildPath -Filter '*-result.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
-        try { $o = Get-Content -LiteralPath $_.FullName -Raw | ConvertFrom-Json } catch { return }
-        if (-not $project -and $o.parameters) {
-            $p = $o.parameters | Where-Object { $_.name -eq 'Project' } | Select-Object -First 1
-            if ($p) { $project = [string]$p.value }
-        }
-        $hid = if ($o.historyId) { $o.historyId } elseif ($o.name) { $o.name } else { $_.Name }
-        $st = if ($o.status) { $o.status } else { 'unknown' }
-        if (-not $statusRank.ContainsKey($st)) { $st = 'unknown' }
-        if (-not $best.ContainsKey($hid) -or $statusRank[$st] -lt $statusRank[$best[$hid]]) { $best[$hid] = $st }
-    }
-    if (-not $project) { $project = $fallbackKey }
-    $fails = 0; foreach ($s in $best.Values) { if ($s -eq 'failed' -or $s -eq 'broken') { $fails++ } }
-    return [pscustomobject]@{ Section = $project; Fails = $fails; Tests = $best.Count }
-}
-
-$builds = @{}   # section (Project) -> list of candidate builds in this period
+$copied = 0
 if (Test-Path -LiteralPath $resultsRoot) {
     Get-ChildItem -LiteralPath $resultsRoot -Directory | Where-Object {
         $name = $_.Name
         @($prefixes | Where-Object { $name -eq $_ -or $name.StartsWith("$_-") }).Count -gt 0
     } | ForEach-Object {
-        $date = $_.Name
-        Get-ChildItem -LiteralPath $_.FullName -Directory | ForEach-Object {     # per-JOB subfolder = one build
-            $info = Get-BuildInfo $_.FullName $_.Name
-            $sec = $info.Section
-            if (-not $builds.ContainsKey($sec)) { $builds[$sec] = @() }
-            $builds[$sec] += [pscustomobject]@{ Section = $sec; Job = $_.Name; Date = $date; Path = $_.FullName; Fails = $info.Fails; Tests = $info.Tests }
+        # Recurse so BOTH bucket layouts work: <date>\<JOB>\*.json (old, one run/day) and
+        # <date>\<JOB>\<BUILD>\*.json (new per-build, chunk-safe). Flat-copy every file
+        # (result/container/attachment) into one dir; UUID filenames never collide.
+        Get-ChildItem -LiteralPath $_.FullName -Recurse -File -Force -ErrorAction SilentlyContinue | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $merged -Force
+            if ($_.Name -like '*-result.json') { $copied++ }
         }
     }
+    Write-Host "Merged $copied result file(s) for $periodKey (union; latest-per-test collapses by historyId)"
 } else {
     Write-Host 'No dated-bucket root yet (run some section jobs first).'
 }
 
-$selectedBuilds = 0
-foreach ($sec in ($builds.Keys | Sort-Object)) {
-    $best = $builds[$sec] | Sort-Object Fails, @{Expression = 'Tests'; Descending = $true }, @{Expression = 'Date'; Descending = $true } | Select-Object -First 1
-    $cands = ($builds[$sec] | ForEach-Object { "$($_.Date)/$($_.Job)=$($_.Fails)f/$($_.Tests)" }) -join ', '
-    Write-Host "  section [$sec] -> best build $($best.Date)/$($best.Job) (fails=$($best.Fails)/$($best.Tests))  [candidates: $cands]"
-    Get-ChildItem -LiteralPath $best.Path -Force | ForEach-Object {
-        Copy-Item -LiteralPath $_.FullName -Destination $merged -Recurse -Force
-    }
-    $selectedBuilds++
-}
-Write-Host "Selected $selectedBuilds best-build(s) for $periodKey (one per section/suite)"
+# ---- Relabel SPEC/chunk results (parentSuite/Project='chrome-headless') to their real
+# section suite, derived from each test's file path, so O12's chunks form ONE "O12" tile
+# (Node keeps labels/parameters as JSON arrays; PowerShell's ConvertTo-Json would collapse
+# a single-element array to an object and corrupt the result). Section-project runs untouched.
+node (Join-Path $Workspace 'ci\allure-relabel-suites.js') $merged
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXITCODE (continuing)." }
 
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
 $scopeHist = Join-Path $histRoot $Scope

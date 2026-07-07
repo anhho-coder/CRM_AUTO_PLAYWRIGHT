@@ -36,8 +36,10 @@ pipeline {
     // "previous" one. Leave blank for cron runs. Formats by scope:
     //   daily=yyyy-MM-dd  weekly=yyyy-Www  monthly=yyyy-MM  quarterly=yyyy-Qn  yearly=yyyy
     parameters {
+        choice(name: 'VIEW', choices: ['auto', 'previous', 'current'],
+               description: 'Which period to show. auto = the live CURRENT period when a section job triggered this build, otherwise the previous completed period. previous = force the last completed period (Quarterly => last quarter, e.g. Q2). current = the in-progress period (e.g. Q3). Ignored when PERIOD is set.')
         string(name: 'PERIOD', defaultValue: '',
-               description: 'Optional period to regenerate (else the previous period). daily=2026-06-19, weekly=2026-W25, monthly=2026-06, quarterly=2026-Q2, yearly=2026.')
+               description: 'Optional EXACT period to regenerate (overrides VIEW). daily=2026-06-19, weekly=2026-W25, monthly=2026-06, quarterly=2026-Q2, yearly=2026.')
     }
 
     // Each job picks up only the cron line that matches its own name. All in the 05:00 hour;
@@ -75,12 +77,16 @@ pipeline {
                     ]
                     env.SCOPE = jobScope[env.JOB_BASE_NAME] ?: 'daily'
 
-                    // Cause-based period: a section job finishing (UpstreamCause) means we want
-                    // TODAY's live data -> generate the CURRENT period. Cron/manual without an
-                    // explicit PERIOD keeps the default (previous, completed) period.
+                    // Decide which period to build. PERIOD (exact) wins; else the VIEW choice;
+                    // else 'auto' = live CURRENT when a section job triggered us (UpstreamCause),
+                    // otherwise the previous completed period (clean archival snapshot).
                     def upstreamHit = currentBuild.getBuildCauses().any { (it._class ?: '').contains('UpstreamCause') }
-                    env.CURRENT = (upstreamHit && !(params.PERIOD?.trim())) ? 'true' : 'false'
-                    echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
+                    def view = (params.VIEW ?: 'auto')
+                    if (params.PERIOD?.trim())      { env.CURRENT = 'false' }   // explicit period wins
+                    else if (view == 'current')     { env.CURRENT = 'true'  }   // force in-progress period
+                    else if (view == 'previous')    { env.CURRENT = 'false' }   // force last completed period (e.g. Q2)
+                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto
+                    echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  VIEW=${view}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
                 }
             }
         }
