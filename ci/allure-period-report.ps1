@@ -197,6 +197,11 @@ if ($reportTitle -and (Test-Path -LiteralPath $summaryPath)) {
 node (Join-Path $Workspace 'ci\allure-inject-suites-columns.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returned $LASTEXITCODE (continuing)." }
 
+# ---- Label the two Overview sections: "Section 1" on the summary (total TCs run this
+# period) and "Section 2" on the Suites widget (latest result per suite). ----
+node (Join-Path $Workspace 'ci\allure-inject-section-labels.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: section-labels injection returned $LASTEXITCODE (continuing)." }
+
 # ---- Add the "Skipped Test Cases by Suite" Overview card ----
 # Reason + blocking bug of each intentional skip live only in the sources, so we
 # build crm-skips.json from tests\ then inject the client-side card that renders it.
