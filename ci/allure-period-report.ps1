@@ -246,6 +246,38 @@ Get-ChildItem -LiteralPath $reportDir -Force | ForEach-Object {
 }
 Write-Host "Frozen $Scope report for $periodKey -> $frozen"
 
+# ---- Quarterly: embed the PREVIOUS quarter + a period switcher on the page ----
+# The main report is the CURRENT quarter; copy the previously-frozen quarter into
+# allure-report\previous\ so "Previous Quarter" is a stable relative link, and inject a
+# switcher into both. Runs AFTER the freeze so the archival snapshot ($frozen) stays a
+# clean single-period report (no nested previous\ copy).
+if ($Scope -eq 'quarterly') {
+    $pq = $q - 1; $ppy = $py
+    if ($pq -lt 1) { $pq = 4; $ppy = $py - 1 }
+    $prevKey    = "$ppy-Q$pq"
+    $prevFrozen = Join-Path (Join-Path $reportRoot 'quarterly') $prevKey
+    $prevOut    = Join-Path $reportDir 'previous'
+    $havePrev   = Test-Path -LiteralPath $prevFrozen
+    if ($havePrev) {
+        if (Test-Path -LiteralPath $prevOut) { Remove-Item -LiteralPath $prevOut -Recurse -Force }
+        New-Item -ItemType Directory -Path $prevOut -Force | Out-Null
+        Get-ChildItem -LiteralPath $prevFrozen -Force | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $prevOut -Recurse -Force
+        }
+        Write-Host "Embedded previous quarter $prevKey -> $prevOut"
+    } else {
+        Write-Host "No frozen previous quarter at $prevFrozen (switcher shows current only)."
+    }
+    Push-Location $Workspace
+    try {
+        $prevHref = if ($havePrev) { 'previous' } else { '' }
+        node ci/allure-inject-period-nav.js $reportDir 'current' "$periodKey" '.' "$prevKey" "$prevHref"
+        if ($havePrev) {
+            node ci/allure-inject-period-nav.js $prevOut 'previous' "$periodKey" '..' "$prevKey" '.'
+        }
+    } finally { Pop-Location }
+}
+
 # ---- Retention: keep dated buckets ~400 days (so the yearly job can still aggregate) ----
 $cutoff = $now.AddDays(-400)
 if (Test-Path -LiteralPath $resultsRoot) {

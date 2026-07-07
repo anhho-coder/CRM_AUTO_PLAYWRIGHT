@@ -53,11 +53,12 @@ pipeline {
             env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
                                                           'H 5 * * *'          // default: daily
         )
-        // LIVE refresh: only Daily & Weekly rebuild after any section job finishes, and
-        // (see Resolve stage) generate the CURRENT period so today's runs show up same-day.
-        // Monthly/Quarterly/Yearly stay cron-only (they aggregate many buckets / change slowly).
+        // LIVE refresh: Daily, Weekly AND Quarterly rebuild after any section job finishes and
+        // (see Resolve stage) generate the CURRENT period so runs show up same-day. Quarterly
+        // defaults to the current quarter (and embeds the previous quarter behind a switcher),
+        // so it must stay live too. Monthly/Yearly remain cron-only (change slowly).
         upstream(
-            upstreamProjects: (env.JOB_BASE_NAME == 'CRM-Allure-Daily' || env.JOB_BASE_NAME == 'CRM-Allure-Weekly')
+            upstreamProjects: (env.JOB_BASE_NAME == 'CRM-Allure-Daily' || env.JOB_BASE_NAME == 'CRM-Allure-Weekly' || env.JOB_BASE_NAME == 'CRM-Allure-Quarterly')
                 ? 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12'
                 : '',
             threshold: hudson.model.Result.FAILURE   // refresh even when some tests failed
@@ -85,7 +86,8 @@ pipeline {
                     if (params.PERIOD?.trim())      { env.CURRENT = 'false' }   // explicit period wins
                     else if (view == 'current')     { env.CURRENT = 'true'  }   // force in-progress period
                     else if (view == 'previous')    { env.CURRENT = 'false' }   // force last completed period (e.g. Q2)
-                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto
+                    else if (env.SCOPE == 'quarterly') { env.CURRENT = 'true' } // auto: Quarterly defaults to the CURRENT quarter (embeds previous behind a switcher)
+                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto: others -> live on upstream, else previous
                     echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  VIEW=${view}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
                 }
             }
