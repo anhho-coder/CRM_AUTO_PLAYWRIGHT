@@ -119,13 +119,16 @@ pipeline {
 
     post {
         always {
-            // publishHTML + archiveArtifacts need a workspace (FilePath) context. When a build is
-            // superseded (disableConcurrentBuilds) or loses its agent mid-run, the declarative post
-            // block runs with NO node -> "Required context class hudson.FilePath is missing" -> the
-            // whole build goes FAILURE and /lastBuild/Allure-Report/ 404s. Re-acquire a node so the
-            // post steps always have a workspace; allowMissing/allowEmptyArchive cover aborted builds
-            // that never produced a report.
-            node('') {
+            // The declarative post runs on the pipeline's own agent+workspace (which holds the
+            // freshly generated allure-report), so publishHTML/archiveArtifacts work for normal
+            // builds. But when a build is SUPERSEDED (disableConcurrentBuilds) or loses its agent
+            // mid-run, post runs with NO workspace -> "Required context class hudson.FilePath is
+            // missing" and the build flips to FAILURE. A superseded build has nothing to publish
+            // anyway, so swallow that case with catchError (keep the build SUCCESS) instead of
+            // wrapping in a NEW node{} -- a fresh node gets an EMPTY workspace and would publish a
+            // blank report. lastSuccessfulBuild (what the portal links to) then always stays on the
+            // last build that really produced a report.
+            catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS', message: 'post publish skipped (no workspace / superseded build)') {
                 publishHTML([
                     allowMissing: true,
                     alwaysLinkToLastBuild: true,
