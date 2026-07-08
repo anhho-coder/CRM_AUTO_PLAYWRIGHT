@@ -5,6 +5,7 @@
  * between each suite name and its status bar:
  *   - "Total TC"  : total number of test cases in that suite
  *   - "Run Time"  : total execution time of that suite
+ * plus a bottom TOTAL row summing both columns across all suites.
  *
  * Data sources (fetched once, relative to the report root):
  *   widgets/suites.json -> items[].statistic.total   (per-suite test count)
@@ -20,6 +21,7 @@
 
   var CELL = 'crm-suite-col';   // marker class on every injected data cell
   var HDR = 'crm-suite-hdr';    // marker class on the injected header row
+  var TOT = 'crm-suite-tot';    // marker class on the injected TOTAL (footer) row
   var STYLE_ID = 'crm-suite-cols-style';
   var dataPromise = null;
 
@@ -84,7 +86,9 @@
       '.crm-suite-col.crm-col-time{width:104px;}' +
       '.crm-suite-col.crm-col-name,.crm-suite-col.crm-col-bar{flex:1 1 0%;}' +
       '.table__row.crm-suite-hdr{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;opacity:.55;cursor:default;}' +
-      '.table__row.crm-suite-hdr .table__col{padding-top:4px;padding-bottom:4px;}';
+      '.table__row.crm-suite-hdr .table__col{padding-top:4px;padding-bottom:4px;}' +
+      '.table__row.crm-suite-tot{font-weight:700;border-top:2px solid rgba(128,128,128,.35);cursor:default;}' +
+      '.table__row.crm-suite-tot .crm-col-name{text-transform:uppercase;letter-spacing:.03em;opacity:.7;}';
     var el = document.createElement('style');
     el.id = STYLE_ID;
     el.textContent = css;
@@ -130,6 +134,26 @@
           nameCol.insertAdjacentElement('afterend', timeCell);
           nameCol.insertAdjacentElement('afterend', totalCell);
         });
+
+        // TOTAL (footer) row: sum Total TC + Run Time across the suites shown in this widget.
+        // Summed from the SAME rows the widget renders (by uid), so the total always matches
+        // the visible list. Re-inserted after the last suite row (before "Show all").
+        if (!table.querySelector('.' + TOT)) {
+          var sumTc = 0, sumMs = 0, haveTc = false, haveMs = false;
+          Array.prototype.forEach.call(rows, function (row) {
+            var uid = (row.getAttribute('href') || '').split('#suites/')[1];
+            var info = (uid && byUid[uid]) || {};
+            if (info.total != null) { sumTc += info.total; haveTc = true; }
+            if (info.durationMs != null) { sumMs += info.durationMs; haveMs = true; }
+          });
+          var totalRow = document.createElement('div');
+          totalRow.className = 'table__row ' + TOT;
+          totalRow.appendChild(cell('crm-col-name', 'Total (' + rows.length + ' suites)'));
+          totalRow.appendChild(cell('crm-col-total', haveTc ? String(sumTc) : '—'));
+          totalRow.appendChild(cell('crm-col-time', haveMs ? fmtDuration(sumMs) : '—'));
+          totalRow.appendChild(cell('crm-col-bar', ''));
+          rows[rows.length - 1].insertAdjacentElement('afterend', totalRow);
+        }
       });
     });
   }
