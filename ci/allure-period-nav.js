@@ -1,11 +1,12 @@
 /*
  * CRM Allure customization (client-side, runs inside the generated report).
  *
- * Renders a period switcher at the top of the Overview: "Current · Q3 2026" /
- * "Previous · Q2 2026", so you can flip between the current and previous quarter
- * without leaving the page. Config comes from period-nav.json (written next to
- * index.html by ci/allure-inject-period-nav.js), so the hrefs are correct whether
- * this report is the main one (current) or the embedded previous/ copy.
+ * Renders a period switcher at the top of the Overview: "Current · <period>" /
+ * "Previous · <period>", so you can flip between the current and previous period
+ * (day / week / month / quarter / year) without leaving the page. Config comes from
+ * period-nav.json (written next to index.html by ci/allure-inject-period-nav.js),
+ * so the hrefs + the period-type label are correct whether this report is the main
+ * one (current) or the embedded previous/ copy.
  *
  * Idempotent; re-applies on SPA re-render via a MutationObserver. Theme-safe.
  */
@@ -30,10 +31,22 @@
     return cfgPromise;
   }
 
+  var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  var MON_FULL = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Format any period key into a human label, by scope key shape:
+  //   yyyy-MM-dd -> "Jun 30, 2026" | yyyy-Www -> "Week 26, 2026" | yyyy-MM -> "June 2026"
+  //   yyyy-Qn    -> "Q3 2026"      | yyyy      -> "2026"
   function fmt(key) {
-    var m = /^(\d{4})-Q([1-4])$/.exec(key || '');
-    if (m) return 'Q' + m[2] + ' ' + m[1];      // 2026-Q3 -> "Q3 2026"
-    return key || '';
+    key = key || '';
+    var m;
+    if ((m = /^(\d{4})-Q([1-4])$/.exec(key)))          return 'Q' + m[2] + ' ' + m[1];
+    if ((m = /^(\d{4})-W(\d{1,2})$/.exec(key)))         return 'Week ' + parseInt(m[2], 10) + ', ' + m[1];
+    if ((m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key)))    return MON[+m[2] - 1] + ' ' + (+m[3]) + ', ' + m[1];
+    if ((m = /^(\d{4})-(\d{2})$/.exec(key)))            return MON_FULL[+m[2] - 1] + ' ' + m[1];
+    if ((m = /^(\d{4})$/.exec(key)))                    return m[1];
+    return key;
   }
 
   function injectStyle() {
@@ -57,7 +70,7 @@
     bar.id = ID;
     var lab = document.createElement('span');
     lab.className = 'crm-pn-lab';
-    lab.textContent = 'Quarter';
+    lab.textContent = cfg.label || 'Period';
     bar.appendChild(lab);
     cfg.items.forEach(function (it) {
       if (!it.href) return;                       // no previous frozen yet -> skip its tab

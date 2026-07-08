@@ -6,10 +6,11 @@
  * <script> tag for it before </body>.
  *
  * Usage:
- *   node ci/allure-inject-period-nav.js <report-dir> <active> <curKey> <curHref> <prevKey> <prevHref>
+ *   node ci/allure-inject-period-nav.js <report-dir> <active> <curKey> <curHref> <prevKey> <prevHref> [label]
  *     active   = "current" | "previous"  (which tab is highlighted)
- *     curHref  = relative href to the CURRENT-quarter report from THIS report ("." or "..")
- *     prevHref = relative href to the PREVIOUS-quarter report ("previous" or "." or "" if none)
+ *     curHref  = relative href to the CURRENT-period report from THIS report ("." or "..")
+ *     prevHref = relative href to the PREVIOUS-period report ("previous" or "." or "" if none)
+ *     label    = period word shown before the tabs ("Day"/"Week"/"Month"/"Quarter"/"Year")
  *
  * Idempotent: re-running rewrites period-nav.json and does not add a second <script> tag.
  */
@@ -22,6 +23,7 @@ const curKey    = process.argv[4] || '';
 const curHref   = process.argv[5] || '.';
 const prevKey   = process.argv[6] || '';
 const prevHref  = process.argv[7] || '';
+const label     = process.argv[8] || 'Period';
 
 const scriptName = 'allure-period-nav.js';
 const srcScript = path.join(__dirname, scriptName);
@@ -39,6 +41,7 @@ if (!fs.existsSync(srcScript)) {
 
 const cfg = {
   active: active,
+  label: label,
   items: [
     { role: 'current',  key: curKey,  href: curHref },
     { role: 'previous', key: prevKey, href: prevHref }

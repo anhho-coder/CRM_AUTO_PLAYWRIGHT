@@ -57,6 +57,7 @@ switch ($Scope) {
         $periodKey = $t.ToString('yyyy-MM-dd')
         $prefixes  = @($periodKey)                       # exact day folder
         $reportTitle = 'Daily - ' + $t.ToString('ddd, MMM d, yyyy', $inv)   # Daily - Fri, Jun 19, 2026
+        $prevKey   = $t.AddDays(-1).ToString('yyyy-MM-dd')   # previous day
     }
     'weekly' {
         # ISO week: weeks start Monday; the week's Thursday decides its year + number.
@@ -84,12 +85,16 @@ switch ($Scope) {
             $range = '{0} - {1}, {2}' -f $monday.ToString('MMM d', $inv), $sunday.Day, $sunday.Year
         }
         $reportTitle = "Weekly - $range ($periodKey)"   # Weekly - Jun 14 - 20, 2026 (2026-W25)
+        $pMon = $monday.AddDays(-7); $pThu = $pMon.AddDays(3)   # previous ISO week
+        $pWeekNo = [int][math]::Floor(($pThu.DayOfYear - 1) / 7) + 1
+        $prevKey = '{0}-W{1:D2}' -f $pThu.Year, $pWeekNo
     }
     'monthly' {
         $t = if ($Period) { [datetime]::ParseExact("$Period-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddMonths(-1) }
         $periodKey = $t.ToString('yyyy-MM')
         $prefixes  = @($periodKey)                       # 2026-06-*
         $reportTitle = 'Monthly - ' + $t.ToString('MMMM yyyy', $inv)   # Monthly - June 2026
+        $prevKey   = $t.AddMonths(-1).ToString('yyyy-MM')   # previous month
     }
     'quarterly' {
         if ($Period -match '^(\d{4})-Q([1-4])$') { $py = [int]$Matches[1]; $q = [int]$Matches[2] }
@@ -99,14 +104,20 @@ switch ($Scope) {
         $qFirst = [datetime]::new($py, ((($q - 1) * 3) + 1), 1)
         $qLast  = [datetime]::new($py, ($q * 3), 1)
         $reportTitle = 'Quarterly - Q{0} {1} ({2} - {3})' -f $q, $py, $qFirst.ToString('MMM', $inv), $qLast.ToString('MMM', $inv)   # Quarterly - Q2 2026 (Apr - Jun)
+        $pq = $q - 1; $ppy = $py                          # previous quarter (wrap to Q4 prev year)
+        if ($pq -lt 1) { $pq = 4; $ppy = $py - 1 }
+        $prevKey = "$ppy-Q$pq"
     }
     'yearly' {
         $t = if ($Period) { [datetime]::ParseExact("$Period-01-01", 'yyyy-MM-dd', $inv) } elseif ($Current) { $now } else { $now.AddYears(-1) }
         $periodKey = $t.ToString('yyyy')
         $prefixes  = @($periodKey)                       # 2026-*
         $reportTitle = 'Yearly - ' + $periodKey   # Yearly - 2026
+        $prevKey   = ([int]$periodKey - 1).ToString()   # previous year
     }
 }
+# Human word for the period switcher label ("Day"/"Week"/...).
+$periodLabel = @{ daily = 'Day'; weekly = 'Week'; monthly = 'Month'; quarterly = 'Quarter'; yearly = 'Year' }[$Scope]
 Write-Host "Scope=$Scope  Period=$periodKey  Title='$reportTitle'  bucket-prefixes=$($prefixes -join ', ')"
 
 # ---- Merge EVERY build in the window (UNION), latest-per-test ----
@@ -263,37 +274,33 @@ Get-ChildItem -LiteralPath $reportDir -Force | ForEach-Object {
 }
 Write-Host "Frozen $Scope report for $periodKey -> $frozen"
 
-# ---- Quarterly: embed the PREVIOUS quarter + a period switcher on the page ----
-# The main report is the CURRENT quarter; copy the previously-frozen quarter into
-# allure-report\previous\ so "Previous Quarter" is a stable relative link, and inject a
-# switcher into both. Runs AFTER the freeze so the archival snapshot ($frozen) stays a
-# clean single-period report (no nested previous\ copy).
-if ($Scope -eq 'quarterly') {
-    $pq = $q - 1; $ppy = $py
-    if ($pq -lt 1) { $pq = 4; $ppy = $py - 1 }
-    $prevKey    = "$ppy-Q$pq"
-    $prevFrozen = Join-Path (Join-Path $reportRoot 'quarterly') $prevKey
-    $prevOut    = Join-Path $reportDir 'previous'
-    $havePrev   = Test-Path -LiteralPath $prevFrozen
-    if ($havePrev) {
-        if (Test-Path -LiteralPath $prevOut) { Remove-Item -LiteralPath $prevOut -Recurse -Force }
-        New-Item -ItemType Directory -Path $prevOut -Force | Out-Null
-        Get-ChildItem -LiteralPath $prevFrozen -Force | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination $prevOut -Recurse -Force
-        }
-        Write-Host "Embedded previous quarter $prevKey -> $prevOut"
-    } else {
-        Write-Host "No frozen previous quarter at $prevFrozen (switcher shows current only)."
+# ---- Embed the PREVIOUS period + a period switcher on the page (ALL scopes) ----
+# The main report is THIS period; copy the previously-frozen period of the SAME scope into
+# allure-report\previous\ so "Previous <Day/Week/Month/Quarter/Year>" is a stable relative
+# link, and inject the switcher into both. Runs AFTER the freeze so the archival snapshot
+# ($frozen) stays a clean single-period report (no nested previous\ copy). If the previous
+# period was never frozen (early run), the switcher shows the current tab only.
+$prevFrozen = Join-Path (Join-Path $reportRoot $Scope) $prevKey
+$prevOut    = Join-Path $reportDir 'previous'
+$havePrev   = Test-Path -LiteralPath $prevFrozen
+if ($havePrev) {
+    if (Test-Path -LiteralPath $prevOut) { Remove-Item -LiteralPath $prevOut -Recurse -Force }
+    New-Item -ItemType Directory -Path $prevOut -Force | Out-Null
+    Get-ChildItem -LiteralPath $prevFrozen -Force | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $prevOut -Recurse -Force
     }
-    Push-Location $Workspace
-    try {
-        $prevHref = if ($havePrev) { 'previous' } else { '' }
-        node ci/allure-inject-period-nav.js $reportDir 'current' "$periodKey" '.' "$prevKey" "$prevHref"
-        if ($havePrev) {
-            node ci/allure-inject-period-nav.js $prevOut 'previous' "$periodKey" '..' "$prevKey" '.'
-        }
-    } finally { Pop-Location }
+    Write-Host "Embedded previous $Scope $prevKey -> $prevOut"
+} else {
+    Write-Host "No frozen previous $Scope at $prevFrozen (switcher shows current only)."
 }
+Push-Location $Workspace
+try {
+    $prevHref = if ($havePrev) { 'previous' } else { '' }
+    node ci/allure-inject-period-nav.js $reportDir 'current' "$periodKey" '.' "$prevKey" "$prevHref" "$periodLabel"
+    if ($havePrev) {
+        node ci/allure-inject-period-nav.js $prevOut 'previous' "$periodKey" '..' "$prevKey" '.' "$periodLabel"
+    }
+} finally { Pop-Location }
 
 # ---- Retention: keep dated buckets ~400 days (so the yearly job can still aggregate) ----
 $cutoff = $now.AddDays(-400)
