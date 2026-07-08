@@ -119,15 +119,23 @@ pipeline {
 
     post {
         always {
-            publishHTML([
-                allowMissing: true,
-                alwaysLinkToLastBuild: true,
-                keepAll: true,
-                reportDir: 'allure-report',
-                reportFiles: 'index.html',
-                reportName: 'Allure-Report'
-            ])
-            archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+            // publishHTML + archiveArtifacts need a workspace (FilePath) context. When a build is
+            // superseded (disableConcurrentBuilds) or loses its agent mid-run, the declarative post
+            // block runs with NO node -> "Required context class hudson.FilePath is missing" -> the
+            // whole build goes FAILURE and /lastBuild/Allure-Report/ 404s. Re-acquire a node so the
+            // post steps always have a workspace; allowMissing/allowEmptyArchive cover aborted builds
+            // that never produced a report.
+            node('') {
+                publishHTML([
+                    allowMissing: true,
+                    alwaysLinkToLastBuild: true,
+                    keepAll: true,
+                    reportDir: 'allure-report',
+                    reportFiles: 'index.html',
+                    reportName: 'Allure-Report'
+                ])
+                archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+            }
         }
     }
 }

@@ -32,7 +32,14 @@ $cards = foreach ($s in $scopes) {
         $newest = Get-ChildItem -LiteralPath $dir -Directory -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
         if ($newest) { $latest = $newest.Name }
     }
-    $href = "/job/$($s.job)/Allure-Report/"
+    # Link straight to the raw SPA index.html of the last SUCCESSFUL build. Why not the wrapper:
+    #  - the project-level "/Allure-Report/" wrapper dir builds a broken iframe src in-browser
+    #    (blank page) and 500s when reached through a /view/ prefix;
+    #  - "/Allure-Report/index.html" (project level) is a 404 (the project action serves only the
+    #    wrapper, not sub-files);
+    #  - "/lastBuild/..." 404s whenever the newest build failed (e.g. a superseded auto-refresh).
+    # Only a BUILD-scoped path serves the real SPA, and lastSuccessfulBuild skips failed builds.
+    $href = "/job/$($s.job)/lastSuccessfulBuild/Allure-Report/index.html"
     @"
     <a class="card" href="$href" style="--accent:$($s.color)">
       <div class="title">$($s.title)</div>
