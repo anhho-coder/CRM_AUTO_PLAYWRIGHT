@@ -638,6 +638,117 @@ function splitRangeSection(meta, m, def, lead, members) {
   </section>`;
 }
 
+/* --------------------- Claude vs Legacy — automation velocity ---------------- */
+// DERIVED, render-only: reuses the SPLIT metric's per-range figures
+// (from / to / claudeCutoff / withClaude / withoutClaude — see
+// sources/automation-split.js) and turns the raw counts into a RATE comparison
+// (test cases automated per calendar day) so the two UNEQUAL windows — legacy =
+// range start → day before the Claude-adoption cutoff; with Claude = cutoff →
+// range end — are compared fairly. Adds no data and no Jira query. Reacts to the
+// same .range-block / data-range switcher as every other "By range" card. Three
+// shapes fall out of the windows: both present (full lift card), Claude-only (a
+// range entirely after adoption → no legacy baseline), legacy-only (a pre-adoption
+// range → no Claude activity). The 185.81h / 36%-effort line is a fixed annotation
+// (that figure is tracked outside this report) shown only for the Apr–Jun (Last
+// quarter) range it describes.
+const DAY_MS = 86400000;
+const isoToMs = (s) => { const p = String(s).split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); };
+const isoFromMs = (ms) => { const d = new Date(ms), z = (n) => String(n).padStart(2, '0'); return `${d.getUTCFullYear()}-${z(d.getUTCMonth() + 1)}-${z(d.getUTCDate())}`; };
+const daysInclusive = (from, to) => { const n = Math.round((isoToMs(to) - isoToMs(from)) / DAY_MS) + 1; return n > 0 ? n : 0; };
+const rate2 = (n) => (Math.round(n * 100) / 100).toFixed(2);
+const perMonth = (r) => fmt(Math.round(r * 30));
+const perWeek = (r) => fmt(Math.round(r * 7));
+
+function velocityBlock(agg, active) {
+  const cutoff = agg.claudeCutoff;
+  const legacyEnd = isoFromMs(isoToMs(cutoff) - DAY_MS);               // day before the cutoff
+  const claudeStart = agg.from >= cutoff ? agg.from : cutoff;
+  const legacyDays = agg.from <= legacyEnd ? daysInclusive(agg.from, agg.to < legacyEnd ? agg.to : legacyEnd) : 0;
+  const claudeDays = agg.to >= claudeStart ? daysInclusive(claudeStart, agg.to) : 0;
+  const legacyRate = legacyDays > 0 ? agg.withoutClaude / legacyDays : 0;
+  const claudeRate = claudeDays > 0 ? agg.withClaude / claudeDays : 0;
+  const maxRate = Math.max(legacyRate, claudeRate);
+
+  let hero;
+  if (legacyRate > 0 && claudeRate > 0) {
+    const lift = Math.round((claudeRate / legacyRate - 1) * 100);
+    const wouldTake = agg.withClaude / legacyRate;                    // days the legacy pace needs for Claude's output
+    const daysSaved = Math.max(0, Math.round(wouldTake - claudeDays));
+    const extraTcs = Math.max(0, Math.round(agg.withClaude - legacyRate * claudeDays));
+    hero = `<div class="velo-hero">
+      <div>
+        <div class="velo-label">Velocity lift with Claude</div>
+        <div class="velo-big">${lift >= 0 ? '+' : ''}${lift}%</div>
+        <div class="velo-sub">≈ ${rate2(claudeRate / legacyRate)}× the legacy pace — ${rate2(legacyRate)} → ${rate2(claudeRate)} test cases per day</div>
+      </div>
+      <div class="velo-asides">
+        <div class="velo-aside"><span class="n">~${fmt(daysSaved)}</span><span class="k">days saved</span></div>
+        <div class="velo-aside"><span class="n">~${fmt(extraTcs)}</span><span class="k">extra TCs vs old pace</span></div>
+      </div>
+    </div>`;
+  } else if (claudeRate > 0) {
+    hero = `<div class="velo-hero one">
+      <div>
+        <div class="velo-label">With Claude — automation velocity</div>
+        <div class="velo-big">${rate2(claudeRate)}<span class="unit">/day</span></div>
+        <div class="velo-sub">No pre-Claude (legacy) resolutions in this range to compare against.</div>
+      </div>
+    </div>`;
+  } else {
+    hero = `<div class="velo-hero one">
+      <div>
+        <div class="velo-label">Legacy — automation velocity</div>
+        <div class="velo-big">${rate2(legacyRate)}<span class="unit">/day</span></div>
+        <div class="velo-sub">This range predates Claude adoption (${esc(cutoff)}) — no Claude activity to compare.</div>
+      </div>
+    </div>`;
+  }
+
+  const effort = agg.key === 'lastQuarter'
+    ? `<div class="velo-effort"><span class="dot"></span>Claude output delivered on <b>185.81 hours</b> — <b>36% of effort</b> logged on automation tasks (Apr–Jun 2026)</div>`
+    : '';
+
+  const bar = (label, sub, rate, cls) => {
+    const w = maxRate > 0 ? Math.max(3, Math.round((rate / maxRate) * 100)) : 0;
+    return `<div class="velo-row">
+      <div class="velo-name">${esc(label)}<span class="velo-days">${esc(sub)}</span></div>
+      <div class="velo-track"><div class="velo-fill ${cls}" style="width:${w}%"></div></div>
+      <div class="velo-rate">${rate2(rate)}<small>/day</small></div>
+    </div>`;
+  };
+  const legacySpan = `${esc(agg.from)} → ${esc(legacyDays > 0 ? (agg.to < legacyEnd ? agg.to : legacyEnd) : agg.from)} · ${fmt(legacyDays)} days`;
+  const claudeSpan = `${esc(claudeDays > 0 ? claudeStart : cutoff)} → ${esc(agg.to)} · ${fmt(claudeDays)} days`;
+  const bars = `<div class="velo-bars">
+      ${bar('Legacy', legacySpan, legacyRate, 'legacy')}
+      ${bar('With Claude', claudeSpan, claudeRate, 'claude')}
+    </div>
+    <div class="velo-axis">Test cases automated per calendar day</div>`;
+
+  const cardRaw = (disp, label, sub, cls, small) =>
+    `<div class="frdcard ${cls}"><div class="fv"${small ? ' style="font-size:32px"' : ''}>${disp}</div><div class="fl">${esc(label)}</div><div class="fsub">${esc(sub)}</div></div>`;
+  const cards = `<div class="frdcards">
+      ${cardRaw(fmt(agg.withoutClaude), 'Automated w/o Claude (legacy)', `${fmt(legacyDays)} days · ~${perMonth(legacyRate)}/month`, 'est')}
+      ${cardRaw(fmt(agg.withClaude), 'Automated with Claude', `${fmt(claudeDays)} days · ~${perMonth(claudeRate)}/month`, 'lead')}
+      ${cardRaw(`${perWeek(legacyRate)} → ${perWeek(claudeRate)}`, 'Weekly throughput', 'TCs per week, legacy → Claude', 'done', true)}
+    </div>`;
+
+  return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
+    ${hero}
+    ${effort}
+    ${bars}
+    ${cards}
+  </div>`;
+}
+
+function velocitySection(meta, m, def) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => velocityBlock(m.ranges[k], k === def)).join('\n');
+  return `<section class="metric lead">
+    <h2>Automation velocity — Claude vs Legacy <span class="pill">primary</span> <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
+    ${blocks}
+    <p class="muted frdnote">Raw counts span unequal windows, so the fair comparison is <b>rate</b> — test cases automated per calendar day. <b>Legacy window</b> = range start → the day before the Claude-adoption cutoff <b>${esc(meta.claudeCutoff)}</b>; <b>with-Claude window</b> = cutoff → range end. <b>Velocity lift</b> = Claude rate ÷ legacy rate − 1. <b>Days saved</b> / <b>extra TCs</b> compare Claude's output against delivering the same work at the legacy pace over the same window. Counts reuse the “${esc(m.label)}” split (no extra query). The <b>185.81 h / 36%-effort</b> figure is tracked outside this report and shown for the Apr–Jun (Last quarter) range it describes.</p>
+  </section>`;
+}
+
 /* ------------------ Executed Test Cases per main feature --------------------- */
 // A grouped bar chart per Xray Test Repository module showing four outcomes —
 // Executed, Passed, Failed, Aborted (Passed/Failed/Aborted from Xray TestRunStatus) —
@@ -771,6 +882,8 @@ function pageNav(active) {
     tab('manual.html', 'manual', 'Manual test') +
     tab('automation.html', 'automation', 'Automation test') +
     tab('worklog.html', 'worklog', 'Worklog allocation') +
+    tab('claude.html', 'claude', 'Claude vs Legacy') +
+    tab('ranking.html', 'ranking', 'QA Ranking') +
     `</div>`;
 }
 
@@ -1025,6 +1138,31 @@ h2{margin:0 0 12px;font-size:17px}
 .frdcard .fsub{font-size:11px;color:#8a8a8a;margin-top:3px}
 .frdcard.lead .fsub{color:rgba(255,255,255,.85)}
 .frdnote{font-size:11px;margin:14px 0 0;line-height:1.5}
+.velo-hero{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:18px;border-radius:14px;padding:22px 26px;margin:6px 0 16px;background:linear-gradient(135deg,#6a3093,#a044ff);color:#fff;box-shadow:0 10px 28px rgba(106,48,147,.28)}
+.velo-hero.one{padding:20px 26px}
+.velo-label{font-size:12px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;opacity:.9}
+.velo-big{font-size:60px;font-weight:800;line-height:1;letter-spacing:-.02em;margin-top:4px;font-variant-numeric:tabular-nums}
+.velo-big .unit{font-size:22px;font-weight:700;opacity:.85;margin-left:4px}
+.velo-sub{font-size:14px;opacity:.92;margin-top:8px;font-weight:500}
+.velo-asides{display:flex;gap:30px}
+.velo-aside{text-align:right}
+.velo-aside .n{display:block;font-size:26px;font-weight:800;font-variant-numeric:tabular-nums}
+.velo-aside .k{font-size:12px;opacity:.85}
+.velo-effort{display:inline-flex;align-items:center;gap:9px;margin:0 0 16px;padding:9px 15px;border-radius:999px;background:#eafaf0;border:1px solid #bfe6cd;color:#1e5631;font-size:13px;font-weight:600}
+.velo-effort b{color:#1e7e34;font-weight:800}
+.velo-effort .dot{width:8px;height:8px;border-radius:50%;background:#1e9e4a;box-shadow:0 0 0 4px rgba(30,158,74,.18);flex:none}
+.velo-bars{display:grid;gap:14px;margin:4px 0 6px}
+.velo-row{display:grid;grid-template-columns:150px 1fr auto;align-items:center;gap:14px}
+.velo-name{font-size:14px;font-weight:700;color:#444}
+.velo-days{display:block;font-size:11px;font-weight:500;color:#999;margin-top:2px}
+.velo-track{background:#efe9f7;border-radius:8px;height:28px;overflow:hidden}
+.velo-fill{height:100%;border-radius:8px}
+.velo-fill.legacy{background:#2c7be5}
+.velo-fill.claude{background:linear-gradient(90deg,#6a3093,#a044ff)}
+.velo-rate{font-size:20px;font-weight:800;color:#333;font-variant-numeric:tabular-nums;white-space:nowrap}
+.velo-rate small{font-size:12px;font-weight:600;color:#888}
+.velo-axis{font-size:11px;color:#999;font-weight:600;margin:2px 0 4px 164px}
+@media (max-width:640px){.velo-row{grid-template-columns:96px 1fr auto;gap:9px}.velo-axis{margin-left:105px}.velo-big{font-size:46px}.velo-asides{gap:20px}}
 .foot{margin-top:24px;color:#999;font-size:11px}
 .pagenav{display:flex;gap:8px;margin-top:12px}
 .pagenav .pgtab{font-size:13px;font-weight:600;padding:7px 14px;border-radius:8px;text-decoration:none;color:#fff;background:rgba(255,255,255,.18)}
@@ -1472,6 +1610,138 @@ ${wlDataScript}
 <script src="app.js"></script>
 </body></html>`;
 
+  // --- Claude vs Legacy page (claude.html) -----------------------------------
+  // A derived, render-only view: reuses the "Test cases automated — with vs without
+  // Claude" split data and recasts it as an automation-velocity (TCs/day) comparison.
+  // Defaults to Last quarter (Apr–Jun) — the range the 159/145/304 card describes and
+  // the only current range with both a legacy and a with-Claude window.
+  const splitMeta = cfg.JIRA_SPLIT_METRICS[0];
+  const splitData = splitMeta ? data.metrics[splitMeta.key] : null;
+  const claudeDef = (splitData && splitData.ranges && splitData.ranges.lastQuarter) ? 'lastQuarter' : defRange;
+  const claudeBody = splitData
+    ? `<div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, claudeDef, METRIC_RANGE_ORDER)}</div>
+  ${selector(data.ranges, claudeDef)}
+  ${withAnchor({ key: 'automationVelocity', label: 'Automation velocity — Claude vs Legacy' }, velocitySection(splitMeta, splitData, claudeDef))}`
+    : '<p class="muted">No Claude-split data available.</p>';
+  const claudeHtml = `${docHead('CRM QA — Claude vs Legacy')}
+<div class="hero">
+  <h1>CRM QA Team — Claude vs Legacy</h1>
+  <div class="sub">${subline}</div>
+  ${pageNav('claude')}
+</div>
+<div class="wrap">
+  ${sourceBanner(data.sources)}
+  ${claudeBody}
+  <div class="foot">Source: Jira — automation-scope test cases resolved per day, split at the team's Claude-adoption date (2026-06-05) and compared as a rate (TCs/day) · regenerated daily · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
+  // --- QA Ranking page (ranking.html) ---------------------------------------
+  // Monthly per-tester ranking. Score = 3·(Create P1/2) + 2·(Create P3) +
+  // 1·(Create P4) + 3·(Verified P1/2) + 2·(Verified P3) + 1·(Verified P4) +
+  // 1·(Executed TC) + 1·(Maintenance/Created TC). Executed Automation TC comes
+  // from the Allure monthly report (Section 1); every other cell is the team's
+  // saved Jira JQL. Figures below are the Jun-2026 snapshot.
+  const rkStyle = `<style>
+  .rkwrap{overflow-x:auto}
+  .rk{width:100%;border-collapse:collapse;font-size:13px;min-width:820px;margin:4px 0}
+  .rk th,.rk td{padding:8px 9px;border-bottom:1px solid #eee;text-align:center;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .rk thead .grp th{color:#fff;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.03em;border-right:2px solid #fff}
+  .rk thead .sub th{color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;background:#f3eefc;border-bottom:2px solid #d9c9ee}
+  .rk .g-create{background:#e0872a}.rk .g-verify{background:#3d78ad}.rk .g-exec{background:#b8382f}.rk .g-maint{background:#9c4489}.rk .g-score{background:#e39a17}.rk .g-rank{background:#3f8542}
+  .rk td.nm{text-align:left;font-weight:700;padding-left:14px}
+  .rk td.val{font-weight:800;background:#faf7fe}
+  .rk td.dim{color:#bbb}
+  .rk td.sc{font-weight:800;font-size:15px;color:#4b2170}
+  .rk td.dv{border-left:2px solid #e7dcf6}
+  .rk .rk1{display:inline-block;min-width:26px;padding:2px 9px;border-radius:7px;font-weight:800;background:#f4b731;color:#6b4a00}
+  .rk .rk2{display:inline-block;min-width:26px;padding:2px 9px;border-radius:7px;font-weight:800;border:1px solid #e5e0ee;color:#555}
+  .rkeq{font-family:ui-monospace,Consolas,monospace;font-size:12.5px;background:#f3eefc;border:1px solid #d9c9ee;border-radius:8px;padding:11px 13px;line-height:1.85;color:#333;overflow-x:auto}
+  .rkeq b{color:#8e44ad}
+  .wlnote-pop pre{margin:0;font-family:ui-monospace,Consolas,monospace;font-size:11.5px;line-height:1.5;background:#faf7fe;border:1px solid #ece3fa;border-radius:7px;padding:9px 11px;white-space:pre-wrap;word-break:break-word;color:#333}
+  .wlnote-pop .mn{font-size:11px;font-weight:700;color:#8e44ad;text-transform:uppercase;letter-spacing:.03em;margin:12px 0 5px}
+  </style>`;
+  const rkHead = `<thead>
+      <tr class="grp"><th></th><th class="g-create" colspan="4">Create bugs</th><th class="g-verify" colspan="4">Verified bugs</th><th class="g-exec">Executed</th><th class="g-maint">Maint / Created</th><th class="g-score">Score</th><th class="g-rank">Rank</th></tr>
+      <tr class="sub"><th>Name</th><th>P1/2</th><th>P3</th><th>P4</th><th>Valid bugs</th><th class="dv">P1/2</th><th>P3</th><th>P4</th><th>Total bugs &amp; Tickets</th><th class="dv">TC_LBL</th><th>TC_LBL</th><th class="dv">Score</th><th>Rank</th></tr>
+    </thead>`;
+  const rankingHtml = `${docHead('CRM QA — QA Ranking')}
+${rkStyle}
+<div class="hero">
+  <h1>CRM QA Team — QA Ranking</h1>
+  <div class="sub">${subline}</div>
+  ${pageNav('ranking')}
+</div>
+<div class="wrap">
+  ${sourceBanner(data.sources)}
+  <div class="sub muted" style="margin:4px 0 2px">Monthly ranking · Period: <b>Jun 01 – 30, 2026</b></div>
+  <div class="wlnote" tabindex="0">JQL for each metric <span class="wlnote-hint">(for the selected range — hover)</span>
+    <span class="wlnote-pop">
+      <div class="wlnote-h">Query</div>
+      <div class="mn">Create Valid bugs — manual</div>
+      <pre>type in ("Bug [uncategorised]", "Bug [Maintenance]", Bug, Sub-Bug, "Post-EA - Support Ticket")
+AND created &gt;= 2026-06-01 AND created &lt;= 2026-06-30 AND reporter in (&lt;user&gt;)
+AND (status in (Open, Reopened, "In Progress")
+     OR resolution changed to (Fixed, Done, "Won't fix", Unresolved, "Won't Do"))</pre>
+      <div class="mn">Verified bugs — manual</div>
+      <pre>issuetype in ("Bug [uncategorised]", Bug, "Bug [Maintenance]", Sub-Bug, improvement, "Post-EA - Support Ticket", "Post-EA - Task")
+AND status changed to (reopened, closed) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY (&lt;user&gt;)
+AND priority not in ("Blocker (P1)", "Critical (P2)")</pre>
+      <div class="mn">Executed Test cases — manual</div>
+      <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND worklogAuthor in (&lt;user&gt;)
+AND worklogDate &gt;= 2026-06-01 AND worklogDate &lt;= 2026-06-30</pre>
+      <div class="mn">Maintenance / Created Test cases — manual</div>
+      <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND reporter = &lt;user&gt;
+AND createdDate &gt;= "2026-06-01 00:00" AND createdDate &lt;= "2026-06-30 21:00"</pre>
+      <div class="mn">Create / Verified bugs — automation</div>
+      <pre>labels in (QA-CRM_Automation) AND ...  (same as manual, plus the QA-CRM_Automation label)</pre>
+      <div class="mn">Maintenance / Created Automation TC</div>
+      <pre>"Automation scope" = yes
+AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY &lt;user&gt;</pre>
+      <div class="wlnote-h">Notes</div>
+      <ul>
+        <li>Per tester: bugs by <b>reporter</b> (create) / <b>actor</b> of the status change (verify); TCs by <b>worklogAuthor</b> (executed) / <b>reporter</b> (created).</li>
+        <li>Verified headline count uses <b>priority not in (P1,P2)</b>; the P1/2 &amp; P3 columns are the full priority breakdown.</li>
+        <li>Date bounds follow the sheet convention (<b>&le; "…21:00"</b>) — entries after 21:00 on the last day are dropped; use 23:59 for the full day.</li>
+        <li><b>Executed Automation TC</b> is not a Jira metric — read from the Allure monthly report (Section 1) of the reported month.</li>
+      </ul>
+    </span>
+  </div>
+
+  <section class="metric">
+    <h2>CRM Manual <span class="pill">2 members</span></h2>
+    <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Test cases')}
+      <tbody>
+        <tr><td class="nm">Thuat Phung</td><td>17</td><td>15</td><td class="dim">0</td><td class="val">32</td><td class="dv">31</td><td>18</td><td class="dim">0</td><td class="val">49</td><td class="dv">219</td><td>143</td><td class="sc dv">572</td><td><span class="rk1">1</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>5</td><td class="dim">0</td><td class="dim">0</td><td class="val">5</td><td class="dv">5</td><td>3</td><td class="dim">0</td><td class="val">8</td><td class="dv">27</td><td>179</td><td class="sc dv">242</td><td><span class="rk2">2</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="metric">
+    <h2>CRM Automation <span class="pill">2 members</span></h2>
+    <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Automation TC')}
+      <tbody>
+        <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">0</td><td><span class="rk2">2</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>2</td><td class="dim">0</td><td class="dim">0</td><td class="val">2</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv">530</td><td>145</td><td class="sc dv">681</td><td><span class="rk1">1</span></td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section class="metric">
+    <h2>Score formula</h2>
+    <div class="rkeq">SCORE = <b>3</b>·(Create P1/2) + <b>2</b>·(Create P3) + <b>1</b>·(Create P4)
+      + <b>3</b>·(Verified P1/2) + <b>2</b>·(Verified P3) + <b>1</b>·(Verified P4)
+      + <b>1</b>·(Executed TC) + <b>1</b>·(Maintenance/Created TC)</div>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Check: Thuat manual 81+129+219+143=572 · Anh manual 15+21+27+179=242 · Anh automation 6+0+530+145=681.</p>
+  </section>
+
+  <div class="foot">Bug &amp; test-case counts from Jira (team JQL, hover above) · Executed Automation TC from the Allure monthly report · Jun-2026 snapshot · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
   fs.mkdirSync(cfg.OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'styles.css'), CSS);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'app.js'), APP_JS);
@@ -1480,7 +1750,9 @@ ${wlDataScript}
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'manual.html'), manualHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'automation.html'), automationHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'worklog.html'), worklogHtml);
-  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html (+ styles.css, app.js)`);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'claude.html'), claudeHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'ranking.html'), rankingHtml);
+  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html + claude.html + ranking.html (+ styles.css, app.js)`);
 }
 
 main();
