@@ -1020,7 +1020,12 @@ function worklogView(wl, ranges, def, help) {
   const skipNote = wl.skipped
     ? `<div class="warn">⚠ ${wl.skipped} issue(s) were skipped on worklog read (no permission / read error); their hours are not counted.</div>`
     : '';
-  return `${skipNote}<div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
+  // A copy-link 🔗 like the metric cards. It has no inner range-block, so the click
+  // handler reads the page-level active range button — the copied URL keeps the
+  // selected range (e.g. …#m-worklog&r=thisYear), and a custom range also carries &s/&e.
+  const anchor = `<a class="anchor" href="#m-worklog" data-anchor title="Copy link to this view (keeps the selected range)" aria-label="Copy link to this view">🔗</a>`;
+  return `${skipNote}<div class="wlhead" id="m-worklog"><span class="wlhead-t">Worklog allocation</span>${anchor}</div>
+    <div class="sub muted" style="margin:4px 0 2px">Showing ${spans}</div>
     <div class="ranges">${presetBtns}<button type="button" data-rangebtn="custom" id="wl-custom-btn">Custom date</button></div>
     <div class="wl-dates">
       <label>Start <input type="date" id="wl-start" min="${esc(minD)}" max="${esc(maxD)}"></label>
@@ -1039,6 +1044,8 @@ body{margin:0;background:#f4f5f7}
 .hero h1{margin:0;font-size:22px}.hero .sub{opacity:.92;font-size:13px;margin-top:6px}
 .wrap{max-width:1000px;margin:0 auto;padding:14px 28px 60px}
 .wrap.wide{max-width:1340px}
+.wlhead{display:flex;align-items:center;gap:2px;margin:8px 0 2px}
+.wlhead-t{font-size:16px;font-weight:700;color:#6a3093}
 .wl-dates{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:2px 0 4px;font-size:13px;color:#555}
 .wl-dates label{display:flex;gap:6px;align-items:center}
 .wl-dates input[type=date]{font-family:inherit;font-size:13px;padding:5px 9px;border:1px solid #d9c9ee;border-radius:8px;color:#444;background:#fff}
@@ -1221,7 +1228,15 @@ const APP_JS = `(function () {
         var aid = (t.getAttribute('href') || '').replace(/^#/, '');
         var sec = t.closest ? t.closest('section.metric') : null;
         var rng = activeRangeOf(sec);                 // preserve the SELECTED range in the link
+        if (!rng && !sec) {                           // worklog page: range buttons are page-level, not inside a card
+          var abtn = document.querySelector('[data-rangebtn].active');
+          if (abtn) rng = abtn.getAttribute('data-rangebtn') || '';
+        }
         var frag = '#' + aid + (rng ? '&r=' + encodeURIComponent(rng) : '');
+        if (rng === 'custom') {                        // carry the picked dates so the custom range is reproducible
+          var sV = document.getElementById('wl-start'), eV = document.getElementById('wl-end');
+          if (sV && eV && sV.value && eV.value) frag += '&s=' + encodeURIComponent(sV.value) + '&e=' + encodeURIComponent(eV.value);
+        }
         var lbl = '';
         if (rng) {
           var sc = sec && sec.closest ? sec.closest('.rangescope') : null;
@@ -1378,12 +1393,13 @@ const APP_JS = `(function () {
   function parseHash(h) {
     h = (h || '').replace(/^#/, '');
     if (!h) return { id: '', range: '' };
-    var parts = h.split('&'), range = '';
+    var parts = h.split('&'), out = { id: parts[0], range: '', start: '', end: '' };
     for (var i = 1; i < parts.length; i++) {
-      var kv = parts[i].split('=');
-      if (kv[0] === 'r' && kv[1]) { try { range = decodeURIComponent(kv[1]); } catch (err) { range = kv[1]; } }
+      var kv = parts[i].split('='), k = kv[0], v = '';
+      if (kv[1]) { try { v = decodeURIComponent(kv[1]); } catch (err) { v = kv[1]; } }
+      if (k === 'r') out.range = v; else if (k === 's') out.start = v; else if (k === 'e') out.end = v;
     }
-    return { id: parts[0], range: range };
+    return out;
   }
   // The range currently shown for a metric card (its active .range-block); '' for a
   // Quarterly card (no range-block).
@@ -1405,7 +1421,7 @@ const APP_JS = `(function () {
     if (scope) toggleRangeScoped(scope, range);
     else toggleGroup('data-rangebtn', range, '.range-block, .range-window, .jqlv');
   }
-  function focusId(id, range) {
+  function focusId(id, range, start, end) {
     if (!id) return;
     var el = document.getElementById(id);
     if (!el) return;
@@ -1415,14 +1431,18 @@ const APP_JS = `(function () {
       var vkey = view.getAttribute('data-view');
       if (vkey) toggleGroup('data-viewbtn', vkey, '.view');
     }
-    if (range) applyRange(el, range); // el IS the <section>; restore the shared range
+    if (range === 'custom' && start && end && startEl && endEl) {
+      // Worklog custom range: restore the dates, recompute client-side, show the custom block.
+      startEl.value = start; endEl.value = end; compute();
+      toggleGroup('data-rangebtn', 'custom', '.range-block, .range-window');
+    } else if (range) applyRange(el, range); // el IS the <section>; restore the shared range
     setTimeout(function () {
       try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
       catch (err) { el.scrollIntoView(); }
       flash(el);
     }, 60);
   }
-  function focusHash() { var p = parseHash(location.hash); focusId(p.id, p.range); }
+  function focusHash() { var p = parseHash(location.hash); focusId(p.id, p.range, p.start, p.end); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', focusHash);
   else focusHash();
   window.addEventListener('hashchange', focusHash);
