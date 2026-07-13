@@ -1729,8 +1729,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     </span>
   </div>
 
-  <section class="metric">
-    <h2>CRM Manual <span class="pill">2 members</span></h2>
+  <section id="m-ranking-manual" class="metric">
+    <h2>CRM Manual <a class="anchor" href="#m-ranking-manual" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Test cases')}
       <tbody>
         <tr><td class="nm">Thuat Phung</td><td>17</td><td>15</td><td class="dim">0</td><td class="val">32</td><td class="dv">31</td><td>18</td><td class="dim">0</td><td class="val">49</td><td class="dv">219</td><td>143</td><td class="sc dv">572</td><td><span class="rk1">1</span></td></tr>
@@ -1739,8 +1739,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     </table></div>
   </section>
 
-  <section class="metric">
-    <h2>CRM Automation <span class="pill">2 members</span></h2>
+  <section id="m-ranking-automation" class="metric">
+    <h2>CRM Automation <a class="anchor" href="#m-ranking-automation" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Automation TC')}
       <tbody>
         <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">0</td><td><span class="rk2">2</span></td></tr>
@@ -1749,8 +1749,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     </table></div>
   </section>
 
-  <section class="metric">
-    <h2>Score formula</h2>
+  <section id="m-ranking-score" class="metric">
+    <h2>Score formula <a class="anchor" href="#m-ranking-score" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a></h2>
     <div class="rkeq">SCORE = <b>3</b>·(Create P1/2) + <b>2</b>·(Create P3) + <b>1</b>·(Create P4)
       + <b>3</b>·(Verified P1/2) + <b>2</b>·(Verified P3) + <b>1</b>·(Verified P4)
       + <b>1</b>·(Executed TC) + <b>1</b>·(Maintenance/Created TC)</div>
