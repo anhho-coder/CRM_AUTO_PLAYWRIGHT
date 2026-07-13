@@ -16,6 +16,9 @@
 
   var STYLE_ID = 'crm-sec-style';
   var MARK = 'crm-sec-eyebrow';
+  var QA_MARK = 'crm-qa-split';
+  // Accent colors cycled per QA bucket (read on both light and dark themes).
+  var QA_COLORS = ['#4b6bfb', '#e0743a', '#2ea36f', '#a256c9', '#c0392b', '#0e8fa8'];
 
   function injectStyle() {
     if (document.getElementById(STYLE_ID)) return;
@@ -25,11 +28,65 @@
       '.' + MARK + ' .crm-sec-num{background:#4b6bfb;color:#fff;border-radius:5px;' +
         'padding:2px 8px;letter-spacing:.05em;flex:0 0 auto;}' +
       '.' + MARK + ' .crm-sec-desc{font-weight:600;font-size:12px;letter-spacing:.02em;' +
-        'text-transform:none;opacity:.75;}';
+        'text-transform:none;opacity:.75;}' +
+      '.' + QA_MARK + '{display:flex;flex-wrap:wrap;align-items:center;gap:8px;' +
+        'padding:4px 16px 12px;}' +
+      '.' + QA_MARK + ' .crm-qa-title{font-size:11px;font-weight:700;letter-spacing:.08em;' +
+        'text-transform:uppercase;opacity:.6;margin-right:2px;}' +
+      '.' + QA_MARK + ' .crm-qa-chip{display:inline-flex;align-items:center;gap:7px;' +
+        'border:1px solid rgba(128,128,128,.35);border-radius:14px;padding:3px 11px;font-size:12px;}' +
+      '.' + QA_MARK + ' .crm-qa-dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;}' +
+      '.' + QA_MARK + ' .crm-qa-name{font-weight:600;opacity:.85;}' +
+      '.' + QA_MARK + ' .crm-qa-n{font-weight:700;}';
     var el = document.createElement('style');
     el.id = STYLE_ID;
     el.textContent = css;
     (document.head || document.documentElement).appendChild(el);
+  }
+
+  // Section 1 sub-header: "Executed by  <QA> N  <QA> M" from window.CRM_QA_BREAKDOWN.
+  function qaSplit() {
+    var data = window.CRM_QA_BREAKDOWN;
+    if (!data || typeof data !== 'object') return null;
+    var names = Object.keys(data);
+    if (!names.length) return null;
+    // Anh Ho first, then remaining buckets by descending executed total.
+    names.sort(function (a, b) {
+      if (a === 'Anh Ho') return -1;
+      if (b === 'Anh Ho') return 1;
+      return (data[b].total || 0) - (data[a].total || 0);
+    });
+    var wrap = document.createElement('div');
+    wrap.className = QA_MARK;
+    var title = document.createElement('span');
+    title.className = 'crm-qa-title';
+    title.textContent = 'Executed by';
+    wrap.appendChild(title);
+    names.forEach(function (name, i) {
+      var chip = document.createElement('span');
+      chip.className = 'crm-qa-chip';
+      var dot = document.createElement('span');
+      dot.className = 'crm-qa-dot';
+      dot.style.background = QA_COLORS[i % QA_COLORS.length];
+      var nm = document.createElement('span');
+      nm.className = 'crm-qa-name';
+      nm.textContent = name;
+      var n = document.createElement('span');
+      n.className = 'crm-qa-n';
+      n.textContent = String(data[name].total || 0);
+      chip.appendChild(dot); chip.appendChild(nm); chip.appendChild(n);
+      wrap.appendChild(chip);
+    });
+    return wrap;
+  }
+
+  function addQaSplit(widget) {
+    if (!widget || widget.querySelector('.' + QA_MARK)) return; // idempotent
+    var split = qaSplit();
+    if (!split) return;
+    var eb = widget.querySelector('.' + MARK);
+    if (eb && eb.nextSibling) widget.insertBefore(split, eb.nextSibling);
+    else widget.insertBefore(split, widget.firstChild);
   }
 
   function eyebrow(num, desc) {
@@ -62,6 +119,7 @@
       var w = widgets[i];
       if (/test cases/i.test(w.textContent) && w.querySelector('svg, .chart, canvas')) {
         label(w, 'Section 1', 'Total test cases run this period');
+        addQaSplit(w); // per-QA "Executed by" split (host -> QA)
         break;
       }
     }

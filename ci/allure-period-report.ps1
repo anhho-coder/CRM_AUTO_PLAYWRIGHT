@@ -227,7 +227,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returne
 
 # ---- Label the two Overview sections: "Section 1" on the summary (total TCs run this
 # period) and "Section 2" on the Suites widget (latest result per suite). ----
-node (Join-Path $Workspace 'ci\allure-inject-section-labels.js') $reportDir
+node (Join-Path $Workspace 'ci\allure-inject-section-labels.js') $reportDir $allRunsStash
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: section-labels injection returned $LASTEXITCODE (continuing)." }
 
 # ---- Add the "Skipped Test Cases by Suite" Overview card ----
