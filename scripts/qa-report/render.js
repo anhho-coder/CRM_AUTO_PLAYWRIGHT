@@ -871,6 +871,75 @@ function featureExecSection(fe, def) {
   </section>`;
 }
 
+/* ------------- Valid bug reported - by Priority of bug (Manual test) --------- */
+// A table of the VALID bugs the QA team REPORTED (created in range), by PRIORITY
+// (rows) across three columns — Total / Backlog / Resolved-waiting-for-verification.
+// Whole-team. Data per range from sources/bug-by-priority.js: bugByPriority.ranges[key]
+// = { rows:[{priority, cells:{total,backlog,resolved}}], totalRow:{total,backlog,resolved} }.
+// Rendered ONLY on the Manual test page, "By range" view, reacting to the same range
+// buttons as the other metrics (its per-range blocks share the .range-block / data-range
+// mechanism).
+function bugByPriorityTable(bx, block) {
+  const cols = bx.columns;
+  const head = `<tr><th>Priority</th>${cols.map((c) => `<th class="num">${esc(c.label)}</th>`).join('')}</tr>`;
+  const row = (label, cells, isTotal) =>
+    `<tr${isTotal ? ' class="bp-total"' : ''}><td class="bp-pri">${esc(label)}</td>` +
+    cols.map((c) => `<td class="num">${fmt(cells[c.key] || 0)}</td>`).join('') + `</tr>`;
+  const body = block.rows.map((r) => row(r.priority, r.cells, false)).join('') +
+    row('Total', block.totalRow, true);
+  return `<div class="stuckwrap"><table class="stucktbl bptbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+// The JQL-per-range hover note (mirrors featureExecNote), toggled per range with the
+// same data-range mechanism as the table blocks.
+function bugByPriorityNote(bp, def) {
+  const bx = cfg.BUG_BY_PRIORITY;
+  const q = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const reporters = cfg.MEMBERS.map((m) => m.jira).join(', ');
+  const names = cfg.MEMBERS.map((m) => m.name).join(', ');
+  const types = bx.types.map(q).join(', ');
+  const variants = METRIC_RANGE_ORDER.filter((k) => bp.ranges[k]).map((k) => {
+    const r = bp.ranges[k];
+    const base = `issuetype in (${types}) AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND reporter in (${reporters})`;
+    const lines = bx.columns.map((c) => `<div><b>${esc(c.label)}</b>: ${code(`${base} AND ${c.clause}`)}</div>`).join('');
+    return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">${lines}` +
+      `<div class="muted" style="margin-top:5px">Each priority row appends ${code('AND priority in (<priorities of that row>)')}; the <b>Total</b> row is the column query above with no priority filter.</div></div>`;
+  }).join('');
+  const notes = [
+    'Counts the VALID bugs the QA team REPORTED (created within the selected range), by the bug’s priority. Same issue-type set and reporter scope as the QA Ranking “Create Valid bugs” metric.',
+    '<b>Total</b> = every valid reported bug: still-open (Open / Reopened / In Progress) OR one whose resolution was set to Fixed / Done / Won’t fix / Unresolved / Won’t Do. <b>Backlog</b> = the still-open subset (Open / Reopened / In Progress). <b>Resolved - waiting for verification</b> = currently in the Resolved status, awaiting QA verification.',
+    'The three columns are independent status filters, so a bug can appear in both Total and Backlog (or Resolved). The priority rows sum to the Total row of each column.',
+    `Team scope: reporter ∈ {${esc(names)}}. The date window follows the range button selected above.`,
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How valid bugs by priority are counted<span class="wlnote-hint"> (per selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query per column</div>
+      ${variants}
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((x) => `<li>${x}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+function bugByPrioritySection(bp, def) {
+  const bx = cfg.BUG_BY_PRIORITY;
+  const blocks = METRIC_RANGE_ORDER.filter((k) => bp.ranges[k]).map((k) => {
+    const r = bp.ranges[k];
+    const t = r.totalRow;
+    const caption = `<div class="fcaption">Total valid bugs: <b>${fmt(t.total)}</b> · Backlog: <b>${fmt(t.backlog)}</b> · Resolved (waiting for verification): <b>${fmt(t.resolved)}</b></div>`;
+    return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
+      ${bugByPriorityTable(bx, r)}
+      ${caption}
+    </div>`;
+  }).join('\n');
+  return `<section class="metric bugpri">
+    <h2>${esc(bp.label)} <span class="pill">by priority</span> <span class="muted">· Valid bugs the QA team reported (created in range), split by priority · Total / Backlog / Resolved-waiting-for-verification</span></h2>
+    ${bugByPriorityNote(bp, def)}
+    ${blocks}
+  </section>`;
+}
+
 /* ----------------------------- Worklog allocation ---------------------------- */
 
 function pageNav(active) {
@@ -1132,6 +1201,19 @@ h2{margin:0 0 12px;font-size:17px}
 .stucktbl td.sdays{font-weight:700;color:#444}
 .stucktbl td.sdays.stuck-hot{color:#c0392b}
 .stucktbl tbody tr:hover{background:#faf7ff}
+.bptbl{max-width:660px}
+.bptbl td.bp-pri{font-weight:600;white-space:nowrap;color:#333}
+.bptbl tr.bp-total td{font-weight:800;color:#222;border-top:2px solid #d9c9ee;background:#faf7ff}
+.bptbl tr.bp-total:hover td{background:#f3eefc}
+/* "Valid bug reported - by Priority of bug": black (not grey) text, +10% size,
+   scoped to this section so the shared .muted/.stucktbl/.fcaption stay unchanged elsewhere. */
+.bugpri .muted{color:#111;font-size:13.2px}
+.bugpri .stucktbl thead th{color:#111;font-size:12.1px}
+.bugpri .stucktbl th,.bugpri .stucktbl td{font-size:14.3px;color:#111}
+.bugpri .bptbl td.bp-pri{color:#111}
+.bugpri .bptbl tr.bp-total td{color:#111}
+.bugpri .fcaption{color:#111;font-size:13.75px}
+.bugpri .fcaption b{color:#111}
 .frdcards{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px}
 .frdcard{flex:1;min-width:170px;background:#faf7fe;border:1px solid #ece3fa;border-radius:12px;padding:18px 22px}
 .frdcard.lead{background:linear-gradient(135deg,#6a3093,#a044ff);border:none;color:#fff}
@@ -1486,6 +1568,10 @@ function main() {
     // extra (its own data shape), shown at the top of the "By range" view only.
     const featureExecHtml = (navKey === 'manual' && data.featureExec && data.featureExec.ranges)
       ? withAnchor(data.featureExec, featureExecSection(data.featureExec, defRange)) : '';
+    // "Valid bug reported - by Priority of bug" — another Manual-test-page extra
+    // (its own data shape), shown in the "By range" view only.
+    const bugByPriorityHtml = (navKey === 'manual' && data.bugByPriority && data.bugByPriority.ranges)
+      ? withAnchor(data.bugByPriority, bugByPrioritySection(data.bugByPriority, defRange)) : '';
     return `${docHead(title)}
 <div class="hero">
   <h1>CRM QA Team — ${esc(section.label)}</h1>
@@ -1508,6 +1594,7 @@ function main() {
     ${selector(data.ranges, defRange)}
     ${jqlNote(metrics, data.ranges, defRange, data.kpiJql || {})}
     ${featureExecHtml}
+    ${bugByPriorityHtml}
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 

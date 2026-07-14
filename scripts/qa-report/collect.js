@@ -16,6 +16,7 @@ const { collectTestExecMetrics, quarterlyActualFromDaily } = require('./sources/
 const { collectUniqueMetrics } = require('./sources/unique-testexec');
 const { collectFrdMetrics } = require('./sources/frd');
 const { collectFeatureExec } = require('./sources/feature-exec');
+const { collectBugByPriority } = require('./sources/bug-by-priority');
 const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = require('./sources/executed-per-day');
 const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { buildAutomationClaudeSplit } = require('./sources/automation-split');
@@ -45,6 +46,7 @@ async function main() {
     quarterly: {},
     worklog: null,
     featureExec: null,
+    bugByPriority: null,
     kpiJql: {},
   };
 
@@ -166,6 +168,20 @@ async function main() {
   } catch (e) {
     data.sources.jiraFeatureExec = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Jira feature-exec source failed:', e.message || e);
+  }
+
+  // --- Jira BUG-BY-PRIORITY ("Valid bug reported - by Priority of bug"): the VALID
+  //     bugs the team reported (created in range) per PRIORITY (rows) × Total /
+  //     Backlog / Resolved-waiting-for-verification (columns). Whole-team; rendered
+  //     as a table on the Manual test page ("By range"). Stored under
+  //     data.bugByPriority (a custom shape, not the standard by-tester/trend card).
+  //     Wrapped independently so a Jira failure here never blocks the rest.
+  try {
+    data.bugByPriority = await collectBugByPriority(ranges);
+    data.sources.jiraBugByPriority = { status: 'ok', source: 'jira valid bugs reported by priority' };
+  } catch (e) {
+    data.sources.jiraBugByPriority = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira bug-by-priority source failed:', e.message || e);
   }
 
   // --- Jira DERIVED metric(s) (Executed test cases per day): a RATE, not a fetch.

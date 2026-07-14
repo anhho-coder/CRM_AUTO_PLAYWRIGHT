@@ -457,6 +457,54 @@ const FEATURE_EXEC = {
   ],
 };
 
+// --- "Valid bug reported - by Priority of bug" (Manual test page, "By range") -
+// A table of the VALID bugs the QA team REPORTED (created within the selected
+// range), broken down BY PRIORITY (rows) across three columns (the team's saved
+// filters). Whole-team, by `reporter` ∈ MEMBERS. Rendered ONLY on the Manual test
+// page, "By range" view, reacting to the SAME range buttons as the other metrics.
+// Stored under data.bugByPriority (its priority-table shape doesn't fit the standard
+// by-tester/trend metric card, so — like FEATURE_EXEC — it is its own data blob).
+//
+// Base window (shared by every cell): the team's "valid bug reported" scope —
+//   issuetype in (<types>) AND createdDate >= "<from>" AND createdDate <= "<to>"
+//     AND reporter in (<MEMBERS.jira>)
+// Each COLUMN AND-s its own status/resolution clause onto the base; each PRIORITY
+// row additionally AND-s `AND priority = "<priority>"`. The bottom "Total" row is
+// the column query with NO priority filter (so the priority rows sum to it).
+// Verified live 2026-07-14 for Last quarter (Q2 2026): Total column 161 =
+// 62 P1 + 23 P2 + 74 P3 + 2 (P4+P5). Edit `priorityRows`/`columns` if the team's
+// filter changes.
+const BUG_BY_PRIORITY = {
+  key: 'bugByPriority',
+  label: 'Valid bug reported - by Priority of bug',
+  // The bug issue types (the team's saved "Create Valid bugs" set — same as the QA
+  // Ranking metric and JIRA_DEFECT_METRICS.bugTypes).
+  types: ['Bug [uncategorised]', 'Bug [Maintenance]', 'Bug', 'Sub-Bug', 'Post-EA - Support Ticket'],
+  // Priority rows, highest first. Each row maps a display `label` to one OR MORE exact
+  // Jira priority names (`values`) — a cell counts `priority in (<values>)`, so several
+  // priorities can share one row (P4 + P5 grouped per request 2026-07-14). A row with 0
+  // in every column is still shown, so the table shape is stable across ranges.
+  priorityRows: [
+    { label: 'Blocker (P1)', values: ['Blocker (P1)'] },
+    { label: 'Critical (P2)', values: ['Critical (P2)'] },
+    { label: 'Major (P3)', values: ['Major (P3)'] },
+    { label: 'Minor (P4) & Trivial (P5)', values: ['Minor (P4)', 'Trivial (P5)'] },
+  ],
+  // The table columns. `clause` is a JQL status/resolution predicate AND-ed onto the
+  // base window (backticks so both " and ' pass through verbatim). Reproduced from the
+  // team's saved filters. "Total" is every valid reported bug (still-open OR resolved);
+  // "Backlog" the still-open subset; "Resolved - waiting for verification" those in the
+  // Resolved status awaiting QA verification.
+  columns: [
+    { key: 'total', label: 'Total',
+      clause: `(status in (Open, Reopened, "In Progress") OR resolution changed to (Fixed, Done, "Won't fix", Unresolved, "Won't Do"))` },
+    { key: 'backlog', label: 'Backlog',
+      clause: `status in (Open, Reopened, "In Progress")` },
+    { key: 'resolved', label: 'Resolved - waiting for verification',
+      clause: `status in ("resolved")` },
+  ],
+};
+
 // --- Report sections (the "Manual test" / "Automation test" tabs) ------------
 // The 3rd tab, "Worklog allocation", is the separate worklog page. Each section
 // lists its metric keys IN DISPLAY ORDER; render.js builds one page per section
@@ -599,7 +647,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, FEATURE_EXEC, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, FEATURE_EXEC, BUG_BY_PRIORITY, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,
