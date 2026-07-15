@@ -67,12 +67,11 @@ pipeline {
     }
 
     options {
-        // Cap a single build at TIMEOUT_MIN minutes (default 90): a healthy section/sub-folder
-        // run finishes well inside 90, so exceeding it means the run is stuck or the env is
-        // flaky - abort fast and free the executor instead of grinding for hours. Scope jobs to
-        // sub-folders (SPEC/JIRA_PATH/GREP) to stay comfortably under the cap. The dedicated
-        // slow-lane job (THD/async-assignment specs) raises this to 480 via the TIMEOUT_MIN param.
-        timeout(time: (params.TIMEOUT_MIN ?: '90').toInteger(), unit: 'MINUTES')
+        // Absolute build backstop (declarative options only accepts a literal here). The
+        // MEANINGFUL cap is the param-driven timeout(TIMEOUT_MIN) wrapping the test-run step
+        // below (default 90 - all existing jobs unchanged; the THD/async-assignment slow-lane
+        // job passes 480). This 540 is only a "truly stuck" ceiling above the 480 slow-lane run.
+        timeout(time: 540, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // One run per job at a time: clicking Build twice queues rather than running
         // two concurrent builds that fight for executors / spawn @2 workspaces.
@@ -259,21 +258,29 @@ echo ffmpeg OK
                     bat 'if exist test-results rmdir /s /q test-results'
                     bat 'if exist pw-report rmdir /s /q pw-report'
                     bat 'if exist allure-results rmdir /s /q allure-results'
-                    if (spec) {
-                        echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec}"
-                        bat "npx playwright test \"${spec}\" --project=chrome-headless"
-                    } else if (grepPat) {
-                        echo "Job '${env.JOB_BASE_NAME}' | GREP (title regex): ${grepPat}"
-                        // Pass via env var + quoted %GP% so the regex's | and \\ survive cmd.
-                        withEnv(["GP=${grepPat}"]) {
-                            bat 'npx playwright test --grep "%GP%" --project=chrome-headless'
+                    // Param-driven timeout on the actual test run (default 90 min - all
+                    // existing jobs unchanged). The THD/async-assignment slow-lane job passes
+                    // TIMEOUT_MIN=480 so the up-to-43-min per-spec late-assignment poll across
+                    // the THD_team folder is not guillotined. Scripted context here allows the
+                    // Groovy expression that the declarative options{} block rejects.
+                    def runTimeout = (params.TIMEOUT_MIN ?: '90').toInteger()
+                    timeout(time: runTimeout, unit: 'MINUTES') {
+                        if (spec) {
+                            echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec} | timeout ${runTimeout}m"
+                            bat "npx playwright test \"${spec}\" --project=chrome-headless"
+                        } else if (grepPat) {
+                            echo "Job '${env.JOB_BASE_NAME}' | GREP (title regex): ${grepPat} | timeout ${runTimeout}m"
+                            // Pass via env var + quoted %GP% so the regex's | and \\ survive cmd.
+                            withEnv(["GP=${grepPat}"]) {
+                                bat 'npx playwright test --grep "%GP%" --project=chrome-headless'
+                            }
+                        } else if (project) {
+                            echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project} | timeout ${runTimeout}m"
+                            bat "npx playwright test --project=${project}"
+                        } else {
+                            echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
+                            bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless'
                         }
-                    } else if (project) {
-                        echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project}"
-                        bat "npx playwright test --project=${project}"
-                    } else {
-                        echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
-                        bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless'
                     }
                 }
             }
