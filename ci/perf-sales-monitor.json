@@ -7,8 +7,8 @@
     "Create Opp", "Edit Opp",
     "Create Contact", "Edit Contact",
     "Create Deal Element", "Edit Deal Element",
-    "Edit Quotation",
-    "Edit Invoice",
+    "Create Quotation", "Edit Quotation", "Send Quotation", "Approve Quotation", "Reject Quotation",
+    "Create Invoice", "Edit Invoice", "Send Invoice",
     "Create License", "Edit License"
   ],
   "defaultBaselineKey": "b3",
@@ -26,6 +26,8 @@
     { "key": "b5", "build": 5, "id": "#5", "date": "2026-07-14", "phase": "post", "note": "post-bundle", "result": "ABORTED",
       "values": { "Create Lead": 0.56, "Edit Lead": 0.56, "Create Opp": 3.80, "Edit Opp": 3.57, "Create Contact": 3.57, "Edit Contact": 0.67, "Create Deal Element": 25.40, "Edit Deal Element": 16.11, "Edit Quotation": 4.16 } },
     { "key": "b6", "build": 6, "id": "#6", "date": "2026-07-15", "phase": "post", "note": "post-bundle (invoice/license re-run)", "result": "SUCCESS",
-      "values": { "Edit Invoice": 2.19, "Create License": 2.78, "Edit License": 2.00 } }
+      "values": { "Edit Invoice": 2.19, "Create License": 2.78, "Edit License": 2.00 } },
+    { "key": "b7", "build": 7, "id": "#7", "date": "2026-07-15", "phase": "post", "note": "post-bundle (Quotation/Invoice activities)", "result": "FAILURE",
+      "values": { "Create Quotation": 0.27, "Send Quotation": 2.52, "Approve Quotation": 3.32, "Reject Quotation": 3.32, "Create Invoice": 0.19, "Send Invoice": 3.80 } }
   ]
 }
