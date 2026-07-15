@@ -306,11 +306,22 @@ function jqlNote(metrics, ranges, def, kpiJql) {
     }
     if (created.has(meta.key)) {
       const m = created.get(meta.key);
-      const types = m.types.map(q).join(', ');
-      const labels = (m.labels || []).map((l) => ` AND labels = ${q(l)}`).join('');
-      const res = (m.excludeResolutions && m.excludeResolutions.length)
-        ? ` AND (resolution is EMPTY OR resolution not in (${m.excludeResolutions.map(q).join(', ')}))` : '';
-      return code(`type in (${types})${labels}${res} AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND reporter in (${reporters})`);
+      // Mirror sources/support-ticket.js buildJql, config-driven so both the type-based
+      // metrics and the field-based leaked-defects metric render their real query.
+      const parts = [];
+      if (m.project) parts.push(`project = ${m.project}`);
+      if (m.types) parts.push(`type in (${m.types.map(q).join(', ')})`);
+      if (m.leakField) parts.push(`${q(m.leakField)} is not EMPTY`);
+      (m.labels || []).forEach((l) => parts.push(`labels = ${q(l)}`));
+      if (m.excludeResolutions && m.excludeResolutions.length)
+        parts.push(`(resolution is EMPTY OR resolution not in (${m.excludeResolutions.map(q).join(', ')}))`);
+      if (m.priorities) parts.push(`priority in (${m.priorities.map(q).join(', ')})`);
+      parts.push(`createdDate >= ${q(r.from)}`, `createdDate <= ${q(r.to)}`);
+      if (!m.splitOtherReporters) parts.push(`reporter in (${reporters})`);
+      const suffix = m.splitOtherReporters
+        ? ` <span class="muted">— counted by ${code('created')} day + reporter; non-team reporters grouped into “Other”${m.yearBucket === 'quarter' ? '. This year / Last year Trend is bucketed per QUARTER' : ''}.</span>`
+        : '';
+      return code(parts.join(' AND ')) + suffix;
     }
     if (worklog.has(meta.key)) {
       const m = worklog.get(meta.key);
@@ -1535,7 +1546,7 @@ const APP_JS = `(function () {
 
 function main() {
   const data = JSON.parse(fs.readFileSync(path.join(cfg.DATA_DIR, 'latest.json'), 'utf8'));
-  const defView = data.defaultView || 'quarterly';
+  const defView = data.defaultView || 'range';
   const defRange = data.defaultRange || 'lastWeek';
 
   // Metric metadata by key (Odoo KPI + all Jira-sourced metrics) so each section
@@ -1562,7 +1573,10 @@ function main() {
     const rangeSections = metrics.filter((m) => data.metrics[m.key])
       .map((m, i) => {
         const fn = m.split ? splitRangeSection : m.perDay ? perDayRangeSection : rangeSection;
-        return withAnchor(m, fn(m, data.metrics[m.key], defRange, i === 0, data.members));
+        // A metric may override the by-tester/stacking member list (e.g. leaked defects
+        // adds an "Other" bucket for non-team reporters); fall back to the team members.
+        const mem = data.metrics[m.key].members || data.members;
+        return withAnchor(m, fn(m, data.metrics[m.key], defRange, i === 0, mem));
       }).join('\n');
     // The "Executed Test Cases per main feature" grouped bar chart is a Manual-test-page
     // extra (its own data shape), shown at the top of the "By range" view only.

@@ -38,7 +38,7 @@ async function main() {
     team: 'CRM QA Team',
     members,
     ranges,
-    defaultView: 'quarterly',
+    defaultView: 'range',
     defaultRange: 'lastWeek',
     jiraBaseUrl: cfg.jiraBaseUrl(), // for the STUCK issue-list browse links
     sources: {},
@@ -83,9 +83,21 @@ async function main() {
     const jiraDaily = await collectJiraMetrics(fetchStart(now), isoDate(now));
     for (const m of cfg.JIRA_METRICS) {
       const d = jiraDaily[m.key];
+      // `splitOtherReporters` metrics (leaked defects) may carry an "Other" bucket for
+      // non-team reporters — include it in the stacking/by-tester member list ONLY when
+      // some day actually has one, so the common all-QA case still renders two bars.
+      const hasOther = d.daily.some((x) => x.byEmp && x.byEmp.Other > 0);
+      const mem = hasOther ? [...members, 'Other'] : members;
       const perRange = {};
-      for (const r of Object.values(ranges)) perRange[r.key] = aggregate(d.daily, members, r);
+      for (const r of Object.values(ranges)) {
+        // `yearBucket: 'quarter'` (leaked defects) makes the year ranges' Trend bucket
+        // per quarter instead of per month; other ranges/metrics are unaffected.
+        const rr = (m.yearBucket && r.bucket === 'month') ? { ...r, bucket: m.yearBucket } : r;
+        perRange[r.key] = aggregate(d.daily, mem, rr);
+      }
       data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: perRange };
+      // Carry the custom stacking list so render.js draws the "Other" bar/legend too.
+      if (mem !== members) data.metrics[m.key].members = mem;
       // Opt-in (`quarterly: true`): also surface an actual-only Quarterly card (no
       // Odoo Forecast/Goal exists for a Jira metric), same shape as the worklog
       // metrics. Otherwise the metric stays "By range" only.
