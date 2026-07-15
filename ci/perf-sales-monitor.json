@@ -19,12 +19,12 @@
     { "key": "b2", "build": 2, "id": "#2", "date": "2026-06-17", "phase": "pre", "note": "pre-bundle (1 test)", "result": "SUCCESS",
       "values": { "Create Lead": 0.59 } },
     { "key": "b3", "build": 3, "id": "#3", "date": "2026-06-18", "phase": "pre", "note": "pre-bundle", "result": "FAILURE",
-      "values": { "Create Lead": 0.72, "Edit Lead": 0.68, "Create Opp": 7.45, "Edit Opp": 5.80, "Create Contact": 5.88, "Edit Contact": 2.60, "Create Deal Element": 31.74, "Edit Deal Element": 16.20, "Edit Quotation": 5.56, "Edit Invoice": 2.73, "Create License": 4.24, "Edit License": 2.35 } },
+      "values": { "Create Lead": 0.72, "Edit Lead": 0.68, "Create Opp": 7.45, "Edit Opp": 5.80, "Create Contact": 5.88, "Edit Contact": 2.60, "Create Deal Element": 31.74, "Edit Deal Element": 16.20, "Edit Quotation": 5.56, "Create Invoice": 0.25, "Edit Invoice": 2.73, "Send Invoice": 4.99, "Create License": 4.24, "Edit License": 2.35 } },
     { "key": "b5", "build": 5, "id": "#5", "date": "2026-07-14", "phase": "post", "note": "post-bundle", "result": "ABORTED",
       "values": { "Create Lead": 0.56, "Edit Lead": 0.56, "Create Opp": 3.80, "Edit Opp": 3.57, "Create Contact": 3.57, "Edit Contact": 0.67, "Create Deal Element": 25.40, "Edit Deal Element": 16.11, "Edit Quotation": 4.16 } },
     { "key": "b6", "build": 6, "id": "#6", "date": "2026-07-15", "phase": "post", "note": "post-bundle (invoice/license re-run)", "result": "SUCCESS",
       "values": { "Edit Invoice": 2.19, "Create License": 2.78, "Edit License": 2.00 } },
     { "key": "b7", "build": 7, "id": "#7", "date": "2026-07-15", "phase": "post", "note": "post-bundle (Quotation/Invoice activities)", "result": "FAILURE",
-      "values": { "Create Quotation": 0.27, "Send Quotation": 2.52, "Approve Quotation": 3.32, "Reject Quotation": 3.32, "Create Invoice": 0.19, "Send Invoice": 3.80 } }
+      "values": { "Create Quotation": 0.27, "Send Quotation": 2.52, "Approve Quotation": 9.40, "Reject Quotation": 3.32, "Create Invoice": 0.19, "Send Invoice": 3.80 } }
   ]
 }
