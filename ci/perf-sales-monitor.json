@@ -1,6 +1,6 @@
 {
   "title": "Monitor performance over Sales activities",
-  "subtitle": "Save Operation Time per Sales activity (seconds, lower = faster). Pick any two runs to compare. Source: Jenkins job CRM_SalesReport_Perf (CRM-11415 bundle nakivo_performance_boost).",
+  "subtitle": "Save Operation Time per Sales activity (seconds, lower = faster). Pick any two runs to compare. \"Latest (newest per module)\" merges the most recent post-bundle measurement of each activity, so a single timed-out run never leaves gaps. Source: Jenkins job CRM_SalesReport_Perf (CRM-11415 bundle nakivo_performance_boost).",
   "metricUnit": "s",
   "modules": [
     "Create Lead", "Edit Lead",
@@ -11,16 +11,21 @@
     "Edit Invoice",
     "Create License", "Edit License"
   ],
-  "defaultBaseline": 3,
-  "defaultCurrent": 5,
+  "defaultBaselineKey": "b3",
+  "defaultCurrentKey": "latest-post",
+  "composites": [
+    { "key": "latest-post", "label": "Latest (newest per module)", "phase": "post" }
+  ],
   "builds": [
-    { "build": 1, "id": "#1", "date": "2026-06-17", "note": "pre-bundle (1 test)", "result": "SUCCESS",
+    { "key": "b1", "build": 1, "id": "#1", "date": "2026-06-17", "phase": "pre", "note": "pre-bundle (1 test)", "result": "SUCCESS",
       "values": { "Create Lead": 0.59 } },
-    { "build": 2, "id": "#2", "date": "2026-06-17", "note": "pre-bundle (1 test)", "result": "SUCCESS",
+    { "key": "b2", "build": 2, "id": "#2", "date": "2026-06-17", "phase": "pre", "note": "pre-bundle (1 test)", "result": "SUCCESS",
       "values": { "Create Lead": 0.59 } },
-    { "build": 3, "id": "#3", "date": "2026-06-18", "note": "pre-bundle", "result": "FAILURE",
+    { "key": "b3", "build": 3, "id": "#3", "date": "2026-06-18", "phase": "pre", "note": "pre-bundle", "result": "FAILURE",
       "values": { "Create Lead": 0.72, "Edit Lead": 0.68, "Create Opp": 7.45, "Edit Opp": 5.80, "Create Contact": 5.88, "Edit Contact": 2.60, "Create Deal Element": 31.74, "Edit Deal Element": 16.20, "Edit Quotation": 5.56, "Edit Invoice": 2.73, "Create License": 4.24, "Edit License": 2.35 } },
-    { "build": 5, "id": "#5", "date": "2026-07-14", "note": "post-bundle", "result": "ABORTED",
-      "values": { "Create Lead": 0.56, "Edit Lead": 0.56, "Create Opp": 3.80, "Edit Opp": 3.57, "Create Contact": 3.57, "Edit Contact": 0.67, "Create Deal Element": 25.40, "Edit Deal Element": 16.11, "Edit Quotation": 4.16 } }
+    { "key": "b5", "build": 5, "id": "#5", "date": "2026-07-14", "phase": "post", "note": "post-bundle", "result": "ABORTED",
+      "values": { "Create Lead": 0.56, "Edit Lead": 0.56, "Create Opp": 3.80, "Edit Opp": 3.57, "Create Contact": 3.57, "Edit Contact": 0.67, "Create Deal Element": 25.40, "Edit Deal Element": 16.11, "Edit Quotation": 4.16 } },
+    { "key": "b6", "build": 6, "id": "#6", "date": "2026-07-15", "phase": "post", "note": "post-bundle (invoice/license re-run)", "result": "SUCCESS",
+      "values": { "Edit Invoice": 2.19, "Create License": 2.78, "Edit License": 2.00 } }
   ]
 }

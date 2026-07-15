@@ -87,31 +87,53 @@ if (Test-Path -LiteralPath $perfJson) {
       var d = JSON.parse(document.getElementById('perf-data').textContent);
       var unit = d.metricUnit || 's';
       var builds = d.builds || [];
+      var composites = d.composites || [];
       var modules = d.modules || [];
+      // Composites (e.g. "newest per module") are listed first so the fullest view is easy to pick.
+      var entries = composites.concat(builds);
       var selB = document.getElementById('perf-baseline');
       var selC = document.getElementById('perf-current');
       var body = document.getElementById('perf-body');
       var h0 = document.getElementById('perf-h0');
       var h1 = document.getElementById('perf-h1');
-      function label(b){ return 'Build ' + b.id + ' - ' + b.date + (b.note ? ' (' + b.note + ')' : ''); }
-      function head(b){ return 'Build ' + b.id + '<span class="rundate">' + b.date + '</span>'; }
       function fmt(v){ return (Math.round(v*100)/100).toFixed(2); }
-      builds.forEach(function(b,i){
-        var o1 = document.createElement('option'); o1.value = i; o1.textContent = label(b); selB.appendChild(o1);
-        var o2 = document.createElement('option'); o2.value = i; o2.textContent = label(b); selC.appendChild(o2);
+      // Resolve an entry to a comparable view. A real build uses its own values; a composite
+      // takes, per module, the value from the newest build (highest build#) of its phase.
+      function resolve(e){
+        if (e.values){
+          return { optionLabel: 'Build ' + e.id + ' - ' + e.date + (e.note ? ' (' + e.note + ')' : ''),
+                   headHtml: 'Build ' + e.id + '<span class="rundate">' + e.date + '</span>',
+                   values: e.values, source: null };
+        }
+        var pool = builds.filter(function(b){ return e.phase ? b.phase === e.phase : true; })
+                         .slice().sort(function(a,b){ return (a.build||0) - (b.build||0); });
+        var vals = {}, src = {};
+        pool.forEach(function(b){
+          var bv = b.values || {};
+          Object.keys(bv).forEach(function(m){ vals[m] = bv[m]; src[m] = b.id; });
+        });
+        return { optionLabel: e.label, headHtml: e.label + '<span class="rundate">newest per module</span>',
+                 values: vals, source: src };
+      }
+      var resolved = entries.map(resolve);
+      entries.forEach(function(e,i){
+        var o1 = document.createElement('option'); o1.value = i; o1.textContent = resolved[i].optionLabel; selB.appendChild(o1);
+        var o2 = document.createElement('option'); o2.value = i; o2.textContent = resolved[i].optionLabel; selC.appendChild(o2);
       });
-      function idxOfBuild(n, fallback){ for(var i=0;i<builds.length;i++){ if(builds[i].build===n) return i; } return fallback; }
-      selB.value = idxOfBuild(d.defaultBaseline, 0);
-      selC.value = idxOfBuild(d.defaultCurrent, builds.length - 1);
+      function idxOfKey(k, fallback){ for(var i=0;i<entries.length;i++){ if(entries[i].key===k) return i; } return fallback; }
+      selB.value = idxOfKey(d.defaultBaselineKey, 0);
+      selC.value = idxOfKey(d.defaultCurrentKey, entries.length - 1);
       function render(){
-        var b0 = builds[+selB.value], b1 = builds[+selC.value];
-        h0.innerHTML = head(b0); h1.innerHTML = head(b1);
+        var r0 = resolved[+selB.value], r1 = resolved[+selC.value];
+        h0.innerHTML = r0.headHtml; h1.innerHTML = r1.headHtml;
         var rows = '';
         modules.forEach(function(m){
-          var v0 = (b0.values||{})[m]; if (v0 === undefined) v0 = null;
-          var v1 = (b1.values||{})[m]; if (v1 === undefined) v1 = null;
-          var c0 = (v0===null) ? '<td class="na">&mdash;</td>' : '<td>' + fmt(v0) + unit + '</td>';
-          var c1 = (v1===null) ? '<td class="na">&mdash;</td>' : '<td>' + fmt(v1) + unit + '</td>';
+          var v0 = r0.values[m]; if (v0 === undefined) v0 = null;
+          var v1 = r1.values[m]; if (v1 === undefined) v1 = null;
+          var t0 = (r0.source && r0.source[m]) ? ' title="from build ' + r0.source[m] + '"' : '';
+          var t1 = (r1.source && r1.source[m]) ? ' title="from build ' + r1.source[m] + '"' : '';
+          var c0 = (v0===null) ? '<td class="na">&mdash;</td>' : '<td' + t0 + '>' + fmt(v0) + unit + '</td>';
+          var c1 = (v1===null) ? '<td class="na">&mdash;</td>' : '<td' + t1 + '>' + fmt(v1) + unit + '</td>';
           var cd = '<td class="na">&mdash;</td>', ci = '<td class="na">&mdash;</td>';
           if (v0!==null && v1!==null && v0!==0){
             var dd = v1 - v0, pct = dd / v0 * 100;
