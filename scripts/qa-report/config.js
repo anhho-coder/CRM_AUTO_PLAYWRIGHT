@@ -173,9 +173,10 @@ const JIRA_METRICS = [
     priorities: ['Blocker (P1)', 'Critical (P2)', 'Major (P3)'],
     splitOtherReporters: true, // count ALL reporters; non-team ones grouped into an "Other" bar
     yearBucket: 'quarter',     // This year / Last year Trend uses quarterly columns, not monthly
-    quarterly: true,           // also show an actual-only card in the Quarterly KPI view (per-quarter bars + BY TESTER table)
+    quarterly: true,           // also show an actual-only card in the Quarterly KPI view (per-quarter bars + Reporter table)
     quarterlyFillEmpty: true,  // keep a contiguous 5-quarter x-axis — quarters with 0 leaks still show (this field only went live Q4-2025)
-    quarterlyNote: 'The x-axis keeps 5 consecutive quarters ending at the current one. The "Leaked defect priority" field has only been in use since Q4-2025, so earlier quarters read 0 (0 leaks = good). The highlighted (teal) column is the current quarter; the By tester table follows it. Each new quarter, the axis slides forward.',
+    quarterlyNote: 'The x-axis keeps 5 consecutive quarters ending at the current one. The "Leaked defect priority" field has only been in use since Q4-2025, so earlier quarters read 0 (0 leaks = good). The highlighted (teal) column is the current quarter; the Reporter table follows it. Each new quarter, the axis slides forward.',
+    byLabel: 'Reporter',       // per-tester breakdown is by REPORTER (incl. non-team "Other"); label it so, not "By tester"
   },
 ];
 

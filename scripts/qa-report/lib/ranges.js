@@ -70,6 +70,10 @@ function aggregate(daily, members, range) {
 
     let key, label;
     if (range.bucket === 'month') { key = d.date.slice(0, 7); label = MONTHS[Number(key.slice(5, 7)) - 1]; }
+    // Quarter buckets: key 'YYYY-Qn' sorts correctly (chronologically) as a string,
+    // both within and across years. Used by year ranges when a metric opts into a
+    // quarterly Trend (config `yearBucket: 'quarter'`) instead of the monthly default.
+    else if (range.bucket === 'quarter') { const mo = Number(d.date.slice(5, 7)); const qn = Math.floor((mo - 1) / 3) + 1; key = `${d.date.slice(0, 4)}-Q${qn}`; label = `Q${qn}`; }
     else if (range.bucket === 'week') { key = isoDate(mondayOf(new Date(d.date + 'T00:00:00Z'))); label = key.slice(5); }
     else { key = d.date; label = d.date.slice(5); }
     if (!(key in buckets)) { buckets[key] = { label, value: 0, byEmp: {} }; members.forEach((m) => { buckets[key].byEmp[m] = 0; }); order.push(key); }

@@ -27,13 +27,32 @@ const REPORTERS = MEMBERS.map((m) => m.jira).join(', ');
 // safe inside double quotes) must be quoted.
 const jqlStr = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
 
-/** Assemble the JQL for one metric, counting issues created on/after `fetchFrom`. */
+/**
+ * Assemble the JQL for one metric, counting issues created on/after `fetchFrom`.
+ * The clause set is driven by the metric config, so both the type-based metrics
+ * (Support tickets / Bugs found by automation) and the field-based leaked-defects
+ * metric share this builder:
+ *   [project = <project>] AND [issuetype in (<types>)] AND ["<leakField>" is not EMPTY]
+ *     AND [labels = <l> …] AND [(resolution is EMPTY OR resolution not in (<junk>))]
+ *     AND [priority in (<priorities>)]
+ *     AND createdDate >= "<fetchFrom>" [AND reporter in (<team>)]
+ * The `reporter in (team)` clause is dropped for `splitOtherReporters` metrics so
+ * non-team reporters are still fetched (then grouped into "Other" in buildDaily) —
+ * keeping the headline total equal to the team's saved filter.
+ */
 function buildJql(metric, fetchFrom) {
-  const types = metric.types.map(jqlStr).join(', ');
-  // Optional: AND a `labels = <label>` clause per configured label (e.g. the
+  const clauses = [];
+  if (metric.project) clauses.push(`project = ${jqlStr(metric.project)}`);
+  // Use `issuetype` (not the `type` alias): the team's Jira rejects `type` for the
+  // collector's PAT context ("Field 'type' does not exist…"), which 400'd this
+  // whole query and made the build UNSTABLE. `issuetype` is what the working
+  // testexec/automation modules use. (See build #18, 2026-06-18.)
+  if (metric.types) clauses.push(`issuetype in (${metric.types.map(jqlStr).join(', ')})`);
+  // Field-based scope (e.g. leaked defects): the custom field is set => it's a leak.
+  if (metric.leakField) clauses.push(`${jqlStr(metric.leakField)} is not EMPTY`);
+  // Optional: a `labels = <label>` clause per configured label (e.g. the
   // "Bugs found by automation test" metric narrows to labels = QA-CRM_Automation).
-  const labelClause = (metric.labels || []).map((l) => ` AND labels = ${jqlStr(l)}`).join('');
-  const res = (metric.excludeResolutions || []).map(jqlStr).join(', ');
+  for (const l of (metric.labels || [])) clauses.push(`labels = ${jqlStr(l)}`);
   // Keep every UNRESOLVED ticket (any active status — Open / In Progress / Reopened
   // / …) plus resolved ones whose resolution isn't junk. In JQL `resolution not in
   // (...)` is FALSE for EMPTY resolution (the classic gotcha), so it would drop all
@@ -41,13 +60,12 @@ function buildJql(metric, fetchFrom) {
   // (`status = open` would only match the literal "Open" status and miss In Progress
   // / Reopened — see review 2026-06-17.) Omitted when a metric sets no
   // excludeResolutions (count everything).
-  const resClause = res ? ` AND (resolution is EMPTY OR resolution not in (${res}))` : '';
-  // Use `issuetype` (not the `type` alias): the team's Jira rejects `type` for the
-  // collector's PAT context ("Field 'type' does not exist…"), which 400'd this
-  // whole query and made the build UNSTABLE. `issuetype` is what the working
-  // testexec/automation modules use. (See build #18, 2026-06-18.)
-  return `issuetype in (${types})${labelClause}${resClause}` +
-    ` AND createdDate >= "${fetchFrom}" AND reporter in (${REPORTERS}) ORDER BY created ASC`;
+  if (metric.excludeResolutions && metric.excludeResolutions.length)
+    clauses.push(`(resolution is EMPTY OR resolution not in (${metric.excludeResolutions.map(jqlStr).join(', ')}))`);
+  if (metric.priorities) clauses.push(`priority in (${metric.priorities.map(jqlStr).join(', ')})`);
+  clauses.push(`createdDate >= "${fetchFrom}"`);
+  if (!metric.splitOtherReporters) clauses.push(`reporter in (${REPORTERS})`);
+  return clauses.join(' AND ') + ' ORDER BY created ASC';
 }
 
 /**
@@ -72,7 +90,11 @@ function buildDaily(metric, issues, today) {
     const f = (it && it.fields) || {};
     const date = String(f.created || '').slice(0, 10); // server-tz day (as the worklog page does)
     if (!date || date > today) continue;
-    const name = NAME_BY_USER[f.reporter && f.reporter.name];
+    // Map the reporter to a team-member name. For `splitOtherReporters` metrics
+    // (leaked defects), a non-team reporter is kept under "Other" so the headline
+    // total matches the team's saved filter; otherwise a non-member is skipped.
+    const name = NAME_BY_USER[f.reporter && f.reporter.name]
+      || (metric.splitOtherReporters ? 'Other' : null);
     if (!name) continue;                                // not a team member -> skip
     if (!map[date]) map[date] = {};
     map[date][name] = (map[date][name] || 0) + 1;       // one ticket = one count

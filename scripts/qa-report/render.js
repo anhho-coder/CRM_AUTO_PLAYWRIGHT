@@ -123,7 +123,7 @@ function quarterlySection(meta, q, lead) {
     <div class="qgrid">
       <div class="qchart">${quarterChart(q.bars)}</div>
       <div class="qside">
-        <div class="subh">By tester · ${esc(q.currentLabel)} (actual)</div>
+        <div class="subh">${esc(meta.byLabel || 'By tester')} · ${esc(q.currentLabel)} (actual)</div>
         ${testerTable(q.byTester, q.total, q.currentLabel)}
       </div>
     </div>
@@ -182,11 +182,11 @@ function employeeBars(byEmployee) {
   }).join('') + '</div>';
 }
 
-function rangeBlock(agg, active, members) {
+function rangeBlock(agg, active, members, byLabel) {
   return `<div class="range-block${active ? ' is-active' : ''}" data-range="${esc(agg.key)}">
     <div class="grid">
       <div class="bignum"><div class="v">${fmt(agg.total)}</div><div class="l">${esc(agg.label.toLowerCase())}</div></div>
-      <div class="bycol"><div class="subh">By tester</div>${employeeBars(agg.byEmployee)}</div>
+      <div class="bycol"><div class="subh">${esc(byLabel || 'By tester')}</div>${employeeBars(agg.byEmployee)}</div>
     </div>
     <div class="subh">Trend</div>${seriesChart(agg.series, members)}
   </div>`;
@@ -209,7 +209,7 @@ function metricNote(meta) {
 }
 
 function rangeSection(meta, m, def, lead, members) {
-  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def, members)).join('\n');
+  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => rangeBlock(m.ranges[k], k === def, members, meta.byLabel)).join('\n');
   return `<section class="metric${lead ? ' lead' : ''}">
     <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
     ${metricNote(meta)}

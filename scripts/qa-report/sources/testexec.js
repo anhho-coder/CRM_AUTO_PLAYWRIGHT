@@ -100,10 +100,26 @@ function quarterlyActualFromDaily(metric, daily, members, now) {
     for (const name of members) { const v = d.byEmp[name] || 0; b.actual += v; b.byEmp[name] = (b.byEmp[name] || 0) + v; }
   }
   const cur = byQ[`${curY}-${curQ}`] || { year: curY, q: curQ, actual: 0, byEmp: {} };
-  const trailing = Object.values(byQ)
-    .filter((b) => ord(b.year, b.q) < ord(curY, curQ))
-    .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
-    .slice(-4);
+  // `quarterlyFillEmpty` (leaked defects): show a CONTIGUOUS trailing window — the 4
+  // calendar quarters immediately before the current one, filling any with no data as
+  // 0 — so a rare metric keeps a stable 5-quarter x-axis (e.g. Q3-2025 = 0 still shows)
+  // instead of collapsing to only the quarters that happen to have a hit. Default
+  // behaviour (every other metric) keeps only the quarters actually present.
+  let trailing;
+  if (metric.quarterlyFillEmpty) {
+    const curOrd = ord(curY, curQ);
+    trailing = [];
+    for (let o = 4; o >= 1; o--) {
+      const n = curOrd - o;                       // ordinal of the quarter `o` steps back
+      const q = ((n - 1) % 4) + 1, y = Math.floor((n - 1) / 4); // inverse of ord = y*4+q
+      trailing.push(byQ[`${y}-${q}`] || { year: y, q, actual: 0, byEmp: {} });
+    }
+  } else {
+    trailing = Object.values(byQ)
+      .filter((b) => ord(b.year, b.q) < ord(curY, curQ))
+      .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
+      .slice(-4);
+  }
   const bars = trailing.map((b) => ({ label: `Q${b.q}A-${b.year}`, value: r0(b.actual), type: 'actual' }));
   bars.push({ label: `Q${curQ}A-${curY}`, value: r0(cur.actual), type: 'current' });
 
