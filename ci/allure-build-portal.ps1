@@ -50,6 +50,94 @@ $cards = foreach ($s in $scopes) {
 "@
 }
 
+# --- "Monitor performance over Sales activities" section -----------------------------
+# Data-driven from ci\perf-sales-monitor.json. The whole build list is embedded and the
+# table is rendered client-side, so viewers can pick ANY two builds as Baseline / Current.
+# To add a new perf run: append a build to "builds" (with build#, id, date, note, and a
+# "values" map of module -> Save Operation Time), optionally bump defaultBaseline/Current;
+# then regenerate. No HTML editing required.
+Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+$perfSection = ''
+$perfJson = Join-Path $PSScriptRoot 'perf-sales-monitor.json'
+if (Test-Path -LiteralPath $perfJson) {
+    try {
+        $perfDataJson = Get-Content -LiteralPath $perfJson -Raw -Encoding UTF8
+        $perf         = $perfDataJson | ConvertFrom-Json
+        $perfTitle    = [System.Web.HttpUtility]::HtmlEncode($perf.title)
+        $perfSubtitle = [System.Web.HttpUtility]::HtmlEncode($perf.subtitle)
+        $perfHead = @"
+  <section class="perf" id="perf-sales">
+    <h2>$perfTitle</h2>
+    <p class="perfsub">$perfSubtitle</p>
+    <div class="perfctrl">
+      <label>Baseline build <select id="perf-baseline"></select></label>
+      <label>Current build <select id="perf-current"></select></label>
+    </div>
+    <div class="perfwrap">
+      <table class="perftbl">
+        <thead><tr><th class="mod">Module</th><th id="perf-h0">Baseline</th><th id="perf-h1">Current</th><th>&Delta;</th><th>Improvement</th></tr></thead>
+        <tbody id="perf-body"></tbody>
+      </table>
+    </div>
+    <script type="application/json" id="perf-data">$perfDataJson</script>
+"@
+        $perfJs = @'
+    <script>
+    (function(){
+      var d = JSON.parse(document.getElementById('perf-data').textContent);
+      var unit = d.metricUnit || 's';
+      var builds = d.builds || [];
+      var modules = d.modules || [];
+      var selB = document.getElementById('perf-baseline');
+      var selC = document.getElementById('perf-current');
+      var body = document.getElementById('perf-body');
+      var h0 = document.getElementById('perf-h0');
+      var h1 = document.getElementById('perf-h1');
+      function label(b){ return 'Build ' + b.id + ' — ' + b.date + (b.note ? ' (' + b.note + ')' : ''); }
+      function head(b){ return 'Build ' + b.id + '<span class="rundate">' + b.date + '</span>'; }
+      function fmt(v){ return (Math.round(v*100)/100).toFixed(2); }
+      builds.forEach(function(b,i){
+        var o1 = document.createElement('option'); o1.value = i; o1.textContent = label(b); selB.appendChild(o1);
+        var o2 = document.createElement('option'); o2.value = i; o2.textContent = label(b); selC.appendChild(o2);
+      });
+      function idxOfBuild(n, fallback){ for(var i=0;i<builds.length;i++){ if(builds[i].build===n) return i; } return fallback; }
+      selB.value = idxOfBuild(d.defaultBaseline, 0);
+      selC.value = idxOfBuild(d.defaultCurrent, builds.length - 1);
+      function render(){
+        var b0 = builds[+selB.value], b1 = builds[+selC.value];
+        h0.innerHTML = head(b0); h1.innerHTML = head(b1);
+        var rows = '';
+        modules.forEach(function(m){
+          var v0 = (b0.values||{})[m]; if (v0 === undefined) v0 = null;
+          var v1 = (b1.values||{})[m]; if (v1 === undefined) v1 = null;
+          var c0 = (v0===null) ? '<td class="na">&mdash;</td>' : '<td>' + fmt(v0) + unit + '</td>';
+          var c1 = (v1===null) ? '<td class="na">&mdash;</td>' : '<td>' + fmt(v1) + unit + '</td>';
+          var cd = '<td class="na">&mdash;</td>', ci = '<td class="na">&mdash;</td>';
+          if (v0!==null && v1!==null && v0!==0){
+            var dd = v1 - v0, pct = dd / v0 * 100;
+            var cls = (Math.abs(pct) < 2) ? 'flat' : (dd < 0 ? 'good' : 'bad');
+            var ds = (dd > 0 ? '+' : '') + fmt(dd) + unit;
+            var is = (cls === 'flat') ? 'flat' : ((pct > 0 ? '+' : '') + Math.round(pct) + '%');
+            cd = '<td class="' + cls + '">' + ds + '</td>';
+            ci = '<td class="' + cls + '">' + is + '</td>';
+          }
+          rows += '<tr><td class="mod">' + m + '</td>' + c0 + c1 + cd + ci + '</tr>';
+        });
+        body.innerHTML = rows;
+      }
+      selB.addEventListener('change', render);
+      selC.addEventListener('change', render);
+      render();
+    })();
+    </script>
+  </section>
+'@
+        $perfSection = $perfHead + "`n" + $perfJs
+    } catch {
+        $perfSection = "  <section class=""perf""><h2>Monitor performance over Sales activities</h2><p class=""perfsub"">(perf data unavailable: $($_.Exception.Message))</p></section>"
+    }
+}
+
 $now = (Get-Date).ToString('yyyy-MM-dd HH:mm')
 $html = @"
 <!doctype html>
@@ -79,6 +167,27 @@ $html = @"
   .foot { max-width:1100px; margin-top:28px; padding-top:14px; border-top:1px solid #334155;
           color:#94a3b8; font-size:13px; }
   .foot a { color:#60a5fa; }
+  .perf { max-width:1100px; margin-top:28px; padding-top:20px; border-top:1px solid #334155; }
+  .perf h2 { margin:0 0 4px; font-size:19px; }
+  .perfsub { margin:0 0 14px; color:#94a3b8; font-size:12.5px; max-width:900px; }
+  .perfctrl { display:flex; flex-wrap:wrap; gap:18px; margin:0 0 14px; }
+  .perfctrl label { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em;
+                    display:flex; flex-direction:column; gap:5px; }
+  .perfctrl select { font-size:13px; color:#e2e8f0; background:#1e293b; border:1px solid #475569;
+                     border-radius:8px; padding:7px 10px; min-width:230px; text-transform:none; letter-spacing:normal; }
+  .perfctrl select:focus { outline:2px solid #60a5fa; outline-offset:1px; }
+  .perfwrap { overflow-x:auto; }
+  .perftbl { border-collapse:collapse; font-size:13px; min-width:520px; }
+  .perftbl th, .perftbl td { padding:8px 14px; text-align:right; border-bottom:1px solid #334155; white-space:nowrap; }
+  .perftbl thead th { background:#1e293b; color:#f1f5f9; font-weight:700; border-bottom:1px solid #475569; }
+  .perftbl th.mod, .perftbl td.mod { text-align:left; }
+  .perftbl td.mod { color:#e2e8f0; }
+  .perftbl th .rundate { display:block; font-weight:400; font-size:11px; color:#94a3b8; margin-top:2px; }
+  .perftbl tbody tr:hover { background:#1e293b; }
+  .perftbl td.good { color:#4ade80; font-weight:600; }
+  .perftbl td.bad  { color:#f87171; font-weight:600; }
+  .perftbl td.flat { color:#94a3b8; }
+  .perftbl td.na   { color:#64748b; }
 </style>
 </head>
 <body>
@@ -89,6 +198,7 @@ $($cards -join "`n")
   </div>
   <p class="foot">Updated: $now &nbsp;&middot;&nbsp;
      <a href="/job/CRM-Total_Allure_Report/Allure_20Report/">Total report (latest snapshot)</a></p>
+$perfSection
 </body>
 </html>
 "@
