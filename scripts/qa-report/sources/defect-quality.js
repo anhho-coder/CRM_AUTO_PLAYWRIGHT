@@ -146,27 +146,34 @@ async function collectDefectQuality(ranges, now = new Date()) {
     // quarterlyActualFromDaily so the shape matches every other quarterly card.
     let quarterly = null;
     if (metric.quarterly) {
-      const curY = now.getUTCFullYear();
-      const curQ = Math.floor(now.getUTCMonth() / 3) + 1;
-      const startOrd = curY * 4 + curQ - 4;            // ordinal of the earliest quarter shown
-      const sQ = ((startOrd - 1) % 4) + 1;
-      const sY = Math.floor((startOrd - 1) / 4);
-      const from = `${sY}-${String((sQ - 1) * 3 + 1).padStart(2, '0')}-01`;
-      const to = now.toISOString().slice(0, 10);
-      const qList = await jira.searchAll(leakedJql(metric, from, to), ['created', 'reporter', 'priority', 'summary']);
-      const byDate = {};
-      for (const it of qList) {
-        const f = it.fields || {};
-        const dstr = f.created ? f.created.slice(0, 10) : null;
-        if (!dstr) continue;
-        const user = f.reporter ? f.reporter.name : null;
-        const nm = (user && nameByUser.get(user)) || 'Other';
-        if (!byDate[dstr]) byDate[dstr] = { date: dstr, byEmp: {} };
-        byDate[dstr].byEmp[nm] = (byDate[dstr].byEmp[nm] || 0) + 1;
+      // Non-fatal: a Jira hiccup on this extra 5-quarter query must NOT take down the
+      // already-computed range-view data for the metric (the card just loses its
+      // Quarterly view, not everything).
+      try {
+        const curY = now.getUTCFullYear();
+        const curQ = Math.floor(now.getUTCMonth() / 3) + 1;
+        const startOrd = curY * 4 + curQ - 4;            // ordinal of the earliest quarter shown
+        const sQ = ((startOrd - 1) % 4) + 1;
+        const sY = Math.floor((startOrd - 1) / 4);
+        const from = `${sY}-${String((sQ - 1) * 3 + 1).padStart(2, '0')}-01`;
+        const to = now.toISOString().slice(0, 10);
+        const qList = await jira.searchAll(leakedJql(metric, from, to), ['created', 'reporter', 'priority', 'summary']);
+        const byDate = {};
+        for (const it of qList) {
+          const f = it.fields || {};
+          const dstr = f.created ? f.created.slice(0, 10) : null;
+          if (!dstr) continue;
+          const user = f.reporter ? f.reporter.name : null;
+          const nm = (user && nameByUser.get(user)) || 'Other';
+          if (!byDate[dstr]) byDate[dstr] = { date: dstr, byEmp: {} };
+          byDate[dstr].byEmp[nm] = (byDate[dstr].byEmp[nm] || 0) + 1;
+        }
+        const daily = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+        const members = MEMBERS.map((m) => m.name).concat(metric.splitOtherReporters ? ['Other'] : []);
+        quarterly = quarterlyActualFromDaily(metric, daily, members, now);
+      } catch (e) {
+        console.error(`[defect-quality] quarterly collection failed for ${metric.key} (range view unaffected):`, e.message || e);
       }
-      const daily = Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
-      const members = MEMBERS.map((m) => m.name).concat(metric.splitOtherReporters ? ['Other'] : []);
-      quarterly = quarterlyActualFromDaily(metric, daily, members, now);
     }
     out[metric.key] = { label: metric.label, kpiName: metric.kpiName, ranges: perRange, quarterly };
   }
