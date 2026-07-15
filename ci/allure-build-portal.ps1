@@ -93,7 +93,7 @@ if (Test-Path -LiteralPath $perfJson) {
       var body = document.getElementById('perf-body');
       var h0 = document.getElementById('perf-h0');
       var h1 = document.getElementById('perf-h1');
-      function label(b){ return 'Build ' + b.id + ' — ' + b.date + (b.note ? ' (' + b.note + ')' : ''); }
+      function label(b){ return 'Build ' + b.id + ' - ' + b.date + (b.note ? ' (' + b.note + ')' : ''); }
       function head(b){ return 'Build ' + b.id + '<span class="rundate">' + b.date + '</span>'; }
       function fmt(v){ return (Math.round(v*100)/100).toFixed(2); }
       builds.forEach(function(b,i){
