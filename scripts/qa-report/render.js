@@ -127,6 +127,7 @@ function quarterlySection(meta, q, lead) {
         ${testerTable(q.byTester, q.total, q.currentLabel)}
       </div>
     </div>
+    ${meta.quarterlyNote ? `<p class="qnote">${esc(meta.quarterlyNote)}</p>` : ''}
   </section>`;
 }
 
@@ -1178,6 +1179,7 @@ h2{margin:0 0 12px;font-size:17px}
 .qtbl td.num,.qtbl th.num{text-align:right;font-variant-numeric:tabular-nums}
 .qtbl tfoot td{font-weight:700;border-top:2px solid #ccc;border-bottom:none}
 .subh{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:.04em;margin:14px 0 6px;font-weight:700}
+.qnote{margin:16px 0 0;padding:10px 14px;background:#f5f2fb;border:1px solid #e4d9f4;border-radius:10px;color:#555;font-size:12.5px;line-height:1.55}
 .grid{display:flex;gap:24px;flex-wrap:wrap;align-items:center}
 .bignum{min-width:140px}.bignum .v{font-size:44px;font-weight:800;color:#6a3093;line-height:1}.bignum .l{font-size:12px;color:#777;margin-top:4px}
 .bycol{flex:1;min-width:240px}
