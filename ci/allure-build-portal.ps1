@@ -89,7 +89,7 @@ if (Test-Path -LiteralPath $perfJson) {
       var builds = d.builds || [];
       var composites = d.composites || [];
       var modules = d.modules || [];
-      // Composites (e.g. "newest per module") are listed first so the fullest view is easy to pick.
+      // Composites (e.g. "Latest") are listed first so the fullest view is easy to pick.
       var entries = composites.concat(builds);
       var selB = document.getElementById('perf-baseline');
       var selC = document.getElementById('perf-current');
@@ -112,7 +112,9 @@ if (Test-Path -LiteralPath $perfJson) {
           var bv = b.values || {};
           Object.keys(bv).forEach(function(m){ vals[m] = bv[m]; src[m] = b.id; });
         });
-        return { optionLabel: e.label, headHtml: e.label + '<span class="rundate">newest per module</span>',
+        var newest = pool.length ? pool[pool.length - 1] : null;
+        var sub = newest ? newest.date : '';
+        return { optionLabel: e.label, headHtml: e.label + '<span class="rundate">' + sub + '</span>',
                  values: vals, source: src };
       }
       var resolved = entries.map(resolve);
