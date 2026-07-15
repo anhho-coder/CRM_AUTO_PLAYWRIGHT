@@ -88,7 +88,9 @@ if (Test-Path -LiteralPath $perfJson) {
       var unit = d.metricUnit || 's';
       var builds = d.builds || [];
       var composites = d.composites || [];
-      var modules = d.modules || [];
+      // Rows are grouped into clusters (Lead & Opportunity, Contact, ...). Fall back to a
+      // single unlabelled group when only a flat `modules` list is provided.
+      var groups = d.groups || (d.modules ? [{ label: null, modules: d.modules }] : []);
       // Composites (e.g. "Latest") are listed first so the fullest view is easy to pick.
       var entries = composites.concat(builds);
       var selB = document.getElementById('perf-baseline');
@@ -125,27 +127,31 @@ if (Test-Path -LiteralPath $perfJson) {
       function idxOfKey(k, fallback){ for(var i=0;i<entries.length;i++){ if(entries[i].key===k) return i; } return fallback; }
       selB.value = idxOfKey(d.defaultBaselineKey, 0);
       selC.value = idxOfKey(d.defaultCurrentKey, entries.length - 1);
+      function rowFor(m, r0, r1){
+        var v0 = r0.values[m]; if (v0 === undefined) v0 = null;
+        var v1 = r1.values[m]; if (v1 === undefined) v1 = null;
+        var t0 = (r0.source && r0.source[m]) ? ' title="from build ' + r0.source[m] + '"' : '';
+        var t1 = (r1.source && r1.source[m]) ? ' title="from build ' + r1.source[m] + '"' : '';
+        var c0 = (v0===null) ? '<td class="na">&mdash;</td>' : '<td' + t0 + '>' + fmt(v0) + unit + '</td>';
+        var c1 = (v1===null) ? '<td class="na">&mdash;</td>' : '<td' + t1 + '>' + fmt(v1) + unit + '</td>';
+        var cd = '<td class="na">&mdash;</td>', ci = '<td class="na">&mdash;</td>';
+        if (v0!==null && v1!==null && v0!==0){
+          var dd = v1 - v0, pct = dd / v0 * 100;
+          var cls = (Math.abs(pct) < 2) ? 'flat' : (dd < 0 ? 'good' : 'bad');
+          var ds = (dd > 0 ? '+' : '') + fmt(dd) + unit;
+          var is = (cls === 'flat') ? 'flat' : ((pct > 0 ? '+' : '') + Math.round(pct) + '%');
+          cd = '<td class="' + cls + '">' + ds + '</td>';
+          ci = '<td class="' + cls + '">' + is + '</td>';
+        }
+        return '<tr><td class="mod">' + m + '</td>' + c0 + c1 + cd + ci + '</tr>';
+      }
       function render(){
         var r0 = resolved[+selB.value], r1 = resolved[+selC.value];
         h0.innerHTML = r0.headHtml; h1.innerHTML = r1.headHtml;
         var rows = '';
-        modules.forEach(function(m){
-          var v0 = r0.values[m]; if (v0 === undefined) v0 = null;
-          var v1 = r1.values[m]; if (v1 === undefined) v1 = null;
-          var t0 = (r0.source && r0.source[m]) ? ' title="from build ' + r0.source[m] + '"' : '';
-          var t1 = (r1.source && r1.source[m]) ? ' title="from build ' + r1.source[m] + '"' : '';
-          var c0 = (v0===null) ? '<td class="na">&mdash;</td>' : '<td' + t0 + '>' + fmt(v0) + unit + '</td>';
-          var c1 = (v1===null) ? '<td class="na">&mdash;</td>' : '<td' + t1 + '>' + fmt(v1) + unit + '</td>';
-          var cd = '<td class="na">&mdash;</td>', ci = '<td class="na">&mdash;</td>';
-          if (v0!==null && v1!==null && v0!==0){
-            var dd = v1 - v0, pct = dd / v0 * 100;
-            var cls = (Math.abs(pct) < 2) ? 'flat' : (dd < 0 ? 'good' : 'bad');
-            var ds = (dd > 0 ? '+' : '') + fmt(dd) + unit;
-            var is = (cls === 'flat') ? 'flat' : ((pct > 0 ? '+' : '') + Math.round(pct) + '%');
-            cd = '<td class="' + cls + '">' + ds + '</td>';
-            ci = '<td class="' + cls + '">' + is + '</td>';
-          }
-          rows += '<tr><td class="mod">' + m + '</td>' + c0 + c1 + cd + ci + '</tr>';
+        groups.forEach(function(g){
+          if (g.label) rows += '<tr class="grp"><td colspan="5">' + g.label + '</td></tr>';
+          (g.modules || []).forEach(function(m){ rows += rowFor(m, r0, r1); });
         });
         body.innerHTML = rows;
       }
@@ -207,6 +213,10 @@ $html = @"
   .perftbl th.mod, .perftbl td.mod { text-align:left; }
   .perftbl td.mod { color:#e2e8f0; }
   .perftbl th .rundate { display:block; font-weight:400; font-size:11px; color:#94a3b8; margin-top:2px; }
+  .perftbl tbody tr.grp td { text-align:left; background:#182234; color:#93b4e6; font-size:11px;
+                             font-weight:700; text-transform:uppercase; letter-spacing:.05em;
+                             padding:9px 14px 7px; border-top:2px solid #475569; border-bottom:1px solid #334155; }
+  .perftbl tbody tr.grp:hover td { background:#182234; }
   .perftbl tbody tr:hover { background:#1e293b; }
   .perftbl td.good { color:#4ade80; font-weight:600; }
   .perftbl td.bad  { color:#f87171; font-weight:600; }

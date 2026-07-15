@@ -2,14 +2,11 @@
   "title": "Monitor performance over Sales activities",
   "subtitle": "Save Operation Time per Sales activity (seconds, lower = faster). Pick any two runs to compare. \"Latest\" shows each activity's most recent post-bundle measurement (dated by the newest build), so a single timed-out run never leaves gaps. Source: Jenkins job CRM_SalesReport_Perf (CRM-11415 bundle nakivo_performance_boost).",
   "metricUnit": "s",
-  "modules": [
-    "Create Lead", "Edit Lead",
-    "Create Opp", "Edit Opp",
-    "Create Contact", "Edit Contact",
-    "Create Deal Element", "Edit Deal Element",
-    "Create Quotation", "Edit Quotation", "Send Quotation", "Approve Quotation", "Reject Quotation",
-    "Create Invoice", "Edit Invoice", "Send Invoice",
-    "Create License", "Edit License"
+  "groups": [
+    { "label": "Lead & Opportunity", "modules": ["Create Lead", "Edit Lead", "Create Opp", "Edit Opp"] },
+    { "label": "Contact", "modules": ["Create Contact", "Edit Contact"] },
+    { "label": "Deal Element, Quotation & Invoice", "modules": ["Create Deal Element", "Edit Deal Element", "Create Quotation", "Edit Quotation", "Send Quotation", "Approve Quotation", "Reject Quotation", "Create Invoice", "Edit Invoice", "Send Invoice"] },
+    { "label": "License", "modules": ["Create License", "Edit License"] }
   ],
   "defaultBaselineKey": "b3",
   "defaultCurrentKey": "latest-post",
