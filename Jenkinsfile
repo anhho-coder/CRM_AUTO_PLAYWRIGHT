@@ -43,6 +43,11 @@ pipeline {
             defaultValue: '15',
             description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry). Re-probes every 60s up to this many minutes, then aborts with "ABORTED: pre-prod VPN route down".'
         )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '90',
+            description: 'Build timeout in minutes. Default 90 suits a healthy section/sub-folder run. Raise ONLY for a dedicated slow-lane job (e.g. the THD/async-assignment specs, which reload-poll up to 43 min each for the late Sales-Team/Salesperson cron): the SlowLane job passes 480.'
+        )
     }
 
     environment {
@@ -62,11 +67,12 @@ pipeline {
     }
 
     options {
-        // Cap a single build at 90 min: a healthy section/sub-folder run finishes well
-        // inside this, so exceeding it means the run is stuck or the env is flaky -
-        // abort fast and free the executor instead of grinding for hours. Scope jobs to
-        // sub-folders (SPEC/JIRA_PATH/GREP) to stay comfortably under the cap.
-        timeout(time: 90, unit: 'MINUTES')
+        // Cap a single build at TIMEOUT_MIN minutes (default 90): a healthy section/sub-folder
+        // run finishes well inside 90, so exceeding it means the run is stuck or the env is
+        // flaky - abort fast and free the executor instead of grinding for hours. Scope jobs to
+        // sub-folders (SPEC/JIRA_PATH/GREP) to stay comfortably under the cap. The dedicated
+        // slow-lane job (THD/async-assignment specs) raises this to 480 via the TIMEOUT_MIN param.
+        timeout(time: (params.TIMEOUT_MIN ?: '90').toInteger(), unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '10'))
         // One run per job at a time: clicking Build twice queues rather than running
         // two concurrent builds that fight for executors / spawn @2 workspaces.
