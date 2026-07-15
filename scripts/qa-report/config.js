@@ -175,7 +175,7 @@ const JIRA_METRICS = [
     yearBucket: 'quarter',     // This year / Last year Trend uses quarterly columns, not monthly
     quarterly: true,           // also show an actual-only card in the Quarterly KPI view (per-quarter bars + BY TESTER table)
     quarterlyFillEmpty: true,  // keep a contiguous 5-quarter x-axis — quarters with 0 leaks still show (this field only went live Q4-2025)
-    quarterlyNote: 'The x-axis keeps 5 consecutive quarters (Q2-2025 to Q2-2026). The "Leaked defect priority" field has only been in use since Q4-2025, so Q2/Q3-2025 still read 0 (0 leaks = good). The highlighted (teal) column is the quarter this report was built for; the By tester table follows that current quarter. Each new quarter, the axis slides forward.',
+    quarterlyNote: 'The x-axis keeps 5 consecutive quarters ending at the current one. The "Leaked defect priority" field has only been in use since Q4-2025, so earlier quarters read 0 (0 leaks = good). The highlighted (teal) column is the current quarter; the By tester table follows it. Each new quarter, the axis slides forward.',
   },
 ];
 

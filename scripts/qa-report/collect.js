@@ -100,8 +100,10 @@ async function main() {
       if (mem !== members) data.metrics[m.key].members = mem;
       // Opt-in (`quarterly: true`): also surface an actual-only Quarterly card (no
       // Odoo Forecast/Goal exists for a Jira metric), same shape as the worklog
-      // metrics. Otherwise the metric stays "By range" only.
-      if (m.quarterly) data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, members, now);
+      // metrics. Otherwise the metric stays "By range" only. Pass the "Other"-inclusive
+      // member list so the card's bars + BY TESTER total stay faithful to the saved
+      // filter (non-team reporters counted, not dropped).
+      if (m.quarterly) data.quarterly[m.key] = quarterlyActualFromDaily(m, d.daily, mem, now);
     }
     data.sources.jiraMetrics = { status: 'ok', source: 'jira support tickets' };
   } catch (e) {
@@ -274,10 +276,12 @@ async function main() {
   //     (its own full 6-range selector), like sources/frd.js. Wrapped independently so
   //     a Jira failure here never blocks the rest.
   try {
-    const dq = await collectDefectQuality(ranges);
+    const dq = await collectDefectQuality(ranges, now);
     for (const m of cfg.JIRA_DEFECT_METRICS) {
       const d = dq[m.key];
       data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+      // Opt-in Quarterly card (`quarterly: true`, e.g. leaked defects) — see defect-quality.js.
+      if (m.quarterly && d.quarterly) data.quarterly[m.key] = d.quarterly;
     }
     data.sources.jiraDefectQuality = { status: 'ok', source: 'jira bugs created + leaked defects' };
   } catch (e) {
