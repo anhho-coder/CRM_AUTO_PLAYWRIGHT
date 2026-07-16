@@ -9,6 +9,14 @@
 // dropped into TODAY's dated Allure bucket, so the CURRENT period's report reflects the re-run
 // (latest-per-test): a fixed test flips green, a real defect stays red.
 //
+// By DEFAULT (MODE=abnormal) it re-runs only the failures with an ABNORMAL cause - environment
+// (net::ERR_* connection/DNS drops), aborted (test ended / browser closed cascade) and timeout
+// (waits that never reached a business check) - i.e. the ones a re-run can plausibly turn green.
+// Failures that reached a business check and disagreed (expect() assertions, "not found /
+// should be" errors) are the real-defect / known-bug failures (CRM-8929, CRM-9059, ...) and are
+// SKIPPED, since a re-run just reproduces them. MODE=all re-runs every failure; MODE=defect
+// re-runs only that real-defect-like set.
+//
 // Same agent guards as the section jobs (Jenkinsfile): probe-node pre-prod route gate,
 // long-path-safe checkout, Chrome + ffmpeg checks. A failing suite is recorded (build FAILURE)
 // but does NOT stop the remaining suites (catchError), so one build re-runs the whole month.
@@ -28,7 +36,12 @@ pipeline {
         string(
             name: 'STATUSES',
             defaultValue: 'failed,broken',
-            description: 'Allure statuses to re-run (comma-separated). Default failed,broken re-runs the red + broken cells. Intentional bug-skips and did-not-run cases are NOT included.'
+            description: 'Allure statuses to consider (comma-separated). Default failed,broken = the red + broken cells. Intentional bug-skips and did-not-run cases are NOT included.'
+        )
+        choice(
+            name: 'MODE',
+            choices: ['abnormal', 'all', 'defect'],
+            description: 'Which failures to re-run by CAUSE. abnormal (default) = only env / aborted / timeout failures (a re-run can turn them green); skips expect()-assertion + business "not found/should be" failures (real defects / known bugs like CRM-8929, CRM-9059 - a re-run just reproduces them). all = every failed/broken case. defect = only the real-defect-like set.'
         )
         choice(
             name: 'SUITE',
@@ -167,6 +180,7 @@ echo ffmpeg OK
                 withEnv([
                     "MONTH=${params.MONTH?.trim() ?: 'latest'}",
                     "STATUSES=${params.STATUSES?.trim() ?: 'failed,broken'}",
+                    "MODE=${params.MODE ?: 'abnormal'}",
                     "SUITE=${params.SUITE ?: 'all'}"
                 ]) {
                     // Writes rerun/_suites.txt + rerun/<Suite>.txt and echoes the plan.
@@ -289,7 +303,7 @@ call npx playwright test !FILTERS! --project=chrome-headless
               }
             '''
         }
-        success { echo 'Re-run complete - all targeted specs passed.' }
-        failure { echo 'Re-run complete - some specs still failed. Check the Playwright Report + archived test-results/ (known-defect cases, e.g. CRM-8929/CRM-9059, are expected to stay red).' }
+        success { echo 'Re-run complete - all targeted specs passed (the abnormal-cause failures cleared on re-run).' }
+        failure { echo 'Re-run complete - some specs still failed. Check the Playwright Report + archived test-results/ (and rerun/_classification.txt for the cause of each). A still-failing env/timeout case may point at a persistent route/data issue rather than a flake.' }
     }
 }
