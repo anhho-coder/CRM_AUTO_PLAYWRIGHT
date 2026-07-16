@@ -158,6 +158,14 @@ if (Test-Path -LiteralPath $resultsRoot) {
 node (Join-Path $Workspace 'ci\allure-relabel-suites.js') $merged
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXITCODE (continuing)." }
 
+# ---- Stabilise historyId so the per-test HISTORY tab chains across periods ----
+# allure-playwright's historyId bakes in the test's line:col AND the Project param, so it
+# changes on any code edit or project switch and the carried-forward history never matches
+# (every test = "No history information available"). Rewrite it to a stable, project- and
+# line-independent id (same key the dedupe uses). History then accumulates from next period.
+node (Join-Path $Workspace 'ci\allure-stabilize-history-id.js') $merged
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: history-id stabilise returned $LASTEXITCODE (continuing)." }
+
 # ---- Capture the RAW all-runs statistic BEFORE dedupe collapses reruns ----
 # Section 1 (Overview summary) must count EVERY run this period (a test that failed 5x
 # and passed once = 6), while Section 2 (Suites) shows it as 1 unique test. `allure generate`
