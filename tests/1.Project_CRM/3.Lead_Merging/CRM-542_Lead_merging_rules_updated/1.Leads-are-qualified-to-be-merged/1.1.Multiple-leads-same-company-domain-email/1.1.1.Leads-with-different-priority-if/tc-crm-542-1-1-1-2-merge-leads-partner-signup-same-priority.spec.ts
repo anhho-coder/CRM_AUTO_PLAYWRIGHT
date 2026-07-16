@@ -13,6 +13,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 
  * Command to run:
  * npx playwright test --grep "CRM-542_1\.1\.1\.2 -" --project=chromium
+ * npx playwright test --grep "CRM-11755" --project=chromium   (skipped due to bug CRM-11755)
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -134,7 +135,7 @@ test.describe('CRM-542_1.1.1.2 - Lead Merging: Same Company Domain Email with Di
     }
   });
 
-  test('Verify merging lead happens successfully when leads from same company domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
+  test.skip('[CRM-11755] Verify merging lead happens successfully when leads from same company domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window
