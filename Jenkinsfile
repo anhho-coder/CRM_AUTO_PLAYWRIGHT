@@ -264,22 +264,60 @@ echo ffmpeg OK
                     // the THD_team folder is not guillotined. Scripted context here allows the
                     // Groovy expression that the declarative options{} block rejects.
                     def runTimeout = (params.TIMEOUT_MIN ?: '90').toInteger()
-                    timeout(time: runTimeout, unit: 'MINUTES') {
-                        if (spec) {
-                            echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec} | timeout ${runTimeout}m"
-                            bat "npx playwright test \"${spec}\" --project=chrome-headless"
-                        } else if (grepPat) {
-                            echo "Job '${env.JOB_BASE_NAME}' | GREP (title regex): ${grepPat} | timeout ${runTimeout}m"
-                            // Pass via env var + quoted %GP% so the regex's | and \\ survive cmd.
-                            withEnv(["GP=${grepPat}"]) {
-                                bat 'npx playwright test --grep "%GP%" --project=chrome-headless'
-                            }
-                        } else if (project) {
-                            echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project} | timeout ${runTimeout}m"
-                            bat "npx playwright test --project=${project}"
+                    // Resolve this run's single Playwright invocation into a closure so it can
+                    // run under the mid-run VPN watchdog below.
+                    def runPlaywright
+                    if (spec) {
+                        echo "Job '${env.JOB_BASE_NAME}' | ad-hoc SPEC: ${spec} | timeout ${runTimeout}m"
+                        runPlaywright = { bat "npx playwright test \"${spec}\" --project=chrome-headless" }
+                    } else if (grepPat) {
+                        echo "Job '${env.JOB_BASE_NAME}' | GREP (title regex): ${grepPat} | timeout ${runTimeout}m"
+                        // Pass via env var + quoted %GP% so the regex's | and \\ survive cmd.
+                        runPlaywright = { withEnv(["GP=${grepPat}"]) { bat 'npx playwright test --grep "%GP%" --project=chrome-headless' } }
+                    } else if (project) {
+                        echo "Job '${env.JOB_BASE_NAME}' | section PROJECT: ${project} | timeout ${runTimeout}m"
+                        runPlaywright = { bat "npx playwright test --project=${project}" }
+                    } else {
+                        echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
+                        runPlaywright = { bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless' }
+                    }
+                    // --- Mid-run pre-prod VPN gate -------------------------------------------
+                    // The background CRM-Connectivity-Check job raises
+                    //   http://10.8.81.44:8080/userContent/vpn-down.flag  (HTTP 200)
+                    // after 2 consecutive failed pre-prod pings, and clears it on recovery.
+                    // A watchdog polls it alongside the run; if it goes up we abort so the
+                    // not-yet-run specs are NEVER executed (hence never marked failed on
+                    // ERR_CONNECTION). Build ends NOT_BUILT, distinct from a real FAILURE.
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            parallel(
+                                'playwright': {
+                                    try { runPlaywright() } finally { bat 'echo done> .pw_done' }
+                                },
+                                'vpn-watchdog': {
+                                    while (!fileExists('.pw_done')) {
+                                        sleep(time: 60, unit: 'SECONDS')
+                                        if (fileExists('.pw_done')) { break }
+                                        // curl -f: exit 0 iff the flag exists (HTTP 200); non-zero on 404.
+                                        if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                            env.VPN_ABORT = 'true'
+                                            echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining specs will NOT run (not failed).'
+                                            error('pre-prod VPN dropped mid-run')
+                                        }
+                                    }
+                                },
+                                failFast: true
+                            )
+                        }
+                    } catch (err) {
+                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (env.VPN_ABORT == 'true' || flagUp) {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining test cases were NOT executed (not failed). Re-run once the VPN route is back.'
                         } else {
-                            echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
-                            bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless'
+                            throw err
                         }
                     }
                 }
