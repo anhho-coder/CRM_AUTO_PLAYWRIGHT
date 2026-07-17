@@ -7,13 +7,15 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead Merging Test - Same Company Domain Email with Different Priority
  * Test Case ID: CRM-542_1.1.1.2
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-07-16
+ *
  * Summary: Verify that the merging lead happens successfully when the leads from the same company domain email 
  * but different priority if a lead of them is Partner sign up lead
  * 
  * Command to run:
  * npx playwright test --grep "CRM-542_1\.1\.1\.2 -" --project=chromium
- * npx playwright test --grep "CRM-11755" --project=chromium   (skipped due to bug CRM-11755)
+ * npx playwright test --grep "CRM-11755" --project=chromium   (un-skipped: bug CRM-11755 Fixed/Resolved - pilot re-run)
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -135,7 +137,7 @@ test.describe('CRM-542_1.1.1.2 - Lead Merging: Same Company Domain Email with Di
     }
   });
 
-  test.skip('[CRM-11755] Verify merging lead happens successfully when leads from same company domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
+  test('[CRM-11755] Verify merging lead happens successfully when leads from same company domain email with different priority (Partner sign up lead)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window

@@ -34,6 +34,15 @@ export interface CreateInvoiceInput extends DealRegCreateInput {
   pricelist?: string;
   /** Human label for the Pricelist step (default "<pricelist> (USD)"), used only in the step text. */
   pricelistLabel?: string;
+  /**
+   * Quantity for the single product line (default 1). Keep the resulting line total under the
+   * ~$4k no-approval threshold, otherwise the Quotation needs Sales Manager approval (which this
+   * helper's direct-Confirm path does not perform). Used by the high-quantity discount TC.
+   */
+  productQty?: number;
+  /** Optional line-level Discount % to set on the product line (e.g. 10 for 10%). Used by the
+   *  line-discount + partner-discount stacking TC. */
+  lineDiscountPct?: number;
 }
 
 export interface CreatedInvoice {
@@ -121,6 +130,15 @@ export async function createValidatedInvoiceAsThomas(
     // under the $4k threshold so the Quotation needs no Sales Manager approval).
     const added = await dealElementPage.addProduct('');
     console.log(added ? '  - First product selected' : '  - Could not add a product');
+    // Optional variations (operate on the just-added edit row): quantity + line-level discount.
+    if (input.productQty && input.productQty !== 1) {
+      await dealElementPage.setLastRowQty(input.productQty);
+      console.log(`  - Quantity set to ${input.productQty}`);
+    }
+    if (input.lineDiscountPct != null) {
+      await dealElementPage.setLastRowDiscount(input.lineDiscountPct);
+      console.log(`  - Line Discount % set to ${input.lineDiscountPct}`);
+    }
   });
 
   await test.step(`${p} - Step 14: Press "SAVE" on the Deal Element and wait`, async () => {

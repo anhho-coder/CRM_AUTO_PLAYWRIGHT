@@ -7,13 +7,15 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead Merging Test - Same Company Domain Email with Different Priority
  * Test Case ID: CRM-542_1.1.1.1
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-07-16
+ *
  * Summary: Verify that the merging lead happens successfully when the leads from the same company domain email 
  * but different priority if a lead of them is IB renewal lead
  * 
  * Command to run:
  * npx playwright test --grep "CRM-542_1\.1\.1\.1 -" --project=chromium
- * npx playwright test --grep "CRM-11755" --project=chromium   (skipped due to bug CRM-11755)
+ * npx playwright test --grep "CRM-11755" --project=chromium   (un-skipped: bug CRM-11755 Fixed/Resolved)
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -135,12 +137,7 @@ test.describe('CRM-542_1.1.1.1 - Lead Merging: Same Company Domain Email with Di
     }
   });
 
-  // FIXME: This test depends on backend cron job for lead merging which is unreliable/slow
-  // The merge notification text "This lead has been merged into" appears inconsistently
-  // Backend may take more than 5 minutes to process the merge, or may not trigger at all
-  // Multiple locator strategies attempted (page.content, getByText, DOM traversal) all fail to find the element
-  // Manual verification shows the merge DOES happen eventually, but timing is unpredictable
-  test.skip('[CRM-11755] Verify merging lead happens successfully when leads from same company domain email with different priority (IB renewal lead)', async ({ page }, testInfo) => {
+  test('[CRM-11755] Verify merging lead happens successfully when leads from same company domain email with different priority (IB renewal lead)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window

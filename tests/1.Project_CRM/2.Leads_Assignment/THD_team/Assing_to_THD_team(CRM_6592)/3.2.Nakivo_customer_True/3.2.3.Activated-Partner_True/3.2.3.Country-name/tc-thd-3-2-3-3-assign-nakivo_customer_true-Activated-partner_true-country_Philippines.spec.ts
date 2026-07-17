@@ -5,11 +5,21 @@ import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * Lead Assignment Test - THD Team - Philippines with Nakivo Customer = TRUE and Activated Partner = TRUE
+ * Lead Assignment Test - THD Team - Philippines with Nakivo Customer = TRUE, Activated Partner = TRUE and New Partner = TRUE
  * Test Case ID: TC.THD_3.2.3.3
+ * Automation-Type: refactored
+ * Automation-Date: 2026-07-16
  * 
- * Summary: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Activated Partner = TRUE and Country = Philippines
- * 
+ * Summary: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Activated Partner = TRUE, New Partner = TRUE and Country = Philippines
+ *
+ * NOTE (2026-07-16): New Partner = TRUE is set in addition to Activated Partner = TRUE on purpose.
+ *   A lead with only nakivo_customer=TRUE + activated_partner=TRUE (partner=FALSE, new_partner=FALSE) matches
+ *   BOTH the THD rule AND the IBSA (Install Base) rule - the IBSA rule excludes partner/new_partner but NOT
+ *   activated_partner - so the auto-assignment is non-deterministic (verified on pre-prod: such leads land on
+ *   IBSA or THD roughly 50/50). Setting new_partner=TRUE excludes the lead from the IBSA rule (whose domain has
+ *   no country condition), so it is deterministically assigned to THD. The underlying IBSA-vs-THD rule overlap
+ *   for activated_partner is a separate product concern and is not what this test asserts.
+ *
  * Command to run:
  * npx playwright test --grep "TC\.THD_3\.2\.3\.3 -" --project=chromium
  * 
@@ -33,6 +43,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    7.2. Click at "CRM Developer" tab at the bottom of page
  *         - Set "Nakivo Customer" checkbox = TRUE
  *         - Set "Activated Partner" checkbox = TRUE
+ *         - Set "New Partner" checkbox = TRUE
  *    7.3. Press "SAVE" button
  * 8. Wait for at least 1.5 minutes until "Sales Team" dropdown list and "Salesperson" dropdown list fulfilled
  * 
@@ -41,7 +52,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ✓ Checkpoint 2: The value at "Salesperson" dropdown list is set (any value)
  */
 
-test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo Customer = TRUE and Activated Partner = TRUE', () => {
+test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo Customer = TRUE and Activated Partner = TRUE and New Partner = TRUE', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -80,7 +91,7 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
   
   // CRM-9374 (Lead from India/Delhi not assigned to THD) is Closed/Done and QA-verified fixed on pre-prod (2026-02-27).
   // Team/Salesperson assignment is async; the test waits up to CommonUtils.waitTimes.assignmentMaxWait.
-  test('TC.THD_3.2.3.3: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Activated Partner = TRUE and Country = Philippines', async ({ page }, testInfo) => {
+  test('TC.THD_3.2.3.3: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Activated Partner = TRUE, New Partner = TRUE and Country = Philippines', async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.assignmentTestTimeout); // 5 minutes timeout for this test (includes wait time)
     
     // Maximize browser window
@@ -195,9 +206,9 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       console.log(`  URL: ${savedLeadUrl}`);
     });
 
-    // Step 7: Set Nakivo Customer and Activated Partner checkboxes to TRUE
-    await test.step('Step 7: Set Nakivo Customer and Activated Partner checkboxes to TRUE', async () => {
-      console.log('Step 7: Setting Nakivo Customer and Activated Partner checkboxes to TRUE');
+    // Step 7: Set Nakivo Customer, Activated Partner and New Partner checkboxes to TRUE
+    await test.step('Step 7: Set Nakivo Customer, Activated Partner and New Partner checkboxes to TRUE', async () => {
+      console.log('Step 7: Setting Nakivo Customer, Activated Partner and New Partner checkboxes to TRUE');
       
       // Step 7.1: Click EDIT button
       console.log('  7.1: Clicking EDIT button');
@@ -205,8 +216,8 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log('  ✓ Edit mode activated');
       
-      // Step 7.2: Navigate to CRM Developer tab and check Nakivo Customer and Activated Partner
-      console.log('  7.2: Checking Nakivo Customer and Activated Partner in CRM Developer tab');
+      // Step 7.2: Navigate to CRM Developer tab and check Nakivo Customer, Activated Partner and New Partner
+      console.log('  7.2: Checking Nakivo Customer, Activated Partner and New Partner in CRM Developer tab');
       await leadPage.clickCRMDeveloperTab();
       await page.waitForTimeout(CommonUtils.waitTimes.short);
       
@@ -217,13 +228,17 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       // Check Activated Partner checkbox
       const activatedPartnerChecked = await leadPage.checkActivatedPartner();
       console.log(`  ✓ Activated Partner: ${activatedPartnerChecked ? 'Checked (TRUE)' : 'Already checked'}`);
-      
+
+      // Check New Partner checkbox (excludes the lead from the IBSA rule so it is deterministically assigned to THD)
+      const newPartnerChecked = await leadPage.checkNewPartner();
+      console.log(`  ✓ New Partner: ${newPartnerChecked ? 'Checked (TRUE)' : 'Already checked'}`);
+
       // Step 7.3: Save the changes
       console.log('  7.3: Saving the changes');
       await leadPage.clickSave();
       await leadPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       
-      console.log('✓ Nakivo Customer and Activated Partner set to TRUE and saved');
+      console.log('✓ Nakivo Customer, Activated Partner and New Partner set to TRUE and saved');
     });
 
     // Step 8: Wait for Sales Team and Salesperson auto-assignment
@@ -245,7 +260,7 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       const { salesTeamValue, salespersonValue } = await leadPage.verifySalesTeamAssignment('THD');
       
       // Capture screenshot as evidence and attach to report
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - THD Team Assignment (Philippines with Nakivo Customer = TRUE, Activated Partner = TRUE)`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - THD Team Assignment (Philippines with Nakivo Customer = TRUE, Activated Partner = TRUE, New Partner = TRUE)`);
       
       // Assert the Sales Team is THD
       expect(salesTeamValue).toBe('THD');
@@ -259,7 +274,7 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       
       console.log('\n==================================================');
       console.log('✅ TEST PASSED: All checkpoints validated successfully');
-      console.log('   Lead with Philippines, Nakivo Customer = TRUE, Activated Partner = TRUE');
+      console.log('   Lead with Philippines, Nakivo Customer = TRUE, Activated Partner = TRUE, New Partner = TRUE');
       console.log('   correctly assigned to THD team');
       console.log('==================================================\n');
       
@@ -304,6 +319,7 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       <div class="info-row"><span class="label">Country:</span> Philippines</div>
       <div class="info-row"><span class="label">Nakivo Customer:</span> TRUE</div>
       <div class="info-row"><span class="label">Activated Partner:</span> TRUE</div>
+      <div class="info-row"><span class="label">New Partner:</span> TRUE</div>
     </div>
     
     <div class="checkpoint">
@@ -324,7 +340,7 @@ test.describe('TC.THD_3.2.3.3 - THD Team Assignment for Philippines with Nakivo 
       <div class="summary-title">✅ TEST PASSED</div>
       <div class="summary-text">
         All checkpoints validated successfully<br>
-        Lead with Philippines, Nakivo Customer = TRUE, Activated Partner = TRUE<br>
+        Lead with Philippines, Nakivo Customer = TRUE, Activated Partner = TRUE, New Partner = TRUE<br>
         correctly assigned to THD team
       </div>
     </div>

@@ -10,8 +10,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  * ===========================================================================
  *  Discount  -  Invoice is discounted for a partner-level (Bronze)
  * ===========================================================================
- *  Test Case ID    : Discount-1.1
+ *  Test Case ID    : Discount-A.1.2.1.1
  *  Jira            : N/A (manual TC provided inline)
+ *  Test Repo Path  : Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.1. - Discount calculation
  *  Automation-Type : new
  *  Automation-Date : 2026-06-30
  *
@@ -21,7 +22,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    Partner Discount(<level %>) = Subtotal x <level %>, and Total = Subtotal - discount = the backend Total.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-1\.1:" --project=chromium
+ *    npx playwright test --grep "Discount-A.1.2.1.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -53,7 +54,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    2. Click "CRM" > "view list"
  *    3. On Opp page, click "CREATE"
  *    4. Enter the Opportunity details:
- *         - Opp name      = TEST Discount-1.1 <current date time>
+ *         - Opp name      = TEST Discount-A.1.2.1.1 <current date time>
  *         - Contact name  = <Name from Internal Note #1>
  *         - CompanyName   = Company Name Lead 1
  *         - Email         = <Email from Internal Note #1>
@@ -112,7 +113,7 @@ const parsePercentInLabel = (label: string | undefined | null): number => {
 // The reseller's hard-configured backend contact URL (res.partner form), built from the configured baseUrl.
 const RESELLER_CONTACT_URL = `${baseUrl}web#id=${DEAL_REGISTRATION.partnerContactId}&model=res.partner&view_type=form`;
 
-test.describe('Discount-1.1 - Invoice is discounted for a bronze partner', () => {
+test.describe('Discount-A.1.2.1.1 - Invoice is discounted for a bronze partner', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -132,7 +133,7 @@ test.describe('Discount-1.1 - Invoice is discounted for a bronze partner', () =>
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-1.1: Invoice is discounted for a bronze partner', async ({ page, browser }, testInfo) => {
+  test('Discount-A.1.2.1.1: Invoice is discounted for a bronze partner', async ({ page, browser }, testInfo) => {
     test.setTimeout(config.timeouts.test * 2); // admin lookup + full invoice chain + portal verification
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -143,7 +144,7 @@ test.describe('Discount-1.1 - Invoice is discounted for a bronze partner', () =>
 
     // Pre-condition #2 data: the deal-registration Internal Note (fresh, unique values each run).
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-1.1 ${compactDateTime}`;
+    const oppName = `TEST Discount-A.1.2.1.1 ${compactDateTime}`;
 
     let partnerLevel = '';
     let discountPercent = NaN; // DiscountPercent#1 (e.g. 15.0)
@@ -238,9 +239,9 @@ test.describe('Discount-1.1 - Invoice is discounted for a bronze partner', () =>
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as the reseller (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as the reseller (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce - Step 2: Click "My Invoices"', async () => {
@@ -298,7 +299,7 @@ test.describe('Discount-1.1 - Invoice is discounted for a bronze partner', () =>
       // 4. Total shown = Total#1 AND = Subtotal#1 - <amount>
       expect(portalTotal, 'Verification 4: portal Total should equal the backend Total#1').toBeCloseTo(total1, 1);
       expect(portalTotal, 'Verification 4: portal Total should equal Subtotal#1 - Partner Discount amount').toBeCloseTo(subtotal1 - portalDiscount, 1);
-      console.log(`✅ Discount-1.1 verified: ${partnerLevel} partner gets ${discountPercent}% off (Subtotal ${subtotal1} -> Total ${total1})`);
+      console.log(`✅ Discount-A.1.2.1.1 verified: ${partnerLevel} partner gets ${discountPercent}% off (Subtotal ${subtotal1} -> Total ${total1})`);
     });
   });
 });

@@ -1653,15 +1653,20 @@ export class InvoicePage extends BasePage {
     console.log(`  - Searching the Invoices list for "${text}"`);
     const input = this.searchViewInput();
     await input.waitFor({ state: 'visible', timeout });
+    // Odoo's searchview ignores fill() - fill() sets the value but fires no key events, so Odoo never
+    // builds the "Search Invoice for: <text>" autocomplete option and Enter then applies NO facet
+    // (the list stays unfiltered at ~129k rows). Type via real key events so the facet is created,
+    // exactly like ContactPage.searchAndOpenContact.
     await input.click();
-    await input.fill('');
-    await input.fill(text);
-    await this.wait(CommonUtils.waitTimes.standard);
-    await this.page.keyboard.press('Enter');
+    await input.press('Control+a').catch(() => {});
+    await input.press('Backspace').catch(() => {});
+    await this.page.keyboard.type(text, { delay: 30 });
+    await this.wait(CommonUtils.waitTimes.long); // let the search autocomplete dropdown render
+    await this.page.keyboard.press('Enter'); // apply "Search Invoice for: <text>"
     // Let the backend filter and the list re-render.
     await this.wait(CommonUtils.waitTimes.long);
     await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
-    console.log(`  ✓ Search submitted for "${text}"`);
+    console.log(`  ✓ Search submitted for "${text}" (facet applied)`);
   }
 
   /**
@@ -1929,7 +1934,7 @@ export class InvoicePage extends BasePage {
 
   /**
    * Open an invoice/credit-note form directly by its database id (account.invoice). Used to reach
-   * records that a name-based reseller filter cannot surface - e.g. a reseller_1 Credit Note whose
+   * records that a name-based reseller filter cannot surface - e.g. a reseller_bronze Credit Note whose
    * reseller_id is a duplicate-named partner not returned by name search.
    */
   async openInvoiceById(id: number | string, timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {

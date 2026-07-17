@@ -59,12 +59,12 @@ const RESELLER_1_NAME = DEAL_REGISTRATION.partnerCompanyName; // "TEST-Reseller#
 // Override for a small validation run, e.g. CANCEL_MAX=2 npx playwright test ...
 const MAX_ITERATIONS = Number(process.env.CANCEL_MAX) || 500;
 
-// Extra account.invoice ids to cancel by DIRECT navigation, for reseller_1 Paid records that the
-// reseller-name filter CANNOT surface. Reason: reseller_1's data on pre-prod includes a duplicate
+// Extra account.invoice ids to cancel by DIRECT navigation, for reseller_bronze Paid records that the
+// reseller-name filter CANNOT surface. Reason: reseller_bronze's data on pre-prod includes a duplicate
 // partner (id 627556) that shares the display name "TEST-Reseller#Automation-Jun10" but is NOT
 // returned by name search (its own name differs), so no Reseller/Payer/Commercial-Entity name filter
 // reaches its records. Its Paid Credit Notes are therefore cancelled by id. Override via
-// CANCEL_EXTRA_IDS="196722,196716". Each is still guarded (must be a Paid reseller_1 record).
+// CANCEL_EXTRA_IDS="196722,196716". Each is still guarded (must be a Paid reseller_bronze record).
 const EXTRA_IDS: string[] = (process.env.CANCEL_EXTRA_IDS || '196722,196716')
   .split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -194,7 +194,7 @@ test.describe('UTIL-CANCEL-PAID-RESELLER1 - Cancel all Paid Invoices & Credit No
     });
 
     const extraNotCancelled: string[] = [];
-    await test.step('Steps 4-6 (by id): Cancel reseller_1 Paid records not reachable by the name filter', async () => {
+    await test.step('Steps 4-6 (by id): Cancel reseller_bronze Paid records not reachable by the name filter', async () => {
       if (EXTRA_IDS.length === 0) { console.log('  - No EXTRA_IDS to process'); return; }
       console.log(`Processing ${EXTRA_IDS.length} extra id(s) by direct navigation: ${JSON.stringify(EXTRA_IDS)}`);
       for (const id of EXTRA_IDS) {

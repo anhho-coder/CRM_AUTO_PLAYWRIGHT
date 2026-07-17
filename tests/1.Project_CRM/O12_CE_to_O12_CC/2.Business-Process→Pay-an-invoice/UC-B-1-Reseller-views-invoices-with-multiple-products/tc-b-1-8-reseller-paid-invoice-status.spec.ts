@@ -94,7 +94,7 @@ test.describe('TC.-B.1.8 - Reseller sees a Paid multi-product invoice (no PAY NO
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
     });
 

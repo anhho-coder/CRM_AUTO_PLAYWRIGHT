@@ -87,7 +87,7 @@ test.describe('TC.-B.1.10 - Draft multi-product invoice is not shown on the port
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
     });
 

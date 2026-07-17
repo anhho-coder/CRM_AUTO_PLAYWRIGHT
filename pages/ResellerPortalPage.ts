@@ -628,6 +628,18 @@ export class ResellerPortalPage extends BasePage {
   }
 
   /**
+   * Navigate DIRECTLY to the My Invoices list by URL (works from anywhere, e.g. from an invoice detail
+   * page where the "My invoices" nav card is not present). Use to reset the list to an unfiltered state.
+   */
+  async gotoMyInvoices(): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.page.goto(`${origin}/my/invoices`, { waitUntil: 'domcontentloaded' });
+    await this.waitForURL('**/my/invoices**', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.invoiceRows().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
    * Read the invoice numbers currently listed on the My Invoices page (for evidence/logging).
    * @returns array of trimmed text for each invoice row's detail link
    */

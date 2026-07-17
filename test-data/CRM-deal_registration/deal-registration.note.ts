@@ -47,10 +47,29 @@ export interface DealRegistrationNoteValues {
 }
 
 /**
+ * Optional partner (reseller) overrides for the deal-registration note. The deal-registration flow
+ * derives the invoice's Reseller (and therefore its partner-level discount %) from the note's
+ * "Partner Business Email" - NOT from the Opp's Assigned-Partner field - so to invoice for a
+ * different-level reseller (e.g. Basic vs Bronze) you MUST override these here. Defaults = the Bronze
+ * reseller from DEAL_REGISTRATION.
+ */
+export interface DealRegistrationPartner {
+  partnerCompanyName?: string;
+  partnerContactName?: string;
+  partnerBusinessEmail?: string;
+}
+
+/**
  * Assemble the deal-registration Internal Note from the template, filling the dynamic placeholders
  * with the supplied values. Pure function (deterministic for given inputs).
  */
-export function buildDealRegistrationInternalNote(v: DealRegistrationNoteValues): string {
+export function buildDealRegistrationInternalNote(
+  v: DealRegistrationNoteValues,
+  partner: DealRegistrationPartner = {}
+): string {
+  const partnerCompanyName = partner.partnerCompanyName ?? DEAL_REGISTRATION.partnerCompanyName;
+  const partnerContactName = partner.partnerContactName ?? DEAL_REGISTRATION.partnerContactName;
+  const partnerBusinessEmail = partner.partnerBusinessEmail ?? DEAL_REGISTRATION.partnerBusinessEmail;
   return [
     `NAKIVO deal registration* ${v.random4}`,
     `Name: ${v.leadName}`,
@@ -83,9 +102,9 @@ export function buildDealRegistrationInternalNote(v: DealRegistrationNoteValues)
     `Oracle Databases: 0`,
     `Microsoft 365 users: 0`,
     `Support Years: 0`,
-    `Partner Company Name: ${DEAL_REGISTRATION.partnerCompanyName}`,
-    `Partner Contact Name: ${DEAL_REGISTRATION.partnerContactName}`,
-    `Partner Business Email: ${DEAL_REGISTRATION.partnerBusinessEmail}`,
+    `Partner Company Name: ${partnerCompanyName}`,
+    `Partner Contact Name: ${partnerContactName}`,
+    `Partner Business Email: ${partnerBusinessEmail}`,
     `Partner phone: ${DEAL_REGISTRATION.partnerPhone}`,
     `customers address: `,
     `Country: ${DEAL_REGISTRATION.country}`,
@@ -109,7 +128,7 @@ export interface GeneratedDealRegistrationNote extends DealRegistrationNoteValue
  * All timestamp-derived values (currentDateTime, companyEmail, leadName, compactDateTime) share the
  * same instant so the record name and note stay consistent.
  */
-export function generateDealRegistrationNote(): GeneratedDealRegistrationNote {
+export function generateDealRegistrationNote(partner: DealRegistrationPartner = {}): GeneratedDealRegistrationNote {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -122,5 +141,5 @@ export function generateDealRegistrationNote(): GeneratedDealRegistrationNote {
   const leadName = `TEST ${currentDateTime}`;
 
   const values: DealRegistrationNoteValues = { random4, random9, currentDateTime, companyEmail, leadName };
-  return { ...values, compactDateTime, note: buildDealRegistrationInternalNote(values) };
+  return { ...values, compactDateTime, note: buildDealRegistrationInternalNote(values, partner) };
 }

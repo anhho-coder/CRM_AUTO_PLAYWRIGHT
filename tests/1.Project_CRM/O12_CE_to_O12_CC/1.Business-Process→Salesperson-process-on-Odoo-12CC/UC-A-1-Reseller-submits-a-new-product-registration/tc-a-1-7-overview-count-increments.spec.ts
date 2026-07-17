@@ -86,7 +86,7 @@ test.describe('TC.-A.1.7 - Overview My Opportunities count increments after a re
 
     await test.step('Steps to reproduce #1 - Step 1: As Reseller_1, read the Overview "My Opportunities" count', async () => {
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
       countBefore = await resellerPortalPage.getOverviewCount('My Opportunities');
       console.log(`  - My Opportunities count BEFORE: ${countBefore}`);
@@ -109,7 +109,7 @@ test.describe('TC.-A.1.7 - Overview My Opportunities count increments after a re
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
       const countAfter = await resellerPortalPage.getOverviewCount('My Opportunities');
       console.log(`  - My Opportunities count AFTER: ${countAfter} (before ${countBefore})`);

@@ -129,9 +129,9 @@ test.describe('TC.-C.1.1 - Reseller posts a customer-visible comment that the Sa
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as Reseller_1 (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as Reseller_1 (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce #1 - Step 2: After login successful, click "My Opportunities" button', async () => {

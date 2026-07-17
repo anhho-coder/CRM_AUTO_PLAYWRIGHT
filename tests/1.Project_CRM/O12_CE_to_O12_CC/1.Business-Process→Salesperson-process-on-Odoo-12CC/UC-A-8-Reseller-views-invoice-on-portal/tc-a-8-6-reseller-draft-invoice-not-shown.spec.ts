@@ -105,9 +105,9 @@ test.describe('TC.-A.8.6 - Reseller does not see a draft (un-validated) invoice'
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as Reseller_1 (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as Reseller_1 (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce #2 - Step 2: After login successful, click at "My invoices" button', async () => {

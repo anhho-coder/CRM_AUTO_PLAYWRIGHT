@@ -95,7 +95,7 @@ test.describe('TC.-A.8.7 - Reseller "Invoices" overview count increments after v
 
     await test.step('Pre-condition 2: As Reseller_1, note the current "Invoices" overview count (C0)', async () => {
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
       countBefore = await resellerPortalPage.getOverviewCount('Invoices');
       console.log(`  - Invoices overview count BEFORE (C0): ${countBefore}`);
@@ -112,9 +112,9 @@ test.describe('TC.-A.8.7 - Reseller "Invoices" overview count increments after v
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as Reseller_1 (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as Reseller_1 (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce #2 - Step 2: Read the "Invoices" overview count (C1) and open "My invoices"', async () => {

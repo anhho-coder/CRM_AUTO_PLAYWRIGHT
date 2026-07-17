@@ -144,9 +144,9 @@ test.describe('TC.-B.8.9 - Reseller sees the paid state persists after re-login'
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as Reseller_1 (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as Reseller_1 (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce - Step 2: Click "My Invoices" and open Invoice#1 (it shows as paid)', async () => {
@@ -163,7 +163,7 @@ test.describe('TC.-B.8.9 - Reseller sees the paid state persists after re-login'
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
       await resellerPortalPage.clickMyInvoices();
       await resellerPortalPage.openInvoiceByNumber(invoiceNumber);

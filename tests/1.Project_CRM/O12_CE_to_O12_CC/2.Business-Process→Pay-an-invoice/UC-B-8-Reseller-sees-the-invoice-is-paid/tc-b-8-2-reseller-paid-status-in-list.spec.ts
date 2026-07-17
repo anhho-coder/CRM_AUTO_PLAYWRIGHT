@@ -143,9 +143,9 @@ test.describe('TC.-B.8.2 - Reseller sees the invoice Status Paid and Amount Due 
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
       await loginPage.navigateTo(baseUrl);
-      await loginPage.loginPortalUser(users.reseller_1.username, users.reseller_1.password);
+      await loginPage.loginPortalUser(users.reseller_bronze.username, users.reseller_bronze.password);
       await resellerPortalPage.waitForPortalReady();
-      console.log(`✓ Logged in as Reseller_1 (${users.reseller_1.displayName})`);
+      console.log(`✓ Logged in as Reseller_1 (${users.reseller_bronze.displayName})`);
     });
 
     await test.step('Steps to reproduce - Step 2: Click "My Invoices"', async () => {

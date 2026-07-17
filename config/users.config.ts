@@ -8,11 +8,41 @@ export interface UserCredentials {
 }
 
 export const users = {
-  reseller_1: {
+  reseller_basic: {
+    username: 'Test-Reseller@Reseller-company-automation-basic.com',
+    password: 'Test-Reseller@0123456789012',
+    displayName: 'TEST-Reseller#1_Automation_Basic',
+    level: 'Basic',
+  },
+  reseller_bronze: {
     username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
     password: 'Test-Reseller@0123456789012',
     displayName: 'TEST-Reseller#1_Automation_Test',
     level: 'Bronze',
+  },
+  reseller_silver: {
+    username: 'Test-Reseller@Reseller-company-automation-silver.com',
+    password: 'Test-Reseller@0123456789012',
+    displayName: 'TEST-Reseller#1_Automation_Silver',
+    level: 'Silver',
+  },
+  reseller_gold: {
+    username: 'Test-Reseller@Reseller-company-automation-gold.com',
+    password: 'Test-Reseller@0123456789012',
+    displayName: 'TEST-Reseller#1_Automation_Gold',
+    level: 'Gold',
+  },
+  distributor_partner: {
+    username: 'Test-Distributor@Distributor-company.com',
+    password: 'Test-Distributor@0123456789012',
+    displayName: 'TEST-Distributor#1_Automation',
+    level: 'Distributor',
+  },
+  msp_partner: {
+    username: 'Test-MSP@MSP-company.com',
+    password: 'Test-MSP@0123456789012',
+    displayName: 'TEST-MSP#1_Automation',
+    level: 'MSP',
   },
   accountance_ic_faye: {
     username: 'faye.nguyen@nakivo.com',
