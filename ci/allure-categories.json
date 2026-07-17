@@ -2,7 +2,7 @@
   {
     "name": "Environment - VPN / DNS / connection drop (NOT a defect)",
     "matchedStatuses": ["failed", "broken"],
-    "messageRegex": "(?s).*(net::ERR_NAME_NOT_RESOLVED|net::ERR_CERT_AUTHORITY_INVALID|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION|ERR_NAME_NOT_RESOLVED|ERR_CERT_AUTHORITY_INVALID|ERR_EMPTY_RESPONSE).*"
+    "messageRegex": "(?s).*(net::ERR_NAME_NOT_RESOLVED|net::ERR_CERT_AUTHORITY_INVALID|net::ERR_EMPTY_RESPONSE|net::ERR_CONNECTION|net::ERR_NETWORK_CHANGED|net::ERR_INTERNET_DISCONNECTED|net::ERR_TIMED_OUT|ERR_NAME_NOT_RESOLVED|ERR_CERT_AUTHORITY_INVALID|ERR_EMPTY_RESPONSE|ERR_NETWORK_CHANGED|ERR_INTERNET_DISCONNECTED).*"
   },
   {
     "name": "Automation - overlay / dialog intercepts click (fixed: switchToListView)",
