@@ -3,6 +3,7 @@
  * Reporting ranges + aggregation. One place defines the four selectable windows
  * so the collector and the page never disagree.
  *
+ *   currentWeek – Monday of this week → today (in progress) – daily buckets
  *   lastWeek    – previous completed Mon–Sun (default)   – daily buckets
  *   thisMonth   – 1st of this month → today              – daily buckets
  *   thisQuarter – 1st of this quarter → today            – weekly buckets
@@ -36,6 +37,9 @@ function computeRanges(now) {
   const lqStart = qStart === 0 ? 9 : qStart - 3;
   const lqYear = qStart === 0 ? y - 1 : y;
   return {
+    // Current (in-progress) week: Monday of this week → today. Daily buckets, like
+    // lastWeek. Sits before "Last week" in the Metrics selector (see METRIC_RANGE_ORDER).
+    currentWeek: { key: 'currentWeek', label: 'Current week', from: isoDate(thisMon), to: today, bucket: 'day' },
     lastWeek: { key: 'lastWeek', label: 'Last week', from: isoDate(prevMon), to: isoDate(prevSun), bucket: 'day' },
     thisMonth: { key: 'thisMonth', label: 'This month', from: isoDate(new Date(Date.UTC(y, m, 1))), to: today, bucket: 'day' },
     thisQuarter: { key: 'thisQuarter', label: 'This quarter', from: isoDate(new Date(Date.UTC(y, qStart, 1))), to: today, bucket: 'week' },

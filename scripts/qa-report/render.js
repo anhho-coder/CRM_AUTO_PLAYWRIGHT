@@ -26,7 +26,15 @@ const RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'thisYear'];
 // This quarter) and "Last year" (full previous calendar year, at the end). The
 // Worklog page stays on RANGE_ORDER — it only seeds this-year data, so those extra
 // buttons would be empty there. Hence both are Metrics-Report-only.
-const METRIC_RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'lastQuarter', 'thisYear', 'lastYear'];
+// "Current week" (Monday-of-this-week → today, in-progress) leads the group, added
+// per request for the four metric sections — Jira Dashboard, FRD/Spec Review/I2L,
+// Manual test and Automation test.
+const METRIC_RANGE_ORDER = ['currentWeek', 'lastWeek', 'thisMonth', 'thisQuarter', 'lastQuarter', 'thisYear', 'lastYear'];
+// The "Claude vs Legacy" velocity page is NOT one of those four sections and its
+// legacy/with-Claude split is designed around whole quarters (it defaults to Last
+// quarter). Keep it on the original six ranges so no in-progress "Current week"
+// button appears there.
+const CLAUDE_RANGE_ORDER = ['lastWeek', 'thisMonth', 'thisQuarter', 'lastQuarter', 'thisYear', 'lastYear'];
 // The QA CRM · Jira · Dashboard (STUCK) page offers only the two quarter ranges,
 // default This quarter — matching the team's Q2 sample JQL.
 const STUCK_RANGE_ORDER = ['thisQuarter', 'lastQuarter'];
@@ -260,8 +268,8 @@ function perDayRangeSection(meta, m, def, lead, members) {
   </section>`;
 }
 
-function selector(ranges, def) {
-  return '<div class="ranges">' + METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) =>
+function selector(ranges, def, order = METRIC_RANGE_ORDER) {
+  return '<div class="ranges">' + order.filter((k) => ranges[k]).map((k) =>
     `<button type="button" data-rangebtn="${k}" class="${k === def ? 'active' : ''}">${esc(ranges[k].label)}</button>`).join('') + '</div>';
 }
 // `order` defaults to the 4 base ranges (Worklog page); the Metrics view passes
@@ -753,7 +761,7 @@ function velocityBlock(agg, active) {
 }
 
 function velocitySection(meta, m, def) {
-  const blocks = METRIC_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => velocityBlock(m.ranges[k], k === def)).join('\n');
+  const blocks = CLAUDE_RANGE_ORDER.filter((k) => m.ranges[k]).map((k) => velocityBlock(m.ranges[k], k === def)).join('\n');
   return `<section class="metric lead">
     <h2>Automation velocity — Claude vs Legacy <span class="pill">primary</span> <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
     ${blocks}
@@ -1742,8 +1750,8 @@ ${wlDataScript}
   const splitData = splitMeta ? data.metrics[splitMeta.key] : null;
   const claudeDef = (splitData && splitData.ranges && splitData.ranges.lastQuarter) ? 'lastQuarter' : defRange;
   const claudeBody = splitData
-    ? `<div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, claudeDef, METRIC_RANGE_ORDER)}</div>
-  ${selector(data.ranges, claudeDef)}
+    ? `<div class="sub muted" style="margin:10px 0 2px">Showing ${windowSpans(data.ranges, claudeDef, CLAUDE_RANGE_ORDER)}</div>
+  ${selector(data.ranges, claudeDef, CLAUDE_RANGE_ORDER)}
   ${withAnchor({ key: 'automationVelocity', label: 'Automation velocity — Claude vs Legacy' }, velocitySection(splitMeta, splitData, claudeDef))}`
     : '<p class="muted">No Claude-split data available.</p>';
   const claudeHtml = `${docHead('CRM QA — Claude vs Legacy')}
