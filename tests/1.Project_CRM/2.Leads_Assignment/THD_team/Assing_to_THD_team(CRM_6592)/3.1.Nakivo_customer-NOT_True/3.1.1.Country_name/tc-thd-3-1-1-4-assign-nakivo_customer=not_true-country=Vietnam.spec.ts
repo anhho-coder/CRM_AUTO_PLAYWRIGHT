@@ -11,7 +11,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = NOT True and Country = Vietnam
  * 
  * Command to run:
- * npx playwright test "tests/1.Project_CRM/2.Leads_Assignment/THD_team/Assing_to_THD_team(CRM_6592)/3.1.Nakivo_customer=NOT_True/tc-thd-3-1-1-4-assign-nakivo_customer=not_true-country=Vietnam.spec.ts" --project=chromium
+ * npx playwright test --grep "TC\.THD_3\.1\.1\.4 -" --project=chromium
  * 
  * Pre-condition:
  * 1. After login successful as admin_crm, click at "CRM" button
