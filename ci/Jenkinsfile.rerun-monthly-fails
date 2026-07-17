@@ -210,8 +210,10 @@ echo ffmpeg OK
                     bat 'if exist allure-results rmdir /s /q allure-results'
 
                     def runTimeout = (params.TIMEOUT_MIN ?: '480').toInteger()
-                    def ran = 0
-                    timeout(time: runTimeout, unit: 'MINUTES') {
+                    // The per-suite re-run loop, wrapped as a closure so it can run under the
+                    // mid-run VPN watchdog below.
+                    def runLoop = {
+                        def ran = 0
                         for (e in entries) {
                             def parts = e.split(' ')
                             def suite = parts[0]
@@ -243,8 +245,42 @@ call npx playwright test !FILTERS! --project=chrome-headless
                                 }
                             }
                         }
+                        if (ran == 0) { echo "SUITE=${selected} had no matching failed specs on the ${params.MONTH} report." }
                     }
-                    if (ran == 0) { echo "SUITE=${selected} had no matching failed specs on the ${params.MONTH} report." }
+                    // --- Mid-run pre-prod VPN gate (see main Jenkinsfile) --------------------
+                    // Abort (NOT_BUILT) if CRM-Connectivity-Check raises the VPN-down flag mid-run
+                    // so the remaining re-run suites are not executed / not marked failed.
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            parallel(
+                                'playwright': {
+                                    try { runLoop() } finally { bat 'echo done> .pw_done' }
+                                },
+                                'vpn-watchdog': {
+                                    while (!fileExists('.pw_done')) {
+                                        sleep(time: 60, unit: 'SECONDS')
+                                        if (fileExists('.pw_done')) { break }
+                                        if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                            env.VPN_ABORT = 'true'
+                                            echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining suites will NOT run (not failed).'
+                                            error('pre-prod VPN dropped mid-run')
+                                        }
+                                    }
+                                },
+                                failFast: true
+                            )
+                        }
+                    } catch (err) {
+                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (env.VPN_ABORT == 'true' || flagUp) {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining re-run suites were NOT executed (not failed).'
+                        } else {
+                            throw err
+                        }
+                    }
                 }
             }
         }
