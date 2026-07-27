@@ -1,0 +1,71 @@
+{
+  "quarters": [
+    { "label": "Q3 2026", "cp": "3-month · Oct 2026", "start": "2026-07-01", "end": "2026-09-30" },
+    { "label": "Q4 2026", "cp": "6-month · Jan 2027", "start": "2026-10-01", "end": "2026-12-31" },
+    { "label": "Q1 2027", "cp": "9-month · Apr 2027", "start": "2027-01-01", "end": "2027-03-31" },
+    { "label": "Q2 2027", "cp": "12-month · Jul 2027", "start": "2027-04-01", "end": "2027-06-30" }
+  ],
+  "goals": [
+    {
+      "n": "1", "sec": 1, "type": "Project",
+      "chart": true, "unit": "TC", "goalNum": [400, 550, 600, 590],
+      "title": "Automate the regression base in-team",
+      "measure": "Automation TCs resolved / quarter (Jira: Automation scope = Yes, resolved). Goal = per-quarter increment toward 100% of the frozen 3,693 base.",
+      "auto": { "kind": "count", "metric": "automationTcCreated", "unit": "TC resolved" },
+      "quarters": [
+        { "goal": "+[400] (Anh 350 · Thuat 50) → ≈[31]%" },
+        { "goal": "+[550] (Anh 450 · Thuat 100) → [46]% ≈ [1,710]" },
+        { "goal": "+[600] (Anh 450 · Thuat 150) → [63]% ≈ [2,310]" },
+        { "goal": "reach 100% automatable ≈ [2,900] (≈ +[590])" }
+      ]
+    },
+    {
+      "n": "2", "sec": 2, "type": "Project",
+      "title": "Stand up CRM performance testing",
+      "measure": "Perf-testing maturity — no live metric yet (manual): single-user timings → load & scale → monthly cadence.",
+      "quarters": [
+        { "goal": "Thresholds per action; cover dashboards/reports/list views; 1st monthly report; ONE env budget request to VP", "current": "Single-user timings only (Allure per-build)" },
+        { "goal": "Load tests on top-[10] flows; thresholds gate releases" },
+        { "goal": "Monthly perf run live; ≥[1] regression caught BEFORE users report" },
+        { "goal": "Cadence ≥[4] months; repeatable by Thuat; 0 covered-flow escapes" }
+      ]
+    },
+    {
+      "n": "3", "sec": 2, "type": "Project",
+      "title": "Odoo 12 CE → CC migration regression & sign-off",
+      "measure": "Migration regression & sign-off — no single live metric (manual); planned one quarter at a time.",
+      "quarters": [
+        { "goal": "Per-block conversion on schedule (Jul 23 – Sep 3); sandbox secured; seam packs; plan published", "current": "In progress — Q3 conversion window" },
+        { "goal": "[Set at Oct review] Full migration regression; go/no-go + risk list" },
+        { "goal": "[Set at Jan review] Packs → automated on new stack; escapes ≤ [N]" },
+        { "goal": "Migration closed; new-stack base = the automated base" }
+      ]
+    },
+    {
+      "n": "4", "sec": 3, "type": "Running",
+      "chart": true, "unit": "%", "betterLow": true, "goalNum": [6, 6, 6, 6],
+      "title": "Support stream under control: SLA, trends, escape→coverage",
+      "measure": "Leaked-defect rate (Jira: leaked ÷ bugs created, live). SLA % + report cadence are manual.",
+      "auto": { "kind": "leak", "metric": "defectQualityCreated" },
+      "quarters": [
+        { "goal": "Baseline published; SLA measurement on; leak rate < [6]%; AI lever launched" },
+        { "goal": "1st quarterly report; SLA ≥[95]%; ≥[3] self-service fixes; AI [25]%" },
+        { "goal": "Escape→RCA→TC loop routine; repeat-category volume ↓" },
+        { "goal": "SLA held; support [20]%→[15]% of capacity; 0 unknown leaks" }
+      ]
+    },
+    {
+      "n": "5", "sec": 3, "type": "Running",
+      "chart": true, "unit": "TC", "goalNum": [40, 100, 150, 150],
+      "title": "Grow Thuat Phung into an independent second",
+      "measure": "Thuat's automation ramp (Jira: automation TCs resolved by Thuat, live) + owns planning/estimating.",
+      "auto": { "kind": "count", "metric": "automationTcCreated", "member": "Thuat Phung", "unit": "auto TC (Thuat)" },
+      "quarters": [
+        { "goal": "[30–50] auto TC (Thuat); plans + estimates his 1st [2] improvements" },
+        { "goal": "[100] auto TC (Thuat); owns ALL small improvements" },
+        { "goal": "[150] auto TC (Thuat); 2-week absence test passed" },
+        { "goal": "Sustained [150] auto TC/q; runs small-improvement QA solo" }
+      ]
+    }
+  ]
+}

@@ -22,6 +22,7 @@ const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { buildAutomationClaudeSplit } = require('./sources/automation-split');
 const { collectStuckMetrics } = require('./sources/stuck');
 const { collectDefectQuality } = require('./sources/defect-quality');
+const { collectAutomationCoverage } = require('./sources/automation-coverage');
 const { collectQuarterly } = require('./sources/quarterly');
 const { collectWorklog } = require('./sources/worklog');
 const { collectLeave } = require('./sources/leave');
@@ -289,6 +290,19 @@ async function main() {
     console.error('[collect] Jira defect-quality source failed:', e.message || e);
   }
 
+  // --- Jira AUTOMATION COVERAGE (Automation test page · Quarterly KPI · donut):
+  //     a POINT-IN-TIME snapshot (NOT ranged) of what share of the whole CRM Post-EA
+  //     Test Case repository is in automation scope. Two whole-repo count() queries.
+  //     Stored under data.automationCoverage (a custom shape, not a by-tester card).
+  //     Wrapped independently so a Jira failure here never blocks the rest.
+  try {
+    data.automationCoverage = await collectAutomationCoverage();
+    data.sources.jiraAutomationCoverage = { status: 'ok', source: 'jira automation-scope test-case coverage' };
+  } catch (e) {
+    data.sources.jiraAutomationCoverage = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira automation-coverage source failed:', e.message || e);
+  }
+
   // --- Worklog allocation page: Jira worklogs (label columns) + the
   //     FTO/SL/Holiday column = Odoo hr.leave (FTO/SL) + VN public holidays.
   //     Each source is wrapped independently so one failure never blocks the rest.
@@ -356,6 +370,10 @@ async function main() {
     const lq = v.ranges.lastQuarter;
     if (lq) console.log(`[collect]   ${m.label} (last quarter): bugs created ${lq.bugsCreated} (` +
       lq.byEmployee.map((e) => `${e.name} ${e.value}`).join(', ') + `), leaked ${lq.leaked} (${lq.leakRate}%)`);
+  }
+  if (data.automationCoverage) {
+    const ac = data.automationCoverage;
+    console.log(`[collect]   Automation coverage: ${ac.automationTcs}/${ac.totalTcs} = ${ac.coverage}% (remaining ${ac.remaining})`);
   }
   if (data.worklog) {
     const lw = data.worklog.ranges.lastWeek;

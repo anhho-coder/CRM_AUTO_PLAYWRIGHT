@@ -35,6 +35,45 @@ async function collectQuarterly(now) {
   return out;
 }
 
+// Build one quarter's snapshot AS IF that quarter were "current": the trailing 4
+// completed actual quarters before it, then that quarter's Forecast / Actual /
+// Goal bars, plus the QoQ / QvG / QvQY figures and the per-tester split. This is
+// exactly what the portal's Quarterly KPI dashboard draws for the selected quarter,
+// so the client-side quarter/year picker can switch between these.
+function snapFor(byQ, tY, tQ) {
+  const cur = byQ[`${tY}-${tQ}`] || { year: tY, q: tQ, actual: 0, forecast: 0, goal: 0, byEmp: {} };
+  const prev = byQ[`${tQ === 1 ? tY - 1 : tY}-${tQ === 1 ? 4 : tQ - 1}`];
+  const lastYr = byQ[`${tY - 1}-${tQ}`];
+
+  const trailing = Object.values(byQ)
+    .filter((b) => ord(b.year, b.q) < ord(tY, tQ))
+    .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
+    .slice(-4);
+
+  const bars = trailing.map((b) => ({ label: `Q${b.q}A-${b.year}`, value: r0(b.actual), type: 'actual' }));
+  bars.push({ label: `Q${tQ}F-${tY}`, value: r0(cur.forecast), type: 'forecast' });
+  bars.push({ label: `Q${tQ}A-${tY}`, value: r0(cur.actual), type: 'current' });
+  bars.push({ label: `Q${tQ}G-${tY}`, value: r0(cur.goal), type: 'goal' });
+
+  const total = r0(cur.actual);
+  const byTester = MEMBERS
+    .map((m) => { const v = r0(cur.byEmp[m.name] || 0); return { name: m.name, value: v, pct: total ? Math.round((v / total) * 100) : 0 }; })
+    .sort((a, b) => b.value - a.value);
+
+  return {
+    currentLabel: `Q${tQ}-${tY}`,
+    colLabel: `Q${tQ}A`,
+    bars,
+    kpis: {
+      qoq: pctDelta(cur.forecast, prev ? prev.actual : 0),    // forecast vs previous quarter actual
+      qvg: pctDelta(cur.forecast, cur.goal),                  // forecast vs this quarter goal
+      qvqy: pctDelta(cur.forecast, lastYr ? lastYr.actual : 0), // forecast vs same quarter last year
+    },
+    byTester,
+    total,
+  };
+}
+
 function summarize(metric, rows, curY, curQ) {
   const byQ = {}; // "Y-Q" -> { year, q, actual, forecast, goal, byEmp }
   for (const row of rows) {
@@ -49,39 +88,28 @@ function summarize(metric, rows, curY, curQ) {
     b.byEmp[name] = (b.byEmp[name] || 0) + (Number(row.kpi_result) || 0);
   }
 
-  const cur = byQ[`${curY}-${curQ}`] || { year: curY, q: curQ, actual: 0, forecast: 0, goal: 0, byEmp: {} };
-  const prev = byQ[`${curQ === 1 ? curY - 1 : curY}-${curQ === 1 ? 4 : curQ - 1}`];
-  const lastYr = byQ[`${curY - 1}-${curQ}`];
-
-  // trailing 4 completed quarters before the current one (chronological)
-  const trailing = Object.values(byQ)
-    .filter((b) => ord(b.year, b.q) < ord(curY, curQ))
-    .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
-    .slice(-4);
-
-  const bars = trailing.map((b) => ({ label: `Q${b.q}A-${b.year}`, value: r0(b.actual), type: 'actual' }));
-  bars.push({ label: `Q${curQ}F-${curY}`, value: r0(cur.forecast), type: 'forecast' });
-  bars.push({ label: `Q${curQ}A-${curY}`, value: r0(cur.actual), type: 'current' });
-  bars.push({ label: `Q${curQ}G-${curY}`, value: r0(cur.goal), type: 'goal' });
-
-  const total = r0(cur.actual);
-  const byTester = MEMBERS
-    .map((m) => { const v = r0(cur.byEmp[m.name] || 0); return { name: m.name, value: v, pct: total ? Math.round((v / total) * 100) : 0 }; })
-    .sort((a, b) => b.value - a.value);
+  // A snapshot per quarter present in the data (chronological), so the picker can
+  // switch to any of them; plus the current quarter (default), even if it has no rows.
+  const available = Object.values(byQ)
+    .map((b) => ({ year: b.year, q: b.q, key: `${b.year}-${b.q}`, label: `Q${b.q}-${b.year}` }))
+    .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q));
+  const currentKey = `${curY}-${curQ}`;
+  if (!available.some((a) => a.key === currentKey)) {
+    available.push({ year: curY, q: curQ, key: currentKey, label: `Q${curQ}-${curY}` });
+    available.sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q));
+  }
+  const byQuarter = {};
+  for (const a of available) byQuarter[a.key] = snapFor(byQ, a.year, a.q);
 
   return {
     label: metric.label,
     kpiName: metric.kpiName,
-    currentLabel: `Q${curQ}-${curY}`,
-    bars,
-    kpis: {
-      qoq: pctDelta(cur.forecast, prev ? prev.actual : 0),    // forecast vs previous quarter actual
-      qvg: pctDelta(cur.forecast, cur.goal),                  // forecast vs this quarter goal
-      qvqy: pctDelta(cur.forecast, lastYr ? lastYr.actual : 0), // forecast vs same quarter last year
-    },
-    byTester,
-    total,
+    memberCount: MEMBERS.length,
+    currentKey,
+    available,
+    byQuarter,
+    ...byQuarter[currentKey], // default (current quarter) fields, for direct/back-compat render
   };
 }
 
-module.exports = { collectQuarterly };
+module.exports = { collectQuarterly, summarize, snapFor };
