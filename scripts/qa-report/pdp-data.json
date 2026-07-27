@@ -1,0 +1,100 @@
+{
+  "title": "2026–2027 Personal Development Plan",
+  "startsNote": "starts Q3 2026",
+  "employee": "HO QUOC ANH (Anh Ho)",
+  "manager": "Sergey Yazvinskiy",
+  "position": "QA Manager (CRM) — internal CRM / Odoo QA; team of 2 (Anh + 1 QA Engineer)",
+  "education": "Bachelor Degree",
+  "startDate": "June 2021",
+  "employment": [
+    "LogiGear Corporation — Automation Tester (Leader)",
+    "LogiGear VN — Manual Test"
+  ],
+  "howToUse": "Each row is ONE annual goal read at quarterly checkpoints. This plan starts Q3 2026: 3 months = Oct 2026, 6 = Jan 2027, 9 = Apr 2027, 12 = Jul 2027. TYPE: “Project” = has a finish line, track % to done; “Running” = a continuous standard, read the gauge each checkpoint. [Brackets] = numbers to confirm together at the kickoff 1:1. Status/Comments carries the evidence and history. Context for the whole plan: CRM gets few new features (mostly small improvements) — so the team’s value shifts from feature testing to fast automated post-release checks and performance assurance.",
+  "checkpointLabels": ["3 months · Oct 2026", "6 months · Jan 2027", "9 months · Apr 2027", "12-month target · Jul 2027"],
+  "sections": [
+    {
+      "title": "FLAGSHIP — AUTOMATED RELEASE CHECKS",
+      "tag": "THE POINT OF THIS PLAN",
+      "goals": [
+        {
+          "n": "1",
+          "title": "Automate the regression base in-team — every release verified by an automated run",
+          "type": "Project",
+          "metric": "RELIABILITY — the suite produces a verdict on every run: skips/no-result from 357 of 769 (Q2 2026) down to <[5]%, with “automated” = runs green ([3]-stable-pass);\n \nGROWTH — ESCALATING run-rate, not flat: +[380] (Q3, committed) → +[550] (Q4) → +[600]/quarter (2027), because the one-time costs are already paid; 12-month bar = 100% of the AUTOMATABLE base done (sized by the October regression plan), expected ~[70–75]% of all TCs ≈ [2,900] of the FROZEN Jul-2026 base (3,693 — frozen on purpose: the team also creates ~800 new TCs/quarter, a moving denominator would hide progress); \n\nQUALITY SIGNAL — bugs found BY the automation suite (label QA-CRM_Automation): ≥[10]/quarter (Q2 actual: 6). Every release/deploy followed by an automated run with a published Allure pass/fail within [1] business day; zero releases shipped without the automated check.",
+          "checkpoints": [
+            "Committed Q3 floor: +400 automated TCs (Anh 350 / Thuat 50, via automate_manual_tc_from_jira → Playwright + TypeScript) → ~[31]% of the frozen base; AND the repair debt cleared — the 357 skipped/flaky specs refactored to green (repair adds zero to the count but is priority #1: an untrusted suite cannot gate releases); “automated” definition ratified: the team’s working JQL (Automation scope = Yes + resolved by the automator) raised to a runs-green bar ([3]-stable-pass); regression plan sizes the AUTOMATABLE base — this sets the 12-month bar; full suite producing verdicts on Jenkins on every release build (portal + Allure live since 2026-06-17).",
+            "[46]% ≈ [1,710] TCs (+[550] in Q4: Anh [450] + Thuat [100]) — escalation starts once the suite is green, funded by the manual→auto trade: packs now automated stop being executed manually; the pack runs on every release + on a [2-week] schedule (April mid-term goal); skip/flaky rate held <[5]%; maintenance suites (NJM-161297) green.",
+            "[63]% ≈ [2,310] (+[600] in Q1-27: Anh [450] + Thuat [150]); post-release verdict < [4] hours; run results feed the all-in-one VP metrics report (NJM-177312 — the Jenkins portal is largely built, close it out); AI-assisted conversion sustained at ≥[4] TC/day, measured.",
+            "100% of the automatable base automated & green (bar set by the October sizing; expected ~[70–75]% of all TCs ≈ [2,900] of the frozen 3,693) — the automatable backlog is DONE; every release verified by the automated run BEFORE manual effort starts; manual-only checks reduced to a written exception list; the April long-term goal “automation plan for the whole system” fully delivered and executed."
+          ],
+          "status": "THE core goal — recalibrated after the Q2 QBR + Q3 KPI sheet, then RAISED (Sergii, Jul 2026: better to automate more than run the same TCs manually). Why escalating is realistic: the one-time costs are paid (Jenkins, Allure, conversion tooling) and Q2 itself shows the curve — 52% of the 304 automated TCs took ~9.5 pre-Claude weeks, 48% took the last ~3.5 weeks with Claude ≈ 3× the pace; Q3 stays at the committed 380 only because the 357-spec repair debt eats the surplus. Baseline verified reproducible: his own JQL returns exactly 304 for Q2 (the “created TCs” number is NOT yet reproducible — his sheet says 257, Odoo 330, raw Jira 389 — pin the definition at kickoff). Also bless Anh’s deliberate manual-KPI drop (bugs 60→15, executions 236→120) so the Odoo dashboard isn’t misread. Design fix vs 2025 stands: owned INSIDE the CRM team, AI-assisted, no central-team dependency. Sequencing: new automation targets the post-migration stack (Goal 3) — do not automate the retiring platform twice."
+        }
+      ]
+    },
+    {
+      "title": "DELIVERY & QUALITY — PERFORMANCE + MIGRATION",
+      "tag": "",
+      "goals": [
+        {
+          "n": "2",
+          "title": "Stand up CRM performance testing — from zero to a monthly routine",
+          "type": "Project",
+          "metric": "Two layers: \nSINGLE-USER TIMINGS — already exist (Allure per-build timing comparison, proven in CRM-11415): put thresholds on them, extend to the paths users complain about (dashboards, reports, list views), watch them every release;\nLOAD & SCALE — still missing: perf env with production-like data volumes (the 2025 blocker), concurrency on top-[10] critical flows. Success = monthly perf report with trend vs baseline AND perf regressions found by QA BEFORE users report them — CRM-11415 is the documented counter-example to beat (users reported the slowness; QA verified the fix afterwards).",
+          "checkpoints": [
+            "Quick wins on the EXISTING timing suite: thresholds agreed per action; coverage extended to dashboards / reports / list views — the user-complaint paths the current create/edit timings miss; first monthly trend report published; Create Deal Element ~25s (his own post-fix table) filed as the first perf finding. Env ask unchanged: ONE budget request to the VP in month 1 covering the unstable functional-automation env (Goal 1) AND the perf env with production-like volumes; load tool chosen ([k6 / JMeter / Locust]). CRM-7477 (perf plan, 3 days, Thuat, Q4) proceeds with the env behind it — delegation to Thuat starts at planning, not at month 12.",
+            "Load scenarios automated for the top-[10] flows on the perf env; thresholds gate releases that touch critical flows; timing suite runs green under thresholds on every release — at this point the April mid-term goal “performance testing planned and executed” is DONE for real (both layers, not just single-user).",
+            "Monthly perf run (timings + load) live with a trend report (April long-term goal); ≥[1] perf regression caught by QA BEFORE any user reports it — the direction-of-causality test this goal exists for (precedents were reactive: NJM-155581, CRM-11415).",
+            "Monthly cadence sustained ≥[4] consecutive months; both layers documented & repeatable by Thuat, not only by Anh; zero user-reported perf escapes on covered flows for [2] consecutive quarters."
+          ],
+          "status": "REBASED after CRM-11415 (Jul 2026): Anh already built a single-user perf-baseline capability — the Allure per-build timing view (Create Opp −49%, Edit Contact −74% after dev’s speed bundle) — so the old “from zero” framing was wrong; credit it at the kickoff. What it is NOT yet: load testing (the 2025 Not-done), thresholds, cadence, or early detection — the slowness behind CRM-11415 was reported by USERS while the timings existed, because they do not cover dashboards/reports and nobody watches them against thresholds. CARRIED: 2025 “Run load testing of CRM” (Not done: “missing proper environment”) + April 2026 mid/long-term goals. The env request stays the FIRST checkpoint so the 2025 blocker cannot repeat."
+        },
+        {
+          "n": "3",
+          "title": "Odoo 12 CE → CC migration: business-process regression & sign-off",
+          "type": "Project",
+          "metric": "Planned ONE QUARTER at a time — the migration is too fluid for 12-month commitments (per Sergii, Jul 2026); goals for the next quarter are re-set at each quarterly review from the then-current migration state (cutover date, block list, scope). Standing guardrails that survive every re-plan: every block gets its regression pack BEFORE it ships; integration seams tested, not just modules (the target is a componentized stack: New Build core, GoRules ZEN, Lago subscriptions, OCA exchange rates, Integration Hub ⇄ Zapier & ActiveCampaign); ≤[N] migration escapes post-cutover; packs written automation-ready so they feed Goal 1.",
+          "checkpoints": [
+            "THE committed window (Q3): per-block manual→auto conversion delivered on the published schedule (Jul 23 – Sep 3, ~17 days: Pre-Sale, Discounts, Lead Routing, Subscriptions/Lago, Exchange Rates/OCA, Integration Hub, Customer Support, FTO/Procurement); sandbox test environment as Portal Provider secured (CRM-11138); integration-boundary test packs defined for the seams (Hub ⇄ Zapier/ActiveCampaign, Lago billing, GoRules decisions); migration regression plan with schedule & estimates published (TC inventory in flight: NJM-178587, NJM-176246 done, NJM-178338). At the October review: set the Q4 goals from the then-current migration state.",
+            "[Set at the October review.] Candidate items if the migration proceeds on the current path: full migration regression executed; go/no-go verdict + risk list issued by Anh; escape watch running with RCA on anything leaked.",
+            "[Set at the January review.] Candidate items: migration TC packs converted into the automated regression (Goal 1) on the new stack; migration escapes ≤[N], all RCA’d.",
+            "[Set as the migration confirms — the standing guardrails in the metric column apply regardless.] Direction: migration closed with lessons-learned + coverage map; the new-stack regression base IS the automated base — no duplicate old-system suites left to maintain."
+          ],
+          "status": "Quarter-by-quarter by design: 12-month migration commitments would be fiction (Sergii, Jul 2026) — only the Q3 window is committed; each quarterly review re-plans the next. The big delivery item of H2 2026 — visible in the TC-creation spike (team output 642 TCs in Q1 2026 → 766 in Q2). Escapes will live at the seams (third-party billing, rules engines, Zapier flows): green module tests ≠ a working end-to-end business process."
+        }
+      ]
+    },
+    {
+      "title": "SUSTAINED OPERATIONS & PEOPLE",
+      "tag": "",
+      "goals": [
+        {
+          "n": "4",
+          "title": "Support stream under control: SLA, trends, and every escape becomes coverage",
+          "type": "Running",
+          "metric": "First response on support tickets ≤[1] business day for ≥[95]% (April long-term goal); quarterly support report published (volumes, categories, trends, time spent); every leaked defect RCA’d on the org unified form with a covering TC in the same [month]; support ≤[20]% of team capacity (time-logged).",
+          "checkpoints": [
+            "Baseline published: 387 CRM support tickets in the last 6 months (Anh 57 / Thuat 253 — delegation is already real); category + time-spent split; SLA measurement switched on; leaked-defect baseline from the Q2 QBR: 4 of 171 valid bugs (~2.3%) — well inside the old <6% target; what remains is the 2025 doubt “I am not confident I know about all of them” — agree the leak-detection rule with the VP so the number is trusted. AI lever launched: Claude + Odoo MCP investigating/resolving support tickets (CRM-11532, from his Q3 AI plan CRM-11531).",
+            "First quarterly report delivered (closes the 2025 “Partially done” reporting item); SLA ≥[95]% met; ≥[3] documentation / self-service improvements shipped to cut repeat tickets; AI-assisted share of resolved tickets measured — target [25]% with time-to-resolution trending down.",
+            "Escape→RCA→TC loop routine (feeds the org escape-RCA scorecard); repeat-category volume trending down vs baseline.",
+            "SLA held all year; support share of team time down [20]% → [15]%, capacity visibly moved to Goals 1–2; zero unknown leaked defects — every one tracked, RCA’d, covered."
+          ],
+          "status": "CARRIED: 2025 “improve support process” = Partially (“too much time spent on it”), support/leak reporting = Partially, 1-business-day SLA = April long-term goal. The load itself is big for a 2-person team (~65 tickets/month) — measurement is what keeps it from silently eating the automation plan."
+        },
+        {
+          "n": "5",
+          "title": "Grow Thuat Phung into an independent second — planning, estimating, owning small improvements",
+          "type": "Running",
+          "metric": "100% of small improvements planned & estimated by Thuat with Anh as reviewer only; team spec/FRD-review turnaround ≤[2] business days held by the team, not just by Anh; estimates within [±20]%; automation ramp [30–50] (Q3) → [100] (Q4) → [150]/quarter (2027) with his manual-execution goal stepped down in step (660 → [550] → [450]); a 2-week Anh-absence test passed.",
+          "checkpoints": [
+            "Baseline fixed (H1 2026: Thuat 404+436 TCs created, 113+138 valid bugs, 253 support tickets); Thuat plans + estimates his first [2] small improvements end-to-end with Anh reviewing; spec-review SLA measured; automation ramp starts: [30–50] automated TCs in Q3 (30 committed in his KPI sheet — stretch if the ramp goes well), Anh pairing him on the Claude conversion pipeline.",
+            "Thuat owns planning/review for ALL small improvements — the April mid-term delegation goal is DONE at this checkpoint; estimates within [±20]%; automation ramp: [100] TCs in Q4, funded by stepping his manual-execution goal down (660 → [550]) as automated packs replace manual regression runs — better to automate than re-run the same TCs by hand (Sergii, Jul 2026).",
+            "Anh 2-week absence test: releases checked, support SLA held, nothing waits for him; Thuat at [150] automated TCs/quarter (manual-execution goal down to [450]); KPI trend ≥+[10]% vs baseline.",
+            "Thuat sustained at [150] automated TCs/quarter and running small-improvement QA solo — a dual-skill (manual + automation) engineer, not a manual-only IC; Anh’s freed time visibly invested in Goals 1–2 — that reinvestment is the point of delegating."
+          ],
+          "status": "CARRIED from 2025 (“Develop IC so he/she can plan/estimate” — Not done; manager note: “Need to delegate”) and April mid-term. Data says Thuat is ready: output grew every quarter since joining Jun-2025 (TCs 335→341→404→436; valid bugs 39→138/quarter; already carries ~65% of support tickets). Automation ramp RAISED Jul-2026 (Sergii): 30/quarter on an existing framework is a seed, not a pace — target [100–150]/quarter, hours funded by stepping down his manual-execution KPI as automated coverage replaces manual regression. Single-IC team → the absence test is the real bar."
+        }
+      ]
+    }
+  ]
+}

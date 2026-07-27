@@ -87,6 +87,50 @@ async function collectTestExecMetrics(fetchFrom, today) {
  *
  * @param members [name, ...]
  */
+// One quarter's actual-only snapshot (no Forecast/Goal → kpis: null), built AS IF
+// `tY/tQ` were the current quarter: trailing 4 actual quarters + that quarter's
+// actual bar + its per-tester split. The client-side quarter/year picker switches
+// between the `byQuarter` snapshots quarterlyActualFromDaily emits.
+function snapForDaily(metric, byQ, tY, tQ, members) {
+  const cur = byQ[`${tY}-${tQ}`] || { year: tY, q: tQ, actual: 0, byEmp: {} };
+  // `quarterlyFillEmpty` (leaked defects): show a CONTIGUOUS trailing window — the 4
+  // calendar quarters immediately before the target one, filling any with no data as
+  // 0 — so a rare metric keeps a stable 5-quarter x-axis (e.g. Q3-2025 = 0 still shows)
+  // instead of collapsing to only the quarters that happen to have a hit. Default
+  // behaviour (every other metric) keeps only the quarters actually present.
+  let trailing;
+  if (metric.quarterlyFillEmpty) {
+    const curOrd = ord(tY, tQ);
+    trailing = [];
+    for (let o = 4; o >= 1; o--) {
+      const n = curOrd - o;                       // ordinal of the quarter `o` steps back
+      const q = ((n - 1) % 4) + 1, y = Math.floor((n - 1) / 4); // inverse of ord = y*4+q
+      trailing.push(byQ[`${y}-${q}`] || { year: y, q, actual: 0, byEmp: {} });
+    }
+  } else {
+    trailing = Object.values(byQ)
+      .filter((b) => ord(b.year, b.q) < ord(tY, tQ))
+      .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
+      .slice(-4);
+  }
+  const bars = trailing.map((b) => ({ label: `Q${b.q}A-${b.year}`, value: r0(b.actual), type: 'actual' }));
+  bars.push({ label: `Q${tQ}A-${tY}`, value: r0(cur.actual), type: 'current' });
+
+  const total = r0(cur.actual);
+  const byTester = members
+    .map((name) => { const v = r0(cur.byEmp[name] || 0); return { name, value: v, pct: total ? Math.round((v / total) * 100) : 0 }; })
+    .sort((a, b) => b.value - a.value);
+
+  return {
+    currentLabel: `Q${tQ}-${tY}`,
+    colLabel: `Q${tQ}A`,
+    bars,
+    kpis: null,           // actual-only metric → renderer omits the QoQ/QvG/QvQY boxes
+    byTester,
+    total,
+  };
+}
+
 function quarterlyActualFromDaily(metric, daily, members, now) {
   const curY = now.getUTCFullYear();
   const curQ = Math.floor(now.getUTCMonth() / 3) + 1;
@@ -99,43 +143,26 @@ function quarterlyActualFromDaily(metric, daily, members, now) {
     const b = byQ[k];
     for (const name of members) { const v = d.byEmp[name] || 0; b.actual += v; b.byEmp[name] = (b.byEmp[name] || 0) + v; }
   }
-  const cur = byQ[`${curY}-${curQ}`] || { year: curY, q: curQ, actual: 0, byEmp: {} };
-  // `quarterlyFillEmpty` (leaked defects): show a CONTIGUOUS trailing window — the 4
-  // calendar quarters immediately before the current one, filling any with no data as
-  // 0 — so a rare metric keeps a stable 5-quarter x-axis (e.g. Q3-2025 = 0 still shows)
-  // instead of collapsing to only the quarters that happen to have a hit. Default
-  // behaviour (every other metric) keeps only the quarters actually present.
-  let trailing;
-  if (metric.quarterlyFillEmpty) {
-    const curOrd = ord(curY, curQ);
-    trailing = [];
-    for (let o = 4; o >= 1; o--) {
-      const n = curOrd - o;                       // ordinal of the quarter `o` steps back
-      const q = ((n - 1) % 4) + 1, y = Math.floor((n - 1) / 4); // inverse of ord = y*4+q
-      trailing.push(byQ[`${y}-${q}`] || { year: y, q, actual: 0, byEmp: {} });
-    }
-  } else {
-    trailing = Object.values(byQ)
-      .filter((b) => ord(b.year, b.q) < ord(curY, curQ))
-      .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q))
-      .slice(-4);
-  }
-  const bars = trailing.map((b) => ({ label: `Q${b.q}A-${b.year}`, value: r0(b.actual), type: 'actual' }));
-  bars.push({ label: `Q${curQ}A-${curY}`, value: r0(cur.actual), type: 'current' });
 
-  const total = r0(cur.actual);
-  const byTester = members
-    .map((name) => { const v = r0(cur.byEmp[name] || 0); return { name, value: v, pct: total ? Math.round((v / total) * 100) : 0 }; })
-    .sort((a, b) => b.value - a.value);
+  const available = Object.values(byQ)
+    .map((b) => ({ year: b.year, q: b.q, key: `${b.year}-${b.q}`, label: `Q${b.q}-${b.year}` }))
+    .sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q));
+  const currentKey = `${curY}-${curQ}`;
+  if (!available.some((a) => a.key === currentKey)) {
+    available.push({ year: curY, q: curQ, key: currentKey, label: `Q${curQ}-${curY}` });
+    available.sort((a, b) => ord(a.year, a.q) - ord(b.year, b.q));
+  }
+  const byQuarter = {};
+  for (const a of available) byQuarter[a.key] = snapForDaily(metric, byQ, a.year, a.q, members);
 
   return {
     label: metric.label,
     kpiName: metric.kpiName,
-    currentLabel: `Q${curQ}-${curY}`,
-    bars,
-    kpis: null,           // actual-only metric → renderer omits the QoQ/QvG/QvQY boxes
-    byTester,
-    total,
+    memberCount: members.length,
+    currentKey,
+    available,
+    byQuarter,
+    ...byQuarter[currentKey], // default (current quarter) fields, for direct/back-compat render
   };
 }
 

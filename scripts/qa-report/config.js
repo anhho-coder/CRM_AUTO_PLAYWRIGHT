@@ -332,6 +332,21 @@ const JIRA_TRANSITION_METRICS = [
   },
 ];
 
+// --- Automation coverage (Automation test page · Quarterly KPI · pie/donut) --
+// A POINT-IN-TIME snapshot (NOT ranged, NOT per-quarter): what share of the whole CRM
+// Post-EA Test Case repository is in automation scope, as of each build. Two whole-repo
+// counts via JiraClient.count() (see sources/automation-coverage.js):
+//   totalTcs      = every CRM Post-EA test case
+//   automationTcs = the still-open subset (status != Closed) whose "Automation scope" = Yes
+// Rendered as a donut — Automation TCs vs Remaining (= totalTcs − automationTcs) — with the
+// coverage % (automationTcs ÷ totalTcs) in the centre, on the Automation Quarterly view.
+const AUTOMATION_COVERAGE = {
+  label: 'Automation coverage',
+  kpiName: 'Jira · CRM Post-EA test cases in automation scope (point-in-time snapshot)',
+  totalJql: 'project = CRM AND issuetype = "Post-EA - Test Case"',
+  automationJql: 'project = CRM AND issuetype = "Post-EA - Test Case" AND status != "closed" AND "Automation scope" = Yes',
+};
+
 // --- Jira SPLIT metrics (Metrics Report · Automation test page, "By range") ---
 // A metric that PARTITIONS an already-collected status-transition daily series at a
 // cutoff date into two halves, rendered as slide-style stat cards. It performs NO
@@ -675,7 +690,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, FEATURE_EXEC, BUG_BY_PRIORITY, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

@@ -17,6 +17,16 @@ const fs = require('fs');
 const path = require('path');
 const cfg = require('./config');
 
+// PDP (Personal Development Plan) content for the hidden pdp.html page. Static —
+// transcribed from the team PDP sheet; loaded here so the page renders on Jenkins
+// with no Sheets access. Missing file → pdp.html shows a graceful placeholder.
+let PDP = null;
+try { PDP = require('./pdp-data.json'); } catch (e) { PDP = null; }
+// PDP Dashboard (Current vs Goal by quarter). Goals with an `auto` block pull the
+// "Current" value live from data.metrics; the rest are manual. Same graceful fallback.
+let PDP_DASH = null;
+try { PDP_DASH = require('./pdp-dashboard.json'); } catch (e) { PDP_DASH = null; }
+
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) =>
   ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = (n) => (Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100));
@@ -53,26 +63,61 @@ const pct1 = (v) => `${v}%`;
 
 /* ------------------------------- Quarterly view ------------------------------ */
 
-function quarterChart(bars) {
+// Quarterly bar chart, matching the portal's Quarterly KPI dashboard: a coloured bar
+// per quarter (actual/forecast navy, current-actual teal, goal orange) with the value
+// labelled on top, PLUS an overlaid trend line of the per-person AVERAGE (bar value ÷
+// number of team members) — the same "trung bình" line the portal draws, with its
+// value marked at each point. The average is always ≤ the bar, so it sits inside the
+// bar; drawn in the portal's light-blue line colour with white value labels, to match
+// the Odoo Quarterly KPI dashboard.
+function quarterChart(bars, memberCount) {
   if (!bars || !bars.length) return '<p class="muted">No quarterly data.</p>';
+  const mc = memberCount && memberCount > 0 ? memberCount : 1;
   const W = 640, H = 250, padL = 18, padR = 18, padT = 22, padB = 36, n = bars.length;
   const maxV = Math.max(1, ...bars.map((b) => b.value));
   const step = (W - padL - padR) / n;
   const bw = Math.min(56, step - 12);
   const base = H - padB;
+  const yOf = (v) => base - (v / maxV) * (H - padT - padB);
   let s = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">`;
   // light baseline
   s += `<line x1="${padL}" y1="${base}" x2="${W - padR}" y2="${base}" stroke="#e3e3e3"/>`;
+  const pts = [];
   bars.forEach((b, i) => {
+    const cx = padL + i * step + step / 2;
     const bx = padL + i * step + (step - bw) / 2;
     const h = (b.value / maxV) * (H - padT - padB);
     s += `<rect x="${bx.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw.toFixed(1)}" height="${h.toFixed(1)}" rx="2" fill="${BAR_COLORS[b.type] || '#1f4e96'}"/>`;
-    s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${(base - h - 5).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="#333">${b.value}</text>`;
-    s += `<text x="${(bx + bw / 2).toFixed(1)}" y="${H - padB + 16}" font-size="8.5" text-anchor="middle" fill="#777">${esc(b.label)}</text>`;
+    s += `<text x="${cx.toFixed(1)}" y="${(base - h - 5).toFixed(1)}" font-size="11" font-weight="700" text-anchor="middle" fill="#333">${b.value}</text>`;
+    s += `<text x="${cx.toFixed(1)}" y="${H - padB + 16}" font-size="8.5" text-anchor="middle" fill="#777">${esc(b.label)}</text>`;
+    pts.push({ x: cx, y: yOf(Math.round(b.value / mc)), v: Math.round(b.value / mc) });
+  });
+  // Average (per person) trend line drawn on top of the bars — portal-style: a light
+  // steel-blue line with white value labels (like the Odoo Quarterly KPI dashboard).
+  const trendColor = '#7ba7d7';
+  if (pts.length > 1) {
+    s += `<polyline points="${pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${trendColor}" stroke-width="2" stroke-linejoin="round" opacity="0.95"/>`;
+  }
+  pts.forEach((p) => {
+    s += `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.6" fill="${trendColor}"/>`;
+    s += `<text x="${p.x.toFixed(1)}" y="${(p.y + 13).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="#ffffff">${p.v}</text>`;
   });
   return s + '</svg>';
 }
 
+// Portal-style QoQ / QvG / QvQY block: three labelled rows, each with a coloured
+// percentage cell (green positive, orange negative, grey n/a).
+function portalKpis(kpis) {
+  if (!kpis) return '';
+  const row = (label, v) => {
+    const txt = v == null ? 'n/a' : `${v}%`;
+    const cls = v == null ? 'na' : v >= 0 ? 'pos' : 'neg';
+    return `<tr><td class="qkl">${esc(label)}</td><td class="qkv ${cls}">${esc(txt)}</td></tr>`;
+  };
+  return `<table class="qkpi-tbl"><tbody>${row('QoQ', kpis.qoq)}${row('QvG', kpis.qvg)}${row('QvQY', kpis.qvqy)}</tbody></table>`;
+}
+
+// Kept for any legacy callers; the Quarterly cards now use portalKpis.
 function kpiBoxes(kpis) {
   const box = (label, v) => {
     const txt = v == null ? 'n/a' : `${v}%`;
@@ -82,11 +127,13 @@ function kpiBoxes(kpis) {
   return `<div class="qkpis">${box('QoQ', kpis.qoq)}${box('QvG', kpis.qvg)}${box('QvQY', kpis.qvqy)}</div>`;
 }
 
-function testerTable(byTester, total, currentLabel) {
+// IC table (per portal): tester rows with the selected quarter's actual count and %,
+// then a Grand Total. `colLabel` is the quarter column header, e.g. "Q2A".
+function testerTable(byTester, total, colLabel) {
   const rows = byTester.map((t) =>
     `<tr><td>${esc(t.name)}</td><td class="num">${t.value}</td><td class="num">${t.pct}%</td></tr>`).join('');
   return `<table class="qtbl">
-    <thead><tr><th></th><th>${esc(currentLabel)}</th><th>%</th></tr></thead>
+    <thead><tr><th>IC</th><th class="num">${esc(colLabel)}</th><th class="num">%</th></tr></thead>
     <tbody>${rows}</tbody>
     <tfoot><tr><td>Grand Total</td><td class="num">${total}</td><td class="num">100%</td></tr></tfoot>
   </table>`;
@@ -124,19 +171,79 @@ function withAnchor(meta, html, suffix) {
   return out;
 }
 
-function quarterlySection(meta, q, lead) {
-  return `<section class="metric${lead ? ' lead' : ''}">
-    <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(q.kpiName)}</span></h2>
-    ${q.kpis ? kpiBoxes(q.kpis) : ''}
+// One quarter's card body (portal layout): a Team / Manager / Metric block + the
+// QoQ/QvG/QvQY cells, then the bar+average-line chart and the IC table. Rendered once
+// per available quarter, hidden except the active one; the page-level picker toggles them.
+function qSnapBlock(meta, q, snap, active) {
+  const memberCount = q.memberCount || 2;
+  return `<div class="qsnap${active ? ' is-active' : ''}" data-qkey="${esc(snap.key)}">
+    <div class="qhead">
+      <div class="qmeta">
+        <div class="qmrow"><span class="qml">Team</span><span class="qmv">CRM Team</span></div>
+        <div class="qmrow"><span class="qml">Manager</span><span class="qmv">Anh Ho</span></div>
+        <div class="qmrow"><span class="qml">Metric</span><span class="qmv">${esc(meta.label)}</span></div>
+      </div>
+      ${snap.kpis ? portalKpis(snap.kpis) : ''}
+    </div>
     <div class="qgrid">
-      <div class="qchart">${quarterChart(q.bars)}</div>
+      <div class="qchart">${quarterChart(snap.bars, memberCount)}</div>
       <div class="qside">
-        <div class="subh">${esc(meta.byLabel || 'By tester')} · ${esc(q.currentLabel)} (actual)</div>
-        ${testerTable(q.byTester, q.total, q.currentLabel)}
+        <div class="subh">${esc(meta.byLabel || 'By IC')} · ${esc(snap.currentLabel)} (actual)</div>
+        ${testerTable(snap.byTester, snap.total, snap.colLabel || snap.currentLabel)}
       </div>
     </div>
+  </div>`;
+}
+
+function quarterlySection(meta, q, lead) {
+  // A snapshot per available quarter (hidden except the current one); if the picker
+  // targets a quarter this metric has no data for, the .qnodata block shows instead.
+  const available = (q.available && q.available.length)
+    ? q.available
+    : [{ key: q.currentKey || 'current', label: q.currentLabel }];
+  const byQuarter = q.byQuarter || { [available[0].key]: q };
+  const currentKey = q.currentKey || available[available.length - 1].key;
+  const snaps = available.map((a) => {
+    const snap = byQuarter[a.key];
+    if (!snap) return '';
+    return qSnapBlock(meta, q, { ...snap, key: a.key }, a.key === currentKey);
+  }).join('\n');
+  return `<section class="metric qmetric${lead ? ' lead' : ''}">
+    <h2>${esc(meta.label)} ${lead ? '<span class="pill">primary</span>' : ''} <span class="muted">· KPI: ${esc(q.kpiName)}</span></h2>
+    ${snaps}
+    <div class="qsnap qnodata" data-qkey="__none__">No quarterly data for the selected quarter.</div>
     ${meta.quarterlyNote ? `<p class="qnote">${esc(meta.quarterlyNote)}</p>` : ''}
   </section>`;
+}
+
+// Page-level quarter/year picker (portal-style): a quarter dropdown (Current / Previous
+// Quarter + Q1–Q4), a year dropdown, and an APPLY button. `snaps` is the list of the
+// page's quarterly data objects — their union of years drives the year dropdown, and the
+// shared currentKey/prevKey drive the Current/Previous options. app.js `applyQuarter`
+// resolves the selection to a "YEAR-Q" key and toggles every card's matching .qsnap.
+function quarterlyPicker(snaps) {
+  const withMeta = (snaps || []).filter((s) => s && s.currentKey);
+  if (!withMeta.length) return '';
+  const currentKey = withMeta[0].currentKey;                 // same build → same current quarter
+  const [cy, cq] = currentKey.split('-').map(Number);
+  const prevKey = cq === 1 ? `${cy - 1}-4` : `${cy}-${cq - 1}`;
+  const years = Array.from(new Set(withMeta.flatMap((s) => (s.available || []).map((a) => a.year))))
+    .sort((a, b) => b - a);                                  // newest first
+  if (!years.includes(cy)) years.unshift(cy);
+  const qOptions = [
+    `<option value="current" selected>Current Quarter</option>`,
+    `<option value="previous">Previous Quarter</option>`,
+    `<option value="1">Q1</option>`,
+    `<option value="2">Q2</option>`,
+    `<option value="3">Q3</option>`,
+    `<option value="4">Q4</option>`,
+  ].join('');
+  const yOptions = years.map((y) => `<option value="${y}"${y === cy ? ' selected' : ''}>${y}</option>`).join('');
+  return `<div class="qpicker" data-current="${esc(currentKey)}" data-prev="${esc(prevKey)}">
+    <select class="qsel qsel-q" aria-label="Quarter">${qOptions}</select>
+    <select class="qsel qsel-y" aria-label="Year" disabled>${yOptions}</select>
+    <button type="button" class="qapply" data-qapply>APPLY</button>
+  </div>`;
 }
 
 /* -------------------------------- Range view --------------------------------- */
@@ -960,7 +1067,281 @@ function bugByPrioritySection(bp, def) {
   </section>`;
 }
 
+/* -------------------- Automation coverage (Automation · Quarterly) ----------- */
+// A point-in-time donut on the Automation test page's Quarterly KPI view: what share
+// of the whole CRM Post-EA test-case repository is in automation scope. Data (custom
+// shape, not a by-tester card) from sources/automation-coverage.js:
+//   data.automationCoverage = { label, kpiName, totalTcs, automationTcs, remaining,
+//                               coverage, totalJql, automationJql }
+const ACOV_COLORS = { automation: '#1e7e34', remaining: '#c9b7e0' }; // green covered / light-purple rest
+
+function automationDonut(ac) {
+  const total = ac.totalTcs || 0, auto = ac.automationTcs || 0;
+  const covFrac = total > 0 ? auto / total : 0;
+  const covPct = ac.coverage != null ? ac.coverage : (total > 0 ? Math.round(covFrac * 1000) / 10 : 0);
+  const size = 220, cx = size / 2, cy = size / 2, R = 78, sw = 30;
+  const C = 2 * Math.PI * R;
+  const dash = covFrac * C, gap = C - dash;
+  return `<svg viewBox="0 0 ${size} ${size}" width="100%" style="max-width:240px" role="img" aria-label="Automation coverage donut">
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ACOV_COLORS.remaining}" stroke-width="${sw}"/>
+    <circle cx="${cx}" cy="${cy}" r="${R}" fill="none" stroke="${ACOV_COLORS.automation}" stroke-width="${sw}"
+      stroke-dasharray="${dash.toFixed(2)} ${gap.toFixed(2)}" transform="rotate(-90 ${cx} ${cy})">
+      <title>Automation TCs: ${fmt(auto)} of ${fmt(total)} (${covPct}%)</title>
+    </circle>
+    <text x="${cx}" y="${cy - 1}" text-anchor="middle" font-size="38" font-weight="800" fill="#2a2140">${covPct}%</text>
+    <text x="${cx}" y="${cy + 22}" text-anchor="middle" font-size="12.5" font-weight="700" fill="#6a3093">automation coverage</text>
+  </svg>`;
+}
+
+function automationCoverageNote(ac) {
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const notes = [
+    'A POINT-IN-TIME snapshot of the whole CRM Test Repository — NOT limited to a range or a quarter. It reflects the current Jira state each build.',
+    '<b>Total TCs</b> = every CRM Post-EA test case. <b>Automation TCs</b> = the still-open subset (status ≠ Closed) whose “Automation scope” = Yes. <b>Remaining</b> = Total − Automation (the non-automation test cases).',
+    'Coverage % = Automation TCs ÷ Total TCs.',
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How automation coverage is counted<span class="wlnote-hint"> (hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Queries</div>
+      <div><b>Total TCs</b>: ${code(ac.totalJql)}</div>
+      <div style="margin-top:4px"><b>Automation TCs</b>: ${code(ac.automationJql)}</div>
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((x) => `<li>${x}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+function automationCoverageSection(ac) {
+  const total = ac.totalTcs || 0, auto = ac.automationTcs || 0;
+  const rem = ac.remaining != null ? ac.remaining : Math.max(0, total - auto);
+  const covPct = ac.coverage != null ? ac.coverage : (total > 0 ? Math.round((auto / total) * 1000) / 10 : 0);
+  const remPct = total > 0 ? Math.round((rem / total) * 1000) / 10 : 0;
+  const row = (color, label, val, pct, cls) =>
+    `<div class="acov-row${cls ? ' ' + cls : ''}">` +
+    `<span class="sw" style="background:${color}"></span>` +
+    `<span class="acov-l">${esc(label)}</span>` +
+    `<span class="acov-v">${fmt(val)}</span>` +
+    `<span class="acov-p">${pct}%</span></div>`;
+  const legend = `<div class="acov-legend">
+    <div class="subh">Breakdown</div>
+    ${row(ACOV_COLORS.automation, 'Automation TCs', auto, covPct)}
+    ${row(ACOV_COLORS.remaining, 'Remaining (non-automation) TCs', rem, remPct)}
+    ${row('transparent', 'Total TCs', total, 100, 'acov-total')}
+  </div>`;
+  return `<section class="metric acov">
+    <h2>${esc(ac.label)} <span class="pill">coverage</span> <span class="muted">· KPI: ${esc(ac.kpiName)}</span></h2>
+    ${automationCoverageNote(ac)}
+    <div class="acov-grid">
+      <div class="acov-chart">${automationDonut(ac)}</div>
+      <div class="acov-side">${legend}</div>
+    </div>
+  </section>`;
+}
+
 /* ----------------------------- Worklog allocation ---------------------------- */
+
+/* ------------------------- Personal Development Plan ------------------------- */
+// Render one PDP cell: escape, then flag the plan's [bracketed] "confirm at the
+// kickoff" numbers with a chip (see the HOW TO USE note). Newlines are preserved
+// by the container's white-space:pre-line, so no <br> conversion is needed.
+function pdpText(s) {
+  return esc(s).replace(/\[([^\][]+)\]/g, '<span class="pdp-tbd">[$1]</span>');
+}
+
+// Build the inner HTML of the hidden pdp.html page from the loaded PDP object:
+// an info card, the HOW TO USE callout, then one block per section, each with its
+// goal cards (metric + 3/6/9/12-month checkpoints + a collapsible Status/Comments).
+function pdpBodyHtml(pdp) {
+  if (!pdp || !Array.isArray(pdp.sections)) return '<p class="muted">PDP data unavailable.</p>';
+  const info = (label, val) =>
+    `<div class="pdp-inf"><span class="pdp-inf-l">${esc(label)}</span><span class="pdp-inf-v">${val}</span></div>`;
+  const infoCard = `<div class="pdp-info">
+    ${info('Employee', esc(pdp.employee))}
+    ${info('Manager', esc(pdp.manager))}
+    ${info('Position', esc(pdp.position))}
+    ${info('Education', esc(pdp.education))}
+    ${info('Start date', esc(pdp.startDate))}
+    ${info('Employment history', (pdp.employment || []).map((e, i) => `${i + 1}. ${esc(e)}`).join('<br>'))}
+  </div>`;
+  const howTo = pdp.howToUse
+    ? `<div class="pdp-howto"><span class="pdp-howto-t">How to use</span>${pdpText(pdp.howToUse)}</div>` : '';
+  const cpLabels = pdp.checkpointLabels || ['3 months', '6 months', '9 months', '12-month target'];
+  const typeClass = (t) => (/run/i.test(t) ? 'pdp-type-running' : 'pdp-type-project');
+
+  const goalCard = (g) => {
+    const cps = (g.checkpoints || []).map((c, i) => `<div class="pdp-cp${i === 3 ? ' pdp-cp-target' : ''}">
+        <div class="pdp-cp-h">${esc(cpLabels[i] || '')}</div>
+        <div class="pdp-cp-b">${pdpText(c)}</div>
+      </div>`).join('');
+    return `<article class="pdp-goal">
+      <div class="pdp-goal-head">
+        <span class="pdp-num">${esc(g.n)}</span>
+        <div class="pdp-goal-ttl">
+          <h3>${esc(g.title)}</h3>
+          <span class="pdp-type ${typeClass(g.type)}">${esc(g.type)}</span>
+        </div>
+      </div>
+      <div class="pdp-metric">
+        <div class="pdp-lbl">Success metric — how we measure</div>
+        <div class="pdp-metric-b">${pdpText(g.metric)}</div>
+      </div>
+      <div class="pdp-cps">${cps}</div>
+      ${g.status ? `<details class="pdp-status"><summary>Status / Comments — evidence &amp; history</summary><div class="pdp-status-b">${pdpText(g.status)}</div></details>` : ''}
+    </article>`;
+  };
+
+  const secHtml = pdp.sections.map((s, si) => `<section class="pdp-sec pdp-sec-${si + 1}">
+    <h2 class="pdp-sec-ttl"><span class="pdp-sec-badge">${si + 1}</span>${esc(s.title)}${s.tag ? ` <span class="pdp-sec-tag">${esc(s.tag)}</span>` : ''}</h2>
+    ${(s.goals || []).map(goalCard).join('\n')}
+  </section>`).join('\n');
+
+  return `${infoCard}\n${howTo}\n${secHtml}`;
+}
+
+// A per-page sub-nav that toggles between the two hidden PDP views (Guideline /
+// Dashboard). `active` = 'guideline' | 'dashboard'.
+function pdpNav(active) {
+  const tab = (href, key, label) =>
+    `<a class="pdpnav-tab${active === key ? ' active' : ''}" href="${href}">${label}</a>`;
+  return `<div class="pdpnav">${tab('pdp.html', 'guideline', '📋 Guideline')}${tab('pdp-dashboard.html', 'dashboard', '📊 Dashboard')}</div>`;
+}
+
+// Pull one employee's value out of a metric range's byEmployee[] ({name,value}).
+const pdpByEmp = (r, name) => {
+  const e = ((r && r.byEmployee) || []).find((x) => x.name === name);
+  return e ? e.value : 0;
+};
+
+// Which live data.ranges window (if any) corresponds to a PDP quarter — matched
+// build-date-aware by start date, so a quarter only shows live numbers once the
+// build's thisQuarter/lastQuarter window actually lands on it (future quarters → null).
+function pdpRangeForQuarter(ranges, start) {
+  for (const key of ['thisQuarter', 'lastQuarter']) {
+    const r = ranges && ranges[key];
+    if (r && r.from === start) return key;
+  }
+  return null;
+}
+
+// Resolve the auto "Current" cell for a goal+quarter from live metrics, or null
+// (→ caller falls back to a manual value or an em-dash). Kinds: 'count' (a total
+// or one member's value + unit) and 'leak' (leaked ÷ bugs-created rate).
+function pdpDashCurrent(data, auto, start) {
+  if (!auto || !data || !data.metrics) return null;
+  const rk = pdpRangeForQuarter(data.ranges, start);
+  if (!rk) return null;
+  const m = data.metrics[auto.metric];
+  const r = m && m.ranges && m.ranges[rk];
+  if (!r) return null;
+  const live = '<span class="pdd-live" title="Live from Jira/Odoo">live</span>';
+  if (auto.kind === 'leak') {
+    const rate = r.leakRate != null ? r.leakRate : 0;
+    return `<b>${esc(String(rate))}%</b> leak · ${esc(String(r.leaked || 0))}/${esc(String(r.bugsCreated || 0))} bugs${live}`;
+  }
+  const val = auto.member ? pdpByEmp(r, auto.member) : (r.total != null ? r.total : 0);
+  return `<b>${esc(String(val))}</b> ${esc(auto.unit || '')}${live}`;
+}
+
+// Numeric counterpart of pdpDashCurrent — the live "Current" as a number (or null
+// when no live window lands on that quarter), for the grouped bar chart.
+function pdpDashCurrentNum(data, auto, start) {
+  if (!auto || !data || !data.metrics) return null;
+  const rk = pdpRangeForQuarter(data.ranges, start);
+  if (!rk) return null;
+  const m = data.metrics[auto.metric];
+  const r = m && m.ranges && m.ranges[rk];
+  if (!r) return null;
+  if (auto.kind === 'leak') return r.leakRate != null ? r.leakRate : 0;
+  return auto.member ? pdpByEmp(r, auto.member) : (r.total != null ? r.total : 0);
+}
+
+const PDD_CUR_COLOR = '#4285F4';   // Current — blue
+const PDD_GOAL_COLOR = '#F4B400';  // Goal — amber
+
+// Grouped vertical bar chart (Current vs Goal) across the 4 quarter checkpoints —
+// mirrors featureExecChart's look. Current bars appear only for quarters with a live
+// window (future quarters show the Goal bar alone). betterLow goals label Goal a ceiling.
+function pdpDashChart(g, quarters, data) {
+  const cur = quarters.map((q) => (g.auto ? pdpDashCurrentNum(data, g.auto, q.start) : null));
+  const goals = quarters.map((q, i) => {
+    const gn = (g.goalNum || [])[i];
+    return typeof gn === 'number' ? gn : null;
+  });
+  const vals = [...cur, ...goals].filter((v) => v != null);
+  const top = niceCeil(Math.max(1, ...vals));
+  const n = quarters.length;
+  const padL = 42, padR = 14, padT = 20, padB = 54, bw = 30, gap = 10;
+  const groupInner = 2 * bw + gap, groupW = groupInner + 42;
+  const W = padL + padR + n * groupW, H = 300;
+  const base = H - padB, plotH = H - padT - padB;
+  const yOf = (v) => base - (v / top) * plotH;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="Current vs Goal by quarter">`;
+  const ticks = 4;
+  for (let t = 0; t <= ticks; t++) {
+    const val = Math.round((top * t) / ticks), yy = yOf(val);
+    s += `<line x1="${padL}" y1="${yy.toFixed(1)}" x2="${W - padR}" y2="${yy.toFixed(1)}" stroke="#ececec"/>`;
+    s += `<text x="${padL - 6}" y="${(yy + 3).toFixed(1)}" font-size="9" text-anchor="end" fill="#6a3093">${val}</text>`;
+  }
+  const unit = g.unit ? ` ${g.unit}` : '';
+  quarters.forEach((q, i) => {
+    const gx = padL + i * groupW, startX = gx + (groupW - groupInner) / 2, cx = gx + groupW / 2;
+    const isNow = pdpRangeForQuarter(data.ranges, q.start) === 'thisQuarter';
+    const bar = (val, idx, color, label) => {
+      if (val == null) return;
+      const x = startX + idx * (bw + gap), h = (val / top) * plotH;
+      s += `<rect x="${x.toFixed(1)}" y="${(base - h).toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" rx="2" fill="${color}"><title>${esc(q.label)} — ${label} ${fmt(val)}${esc(unit)}</title></rect>`;
+      s += `<text x="${(x + bw / 2).toFixed(1)}" y="${(base - h - 4).toFixed(1)}" font-size="9" font-weight="700" text-anchor="middle" fill="${color}">${fmt(val)}</text>`;
+    };
+    bar(cur[i], 0, PDD_CUR_COLOR, 'Current');
+    bar(goals[i], 1, PDD_GOAL_COLOR, 'Goal');
+    s += `<text x="${cx.toFixed(1)}" y="${base + 17}" font-size="10.5" font-weight="700" text-anchor="middle" fill="${isNow ? '#6a3093' : '#2a2140'}">${esc(q.label)}</text>`;
+    s += `<text x="${cx.toFixed(1)}" y="${base + 31}" font-size="9" text-anchor="middle" fill="#6a3093">${esc(q.cp || '')}</text>`;
+  });
+  s += '</svg>';
+  const legend = `<div class="flegend">`
+    + `<span class="fl"><span class="sw" style="background:${PDD_CUR_COLOR}"></span>Current${g.auto ? ' (live)' : ''}</span>`
+    + `<span class="fl"><span class="sw" style="background:${PDD_GOAL_COLOR}"></span>Goal${g.betterLow ? ' — ceiling (lower is better)' : ''}</span>`
+    + `</div>`;
+  return `${legend}<div class="fchart-wrap">${s}</div>`;
+}
+
+// Build the PDP Dashboard body: one card per goal. Numeric goals lead with a grouped
+// Current-vs-Goal bar chart; every goal also shows a Quarter | Current | Goal table
+// (the table carries the detailed goal text). The current quarter's row is highlighted.
+function pdpDashBodyHtml(dash, data) {
+  if (!dash || !Array.isArray(dash.goals)) return '<p class="muted">PDP dashboard data unavailable.</p>';
+  const quarters = dash.quarters || [];
+  const typeClass = (t) => (/run/i.test(t) ? 'pdp-type-running' : 'pdp-type-project');
+  const card = (g) => {
+    const rows = quarters.map((q, qi) => {
+      const qd = (g.quarters && g.quarters[qi]) || {};
+      const auto = g.auto ? pdpDashCurrent(data, g.auto, q.start) : null;
+      const cur = auto || (qd.current ? esc(qd.current) : '<span class="pdd-em">—</span>');
+      const isNow = pdpRangeForQuarter(data.ranges, q.start) === 'thisQuarter';
+      return `<tr class="${isNow ? 'is-now' : ''}">
+          <td class="q">${esc(q.label)}<small>${esc(q.cp || '')}</small></td>
+          <td class="cur">${cur}</td>
+          <td class="goal">${pdpText(qd.goal || '—')}</td>
+        </tr>`;
+    }).join('');
+    return `<article class="pdd-goal pdp-sec-${g.sec || 1}">
+      <div class="pdd-head">
+        <span class="pdd-num">${esc(g.n)}</span>
+        <div class="pdp-goal-ttl">
+          <h3>${esc(g.title)}</h3>
+          <span class="pdp-type ${typeClass(g.type)}">${esc(g.type)}</span>
+        </div>
+      </div>
+      <div class="pdd-measure">${g.auto ? '<span class="pdd-live">live</span> ' : ''}${pdpText(g.measure || '')}</div>
+      ${g.chart ? pdpDashChart(g, quarters, data) : ''}
+      <div class="pdd-tblwrap"><table class="pdd">
+        <thead><tr><th class="q">Quarter</th><th>Current</th><th>Goal</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+    </article>`;
+  };
+  return dash.goals.map(card).join('\n');
+}
 
 function pageNav(active) {
   const tab = (href, key, label) =>
@@ -1129,7 +1510,7 @@ function worklogView(wl, ranges, def, help) {
 
 const CSS = `:root{font-family:Segoe UI,Arial,sans-serif;color:#222}
 body{margin:0;background:#f4f5f7}
-.hero{background:linear-gradient(135deg,#6a3093,#a044ff);color:#fff;padding:22px 28px}
+.hero{position:relative;background:linear-gradient(135deg,#6a3093,#a044ff);color:#fff;padding:22px 28px}
 .hero h1{margin:0;font-size:22px}.hero .sub{opacity:.92;font-size:13px;margin-top:6px}
 .wrap{max-width:1000px;margin:0 auto;padding:14px 28px 60px}
 .wrap.wide{max-width:1340px}
@@ -1178,6 +1559,27 @@ h2{margin:0 0 12px;font-size:17px}
 .qkpi{min-width:96px;text-align:center;border-radius:8px;padding:8px 14px;color:#fff}
 .qkpi .qv{font-size:20px;font-weight:800;line-height:1}.qkpi .ql{font-size:11px;opacity:.92;margin-top:3px}
 .qkpi.pos{background:#27ae9a}.qkpi.neg{background:#c0392b}.qkpi.na{background:#9aa0a6}
+/* Quarter/year picker (portal-style) */
+.qpicker{display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid #e4d9f4;border-radius:12px;padding:12px 14px;margin:0 0 16px}
+.qpicker .qsel{font-size:14px;color:#2a2140;padding:8px 12px;min-width:190px;border:1px solid #cfcfcf;border-radius:4px;background:#ededed}
+.qpicker .qsel:disabled{color:#8a8a8a;background:#f3f3f3}
+.qapply{background:#16a394;color:#fff;border:none;border-radius:4px;padding:10px 26px;font-weight:700;font-size:13px;letter-spacing:.04em;cursor:pointer}
+.qapply:hover{background:#128577}
+/* Per-quarter snapshot blocks + portal card header */
+.qsnap{display:none}.qsnap.is-active{display:block}
+.qnodata.is-active{display:block;padding:24px 8px;color:#2a2140;font-size:14px}
+.qhead{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;align-items:flex-start;margin:2px 0 16px}
+.qmeta{font-size:13px}
+.qmrow{display:flex;gap:12px;margin:3px 0}
+.qml{width:64px;color:#6a3093;font-weight:600}
+.qmv{color:#2a2140;font-weight:600}
+.qkpi-tbl{border-collapse:collapse;font-size:13px}
+.qkpi-tbl td{padding:5px 10px}
+.qkl{color:#2a2140;font-weight:600;text-align:left}
+.qkv{font-weight:700;text-align:right;border-radius:3px;min-width:60px}
+.qkv.pos{background:#63c6a8;color:#08352a}
+.qkv.neg{background:#ec8f5f;color:#4a1c00}
+.qkv.na{background:#d3d7da;color:#2a2140}
 .qgrid{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
 .qchart{flex:2;min-width:340px}
 .qside{flex:1;min-width:220px}
@@ -1200,6 +1602,17 @@ h2{margin:0 0 12px;font-size:17px}
 .tlegend{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 2px;font-size:12px;color:#555}
 .tlegend .tl{display:flex;align-items:center;gap:6px}
 .tlegend .sw{width:11px;height:11px;border-radius:2px;display:inline-block}
+.acov-grid{display:flex;gap:28px;flex-wrap:wrap;align-items:center;margin-top:6px}
+.acov-chart{flex:0 0 240px;max-width:240px}
+.acov-side{flex:1;min-width:260px}
+.acov-legend{display:flex;flex-direction:column;gap:2px}
+.acov-row{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid #eee}
+.acov-row .sw{width:13px;height:13px;border-radius:3px;flex:0 0 13px}
+.acov-row .acov-l{flex:1;font-size:13.5px;color:#2a2140}
+.acov-row .acov-v{width:64px;text-align:right;font-variant-numeric:tabular-nums;font-weight:700;font-size:14px;color:#2a2140}
+.acov-row .acov-p{width:56px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;color:#6a3093;font-weight:600}
+.acov-row.acov-total{border-bottom:none;border-top:2px solid #ccc;margin-top:2px;font-weight:800}
+.acov-row.acov-total .acov-l,.acov-row.acov-total .acov-v{font-weight:800}
 .pdmeta{font-size:13px;color:#444;display:flex;flex-direction:column;gap:6px}
 .pdwrap{overflow-x:auto}
 .pdtbl{border-collapse:collapse;font-size:13px;min-width:520px}
@@ -1304,6 +1717,75 @@ h2{margin:0 0 12px;font-size:17px}
 .flegend .sw{width:12px;height:12px;border-radius:2px;display:inline-block}
 .fcaption{margin-top:8px;font-size:12.5px;color:#555}
 .fcaption b{color:#333}
+/* --- Hidden Personal Development Plan page: (+) launcher + pdp.html layout --- */
+.hero.hero--plus{padding-top:40px}
+.heroplus{position:absolute;top:9px;left:12px;width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px;line-height:1;text-decoration:none;color:#fff;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.35);transition:background .15s,transform .15s,color .15s}
+.heroplus:hover,.heroplus:focus{background:rgba(255,255,255,.92);color:#6a3093;transform:rotate(90deg);outline:none}
+.herohome{display:inline-block;color:#fff;opacity:.9;text-decoration:none;font-size:12.5px;font-weight:600;margin-bottom:8px}
+.herohome:hover{opacity:1;text-decoration:underline}
+.pdp-h-emp{font-size:15px;font-weight:600;opacity:.85;margin-left:6px}
+.pdp-wrap{padding-top:18px}
+.pdp-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px 22px;background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:16px 20px;margin:8px 0 14px}
+.pdp-inf{display:flex;flex-direction:column;gap:2px}
+.pdp-inf-l{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#8a6db5}
+.pdp-inf-v{font-size:13.5px;color:#222}
+.pdp-howto{background:#f3eefc;border:1px solid #d9c9ee;border-radius:10px;padding:12px 16px;margin:0 0 20px;font-size:13px;line-height:1.55;color:#3d2a5c}
+.pdp-howto-t{font-weight:700;color:#6a3093;text-transform:uppercase;font-size:11px;letter-spacing:.05em;margin-right:8px}
+.pdp-sec{margin:26px 0}
+.pdp-sec-ttl{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:15px;font-weight:800;letter-spacing:.02em;color:var(--acc);border-bottom:2px solid var(--acc);padding-bottom:8px;margin:0 0 14px}
+.pdp-sec-badge{flex:0 0 auto;width:24px;height:24px;border-radius:50%;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700}
+.pdp-sec-tag{font-size:10.5px;font-weight:700;color:#fff;background:var(--acc);border-radius:10px;padding:2px 9px;letter-spacing:.03em;text-transform:uppercase}
+.pdp-sec-1{--acc:#9a7d0a}
+.pdp-sec-2{--acc:#2c7be5}
+.pdp-sec-3{--acc:#1e7e34}
+.pdp-goal{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-left:4px solid var(--acc);padding:16px 20px 12px;margin:12px 0}
+.pdp-goal-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px}
+.pdp-num{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}
+.pdp-goal-ttl{display:flex;flex-direction:column;gap:6px}
+.pdp-goal-ttl h3{margin:0;font-size:16px;line-height:1.35;color:#1c1330}
+.pdp-type{align-self:flex-start;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 9px;border-radius:10px}
+.pdp-type-project{background:#e7f0ff;color:#1f5fbf}
+.pdp-type-running{background:#e6f4ea;color:#1e7e34}
+.pdp-metric{background:#faf7ff;border:1px solid #ece3fb;border-radius:8px;padding:10px 14px;margin-bottom:12px}
+.pdp-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#8a6db5;margin-bottom:5px}
+.pdp-metric-b{font-size:13px;line-height:1.55;color:#2a2140;white-space:pre-line}
+.pdp-cps{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-bottom:10px}
+.pdp-cp{background:#fbfbfd;border:1px solid #e8e8ef;border-radius:8px;padding:10px 12px}
+.pdp-cp-target{background:#f3eefc;border-color:#d9c9ee}
+.pdp-cp-h{font-size:11px;font-weight:700;color:#6a3093;margin-bottom:5px;text-transform:uppercase;letter-spacing:.03em}
+.pdp-cp-b{font-size:12.5px;line-height:1.5;color:#2a2140;white-space:pre-line}
+.pdp-status{margin-top:4px;border-top:1px dashed #e2e2ea;padding-top:8px}
+.pdp-status summary{cursor:pointer;font-size:12px;font-weight:700;color:#6a3093;list-style:none}
+.pdp-status summary::-webkit-details-marker{display:none}
+.pdp-status summary::before{content:"▸ ";color:var(--acc)}
+.pdp-status[open] summary::before{content:"▾ "}
+.pdp-status-b{font-size:12.5px;line-height:1.55;color:#2a2140;white-space:pre-line;margin-top:8px;padding:0 2px}
+.pdp-tbd{background:#fff3d6;color:#8a5a00;border-radius:4px;padding:0 4px;font-weight:600}
+.pdpnav{display:flex;gap:8px;margin-top:12px}
+.pdpnav-tab{font-size:13px;font-weight:600;padding:7px 14px;border-radius:8px;text-decoration:none;color:#fff;background:rgba(255,255,255,.18)}
+.pdpnav-tab:hover{background:rgba(255,255,255,.3)}
+.pdpnav-tab.active{background:#fff;color:#6a3093}
+.pdd-goal{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);border-left:4px solid var(--acc);padding:16px 20px 14px;margin:14px 0}
+.pdd-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:6px}
+.pdd-num{flex:0 0 auto;width:30px;height:30px;border-radius:8px;background:var(--acc);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800}
+.pdd-measure{font-size:12px;color:#2a2140;line-height:1.5;margin:0 0 12px}
+.pdd-tblwrap{overflow-x:auto}
+table.pdd{width:100%;border-collapse:collapse;font-size:13px;min-width:640px}
+.pdd th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:#8a6db5;border-bottom:2px solid #eee;padding:8px 10px;font-weight:700}
+.pdd th.q,.pdd td.q{width:150px;white-space:nowrap}
+.pdd td{padding:9px 10px;border-bottom:1px solid #f1f1f5;vertical-align:top;line-height:1.5}
+.pdd td.q{font-weight:700;color:#2a2140}
+.pdd td.q small{display:block;font-weight:600;color:#6a3093;font-size:10.5px;margin-top:1px}
+.pdd td.cur{color:#1c1330;font-variant-numeric:tabular-nums;width:32%}
+.pdd td.cur b{font-size:15px}
+.pdd td.goal{color:#2a2140}
+.pdd tr.is-now{background:#f7f2fe}
+.pdd tr.is-now td.q{color:#6a3093}
+.pdd tr.is-now td{border-bottom-color:#e6d9fa}
+.pdd-live{display:inline-block;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#1e7e34;background:#e6f4ea;border:1px solid #bfe3c9;border-radius:9px;padding:1px 6px;margin-left:7px;vertical-align:middle}
+.pdd-em{color:#8a6db5}
+.pdp-wrap .foot{color:#4a3570}
+.pdp-wrap .flegend{color:#2a2140}
 `;
 
 const APP_JS = `(function () {
@@ -1323,6 +1805,44 @@ const APP_JS = `(function () {
     var els = scope.querySelectorAll('.range-block, .range-window, .jqlv');
     for (var j = 0; j < els.length; j++) els[j].classList.toggle('is-active', els[j].getAttribute('data-range') === val);
   }
+  // Quarter/year picker: resolve the selection to a "YEAR-Q" key and toggle every
+  // quarterly card's matching .qsnap in the picker's view. Current/Previous Quarter use
+  // the build's stored keys (data-current/data-prev) and ignore the year dropdown; a card
+  // that has no snapshot for the chosen quarter falls back to its .qnodata block.
+  function applyQuarter(picker) {
+    if (!picker) return;
+    var qsel = picker.querySelector('.qsel-q'), ysel = picker.querySelector('.qsel-y');
+    if (!qsel) return;
+    var qv = qsel.value, key;
+    if (qv === 'current') key = picker.getAttribute('data-current');
+    else if (qv === 'previous') key = picker.getAttribute('data-prev');
+    else key = (ysel ? ysel.value : '') + '-' + qv;
+    var view = (picker.closest ? picker.closest('.view') : null) || document;
+    var cards = view.querySelectorAll('.qmetric');
+    for (var i = 0; i < cards.length; i++) {
+      var snaps = cards[i].querySelectorAll('.qsnap'), matched = false;
+      for (var j = 0; j < snaps.length; j++) {
+        if (snaps[j].classList.contains('qnodata')) continue;
+        var on = snaps[j].getAttribute('data-qkey') === key;
+        snaps[j].classList.toggle('is-active', on);
+        if (on) matched = true;
+      }
+      var nod = cards[i].querySelector('.qnodata');
+      if (nod) nod.classList.toggle('is-active', !matched);
+    }
+  }
+  // Current/Previous Quarter disable the year dropdown (the quarter is absolute).
+  function syncPickerYear(picker) {
+    if (!picker) return;
+    var qsel = picker.querySelector('.qsel-q'), ysel = picker.querySelector('.qsel-y');
+    if (qsel && ysel) ysel.disabled = (qsel.value === 'current' || qsel.value === 'previous');
+  }
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t && t.classList && t.classList.contains('qsel-q')) {
+      syncPickerYear(t.closest ? t.closest('.qpicker') : null);
+    }
+  });
   document.addEventListener('click', function (e) {
     var t = e.target;
     while (t && t.getAttribute) {
@@ -1350,6 +1870,10 @@ const APP_JS = `(function () {
         toast('Link copied' + (lbl ? ' · ' + lbl : ''));
         if (history.replaceState) history.replaceState(null, '', frag);
         focusId(aid, rng);
+        return;
+      }
+      if (t.hasAttribute && t.hasAttribute('data-qapply')) {
+        applyQuarter(t.closest ? t.closest('.qpicker') : null);
         return;
       }
       var v = t.getAttribute('data-viewbtn');
@@ -1578,8 +2102,10 @@ function main() {
   // Quarterly KPI + By range sub-views but renders ONLY that section's metrics.
   const metricsPageHtml = (section, navKey, title) => {
     const metrics = section.metricKeys.map((k) => metaByKey[k]).filter(Boolean);
-    const quarterlySections = metrics.filter((m) => data.quarterly && data.quarterly[m.key])
+    const quarterlyMetrics = metrics.filter((m) => data.quarterly && data.quarterly[m.key]);
+    const quarterlySections = quarterlyMetrics
       .map((m, i) => withAnchor(m, quarterlySection(m, data.quarterly[m.key], i === 0), '-q')).join('\n');
+    const quarterlyPickerHtml = quarterlyPicker(quarterlyMetrics.map((m) => data.quarterly[m.key]));
     const rangeSections = metrics.filter((m) => data.metrics[m.key])
       .map((m, i) => {
         const fn = m.split ? splitRangeSection : m.perDay ? perDayRangeSection : rangeSection;
@@ -1596,6 +2122,10 @@ function main() {
     // (its own data shape), shown in the "By range" view only.
     const bugByPriorityHtml = (navKey === 'manual' && data.bugByPriority && data.bugByPriority.ranges)
       ? withAnchor(data.bugByPriority, bugByPrioritySection(data.bugByPriority, defRange)) : '';
+    // "Automation coverage" — an Automation-test-page extra (point-in-time donut, its
+    // own data shape), shown at the bottom of the "Quarterly KPI" view only.
+    const automationCoverageHtml = (navKey === 'automation' && data.automationCoverage)
+      ? withAnchor({ key: 'automationCoverage', label: data.automationCoverage.label }, automationCoverageSection(data.automationCoverage)) : '';
     return `${docHead(title)}
 <div class="hero">
   <h1>CRM QA Team — ${esc(section.label)}</h1>
@@ -1610,7 +2140,9 @@ function main() {
   </div>
 
   <div class="view${defView === 'quarterly' ? ' is-active' : ''}" data-view="quarterly">
+    ${quarterlyPickerHtml}
     ${quarterlySections || '<p class="muted">No quarterly data available.</p>'}
+    ${automationCoverageHtml}
   </div>
 
   <div class="view${defView === 'range' ? ' is-active' : ''}" data-view="range">
@@ -1669,7 +2201,8 @@ function main() {
   const jiraDashBody = [defectScope, stuckScope].filter(Boolean).join('\n') ||
     '<p class="muted">No Jira dashboard data available.</p>';
   const jiraDashboardHtml = `${docHead('CRM QA — Jira Dashboard')}
-<div class="hero">
+<div class="hero hero--plus">
+  <a class="heroplus" href="pdp-dashboard.html" title="Personal Development Plan" aria-label="Open Personal Development Plan">+</a>
   <h1>CRM QA Team — ${esc(jiraDashSec ? jiraDashSec.label : 'QA CRM - Jira - Dashboard')}</h1>
   <div class="sub">${subline}</div>
   ${pageNav('jiraDashboard')}
@@ -1873,6 +2406,41 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
 <script src="app.js"></script>
 </body></html>`;
 
+  // --- Personal Development Plan (pdp.html) — a HIDDEN page (deliberately NOT in
+  // pageNav); reached only via the discreet (+) button pinned to the index.html hero.
+  const pdpHtml = `${docHead('CRM QA — Personal Development Plan')}
+<div class="hero pdp-hero">
+  <a class="herohome" href="index.html">← Back to report</a>
+  <h1>${esc(PDP ? PDP.title : 'Personal Development Plan')}<span class="pdp-h-emp">${esc(PDP ? PDP.employee : '')}</span></h1>
+  <div class="sub">${esc(PDP ? PDP.startsNote : '')} · Manager: ${esc(PDP ? PDP.manager : '')} · ${esc(PDP ? PDP.position : '')}</div>
+  ${pdpNav('guideline')}
+</div>
+<div class="wrap wide pdp-wrap">
+  ${pdpBodyHtml(PDP)}
+  <div class="foot">Personal Development Plan · read at quarterly checkpoints (Oct 2026 · Jan 2027 · Apr 2027 · Jul 2027) · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
+  // --- PDP Dashboard (pdp-dashboard.html) — the second hidden PDP view: per goal,
+  // a Quarter | Current | Goal table across the 4 checkpoints. "Current" cells tagged
+  // "live" come from data.metrics (Jira/Odoo); the rest are manual. Sibling of pdp.html.
+  const pdpGenAt = esc(data.generatedAt.replace('T', ' ').slice(0, 16));
+  const pdpDashHtml = `${docHead('CRM QA — PDP Dashboard')}
+<div class="hero pdp-hero">
+  <a class="herohome" href="index.html">← Back to report</a>
+  <h1>PDP Dashboard<span class="pdp-h-emp">Current vs Goal · by quarter</span></h1>
+  <div class="sub">Live tracking of the ${esc(PDP ? PDP.employee : '')} PDP · Current = Jira/Odoo where measurable, else filled in at each review</div>
+  ${pdpNav('dashboard')}
+</div>
+<div class="wrap wide pdp-wrap">
+  <div class="pdp-howto"><span class="pdp-howto-t">How to read</span>Each goal's 4 checkpoints are the rows. <b>Current</b> = actual so far — cells tagged <span class="pdd-live">live</span> come straight from Jira/Odoo, the rest are updated at each quarterly review; <b>Goal</b> = the plan's target for that checkpoint. The current quarter's row is highlighted. Live figures as of ${pdpGenAt} UTC.</div>
+  ${pdpDashBodyHtml(PDP_DASH, data)}
+  <div class="foot">Current vs Goal by quarter · live cells from Jira/Odoo (${pdpGenAt} UTC), targets from the PDP guideline · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
   fs.mkdirSync(cfg.OUT_DIR, { recursive: true });
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'styles.css'), CSS);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'app.js'), APP_JS);
@@ -1883,7 +2451,9 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'worklog.html'), worklogHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'claude.html'), claudeHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'ranking.html'), rankingHtml);
-  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html + claude.html + ranking.html (+ styles.css, app.js)`);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'pdp.html'), pdpHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'pdp-dashboard.html'), pdpDashHtml);
+  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html + claude.html + ranking.html + pdp.html + pdp-dashboard.html (hidden) (+ styles.css, app.js)`);
 }
 
 main();
