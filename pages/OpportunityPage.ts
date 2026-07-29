@@ -58,6 +58,12 @@ export class OpportunityPage extends BasePage {
   private readonly createManualCheckboxCss = () => this.page.locator("div[name='is_create_manual'] input[type='checkbox']").first();
   private readonly dealElementButton = () => this.page.getByRole('button', { name: 'DEAL ELEMENT' }).or(this.page.getByRole('button', { name: 'Deal Element' })).first();
   private readonly newQuotationButton = () => this.page.getByRole('button', { name: /NEW QUOTATION/i }).or(this.page.getByRole('button', { name: /New Quotation/i })).first();
+  // "REQUEST SE SUPPORT" button on the Opp form (opens the "New Ticket" window). XPath primary, role fallback.
+  private readonly requestSESupportButtonXPath = () => this.page.locator("xpath=//button[contains(normalize-space(.),'REQUEST SE SUPPORT') or contains(normalize-space(.),'Request SE Support')]").first();
+  private readonly requestSESupportButtonRole = () => this.page.getByRole('button', { name: /REQUEST SE SUPPORT/i }).first();
+  // Edit-mode input for the header "Expected Revenue" amount (name=planned_revenue_custom, the "$X at Y% = $Z"). XPath primary, CSS fallback.
+  private readonly expectedRevenueDealInputXPath = () => this.page.locator("xpath=//input[@name='planned_revenue_custom'] | //*[@name='planned_revenue_custom']//input").first();
+  private readonly expectedRevenueDealInputCss = () => this.page.locator("input[name='planned_revenue_custom'], [name='planned_revenue_custom'] input").first();
   private readonly resellerInputOpp = () => this.page.locator('xpath=//div[@name="reseller_id"]//input').first();
   private readonly distributorInputOpp = () => this.page.locator('xpath=//div[@name="distributor_id"]//input').first();
   
@@ -142,6 +148,13 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   // Confirm delete OK button
   private readonly confirmDeleteButton = () =>
     this.page.locator("xpath=//button[normalize-space()='Ok' or normalize-space()='OK']").first();
+  // Odoo's jQuery blockUI full-page overlay shown during an RPC (e.g. a mass delete + list reload). It
+  // intercepts pointer events, so any real click while it is up hangs and retries until the timeout.
+  private readonly blockOverlay = () =>
+    this.page.locator('div.blockOverlay, div.blockUI');
+  // Search-view facet chips (the applied filters shown in the search bar, e.g. "Reseller is equal to X").
+  private readonly searchFacets = () =>
+    this.page.locator('.o_searchview_facet, .o_facet_values');
   private readonly crmMenuLink_CRM_Module = () => this.page.locator('xpath=//a[@class="o_menu_brand" and text()="CRM"]').first();
   private readonly crmConfigurationMenu = () =>
     this.page.locator('xpath=//a[@class="dropdown-toggle o-no-caret o_menu_header_lvl_1" and @data-menu-xmlid="crm.crm_menu_config"]').first();
@@ -642,6 +655,75 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
     await button.scrollIntoViewIfNeeded();
     await button.click({ force: true });
+  }
+
+  /**
+   * Click the "REQUEST SE SUPPORT" button on the Opportunity form to open the "New Ticket" window.
+   * XPath primary, role fallback.
+   */
+  async clickRequestSESupport(): Promise<void> {
+    await this.dismissErrorDialog();
+    let button = this.requestSESupportButtonXPath();
+    if (!(await button.isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false))) {
+      button = this.requestSESupportButtonRole();
+    }
+    await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await button.scrollIntoViewIfNeeded();
+    await button.click({ force: true });
+  }
+
+  /**
+   * Fill the header "Expected Revenue" (Deal) amount while the Opp form is in EDIT mode.
+   * Field name = planned_revenue_custom (the "$X.XX at Y% = $Z" header amount). XPath primary, CSS fallback.
+   * Presses Tab afterwards to commit the value and trigger the weighted-revenue recompute.
+   * @param amount - the value to enter, e.g. '50'
+   */
+  async fillExpectedRevenueDeal(amount: string): Promise<void> {
+    await this.dismissErrorDialog();
+    let input = this.expectedRevenueDealInputXPath();
+    if (!(await input.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+      input = this.expectedRevenueDealInputCss();
+    }
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.scrollIntoViewIfNeeded();
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(amount);
+    await this.wait(CommonUtils.waitTimes.short);
+    // Commit + recompute the weighted revenue.
+    await this.page.keyboard.press('Tab');
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Expected Revenue (Deal) set to: ${amount}`);
+  }
+
+  /**
+   * Read the presence + disabled state of the "REQUEST SE SUPPORT" button on the Opp form.
+   * A greyed/non-clickable button is reported as { present: true, disabled: true }.
+   * XPath primary, role fallback.
+   */
+  async getRequestSESupportState(): Promise<{ present: boolean; disabled: boolean }> {
+    await this.dismissErrorDialog();
+    let button = this.requestSESupportButtonXPath();
+    let present = await button.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    if (!present) {
+      button = this.requestSESupportButtonRole();
+      present = await button.isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
+    }
+    if (!present) {
+      return { present: false, disabled: false };
+    }
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    const disabled = await button.evaluate((el) => {
+      const b = el as HTMLButtonElement;
+      const cls = (b.className || '').toString().toLowerCase();
+      return b.disabled === true
+        || b.hasAttribute('disabled')
+        || b.getAttribute('aria-disabled') === 'true'
+        || cls.includes('disabled')
+        || window.getComputedStyle(b).pointerEvents === 'none';
+    }).catch(() => false);
+    return { present, disabled };
   }
 
   /**
@@ -1936,6 +2018,159 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Wait until Odoo's jQuery blockUI overlay is gone. This overlay is raised during an RPC (notably a
+   * mass delete + the list reload that follows) and intercepts pointer events, so a real click issued
+   * while it is up hangs and retries until the test timeout. Call this before clicking on the list
+   * after any server round-trip. Resolves immediately when no overlay is present.
+   */
+  async waitForBlockOverlayGone(timeout: number = CommonUtils.waitTimes.savingPage): Promise<void> {
+    await this.blockOverlay().first().waitFor({ state: 'hidden', timeout }).catch(() => {});
+  }
+
+  /**
+   * Whether a search-view facet chip whose text contains `text` is currently applied. Used as a SAFETY
+   * guard before a mass delete: only delete when the expected filter (e.g. the Reseller facet) is
+   * actually present, so a delete can never run against an unfiltered list (which would remove records
+   * that do not belong to the test's reseller).
+   * @param text - substring the facet chip must contain (e.g. the Reseller partner name)
+   */
+  async isSearchFacetPresent(text: string): Promise<boolean> {
+    const facets = this.searchFacets();
+    const count = await facets.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      const facetText = await facets.nth(i).textContent().catch(() => '');
+      if (facetText && facetText.includes(text)) return true;
+    }
+    return false;
+  }
+
+  // Checkbox of the Nth (0-based) data row in the list, used to delete in small batches.
+  private readonly dataRowCheckboxByIndex = (index: number) =>
+    this.dataRowsLocator().nth(index).locator("xpath=.//td[contains(@class,'o_list_record_selector')]//input[@type='checkbox']").first();
+
+  /**
+   * Select the first `n` data rows in the list by ticking their row checkboxes. Odoo's Bootstrap
+   * custom-control checkbox is visually hidden and the row re-renders on click, so we set `checked`
+   * and dispatch the click/change events the ListRenderer listens for (the same proven technique as
+   * dispatchSelectRow). Returns true once the selection-dependent Action toggle appears (selection
+   * registered), false otherwise (list still settling / already empty).
+   * @param n - number of leading rows to select
+   */
+  private async selectFirstNDataRows(n: number): Promise<boolean> {
+    for (let i = 0; i < n; i++) {
+      const checkbox = this.dataRowCheckboxByIndex(i);
+      const attached = await checkbox.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+      if (!attached) break;
+      await checkbox.evaluate((el: HTMLInputElement) => {
+        el.checked = true;
+        el.dispatchEvent(new Event('click', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }).catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.medium);
+    return await this.listSelectionActionToggle().isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+  }
+
+  /**
+   * Data-prep: hard-delete EVERY record in the currently-filtered list view, in SMALL BATCHES, until
+   * the list is empty. Instead of the header "select all" (which ticks the whole visible page of 80
+   * and, after the first delete, often fails to re-register on the slowly-reloading pre-prod list -
+   * leaving the Action menu absent and timing out the cleanup), this selects only the first
+   * `batchSize` rows per round (default 20-40). Smaller batches delete quickly and the list settles
+   * fast, so the next selection reliably registers.
+   *
+   * Each round: settle -> select first `batchSize` rows -> CONFIRM selection registered (Action
+   * toggle visible) -> Action > Delete > OK. If a selection does not register (list still settling),
+   * the round is retried rather than aborting. Best-effort and time-bounded by `maxDeletes` (cap on
+   * successful delete operations) and an attempt budget; returns the number of delete operations done.
+   * If the page becomes wedged (a stuck blockUI overlay that a reload would clear), the method returns
+   * early after `maxConsecutiveFailures` failed rounds so the caller can reload + re-apply the filter
+   * and call again - see the outer recovery loop in the TC.-A.1.1 beforeEach.
+   * @param batchSize - how many rows to remove per delete operation (smaller = more reliable on pre-prod)
+   * @param maxDeletes - cap on successful delete operations (runaway backstop)
+   * @param maxConsecutiveFailures - return early after this many back-to-back failed rounds (wedge signal)
+   * @param requiredFacetText - SAFETY: if set, each delete round only proceeds while a search facet
+   *   containing this text is applied; if the facet is missing (e.g. a filter failed to re-apply after a
+   *   reload) the method returns immediately WITHOUT deleting, so a delete can never hit an unfiltered list.
+   * @returns the number of delete operations actually performed
+   */
+  async deleteFilteredRecordsInBatches(batchSize: number = 20, maxDeletes: number = 40, maxConsecutiveFailures: number = 2, requiredFacetText: string | null = null): Promise<number> {
+    let deletes = 0;
+    let consecutiveFailures = 0;
+    const maxAttempts = maxDeletes * 3; // allow retries for rounds blocked by a transient error/overlay
+    for (let attempt = 1; attempt <= maxAttempts && deletes < maxDeletes; attempt++) {
+      // Let the previous delete's list re-render finish, then clear the two things that intercept the
+      // clicks below: the "Odoo Client Error" popup (frequently raised by the list re-render after a
+      // mass delete of leads) and the blockUI RPC overlay. Both are modal/full-page and would make a
+      // real click hang and retry until the test timeout.
+      await this.wait(CommonUtils.waitTimes.long);
+      await this.dismissErrorDialog(CommonUtils.waitTimes.standard).catch(() => {});
+      await this.waitForBlockOverlayGone();
+      // SAFETY: never delete unless the required filter facet is applied - protects against deleting
+      // records outside the reseller's scope if a filter failed to (re-)apply.
+      if (requiredFacetText && !(await this.isSearchFacetPresent(requiredFacetText))) {
+        console.log(`  ⛔ Required filter facet "${requiredFacetText}" is NOT applied - refusing to delete (returning ${deletes} so the caller can re-filter)`);
+        return deletes;
+      }
+      const rowCount = await this.dataRowsLocator().count().catch(() => 0);
+      if (rowCount === 0) {
+        // Double-check it is really empty and not just mid-reload before declaring done.
+        await this.wait(CommonUtils.waitTimes.long);
+        const recount = await this.dataRowsLocator().count().catch(() => 0);
+        if (recount === 0) {
+          console.log(deletes === 0
+            ? '  ℹ️ Filtered list is already empty - nothing to delete'
+            : `  ✓ Filtered list emptied after ${deletes} delete operation(s)`);
+          return deletes;
+        }
+        continue;
+      }
+      const n = Math.min(batchSize, rowCount);
+      const registered = await this.selectFirstNDataRows(n);
+      if (!registered) {
+        // A blocking error popup can stop the selection from registering - clear it and retry.
+        await this.dismissErrorDialog(CommonUtils.waitTimes.standard).catch(() => {});
+        consecutiveFailures++;
+        console.log(`  ⚠ Attempt ${attempt}: selection of first ${n} row(s) did not register - retrying`);
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          console.log(`  ↩ Page appears wedged after ${consecutiveFailures} failed rounds - returning so the caller can reload + re-filter`);
+          return deletes;
+        }
+        continue;
+      }
+      // Final guard right before the real clicks: no error popup / overlay intercepting.
+      await this.dismissErrorDialog(CommonUtils.waitTimes.standard).catch(() => {});
+      await this.waitForBlockOverlayGone();
+      try {
+        await this.clickListActionMenu();
+        await this.clickListActionDelete();
+        await this.confirmDeleteDialog();
+      } catch (e) {
+        // A pre-prod "Odoo Client Error" popup / blockUI overlay can intercept a click. With the
+        // cleanup page's bounded default timeout this fails fast (rather than hanging to the test
+        // timeout); clear the popup and retry the round.
+        await this.dismissErrorDialogWithRetry(3, CommonUtils.waitTimes.standard).catch(() => {});
+        consecutiveFailures++;
+        console.log(`  ⚠ Attempt ${attempt}: delete click failed (${e instanceof Error ? e.message.split('\n')[0] : String(e)}) - clearing error and retrying`);
+        if (consecutiveFailures >= maxConsecutiveFailures) {
+          console.log(`  ↩ Page appears wedged after ${consecutiveFailures} failed rounds - returning so the caller can reload + re-filter`);
+          return deletes;
+        }
+        continue;
+      }
+      deletes++;
+      consecutiveFailures = 0;
+      console.log(`  ✓ Delete ${deletes}: removed ${n} record(s) (batchSize=${batchSize})`);
+      // The mass delete + list re-render frequently raises a (sometimes delayed) "Odoo Client Error"
+      // popup; clear it now (with a couple of retries for the delayed case) so it cannot block the
+      // next round.
+      await this.dismissErrorDialogWithRetry(2, CommonUtils.waitTimes.standard).catch(() => {});
+    }
+    console.log(`  ⚠ Stopped after ${deletes} delete operation(s) (hit maxDeletes/attempt budget) - some records may remain (best-effort)`);
+    return deletes;
+  }
+
+  /**
    * Fast teardown helper: delete several Opportunities by (unique) name in ONE list operation
    * (select the matching rows -> Action > Delete > Ok), instead of deleting them one-by-one in
    * separate tabs. Tolerant: silently skips names with no matching row (already deleted/lost).
@@ -2904,6 +3139,30 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       }
     }
     return value;
+  }
+
+  // ─── SE support: linked-tickets smart button (card 6 - CRM updated on the deal) ────────────────
+
+  /** The "Tickets" smart button on the Opportunity (open_customer_tickets) -> label like "1 Tickets". */
+  private readonly linkedTicketsButton = () =>
+    this.page.locator("xpath=//button[@name='open_customer_tickets'] | //button[contains(@class,'oe_stat_button')][.//*[contains(normalize-space(),'Tickets')]]").first();
+
+  /**
+   * Read the count on the Opportunity's "Tickets" smart button (open_customer_tickets). Returns the
+   * integer parsed from its label (e.g. "1 Tickets" -> 1), or 0 if the button/label is absent.
+   * This is the CRM's automatic link between the deal and the SE support ticket(s).
+   */
+  async getLinkedTicketsCount(): Promise<number> {
+    const btn = this.linkedTicketsButton();
+    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+      console.log('  - "Tickets" smart button not visible on the Opportunity');
+      return 0;
+    }
+    const txt = ((await btn.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    const m = txt.match(/(\d+)/);
+    const count = m ? parseInt(m[1], 10) : 0;
+    console.log(`  - Opportunity "Tickets" smart button: "${txt}" -> ${count}`);
+    return count;
   }
 }
 

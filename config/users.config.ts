@@ -54,6 +54,11 @@ export const users = {
     password: 'YMUaT@0123456789012',
     displayName: 'Yulia Malihonova',
   },
+  pre_sales_engineer: {
+    username: 'nick.luchkov@nakivo.com',
+    password: 'NLUaT@0123456789012',
+    displayName: 'Nick Luchkov',
+  },
   sale_ic_thomas: {
     username: 'thomas.semerich@nakivo.com',
     password: 'TSUaT@123456789012',
