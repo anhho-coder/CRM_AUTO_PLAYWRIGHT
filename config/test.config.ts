@@ -13,6 +13,7 @@ export const config = {
     action: 5000,
     '5-minutes': 500000, // 5 minutes - overall test timeout (especially for tests with contact creation)
     test: 900000, // 10 minutes - overall test timeout (especially for tests with contact creation)
+    seMeetingTest: 1800000, // 30 minutes - long multi-actor SE-meeting flow (pre-sale-7.2.3.1): create Opp as Thomas + Nick schedules a G2M meeting via the calendar + re-open ticket + poll the "L1 notes" write-back; needs headroom above the 15-min default for the slow first Helpdesk navigation (~4 min) plus the meeting re-open polls.
     urlWait: 60000, // 60 seconds - waiting for URL changes
     loadingSpinner: 30000, // 30 seconds - waiting for loading spinner to disappear
     salesTeamAssignment: {

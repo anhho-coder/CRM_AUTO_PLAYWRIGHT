@@ -20,3 +20,6 @@ export { ResellerPortalPage } from './ResellerPortalPage';
 export { PaymentPage } from './PaymentPage';
 export { CurrencyPage } from './CurrencyPage';
 export { SubscriptionPage } from './SubscriptionPage';
+export { SESupportPage } from './SESupportPage';
+export { HelpdeskPage } from './HelpdeskPage';
+export { SEMeetingPage } from './SEMeetingPage';

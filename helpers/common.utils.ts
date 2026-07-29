@@ -407,6 +407,8 @@ export class CommonUtils {
     checkingChatterLog: 30000,
     /** Saving Deal Element long wait - 4 minutes (for complex operations) */
     savingDealElement: 240000,
+    /** SE Support teardown budget - 6 minutes (single admin session: re-login + delete ticket + Opp) */
+    seSupportTeardown: 360000,
     /** Timeout for running Test Script - 10 minutes (for complex operations) */
     runningTestScript: 600000,
   };
