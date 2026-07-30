@@ -1,6 +1,7 @@
 import { Page } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordAssignmentForDeferredVerify, recordAssignmentNonEmptyForDeferredVerify } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Page Object
@@ -2068,6 +2069,17 @@ export class LeadPage extends BasePage {
   }
 
   /**
+   * Wait until the readonly Sales Team / Salesperson rows are rendered on the form, so a
+   * follow-up getSalesTeamValue/getSalespersonValue reads a POPULATED cell rather than an
+   * empty one on a still-loading form. Used by the deferred re-verify round after page.goto.
+   * Best-effort (swallows) - the caller still asserts on the value it reads.
+   */
+  async waitForAssignmentFieldsRendered(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<void> {
+    await this.salesTeam_saved_row().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.salesperson_saved_row().waitFor({ state: 'visible', timeout }).catch(() => {});
+  }
+
+  /**
    * Generate a unique lead name with timestamp
    */
   generateLeadName(): string {
@@ -2270,7 +2282,13 @@ export class LeadPage extends BasePage {
       console.log(`  ⚠ Warning: Salesperson not assigned after ${totalWaitTime} seconds (${attemptCount} attempts)`);
       console.log(`  - Salesperson Value: "${salespersonValue}"`);
     }
-    
+
+    // Deferred re-verify: record this lead for the ~1h-later verification round (no-op unless
+    // env DEFERRED_MANIFEST is set). Uses the NONEMPTY sentinel since the expected team is not
+    // known here; a later verifySalesTeamAssignment(team) call supersedes it. This covers the
+    // many assignment specs that poll here then assert inline without calling verify.
+    recordAssignmentNonEmptyForDeferredVerify(this.page, salesTeamValue, salespersonValue);
+
     return {
       salesTeamValue,
       salespersonValue,
@@ -2309,7 +2327,12 @@ export class LeadPage extends BasePage {
     console.log(`  Match:    ${salespersonValue && salespersonValue !== '' && salespersonValue !== 'Salesperson' ? '✓ PASSED' : '✗ FAILED'}`);
     
     console.log('\n==================================================');
-    
+
+    // Deferred re-verify: append this lead's checkpoints to the JSONL manifest
+    // (no-op unless env DEFERRED_MANIFEST is set). A Jenkins job re-opens the URL
+    // ~1h later to give the authoritative verdict for the async assignment CRON.
+    recordAssignmentForDeferredVerify(this.page, expectedSalesTeam, salesTeamValue, salespersonValue);
+
     return {
       salesTeamValue,
       salespersonValue

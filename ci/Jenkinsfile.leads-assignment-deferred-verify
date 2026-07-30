@@ -1,0 +1,258 @@
+// Lead-Assignment DEFERRED RE-VERIFY (round 2, authoritative).
+//
+//   Job name: CRM_Leads_Assignment_DeferredVerify   Pipeline -> Script Path: ci/Jenkinsfile.leads-assignment-deferred-verify
+//
+// WHY: the Sales-Team / Salesperson auto-assignment runs on an async Odoo cron. When it has
+// not fired by the time a lead-assignment spec asserts, the field is empty (Allure shows
+// "Received: ''") and the round-1 test fails - even though the lead is usually assigned
+// correctly >30 min later. Extending every test's timeout to 30-90 min is wasteful; instead
+// round-1 keeps its fast assertions but ALSO appends {leadUrl, field, expected} to a JSONL
+// manifest (helpers/deferred-verify.helper.ts, fired from LeadPage.verifySalesTeamAssignment /
+// waitForSalesTeamAssignment). Each round-1 build stashes its manifest to a DATED bucket
+// C:\deferred-verify\<yyyy-MM-dd>\<JOB>-<BUILD>.jsonl (main Jenkinsfile + ci/Jenkinsfile.slow post{}).
+//
+// WHAT THIS JOB DOES: ~1h after the round-1 runs finish (scheduled by CRON at a fixed hour, see
+// triggers below - decoupled, so no executor is held waiting), it UNIONS every manifest of the
+// chosen DAY into one cluster and runs a single spec that logs in once and re-opens each saved
+// lead URL to check whether the async cron has by now assigned the expected value. THIS is the
+// source of truth for lead assignment: a record still wrong here (1h later) is a real defect; a
+// round-1 "Received: ''" that is correct here was merely the cron running late.
+//
+// Same agent guards as the section jobs: probe-node pre-prod route gate, long-path-safe
+// checkout, Chrome + ffmpeg checks.
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'DAY',
+            defaultValue: 'today',
+            description: 'Which dated manifest bucket to re-verify: "today" (default) reads C:\\deferred-verify\\<today>\\, "yesterday", or an exact date e.g. 2026-07-30. All *.jsonl in that folder (every round-1 job/build of the day) are unioned into one last round.'
+        )
+        choice(
+            name: 'ROUTE_GATE',
+            choices: ['auto', 'failfast', 'retry', 'off'],
+            description: 'Pre-prod VPN route pre-flight on the "probe" node (same as the section jobs). auto = retry when unattended (timer) else fail-fast.'
+        )
+        string(
+            name: 'ROUTE_GATE_MIN',
+            defaultValue: '15',
+            description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry).'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '180',
+            description: 'Build timeout in minutes. The single spec re-opens each URL (~1 min each); 180 covers a large day-cluster. Raise if a day has hundreds of records.'
+        )
+    }
+
+    // CRON lech gio: fire ~1h AFTER the round-1 lead-assignment runs are expected to finish.
+    // Adjust the hour to your schedule (section jobs' nightly finish + 1h). H = jitter the minute.
+    // Example: round-1 nightly done by ~05:00 -> re-verify at 06:30.
+    triggers {
+        cron('H 6 * * *')
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+        // Turn the round-2 spec ON (it self-skips unless this is set) and point it at the
+        // gathered manifest that the "Gather" stage writes.
+        DEFERRED_VERIFY_RUN = '1'
+        DEFERRED_MANIFEST = 'deferred-verify/gathered.jsonl'
+    }
+
+    options {
+        timeout(time: 240, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Pre-prod route gate') {
+            agent { label 'probe' }
+            steps {
+                script {
+                    def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    if (mode == 'auto') {
+                        def unattended = false
+                        try {
+                            unattended = currentBuild.getBuildCauses().any {
+                                def c = (it._class ?: '')
+                                c.contains('TimerTrigger') || c.contains('SCMTrigger') || c.contains('UpstreamCause')
+                            }
+                        } catch (ignored) { unattended = false }
+                        mode = unattended ? 'retry' : 'failfast'
+                    }
+                    if (mode == 'off') {
+                        echo 'ROUTE_GATE=off -> skipping the pre-prod route pre-flight.'
+                    } else {
+                        def budget = 0
+                        if (mode == 'retry') {
+                            def m = (params.ROUTE_GATE_MIN ?: '15').trim()
+                            budget = m.isInteger() ? m.toInteger() : 15
+                        }
+                        echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
+                        def routeUp = {
+                            return bat(returnStatus: true,
+                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                        }
+                        def waited = 0
+                        def up = routeUp()
+                        while (!up && waited < budget) {
+                            echo "  route DOWN (waited ${waited}/${budget} min) - re-probing in 60s..."
+                            sleep(time: 60, unit: 'SECONDS')
+                            waited++
+                            up = routeUp()
+                        }
+                        if (!up) {
+                            error("ABORTED: pre-prod VPN route down (mode=${mode}, waited ${waited} min). Re-run when the route is back.")
+                        }
+                        echo "Pre-prod route UP" + (waited > 0 ? " after ${waited} min" : "") + " -> proceeding."
+                    }
+                }
+            }
+        }
+
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Gather day manifests -> one cluster') {
+            steps {
+                // Resolve DAY -> a date folder, then UNION every *.jsonl in C:\deferred-verify\<DAY>\
+                // (all round-1 jobs/builds of the day) into workspace deferred-verify/gathered.jsonl.
+                // If the folder is missing/empty, write an empty file - the round-2 spec self-skips.
+                bat 'if exist deferred-verify rmdir /s /q deferred-verify'
+                bat 'mkdir deferred-verify'
+                withEnv(["DAY_PARAM=${params.DAY?.trim() ?: 'today'}"]) {
+                    powershell '''
+                      $ErrorActionPreference = 'Stop'
+                      $p = $env:DAY_PARAM
+                      switch ($p.ToLower()) {
+                        'today'     { $day = (Get-Date).ToString('yyyy-MM-dd') }
+                        'yesterday' { $day = (Get-Date).AddDays(-1).ToString('yyyy-MM-dd') }
+                        default     { $day = $p }
+                      }
+                      $src = "C:\\deferred-verify\\$day"
+                      $out = 'deferred-verify/gathered.jsonl'
+                      Write-Host "Gathering deferred-verify manifests for day = $day from $src"
+                      if (Test-Path -LiteralPath $src) {
+                        $files = Get-ChildItem -LiteralPath $src -Filter *.jsonl -File
+                        if ($files) {
+                          Get-Content -LiteralPath $files.FullName | Set-Content -LiteralPath $out -Encoding utf8
+                          $n = (Get-Content -LiteralPath $out | Where-Object { $_.Trim() -ne '' } | Measure-Object).Count
+                          Write-Host "Gathered $($files.Count) manifest file(s), $n record line(s) -> $out"
+                          $files | ForEach-Object { Write-Host "  + $($_.Name)" }
+                        } else {
+                          Write-Host "No *.jsonl in $src - writing empty manifest (round-2 will skip)."
+                          New-Item -ItemType File -Path $out -Force | Out-Null
+                        }
+                      } else {
+                        Write-Host "Folder $src does not exist - writing empty manifest (round-2 will skip)."
+                        New-Item -ItemType File -Path $out -Force | Out-Null
+                      }
+                    '''
+                }
+            }
+        }
+
+        stage('Re-verify (round 2)') {
+            steps {
+                script {
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    def runTimeout = (params.TIMEOUT_MIN ?: '180').toInteger()
+                    timeout(time: runTimeout, unit: 'MINUTES') {
+                        // DEFERRED_VERIFY_RUN + DEFERRED_MANIFEST are set in environment{}.
+                        bat 'npx playwright test "tests/1.Project_CRM/2.Leads_Assignment/_deferred-verify/deferred-verify-lead-assignment.spec.ts" --project=chrome-headless'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/gathered.jsonl', allowEmptyArchive: true
+        }
+        success { echo 'Deferred re-verify complete - every recorded lead was correctly assigned by now (the async cron caught up).' }
+        failure { echo 'Deferred re-verify: some leads were STILL wrong ~1h after creation - these are real assignment defects, not cron lag. See the attached "Deferred re-verify summary" + Playwright Report.' }
+    }
+}
