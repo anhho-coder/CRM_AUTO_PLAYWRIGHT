@@ -71,7 +71,7 @@ test.describe('Discount-A.1.2.2.1 - Bronze partner discount is shown on the Quot
     const quotationPage = new QuotationPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.2.1 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.2.1 - ${compactDateTime}`;
 
     // Steps 1-9: create the deal-registration Opportunity as Thomas (Assigned Partner = Bronze reseller).
     createdOppUrl = await createDealRegistrationOpportunityAsThomas(page, {
