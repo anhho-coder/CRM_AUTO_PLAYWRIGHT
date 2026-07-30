@@ -84,7 +84,7 @@ test.describe('Discount-A.1.2.1.4 - Bronze partner discount on a high-quantity l
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.1.4 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.1.4 - ${compactDateTime}`;
 
     let lineQty = 0;
     let subtotal1 = 0;
