@@ -101,11 +101,11 @@ export async function createValidatedInvoiceAsThomas(
     validated: false,
   };
 
-  await test.step(`${p} - Step 10: Refresh page to see the "Contact" field equals Contact_name #1`, async () => {
-    console.log(`${p} - Step 10: Verifying the Contact field equals Contact_name #1 ("${input.contactName}")`);
-    const { contactFieldFound, contactValue } = await opportunityPage.waitForContactFieldEquals(input.contactName);
-    console.log(`  - Contact field value: "${contactValue}"`);
-    expect(contactFieldFound, `The "Contact" field should equal Contact_name #1 ("${input.contactName}")`).toBeTruthy();
+  await test.step(`${p} - Step 10: Refresh until Company and Contact are populated in Opp #1`, async () => {
+    console.log(`${p} - Step 10: Waiting until BOTH Company and Contact are populated on Opp #1`);
+    const { populated, companyValue, contactValue } = await opportunityPage.waitForCompanyAndContactPopulated();
+    console.log(`  - Company: "${companyValue}" | Contact: "${contactValue}"`);
+    expect(populated, 'Both the "Company" and "Contact" fields should be populated on Opp #1').toBeTruthy();
   });
 
   await test.step(`${p} - Step 11: Create "DEAL ELEMENT" - press "DEAL ELEMENT" button`, async () => {

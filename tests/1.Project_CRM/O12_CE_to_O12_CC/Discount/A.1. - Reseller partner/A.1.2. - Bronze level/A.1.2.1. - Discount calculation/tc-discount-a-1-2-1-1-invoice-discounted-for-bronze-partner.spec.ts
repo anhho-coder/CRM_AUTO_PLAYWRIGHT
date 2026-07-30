@@ -54,7 +54,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    2. Click "CRM" > "view list"
  *    3. On Opp page, click "CREATE"
  *    4. Enter the Opportunity details:
- *         - Opp name      = TEST Discount-A.1.2.1.1 <current date time>
+ *         - Opp name      = TEST Discount - Discount-A.1.2.1.1 - <current date time>
  *         - Contact name  = <Name from Internal Note #1>
  *         - CompanyName   = Company Name Lead 1
  *         - Email         = <Email from Internal Note #1>
@@ -68,7 +68,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    6. "Assigned Partner" tab: Assigned Partner = TEST-Reseller#Automation-Jun10
  *    7. "Internal Notes" tab: paste Internal Note #1 (edited in Pre-condition #2)
  *    8. Press "SAVE"
- *    9. Refresh until Company and Contact are populated in Opp #1 (within ~10s)
+ *    9. Refresh until Company and Contact are populated in Opp #1 (standard Opp contact-populate wait - refresh/poll the Opp form, no fixed time cap)
  *   10. Click "Deal Element" button to create a new deal element
  *   11. Set Pricelist = Public Pricelist_USD (USD)
  *   12. Set Payment terms = Immediate Payment
@@ -144,7 +144,7 @@ test.describe('Discount-A.1.2.1.1 - Invoice is discounted for a bronze partner',
 
     // Pre-condition #2 data: the deal-registration Internal Note (fresh, unique values each run).
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.1.1 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.1.1 - ${compactDateTime}`;
 
     let partnerLevel = '';
     let discountPercent = NaN; // DiscountPercent#1 (e.g. 15.0)
