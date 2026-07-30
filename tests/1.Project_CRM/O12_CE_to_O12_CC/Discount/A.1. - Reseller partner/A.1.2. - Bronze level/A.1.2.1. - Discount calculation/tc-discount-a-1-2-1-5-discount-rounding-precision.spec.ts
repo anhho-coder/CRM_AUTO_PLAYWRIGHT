@@ -81,7 +81,7 @@ test.describe('Discount-A.1.2.1.5 - Bronze partner-discount rounding / precision
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.1.5 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.1.5 - ${compactDateTime}`;
 
     let subtotal1 = 0;
 
