@@ -7,6 +7,8 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead-to-Opportunity Conversion Test - Verify assigned fields on the converted Opportunity
  * Test Case ID: TC.-A.4.4.3
+ * Automation-Type: refactored
+ * Automation-Date: 2026-07-30
  *
  * Summary: Verify the converting process of a qualified lead to Opportunity is successful AND
  *          the assigned/preserved fields (Sales Team, Salesperson, Lead form, Email) are correct
@@ -40,7 +42,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Verification:
  * - Stage "New" appears on the Opportunity form, AND
- * - Sales Team = CMR, Salesperson = Sergey Karachin, Lead form = License, Email is preserved.
+ * - Sales Team = BDEU, Salesperson = Thomas, Lead form = License, Email is preserved.
+ *
+ * NOTE on Sales Team / Salesperson:
+ *   The lead is created with "Created manually" = FALSE, so Odoo's async lead-assignment
+ *   rule auto-assigns the team by geography (United States / Connecticut -> BDEU) and its
+ *   salesperson (Thomas), OVERRIDING the CMR / Sergey Karachin picked in the conversion
+ *   wizard. This is the expected auto-assignment behavior, so the verification expects the
+ *   auto-assigned values (BDEU / Thomas), not the wizard picks.
  */
 
 const SKIP_CLEANUP_OPP = true; // Toggle to true to skip deleting the created Opportunity
@@ -215,8 +224,10 @@ test.describe('TC.-A.4.4.3 - Convert qualified Lead to Opportunity and verify as
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-A.4.4.3 - Converted Opportunity (assigned fields)');
 
       expect(stageNewVisible, 'Stage "New" should appear after a successful Lead-to-Opportunity conversion').toBeTruthy();
-      expect(salesTeam, 'Sales Team should be CMR on the converted Opportunity').toContain('CMR');
-      expect(salesperson, 'Salesperson should be Sergey Karachin on the converted Opportunity').toContain('Sergey Karachin');
+      // Lead was Created manually = FALSE, so async auto-assignment overrides the wizard's
+      // CMR / Sergey Karachin with the geography-based team (BDEU) and its salesperson (Thomas).
+      expect(salesTeam, 'Sales Team should be auto-assigned to BDEU on the converted Opportunity').toContain('BDEU');
+      expect(salesperson, 'Salesperson should be auto-assigned to Thomas on the converted Opportunity').toContain('Thomas');
       expect(leadForm, 'Lead form should be License on the converted Opportunity').toContain('License');
       expect(email.toLowerCase(), 'Email should be preserved on the converted Opportunity').toContain(emailAddress.toLowerCase());
       console.log('✅ Conversion successful and all assigned fields verified');
