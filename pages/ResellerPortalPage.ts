@@ -96,6 +96,11 @@ export class ResellerPortalPage extends BasePage {
   // A specific cell (1-based) of the My Opportunities row matching a name (td order: Name, Contact, Stage, Date, Expected Revenue).
   private readonly opportunityRowCell = (name: string, idx: number) =>
     this.opportunityRowByName(name).locator(`xpath=./td[${idx}]`).first();
+  // My Opportunities Search box (shared portal <input name="search">). XPath primary, CSS fallback.
+  private readonly opportunitySearchInputXPath = () =>
+    this.page.locator("xpath=//input[@name='search']").first();
+  private readonly opportunitySearchInputCss = () =>
+    this.page.locator("input[name='search']").first();
   // Detail page (/my/opportunity/<slug>-<id>): Opportunity name heading + Expected Revenue.
   private readonly detailNameXPath = () => this.page.locator("xpath=//h1[contains(@class,'title')]").first();
   private readonly detailNameCss = () => this.page.locator("h1.title").first();
@@ -300,6 +305,50 @@ export class ResellerPortalPage extends BasePage {
       }
     }
     throw new Error(`Opportunity "${name}" was not found on the My Opportunities list`);
+  }
+
+  /**
+   * Search the My Opportunities list via the portal Search box, then submit (Enter). Waits for the
+   * list to re-render. Must already be on /my/opportunities. Mirrors searchInvoices().
+   * @param text - the search text (e.g. an Opportunity name)
+   */
+  async searchOpportunities(text: string): Promise<void> {
+    let input = this.opportunitySearchInputXPath();
+    const visibleByXPath = await input.isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false);
+    if (!visibleByXPath) input = this.opportunitySearchInputCss();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await input.scrollIntoViewIfNeeded();
+    await input.fill('');
+    await input.fill(text);
+    await this.page.keyboard.press('Enter');
+    await this.waitForURL('**/my/opportunities**', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.opportunityRows().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Whether an Opportunity with the given name is listed, located via the portal Search box.
+   * Pagination-proof: the Search isolates the row from a large shared list (unlike reading a single
+   * page), so it works even when the Reseller has hundreds of unrelated Opportunities. Each attempt
+   * re-runs the search and re-queries. Must already be on /my/opportunities.
+   * @param name - the Opportunity name to look for
+   * @param maxAttempts - number of (search + find) attempts (default 6)
+   * @param interval - wait between attempts (default waitTimes.searchOppWait)
+   * @returns true if a row containing the name is found
+   */
+  async isOpportunityListedBySearch(
+    name: string,
+    maxAttempts: number = 6,
+    interval: number = CommonUtils.waitTimes.searchOppWait
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.searchOpportunities(name).catch(() => {});
+      const count = await this.opportunityRowByName(name).count().catch(() => 0);
+      console.log(`  - Search Opportunity "${name}" attempt ${attempt}/${maxAttempts}: matching row(s) = ${count}`);
+      if (count > 0) return true;
+      if (attempt < maxAttempts) await this.wait(interval);
+    }
+    return false;
   }
 
   /**
@@ -680,18 +729,23 @@ export class ResellerPortalPage extends BasePage {
 
   /**
    * Open an invoice's detail page (/my/invoices/<id>) from the My Invoices list by its number.
-   * Reload-and-retry tolerates a just-validated invoice that needs a moment to surface in the list.
+   * Each attempt Search-filters the list by the number (pagination-proof) and re-queries the
+   * server, tolerating a just-validated invoice that needs a moment to surface in the list.
    * @param number - the Invoice number (Invoice Number #1) to open
-   * @param maxAttempts - number of (find + reload) attempts (default 5)
-   * @param interval - wait between reload attempts (default waitTimes.long)
+   * @param maxAttempts - number of (search + find) attempts (default 6)
+   * @param interval - wait between attempts (default waitTimes.searchOppWait)
    * @returns the detail page URL after navigation
    */
   async openInvoiceByNumber(
     number: string,
-    maxAttempts: number = 5,
-    interval: number = CommonUtils.waitTimes.long
+    maxAttempts: number = 6,
+    interval: number = CommonUtils.waitTimes.searchOppWait
   ): Promise<string> {
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // Filter the list by the exact number each round. This is (a) pagination-proof - a
+      // reseller accumulates many invoices, so a fresh one may not be on the first list page -
+      // and (b) a fresh server query, giving a just-validated invoice a moment to surface.
+      await this.searchInvoices(number).catch(() => {});
       const row = this.invoiceRowByNumber(number);
       const count = await row.count().catch(() => 0);
       console.log(`  - Open Invoice "${number}" attempt ${attempt}/${maxAttempts}: matching row(s) = ${count}`);
@@ -706,11 +760,7 @@ export class ResellerPortalPage extends BasePage {
         await this.wait(CommonUtils.waitTimes.long);
         return this.page.url();
       }
-      if (attempt < maxAttempts) {
-        await this.page.reload({ waitUntil: 'domcontentloaded' });
-        await this.invoiceRows().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
-        await this.wait(interval);
-      }
+      if (attempt < maxAttempts) await this.wait(interval);
     }
     throw new Error(`Invoice "${number}" was not found on the My Invoices list`);
   }
