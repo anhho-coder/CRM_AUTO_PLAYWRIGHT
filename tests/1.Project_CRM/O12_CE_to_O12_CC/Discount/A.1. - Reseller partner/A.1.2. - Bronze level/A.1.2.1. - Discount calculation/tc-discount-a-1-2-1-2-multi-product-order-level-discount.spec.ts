@@ -74,7 +74,7 @@ test.describe('Discount-A.1.2.1.2 - Multi-product: Bronze 15% applied once at or
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.1.2 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.1.2 - ${compactDateTime}`;
 
     const invoice = await createMultiProductInvoiceAsThomas(page, {
       oppName, contactName: leadName, companyEmail, internalNote: note, browser, testInfo,

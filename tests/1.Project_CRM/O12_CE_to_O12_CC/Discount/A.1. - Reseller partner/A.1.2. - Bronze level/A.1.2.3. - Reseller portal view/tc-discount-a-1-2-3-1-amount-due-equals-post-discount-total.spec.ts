@@ -80,7 +80,7 @@ test.describe('Discount-A.1.2.3.1 - Reseller portal Amount Due equals the post-d
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.3.1 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.3.1 - ${compactDateTime}`;
 
     // Pre-condition: create + validate the single-product Bronze invoice as Thomas.
     const invoice = await createValidatedInvoiceAsThomas(page, {

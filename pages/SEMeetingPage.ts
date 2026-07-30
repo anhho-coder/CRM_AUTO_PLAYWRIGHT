@@ -77,7 +77,8 @@ export class SEMeetingPage extends BasePage {
     this.openModal().locator("select[name='minute_duration']").first();
   private readonly timezoneSelect = () =>
     this.openModal().locator("select[name='tz']").first();
-  // "Starting at" datetime input for a timed (non-all-day) meeting (start_datetime).
+  // "Starting at" input for a timed (non-all-day) meeting (start_datetime is the only visible datetime
+  // field here; the End Datetime is hidden and auto-recomputed from start + duration by an onchange).
   private readonly startDatetimeInput = () =>
     this.openModal().locator("input[name='start_datetime']").first();
   // The "Ticket" many2one on the Create: Meetings form (the link that makes the meeting show in the
@@ -292,36 +293,69 @@ export class SEMeetingPage extends BasePage {
     console.log(`  [modal ${tag}] field names=${JSON.stringify(names)}`);
   }
 
+  /** If an Odoo "Validation Error" / "Odoo Server Error" dialog is open, log its message and click Ok. */
+  private async dismissValidationDialog(): Promise<void> {
+    const err = this.page.locator('div.modal.show').filter({ hasText: /Validation Error|Odoo Server Error/i }).first();
+    if (await err.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+      const body = (((await err.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim()).slice(0, 300);
+      console.log(`  ⚠ Odoo Validation Error (the "Starting at" change likely needs the manual G2M token): "${body}"`);
+      const ok = err.locator("xpath=.//button[normalize-space()='Ok' or normalize-space()='OK']").or(err.locator('.modal-footer button.btn-primary')).first();
+      await ok.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+  }
+
   /**
    * Set the "Starting at" (start_datetime) to (current form time) + `minutes`. Bases the new value on
    * the field's CURRENT value so the timezone and display format match Odoo exactly (falls back to the
    * local clock if the current value can't be parsed). Format: MM/DD/YYYY HH:mm:ss. Commits with Tab
    * (NOT Escape, which can close the whole modal on this Odoo). Returns the value written.
    */
+  /**
+   * Set "Starting at" (start_datetime) = REAL now + `minutes`. Only start_datetime is visible on this
+   * form; the End Datetime (stop) is hidden and auto-recomputed by the field's onchange as start +
+   * duration. CRUCIAL: type the value with REAL keystrokes (pressSequentially) - a plain fill() sets the
+   * input text but does NOT fire the widget onchange, so stop would stay at its (past) default and Odoo
+   * rejects "start > stop" / "start in the past" with a Validation Error. Uses the real current time
+   * because the form default can be in the PAST. Commits with Tab (NOT Escape - Escape can close the
+   * whole modal here).
+   */
   async setStartingAtPlusMinutes(minutes: number): Promise<string> {
-    const input = this.startDatetimeInput();
-    if (!(await input.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+    const startInput = this.startDatetimeInput();
+    if (!(await startInput.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
       console.log('  - "Starting at" (start_datetime) not visible; skipped');
       return '';
     }
-    const current = ((await input.inputValue().catch(() => '')) || '').trim();
-    const m = current.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})$/);
-    let base = m ? new Date(+m[3], +m[1] - 1, +m[2], +m[4], +m[5], +m[6]) : new Date();
-    if (isNaN(base.getTime())) base = new Date();
-    const t = new Date(base.getTime() + minutes * 60 * 1000);
+    const current = ((await startInput.inputValue().catch(() => '')) || '').trim();
+    const t = new Date(Date.now() + minutes * 60 * 1000);
     const p = (n: number) => String(n).padStart(2, '0');
     const formatted = `${p(t.getMonth() + 1)}/${p(t.getDate())}/${t.getFullYear()} ${p(t.getHours())}:${p(t.getMinutes())}:${p(t.getSeconds())}`;
-    await input.click();
-    await input.fill('');
+    await startInput.click();
+    await startInput.fill('');
     await this.wait(CommonUtils.waitTimes.short);
-    await input.fill(formatted);
+    // REAL keystrokes so the datetime widget's onchange fires and the hidden stop recomputes.
+    await startInput.pressSequentially(formatted, { delay: 20 });
     await this.wait(CommonUtils.waitTimes.short);
-    // Commit the value + close the datetime-picker overlay WITHOUT Escape (Escape can close the modal
-    // here). Tab blurs the input; a click on a neutral modal area (header/title) dismisses the picker.
     await this.page.keyboard.press('Tab').catch(() => {});
     await this.openModal().locator('.modal-title, .modal-header').first().click({ force: true }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.medium);
-    console.log(`  - Starting at = "${formatted}" (was "${current}", +${minutes} min)`);
+
+    // BEST-EFFORT: if Odoo rejected the time change with a Validation Error (on this app the G2M meeting
+    // re-books its room when the time changes, which needs the manual Pre-condition #3 token - so a
+    // no-token run is rejected), capture the message, dismiss the dialog, and CONTINUE with the meeting's
+    // original time so the rest of the flow still runs.
+    const errModal = this.page.locator('div.modal.show').filter({ hasText: /Validation Error|Odoo Server Error/i }).first();
+    if (await errModal.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false)) {
+      const body = (((await errModal.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim()).slice(0, 300);
+      console.log(`  ⚠ "Starting at" could not be applied - Odoo rejected it: "${body}"`);
+      const ok = errModal.locator("xpath=.//button[normalize-space()='Ok' or normalize-space()='OK']").or(errModal.locator('.modal-footer button.btn-primary')).first();
+      await ok.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+      await this.dismissErrorDialog();
+      return '';
+    }
+    await this.dismissErrorDialog();
+    console.log(`  - Starting at = "${formatted}" (was "${current}", real now +${minutes} min; stop auto-recomputes)`);
     return formatted;
   }
 
@@ -388,12 +422,20 @@ export class SEMeetingPage extends BasePage {
     }
 
     // Meeting Platform = G2M (reveals the G2M Meeting room field + the minute-based Duration select).
-    const plat = this.meetingPlatformSelect();
-    const platVisible = await plat.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    let platVisible = await this.meetingPlatformSelect().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!platVisible) {
+      // A LATE/async Validation Error (typically from the Starting-at change, which re-books the G2M room
+      // and needs the manual Pre-condition #3 token) can appear after we moved on and cover the form.
+      // Dismiss it and retry so the rest of the flow still runs (Starting-at is best-effort).
+      await this.dismissValidationDialog();
+      await this.ensureMeetingFormEditable();
+      platVisible = await this.meetingPlatformSelect().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    }
     if (!platVisible) {
       await this.logOpenModalState('platform-missing');
       throw new Error('Meeting Platform <select> not found/visible on the meeting dialog (see the [modal platform-missing] log above for the dialog contents).');
     }
+    const plat = this.meetingPlatformSelect();
     await plat.selectOption({ label: opts.platform }).catch(async () => {
       await plat.selectOption(opts.platform);
     });

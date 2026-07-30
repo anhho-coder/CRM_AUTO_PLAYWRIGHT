@@ -113,7 +113,10 @@ test.describe('pre-sale-7.2.3.1 - A meeting created from the SE support ticket',
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('pre-sale-7.2.3.1: Verify the Pre-Sales Engineer sees a meeting from the Support ticket with Support type = Online deployment session', async ({ page }, testInfo) => {
+  // MANUAL-ONLY: this TC depends on Pre-condition III (a manual G2M Token/Refresh-Token copy from
+  // Production to Pre-production on the "Meeting link #4" record) which cannot be automated. Skipped
+  // at declaration level so the browser fixture never spins up.
+  test.skip('pre-sale-7.2.3.1: Verify the Pre-Sales Engineer sees a meeting from the Support ticket with Support type = Online deployment session', async ({ page }, testInfo) => {
     // Long multi-actor flow (Thomas creates Opp+ticket -> Nick schedules a G2M meeting via the calendar
     // -> re-open ticket -> poll the "L1 notes" write-back). Use the wider SE-meeting timeout.
     test.setTimeout(config.timeouts.seMeetingTest);

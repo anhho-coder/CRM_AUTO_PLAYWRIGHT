@@ -1,0 +1,342 @@
+// Re-run the FAILED / BROKEN test cases from a frozen WEEKLY Allure report.
+//
+//   Job name: CRM-Rerun-Weekly-Fails      Pipeline -> Script Path: ci/Jenkinsfile.rerun-weekly-fails
+//
+// WEEKLY sibling of CRM-Rerun-Monthly-Fails (ci/Jenkinsfile.rerun-monthly-fails). Reads the
+// deduped "latest result per suite" set that the CRM-Allure-Weekly report shows
+// (ci/weekly-fails-to-spec.js, off the frozen report on disk), turns each failure into an
+// ASCII spec-filename filter, and re-runs them on chrome-headless - one invocation per suite,
+// all appended into a single allure-results, published as one report. The fresh results are
+// dropped into TODAY's dated Allure bucket, so the CURRENT week's report reflects the re-run
+// (latest-per-test): a fixed test flips green, a real defect stays red.
+//
+// PURPOSE: verify a batch of hand-fixed tests against the week's red cells. Because those fixes
+// are usually the assertion / business-rule failures, the DEFAULT here is MODE=all (re-run
+// every failed/broken case) - unlike the monthly job which defaults to MODE=abnormal. Pass
+// MODE=abnormal to re-run only env/aborted/timeout failures.
+//
+// Same agent guards as the section jobs (Jenkinsfile): probe-node pre-prod route gate,
+// long-path-safe checkout, Chrome + ffmpeg checks, mid-run VPN watchdog. A failing suite is
+// recorded (build FAILURE) but does NOT stop the remaining suites (catchError).
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'WEEK',
+            defaultValue: 'latest',
+            description: 'Which weekly report to read the failures from. latest = the newest frozen week on disk (matches CRM-Allure-Weekly/lastBuild = the in-progress week); or current / previous; or an exact ISO week e.g. 2026-W31.'
+        )
+        string(
+            name: 'STATUSES',
+            defaultValue: 'failed,broken',
+            description: 'Allure statuses to consider (comma-separated). Default failed,broken = the red + broken cells. Intentional bug-skips and did-not-run cases are NOT included.'
+        )
+        choice(
+            name: 'MODE',
+            choices: ['all', 'abnormal', 'defect'],
+            description: 'Which failures to re-run by CAUSE. all (default) = every failed/broken case (verify a fix batch - the fixed assertion/business-rule cases too). abnormal = only env / aborted / timeout failures. defect = only the assertion / business "not found/should be" failures.'
+        )
+        choice(
+            name: 'SUITE',
+            choices: ['all', 'Lead_Merging', 'O12', 'CRM_Module', 'Leads_Assignment', 'SalesReport_Performance', 'Investments'],
+            description: 'Re-run only this suite\'s failures, or "all". Re-running one suite at a time is recommended for the big/slow suites (O12, CRM_Module).'
+        )
+        booleanParam(
+            name: 'DRY_RUN',
+            defaultValue: false,
+            description: 'Resolve and print the re-run plan (which specs would run) WITHOUT launching any test.'
+        )
+        choice(
+            name: 'ROUTE_GATE',
+            choices: ['auto', 'failfast', 'retry', 'off'],
+            description: 'Pre-prod VPN route pre-flight on the "probe" node (same as the section jobs). auto = retry when unattended else fail-fast.'
+        )
+        string(
+            name: 'ROUTE_GATE_MIN',
+            defaultValue: '15',
+            description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry).'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '300',
+            description: 'Build timeout in minutes for the whole re-run. Default 300 (5h): a week of fails is a smaller set than a month, but the O12 Discount/portal specs are slow (~5-11 min each). Raise for a big week, lower for a single small suite.'
+        )
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        // Same pre-prod DNS workaround as the section jobs (see main Jenkinsfile).
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+    }
+
+    options {
+        timeout(time: 360, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Pre-prod route gate') {
+            agent { label 'probe' }
+            steps {
+                script {
+                    def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    if (mode == 'auto') {
+                        def unattended = false
+                        try {
+                            unattended = currentBuild.getBuildCauses().any {
+                                def c = (it._class ?: '')
+                                c.contains('TimerTrigger') || c.contains('SCMTrigger') || c.contains('UpstreamCause')
+                            }
+                        } catch (ignored) { unattended = false }
+                        mode = unattended ? 'retry' : 'failfast'
+                    }
+                    if (mode == 'off') {
+                        echo 'ROUTE_GATE=off -> skipping the pre-prod route pre-flight.'
+                    } else {
+                        def budget = 0
+                        if (mode == 'retry') {
+                            def m = (params.ROUTE_GATE_MIN ?: '15').trim()
+                            budget = m.isInteger() ? m.toInteger() : 15
+                        }
+                        echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
+                        def routeUp = {
+                            return bat(returnStatus: true,
+                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                        }
+                        def waited = 0
+                        def up = routeUp()
+                        while (!up && waited < budget) {
+                            echo "  route DOWN (waited ${waited}/${budget} min) - re-probing in 60s..."
+                            sleep(time: 60, unit: 'SECONDS')
+                            waited++
+                            up = routeUp()
+                        }
+                        if (!up) {
+                            error("ABORTED: pre-prod VPN route down (mode=${mode}, waited ${waited} min). Re-run when the route is back.")
+                        }
+                        echo "Pre-prod route UP" + (waited > 0 ? " after ${waited} min" : "") + " -> proceeding."
+                    }
+                }
+            }
+        }
+
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Resolve weekly fails') {
+            steps {
+                withEnv([
+                    "WEEK=${params.WEEK?.trim() ?: 'latest'}",
+                    "STATUSES=${params.STATUSES?.trim() ?: 'failed,broken'}",
+                    "MODE=${params.MODE ?: 'all'}",
+                    "SUITE=${params.SUITE ?: 'all'}"
+                ]) {
+                    // Writes rerun/_suites.txt + rerun/<Suite>.txt and echoes the plan.
+                    bat 'node ci\\weekly-fails-to-spec.js'
+                }
+            }
+        }
+
+        stage('Re-run failed specs') {
+            when { expression { return !params.DRY_RUN } }
+            steps {
+                script {
+                    def selected = (params.SUITE ?: 'all').trim()
+                    def suitesTxt = ''
+                    if (fileExists('rerun/_suites.txt')) { suitesTxt = readFile('rerun/_suites.txt').trim() }
+                    if (!suitesTxt) {
+                        echo 'No failed/broken specs to re-run for this week - nothing to do.'
+                        return
+                    }
+                    def entries = suitesTxt.split('\\r?\\n').collect { it.trim() }.findAll { it }
+
+                    // Start with clean report/results dirs so the published report is ONLY this run;
+                    // allure-playwright APPENDS across the per-suite invocations into this one dir.
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+
+                    def runTimeout = (params.TIMEOUT_MIN ?: '300').toInteger()
+                    // The per-suite re-run loop, wrapped as a closure so it can run under the
+                    // mid-run VPN watchdog below.
+                    def runLoop = {
+                        def ran = 0
+                        for (e in entries) {
+                            def parts = e.split(' ')
+                            def suite = parts[0]
+                            def count = (parts.size() > 1) ? parts[-1] : '?'
+                            if (selected != 'all' && selected != suite) {
+                                echo "Skipping ${suite} (SUITE=${selected})."
+                                continue
+                            }
+                            def filters = ''
+                            if (fileExists("rerun/${suite}.txt")) { filters = readFile("rerun/${suite}.txt").trim() }
+                            if (!filters) { echo "No filters for ${suite} - skipping."; continue }
+                            ran++
+                            echo "=== Re-running ${suite}: ${count} test(s) | timeout ${runTimeout}m ==="
+                            // Record a suite's failures (build -> FAILURE) but keep going so every
+                            // suite is re-run in this one build.
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', message: "${suite} had failures on re-run") {
+                                // Filters (double-quoted spec basenames) are passed via an env var and
+                                // read with DELAYED expansion (!FILTERS!) so a '%' in a filename is NOT
+                                // re-parsed by cmd. Each quoted basename becomes a positional Playwright
+                                // filter, matched as a regex against the whole file path - so a file that
+                                // has moved folders since the report was frozen is still found.
+                                withEnv(["FILTERS=${filters}"]) {
+                                    bat '''@echo off
+setlocal enabledelayedexpansion
+echo Filters: !FILTERS!
+call npx playwright test !FILTERS! --project=chrome-headless
+'''
+                                }
+                            }
+                        }
+                        if (ran == 0) { echo "SUITE=${selected} had no matching failed specs on the ${params.WEEK} report." }
+                    }
+                    // --- Mid-run pre-prod VPN gate (see main Jenkinsfile) --------------------
+                    // Abort (NOT_BUILT) if CRM-Connectivity-Check raises the VPN-down flag mid-run
+                    // so the remaining re-run suites are not executed / not marked failed.
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            parallel(
+                                'playwright': {
+                                    try { runLoop() } finally { bat 'echo done> .pw_done' }
+                                },
+                                'vpn-watchdog': {
+                                    while (!fileExists('.pw_done')) {
+                                        sleep(time: 60, unit: 'SECONDS')
+                                        if (fileExists('.pw_done')) { break }
+                                        if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                            env.VPN_ABORT = 'true'
+                                            echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining suites will NOT run (not failed).'
+                                            error('pre-prod VPN dropped mid-run')
+                                        }
+                                    }
+                                },
+                                failFast: true
+                            )
+                        }
+                    } catch (err) {
+                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (env.VPN_ABORT == 'true' || flagUp) {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining re-run suites were NOT executed (not failed).'
+                        } else {
+                            throw err
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Flatten Playwright's timestamped run folder(s) to a fixed 'pw-report' for a direct link.
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, rerun/**', allowEmptyArchive: true
+            // Drop a DATE-stamped copy into the period bucket so the CURRENT week's report unions
+            // these re-run results (latest-per-test; the period pipeline relabels chrome-headless
+            // back to the real section by file path). We deliberately do NOT stash into
+            // C:\\allure\\results\\<JOB> (the Total combined report's source) to avoid adding a
+            // stray "CRM-Rerun-Weekly-Fails" suite there.
+            powershell '''
+              try {
+                $day  = (Get-Date).ToString('yyyy-MM-dd')
+                $dest = "C:\\allure\\periods\\results\\$day\\$env:JOB_BASE_NAME\\$env:BUILD_NUMBER"
+                if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                if (Test-Path allure-results) {
+                  Get-ChildItem -LiteralPath allure-results -Force | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+                  }
+                  Write-Host "Stashed dated Allure results -> $dest"
+                } else { Write-Host 'No allure-results to stash (dated bucket).' }
+              } catch {
+                Write-Host "WARNING: could not stash dated Allure results: $($_.Exception.Message)"
+              }
+            '''
+        }
+        success { echo 'Re-run complete - all targeted specs passed (the week\'s fixes verified green).' }
+        failure { echo 'Re-run complete - some specs still failed. Check the Playwright Report + archived test-results/ (and rerun/_classification.txt for the cause of each). A still-failing case points at a fix that did not hold (or a real defect).' }
+    }
+}

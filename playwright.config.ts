@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
 
 const customReporterPath = path.resolve(__dirname, 'config', 'custom-reporter.js');
+// Merges per-Page videos into one full-video.webm and rewrites attachments.
+// MUST come before 'html' so the report shows a single video (see reporter[] below).
+const videoMergeReporterPath = path.resolve(__dirname, 'config', 'video-merge-reporter.js');
 
 // Generate timestamp ONCE at config load time
 // Format: YYYY-MM-DD-HHMMSS (e.g., 2025-12-10-143527)
@@ -95,7 +98,8 @@ export default defineConfig({
   timeout: 30000,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
-    ['html', { 
+    [videoMergeReporterPath], // MUST run before 'html': merges per-Page videos -> one full-video.webm
+    ['html', {
       open: 'never',
       outputFolder: `playwright-report/${getReportFolderName()}`,
       fileName: 'index.html'

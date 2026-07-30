@@ -68,7 +68,7 @@ test.describe('Discount-A.1.2.2.3 - Bronze discount survives the invoice state l
     const invoicePage = new InvoicePage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.2.3 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.2.3 - ${compactDateTime}`;
 
     let subtotal1 = 0;
     const expectNet = () => subtotal1 * (1 - BRONZE_PERCENT / 100);

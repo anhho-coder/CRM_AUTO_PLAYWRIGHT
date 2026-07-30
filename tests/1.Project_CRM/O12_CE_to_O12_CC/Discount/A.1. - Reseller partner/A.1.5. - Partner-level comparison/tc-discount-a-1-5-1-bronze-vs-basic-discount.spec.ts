@@ -81,7 +81,7 @@ test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 
     // Pre-condition A (Bronze): assign the Bronze reseller.
     const noteA = generateDealRegistrationNote();
     const invBronze = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount-A.1.5.1-Bronze ${noteA.compactDateTime}`,
+      oppName: `TEST Discount - Discount-A.1.5.1-Bronze - ${noteA.compactDateTime}`,
       contactName: noteA.leadName, companyEmail: noteA.companyEmail, internalNote: noteA.note,
       assignedPartner: BRONZE_PARTNER, stepPrefix: 'Pre-condition A (Bronze)',
     });
@@ -106,7 +106,7 @@ test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 
       partnerBusinessEmail: users.reseller_basic.username, // Test-Reseller@Reseller-company-automation-basic.com
     });
     const invBasic = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount-A.1.5.1-Basic ${noteB.compactDateTime}`,
+      oppName: `TEST Discount - Discount-A.1.5.1-Basic - ${noteB.compactDateTime}`,
       contactName: noteB.leadName, companyEmail: noteB.companyEmail, internalNote: noteB.note,
       assignedPartner: BASIC_PARTNER, stepPrefix: 'Pre-condition B (Basic)',
     });
