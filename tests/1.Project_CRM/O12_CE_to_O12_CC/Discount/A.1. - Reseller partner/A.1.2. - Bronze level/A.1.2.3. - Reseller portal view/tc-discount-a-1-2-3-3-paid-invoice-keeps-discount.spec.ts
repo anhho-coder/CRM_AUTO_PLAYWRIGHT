@@ -79,7 +79,7 @@ test.describe('Discount-A.1.2.3.3 - Paid Bronze invoice keeps its discount break
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.3.3 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.3.3 - ${compactDateTime}`;
 
     // Pre-condition #1: create + validate the invoice as Thomas.
     const invoice = await createValidatedInvoiceAsThomas(page, {
