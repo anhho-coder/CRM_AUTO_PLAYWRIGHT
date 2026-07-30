@@ -81,7 +81,7 @@ test.describe('Discount-A.1.2.3.2 - Portal list + search preserve the Bronze dis
     // Pre-condition: Invoice#A (Qty 1).
     const noteA = generateDealRegistrationNote();
     const invoiceA = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount-A.1.2.3.2-A ${noteA.compactDateTime}`,
+      oppName: `TEST Discount - Discount-A.1.2.3.2-A - ${noteA.compactDateTime}`,
       contactName: noteA.leadName, companyEmail: noteA.companyEmail, internalNote: noteA.note,
       stepPrefix: 'Pre-condition A',
     });
@@ -92,7 +92,7 @@ test.describe('Discount-A.1.2.3.2 - Portal list + search preserve the Bronze dis
     await page.context().clearCookies();
     const noteB = generateDealRegistrationNote();
     const invoiceB = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount-A.1.2.3.2-B ${noteB.compactDateTime}`,
+      oppName: `TEST Discount - Discount-A.1.2.3.2-B - ${noteB.compactDateTime}`,
       contactName: noteB.leadName, companyEmail: noteB.companyEmail, internalNote: noteB.note,
       stepPrefix: 'Pre-condition B', productQty: 3,
     });
