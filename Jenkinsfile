@@ -64,6 +64,13 @@ pipeline {
         // Map the host at the Chrome level so tests run. REMOVE this line once agent DNS
         // is fixed (consumed by launchOptions.args in playwright.config.ts).
         HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+        // Lead-Assignment DEFERRED RE-VERIFY: any lead-assignment spec appends its
+        // {leadUrl, field, expected} to this JSONL manifest (helpers/deferred-verify.helper.ts,
+        // fired from LeadPage.verifySalesTeamAssignment). Harmless no-op for every other spec.
+        // The async Sales-Team/Salesperson cron often has not run by assert time (Received: "");
+        // the CRM_Leads_Assignment_DeferredVerify job re-opens each URL ~1h later for the
+        // authoritative verdict. Post-build stashes a dated copy to C:\deferred-verify\<day>\.
+        DEFERRED_MANIFEST = 'deferred-verify/la.jsonl'
     }
 
     options {
@@ -258,6 +265,8 @@ echo ffmpeg OK
                     bat 'if exist test-results rmdir /s /q test-results'
                     bat 'if exist pw-report rmdir /s /q pw-report'
                     bat 'if exist allure-results rmdir /s /q allure-results'
+                    // Fresh deferred-verify manifest per build (workspace persists between builds).
+                    bat 'if exist deferred-verify rmdir /s /q deferred-verify'
                     // Param-driven timeout on the actual test run (default 90 min - all
                     // existing jobs unchanged). The THD/async-assignment slow-lane job passes
                     // TIMEOUT_MIN=480 so the up-to-43-min per-spec late-assignment poll across
@@ -362,7 +371,26 @@ echo ffmpeg OK
                 reportName: 'Playwright Report'
             ])
             junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
-            archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/**', allowEmptyArchive: true
+            // Lead-Assignment DEFERRED RE-VERIFY: stash this build's manifest into a DATED,
+            // BUILD-keyed bucket so ALL round-1 builds of the day (CRM_Leads_Assignment,
+            // CRM_O12 chunks, THD SlowLane, ...) UNION into one cluster that the
+            // CRM_Leads_Assignment_DeferredVerify job re-verifies in a single last round.
+            // Build-keyed filename => chunked/parallel runs never overwrite each other.
+            powershell '''
+              try {
+                if (Test-Path deferred-verify/la.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl"
+                  Copy-Item -LiteralPath deferred-verify/la.jsonl -Destination $dest -Force
+                  Write-Host "Stashed deferred-verify manifest -> $dest"
+                } else { Write-Host 'No deferred-verify manifest this build (no lead-assignment specs ran).' }
+              } catch {
+                Write-Host "WARNING: could not stash deferred-verify manifest: $($_.Exception.Message)"
+              }
+            '''
             // Stash THIS job's Allure raw results into a shared per-job folder so the
             // CRM_Allure_Report job can merge all sections into one combined report.
             powershell '''

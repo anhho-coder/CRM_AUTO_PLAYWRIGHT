@@ -18,6 +18,9 @@ playwright/.cache/
 allure-report/
 allure-results/
 
+# Lead-Assignment deferred re-verify runtime manifest (written per run; do not version)
+deferred-verify/
+
 # Office temp lock files
 ~$*
 

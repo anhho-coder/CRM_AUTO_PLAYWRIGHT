@@ -59,6 +59,11 @@ pipeline {
         // Map the host at the Chrome level (consumed by launchOptions.args in
         // playwright.config.ts). REMOVE this line once agent DNS is fixed.
         HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+        // Lead-Assignment DEFERRED RE-VERIFY manifest (see main Jenkinsfile). The THD slow-lane
+        // is the poster child: its specs poll up to 43 min for the late Sales-Team/Salesperson
+        // cron. Every lead-assignment spec appends {leadUrl, field, expected} here; post-build
+        // stashes a dated copy to C:\deferred-verify\<day>\ for the DeferredVerify job.
+        DEFERRED_MANIFEST = 'deferred-verify/la.jsonl'
     }
 
     options {
@@ -253,6 +258,8 @@ echo ffmpeg OK
                     bat 'if exist test-results rmdir /s /q test-results'
                     bat 'if exist pw-report rmdir /s /q pw-report'
                     bat 'if exist allure-results rmdir /s /q allure-results'
+                    // Fresh deferred-verify manifest per build (workspace persists between builds).
+                    bat 'if exist deferred-verify rmdir /s /q deferred-verify'
                     // SLOW LANE: --retries=1 (not the project default of 2) so a flaky slow
                     // spec costs 2x not 3x within the 8h budget.
                     def runPlaywright
@@ -345,7 +352,24 @@ echo ffmpeg OK
                 reportName: 'Playwright Report'
             ])
             junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
-            archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/**', allowEmptyArchive: true
+            // Lead-Assignment DEFERRED RE-VERIFY: stash this build's manifest into the DATED,
+            // BUILD-keyed bucket so the CRM_Leads_Assignment_DeferredVerify job unions the day's
+            // round-1 runs (incl. this slow lane) into one last round. See main Jenkinsfile.
+            powershell '''
+              try {
+                if (Test-Path deferred-verify/la.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl"
+                  Copy-Item -LiteralPath deferred-verify/la.jsonl -Destination $dest -Force
+                  Write-Host "Stashed deferred-verify manifest -> $dest"
+                } else { Write-Host 'No deferred-verify manifest this build (no lead-assignment specs ran).' }
+              } catch {
+                Write-Host "WARNING: could not stash deferred-verify manifest: $($_.Exception.Message)"
+              }
+            '''
             // Stash THIS job's Allure raw results into a shared per-job folder so the
             // CRM_Allure_Report job can merge all sections into one combined report.
             powershell '''
