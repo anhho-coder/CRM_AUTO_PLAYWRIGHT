@@ -74,7 +74,7 @@ test.describe('Discount-A.1.2.2.2 - Bronze discount persists Quote -> Sale Order
     const invoicePage = new InvoicePage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount-A.1.2.2.2 ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount-A.1.2.2.2 - ${compactDateTime}`;
 
     // Steps 1-9: create the deal-registration Opportunity as Thomas.
     createdOppUrl = await createDealRegistrationOpportunityAsThomas(page, {
