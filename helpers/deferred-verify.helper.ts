@@ -36,14 +36,21 @@ export interface DeferredVerifyRecord {
   title: string;
   leadUrl: string;
   field: 'sales_team' | 'salesperson';
-  expected: string;      // team name for sales_team, or SALESPERSON_EXPECTED sentinel
+  expected: string;      // team name for sales_team, or NONEMPTY_EXPECTED sentinel
   firstRunActual: string;
   runAtIso: string;
+  // Which form the URL re-opens to, so round-2 picks the right reader. Absent = 'lead'
+  // (back-compat: existing lead records have no recordType). 'opportunity' = converted Opp.
+  recordType?: 'lead' | 'opportunity';
 }
 
 function manifestPath(): string | null {
   const p = process.env.DEFERRED_MANIFEST;
   if (!p) return null;
+  // During round-2 (DEFERRED_VERIFY_RUN set) the deferred-verify spec re-opens leads and calls the
+  // page-object getters to READ - it must NOT emit again (that getter also backs the emit chokepoint
+  // for the Opportunity path). Disable all emit while re-verifying.
+  if (process.env.DEFERRED_VERIFY_RUN) return null;
   return isAbsolute(p) ? p : resolve(process.cwd(), p);
 }
 
@@ -62,9 +69,14 @@ function extractTcId(title: string): string {
   return m ? m[1] : title.slice(0, 60);
 }
 
-/** A URL is only worth re-verifying if it points at a saved record. */
+/**
+ * A URL is only worth re-verifying if it points at a saved record. In Odoo 12 an Opportunity IS a
+ * crm.lead (type=opportunity), so converted-Opp URLs are model=crm.lead too (verified live on
+ * pre-prod: .../web?#id=1024464&...&model=crm.lead...). We still accept crm.opportunity defensively
+ * in case a flow/version ever surfaces that model.
+ */
 function isSavedRecordUrl(url: string): boolean {
-  return /[?#].*\bid=\d+/.test(url) && /model=crm\.lead/.test(url);
+  return /[?#].*\bid=\d+/.test(url) && /model=crm\.(lead|opportunity)/.test(url);
 }
 
 function appendRecords(path: string, records: DeferredVerifyRecord[]): void {
@@ -126,4 +138,61 @@ export function recordAssignmentNonEmptyForDeferredVerify(
   salespersonValue: string,
 ): void {
   recordAssignmentForDeferredVerify(page, NONEMPTY_EXPECTED, salesTeamValue, salespersonValue);
+}
+
+/**
+ * Record ONE assigned field of a CONVERTED OPPORTUNITY for deferred re-verify. The 16 convert-to-Opp
+ * specs read the assigned Sales Team / Salesperson via OpportunityPage.getSalesTeamValue /
+ * getSalespersonValue (called ONCE at the final verify step, not in a loop), then assert inline with
+ * per-spec expected values - so there is no shared chokepoint carrying the expected team. We emit
+ * per-field with the NONEMPTY sentinel (round-2 confirms the async cron eventually populated the
+ * Opp field) and recordType 'opportunity' so round-2 reads the Opportunity form. No-op unless
+ * DEFERRED_MANIFEST is set; never throws (a manifest error must not fail a passing test).
+ */
+export function recordOpportunityFieldForDeferredVerify(
+  page: Page,
+  field: 'sales_team' | 'salesperson',
+  actualValue: string,
+): void {
+  const path = manifestPath();
+  if (!path) return;
+
+  const leadUrl = page.url();
+  if (!isSavedRecordUrl(leadUrl)) {
+    console.log(`  [deferred-verify] skipped - URL is not a saved crm.lead/crm.opportunity: ${leadUrl}`);
+    return;
+  }
+
+  const title = safeTitle();
+  const record: DeferredVerifyRecord = {
+    tcId: extractTcId(title),
+    title,
+    leadUrl,
+    field,
+    expected: NONEMPTY_EXPECTED,
+    firstRunActual: actualValue,
+    runAtIso: new Date().toISOString(),
+    recordType: 'opportunity',
+  };
+  try {
+    appendRecords(path, [record]);
+    console.log(`  [deferred-verify] recorded ${record.tcId} (opportunity ${field}) -> ${path}`);
+  } catch (err) {
+    console.log(`  [deferred-verify] WARNING: could not write manifest (${err instanceof Error ? err.message : String(err)}) - skipping ${field} for ${record.tcId}`);
+  }
+}
+
+/**
+ * Convenience for the convert-to-Opportunity specs: emit ONLY the assignment field(s) the spec
+ * verifies as non-empty. Pass `salesTeam` and/or `salesperson` (the value the spec just read) to
+ * defer-verify that field; OMIT a field the spec does not assert or expects to stay EMPTY (e.g.
+ * a "salesperson cleared" case), so round-2 never demands a value that should not be there.
+ * No-op unless DEFERRED_MANIFEST is set; never throws.
+ */
+export function recordOppAssignmentForDeferredVerify(
+  page: Page,
+  values: { salesTeam?: string; salesperson?: string },
+): void {
+  if (values.salesTeam !== undefined) recordOpportunityFieldForDeferredVerify(page, 'sales_team', values.salesTeam);
+  if (values.salesperson !== undefined) recordOpportunityFieldForDeferredVerify(page, 'salesperson', values.salesperson);
 }

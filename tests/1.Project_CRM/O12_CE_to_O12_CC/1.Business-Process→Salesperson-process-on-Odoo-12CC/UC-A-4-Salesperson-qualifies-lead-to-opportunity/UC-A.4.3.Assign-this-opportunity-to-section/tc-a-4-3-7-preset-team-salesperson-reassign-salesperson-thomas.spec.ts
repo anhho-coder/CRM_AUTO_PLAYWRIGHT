@@ -3,6 +3,7 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordOppAssignmentForDeferredVerify } from '@helpers/deferred-verify.helper';
 import { salesTeamUsers } from '@/test-data/sales-team/salesteam.users';
 
 /**
@@ -179,6 +180,7 @@ test.describe('TC.-A.4.3.7 - Convert pre-assigned Lead to Opportunity and reassi
       const stageNewVisible = await opportunityPage.isStageNewVisible();
       const salesTeam = await opportunityPage.getSalesTeamValue();
       const salesperson = await opportunityPage.getSalespersonValue();
+      recordOppAssignmentForDeferredVerify(page, { salesperson });
       console.log(`  - Stage New visible: ${stageNewVisible}`);
       console.log(`  - Sales Team (logged): "${salesTeam}"`);
       console.log(`  - Salesperson: "${salesperson}" (expected to contain "${reassign.displayName}")`);

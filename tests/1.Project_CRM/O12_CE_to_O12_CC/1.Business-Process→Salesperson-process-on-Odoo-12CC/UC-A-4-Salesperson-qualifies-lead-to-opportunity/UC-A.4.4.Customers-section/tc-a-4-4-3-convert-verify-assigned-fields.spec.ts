@@ -3,6 +3,7 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordOppAssignmentForDeferredVerify } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead-to-Opportunity Conversion Test - Verify assigned fields on the converted Opportunity
@@ -212,6 +213,7 @@ test.describe('TC.-A.4.4.3 - Convert qualified Lead to Opportunity and verify as
 
       const salesTeam = await opportunityPage.getSalesTeamValue();
       const salesperson = await opportunityPage.getSalespersonValue();
+      recordOppAssignmentForDeferredVerify(page, { salesTeam, salesperson });
       const leadForm = await opportunityPage.getLeadFormValue();
       const email = await opportunityPage.getEmailReadonly();
 
