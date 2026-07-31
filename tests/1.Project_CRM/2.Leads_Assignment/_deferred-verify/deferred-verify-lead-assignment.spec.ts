@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'fs';
 import { isAbsolute, resolve } from 'path';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
-import { LoginPage, LeadPage } from '@pages';
+import { LoginPage, LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 import { NONEMPTY_EXPECTED } from '@helpers/deferred-verify.helper';
 
@@ -37,6 +37,7 @@ interface DeferredRecord {
   expected: string;
   firstRunActual: string;
   runAtIso: string;
+  recordType?: 'lead' | 'opportunity';
 }
 
 function manifestPath(): string | null {
@@ -100,6 +101,7 @@ test.describe('Deferred re-verify - Lead Assignment (round 2)', () => {
 
     const loginPage = new LoginPage(page);
     const leadPage = new LeadPage(page);
+    const opportunityPage = new OpportunityPage(page);
 
     await test.step('Login once as admin_crm', async () => {
       await loginPage.navigateTo(baseUrl);
@@ -124,12 +126,19 @@ test.describe('Deferred re-verify - Lead Assignment (round 2)', () => {
           await leadPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
           await leadPage.waitForEditButton(config.timeouts.urlWait);
           // Ensure the readonly assignment rows are actually rendered before reading, so a
-          // still-loading form does not read an empty cell and false-fail.
+          // still-loading form does not read an empty cell and false-fail. The Lead + Opportunity
+          // readonly forms use the same tr/td layout, so this render-wait covers both.
           await leadPage.waitForAssignmentFieldsRendered();
 
-          const raw = r.field === 'sales_team'
-            ? await leadPage.getSalesTeamValue()
-            : await leadPage.getSalespersonValue();
+          // Read with the page object matching the record's form: a converted Opportunity
+          // (recordType 'opportunity') via OpportunityPage; everything else via LeadPage.
+          const isOpp = r.recordType === 'opportunity';
+          let raw: string;
+          if (r.field === 'sales_team') {
+            raw = isOpp ? await opportunityPage.getSalesTeamValue() : await leadPage.getSalesTeamValue();
+          } else {
+            raw = isOpp ? await opportunityPage.getSalespersonValue() : await leadPage.getSalespersonValue();
+          }
           actual = normalizeFieldValue(raw);
         } catch (err) {
           const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
