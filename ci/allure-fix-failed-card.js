@@ -141,38 +141,45 @@
     return card;
   }
 
-  function offsetTopWithin(el, ancestor) {
-    var t = 0;
-    while (el && el !== ancestor) { t += el.offsetTop; el = el.offsetParent; }
-    return t;
+  // Find a right-column widget by its title (e.g. Categories / Executors).
+  function findWidgetByTitle(re) {
+    var widgets = document.querySelectorAll('.widget');
+    for (var i = 0; i < widgets.length; i++) {
+      var t = widgets[i].querySelector('.widget__title, h2, .pane__title');
+      if (t && re.test((t.textContent || '').trim())) return widgets[i];
+    }
+    return null;
   }
 
-  // Allure's Overview is a masonry grid: .widgets-grid is position:absolute (OUT of
-  // flow) and the widgets live in two tall .widgets-grid__col columns inside it.
-  // .app__content (position:relative, overflow:auto) is the scroll container: it stays
-  // viewport-height and scrolls because the absolute grid only extends its scrollHeight,
-  // not its flow height. We MUST mirror that: place the card position:absolute below the
-  // tallest column. An in-flow child with a big margin-top would instead inflate
-  // .app__content to full content height, handing the overflow to an ancestor
-  // (overflow:hidden) that clips it -> the page becomes unscrollable. Full width via
-  // left/right:0; top recomputed each pass so it tracks late-loading widgets.
-  function placeBelowGrid(card) {
-    var content = document.querySelector('.app__content');
-    var cols = document.querySelectorAll('.widgets-grid__col');
-    if (!content || !cols.length) return false;
-    var maxBottom = 0;
-    for (var i = 0; i < cols.length; i++) {
-      var bottom = offsetTopWithin(cols[i], content) + cols[i].offsetHeight;
-      if (bottom > maxBottom) maxBottom = bottom;
+  // Place the card in the RIGHT column, directly ABOVE the "Bugs found by automation
+  // test" card. A normal in-flow column child (NOT position:absolute) so it scrolls
+  // with the column like every native widget. The table stays column-width; its own
+  // .crm-ff-scroll wrapper scrolls horizontally to reveal all 7 columns.
+  // Idempotent: only moves the card when it is NOT already in the target spot, so it
+  // converges (and doesn't thrash) once the async-injected Bugs card appears.
+  function place(card) {
+    var bugs = document.getElementById('crm-autobugs-widget');
+    if (bugs && bugs.parentNode) {
+      if (bugs.previousElementSibling !== card) bugs.parentNode.insertBefore(card, bugs);
+      return true;
     }
-    if (getComputedStyle(content).position === 'static') content.style.position = 'relative';
-    card.style.position = 'absolute';
-    card.style.left = '0';
-    card.style.right = '0';
-    card.style.top = (maxBottom + 16) + 'px';
-    card.style.marginTop = '';
-    if (card.parentNode !== content) content.appendChild(card);
-    return true;
+    // Bugs card not injected yet: sit after Categories (right col); reposition later.
+    var cats = findWidgetByTitle(/^Categories\b/i);
+    if (cats && cats.parentNode) {
+      if (cats.nextElementSibling !== card) cats.parentNode.insertBefore(card, cats.nextSibling);
+      return true;
+    }
+    var exec = findWidgetByTitle(/^Executors\b/i);
+    if (exec && exec.parentNode) {
+      if (exec.previousElementSibling !== card) exec.parentNode.insertBefore(card, exec);
+      return true;
+    }
+    var cols = document.querySelectorAll('.widgets-grid__col');
+    if (cols.length >= 2) { if (card.parentNode !== cols[1]) cols[1].appendChild(card); return true; }
+    if (cols.length) { if (card.parentNode !== cols[0]) cols[0].appendChild(card); return true; }
+    var host = document.getElementById('content') || document.body;
+    if (host) { if (card.parentNode !== host) host.appendChild(card); return true; }
+    return false;
   }
 
   function enhance() {
@@ -180,13 +187,7 @@
       if (!data) return;
       if (!document.querySelector('a.table__row[href^="#suites/"]')) return;   // Overview only
       injectStyle();
-      var card = document.getElementById(WIDGET_ID) || buildCard(data);
-      // Primary: full-width, below the masonry columns (recomputes offset each pass).
-      if (placeBelowGrid(card)) return;
-      // Fallback (non-masonry Allure): normal in-flow append (clear the absolute styles).
-      card.style.position = ''; card.style.top = ''; card.style.left = ''; card.style.right = ''; card.style.marginTop = '';
-      var host = document.querySelector('.app__content') || document.getElementById('content') || document.body;
-      if (host && card.parentNode !== host) host.appendChild(card);
+      place(document.getElementById(WIDGET_ID) || buildCard(data));            // reuse card; place() moves only if misplaced
     });
   }
 
