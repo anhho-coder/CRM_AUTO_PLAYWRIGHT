@@ -51,6 +51,16 @@ pipeline {
             defaultValue: false,
             description: 'Resolve and print the re-run plan (which specs would run) WITHOUT launching any test.'
         )
+        string(
+            name: 'EXTRA_GREP',
+            defaultValue: '',
+            description: 'Extra Playwright --grep title-regex to ALSO run and merge into this build (and the week bucket) - for specs the frozen report cannot map, e.g. a spec RENAMED since the report froze. Example: TC\\.-A\\.1\\.6:'
+        )
+        booleanParam(
+            name: 'EXTRA_ONLY',
+            defaultValue: false,
+            description: 'Run ONLY EXTRA_GREP and SKIP the resolver-driven re-run of the report fails. Use to fold a single renamed/missed spec into this week bucket (so the weekly Allure report shows the full set) without re-running the rest.'
+        )
         choice(
             name: 'ROUTE_GATE',
             choices: ['auto', 'failfast', 'retry', 'off'],
@@ -213,7 +223,7 @@ echo ffmpeg OK
         }
 
         stage('Re-run failed specs') {
-            when { expression { return !params.DRY_RUN } }
+            when { expression { return !params.DRY_RUN && !params.EXTRA_ONLY } }
             steps {
                 script {
                     def selected = (params.SUITE ?: 'all').trim()
@@ -302,6 +312,29 @@ call npx playwright test !FILTERS! --project=chrome-headless
                             echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining re-run suites were NOT executed (not failed).'
                         } else {
                             throw err
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Run extra specs (renamed / missed)') {
+            // Runs specs the frozen report cannot map (e.g. a spec RENAMED since the report froze,
+            // like TC.-A.1.6). Appends into the SAME allure-results + dated week bucket so the
+            // weekly Allure report shows the full set. Runs AFTER the resolver re-run, or ALONE
+            // when EXTRA_ONLY=true. Does NOT clean allure-results (so it merges with the re-run).
+            when { expression { return !params.DRY_RUN && (params.EXTRA_GREP?.trim()) } }
+            steps {
+                script {
+                    def grep = params.EXTRA_GREP.trim()
+                    def runTimeout = (params.TIMEOUT_MIN ?: '300').toInteger()
+                    echo "=== Running EXTRA specs by --grep: ${grep} (timeout ${runTimeout}m) ==="
+                    env.DID_RERUN = 'true'
+                    catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', message: 'extra --grep specs had failures') {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            withEnv(["GP=${grep}"]) {
+                                bat 'call npx playwright test --grep "%GP%" --project=chrome-headless'
+                            }
                         }
                     }
                 }
