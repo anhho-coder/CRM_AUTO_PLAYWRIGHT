@@ -44,6 +44,7 @@ $root        = 'C:\allure\periods'
 $resultsRoot = Join-Path $root 'results'   # dated buckets written by section jobs
 $histRoot    = Join-Path $root 'history'   # rolling history per scope (for trend)
 $reportRoot  = Join-Path $root 'report'    # frozen per-period reports
+$trendStore  = Join-Path $root 'failed-trend'   # per-week failed-set snapshot + burndown (survives daily re-runs)
 
 # ---- Resolve the period key + which dated-bucket name prefixes belong to it ----
 $now      = Get-Date
@@ -271,6 +272,16 @@ if ($Scope -eq 'weekly') {
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed build returned $LASTEXITCODE (continuing)." }
     node (Join-Path $Workspace 'ci\allure-inject-fix-failed-card.js') $reportDir
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed-card injection returned $LASTEXITCODE (continuing)." }
+
+    # ---- "Failed cases trend" sidebar tab (WEEKLY report only) ----
+    # Stateful: freezes the beginning-of-week failed set + a daily burndown into
+    # $trendStore\weekly\<periodKey>.json (persists across the week's re-runs), then
+    # emits <reportDir>\crm-failed-trend.json for the tab to render.
+    $ftState = Join-Path $trendStore $Scope
+    node (Join-Path $Workspace 'ci\allure-build-failed-trend.js') $reportDir "$periodKey" $Scope "$ftState"
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend build returned $LASTEXITCODE (continuing)." }
+    node (Join-Path $Workspace 'ci\allure-inject-failed-trend-tab.js') $reportDir
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend-tab injection returned $LASTEXITCODE (continuing)." }
 }
 
 # ---- Update the rolling history from the freshly generated report ----
