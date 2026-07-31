@@ -26,7 +26,10 @@
 
   function loadData() {
     if (dataPromise) return dataPromise;
-    dataPromise = fetch(reportRoot() + 'crm-fix-failed.json')
+    // no-store: the report's static JSON is served without Cache-Control, so browsers
+    // heuristically cache it and show stale rows after the data file is updated. Always
+    // refetch (tiny file) so edits to crm-fix-failed-cases.json show up on reload.
+    dataPromise = fetch(reportRoot() + 'crm-fix-failed.json', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.json() : null; })
       .catch(function () { return null; });
     return dataPromise;
