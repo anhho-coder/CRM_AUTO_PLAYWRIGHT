@@ -262,6 +262,17 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs fetch returned $
 node (Join-Path $Workspace 'ci\allure-inject-automation-bugs-card.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs-card injection returned $LASTEXITCODE (continuing)." }
 
+# ---- Add the "Fix failed cases" Overview card (WEEKLY report only) ----
+# Full-width table of the failed cases the team is fixing / has fixed this week.
+# Data is the committed source ci\crm-fix-failed-cases.json (hand-maintained; NOT
+# derived from the run) -> copied/normalized into <reportDir>\crm-fix-failed.json.
+if ($Scope -eq 'weekly') {
+    node (Join-Path $Workspace 'ci\allure-build-fix-failed.js') $reportDir $Scope
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed build returned $LASTEXITCODE (continuing)." }
+    node (Join-Path $Workspace 'ci\allure-inject-fix-failed-card.js') $reportDir
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed-card injection returned $LASTEXITCODE (continuing)." }
+}
+
 # ---- Update the rolling history from the freshly generated report ----
 $genHist = Join-Path $reportDir 'history'
 if (Test-Path -LiteralPath $genHist) {
