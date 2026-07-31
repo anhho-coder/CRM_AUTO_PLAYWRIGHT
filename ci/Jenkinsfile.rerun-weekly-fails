@@ -186,6 +186,13 @@ echo ffmpeg OK
         stage('Resolve weekly fails') {
             steps {
                 script {
+                    // Clean stale report/results from any prior build in this persistent workspace
+                    // BEFORE resolving, so a DRY_RUN / nothing-to-re-run build neither records nor
+                    // stashes the previous build's artifacts (which would otherwise mark it UNSTABLE).
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
                     // Scheduled (Monday cron) runs verify the PREVIOUS (just-completed) week;
                     // a manual build honours the WEEK param (default 'latest' = current week).
                     def byTimer = false
@@ -242,6 +249,7 @@ echo ffmpeg OK
                             if (fileExists("rerun/${suite}.txt")) { filters = readFile("rerun/${suite}.txt").trim() }
                             if (!filters) { echo "No filters for ${suite} - skipping."; continue }
                             ran++
+                            env.DID_RERUN = 'true'   // at least one suite actually ran -> record junit in post
                             echo "=== Re-running ${suite}: ${count} test(s) | timeout ${runTimeout}m ==="
                             // Record a suite's failures (build -> FAILURE) but keep going so every
                             // suite is re-run in this one build.
@@ -330,7 +338,16 @@ call npx playwright test !FILTERS! --project=chrome-headless
                 reportFiles: 'index.html',
                 reportName: 'Playwright Report'
             ])
-            junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+            script {
+                // Only record test results when specs actually ran. On a DRY_RUN or a
+                // nothing-red-this-week build the junit step would record ZERO results and mark
+                // the build UNSTABLE (yellow) even with allowEmptyResults - so skip it and keep SUCCESS.
+                if (env.DID_RERUN == 'true') {
+                    junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+                } else {
+                    echo 'No specs were re-run (DRY_RUN, or nothing red this week) - skipping junit so the build stays SUCCESS, not UNSTABLE.'
+                }
+            }
             archiveArtifacts artifacts: 'playwright-report/**, test-results/**, rerun/**', allowEmptyArchive: true
             // Drop a DATE-stamped copy into the period bucket so the CURRENT week's report unions
             // these re-run results (latest-per-test; the period pipeline relabels chrome-headless
