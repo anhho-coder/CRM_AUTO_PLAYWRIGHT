@@ -82,6 +82,16 @@ pipeline {
         skipDefaultCheckout(true)
     }
 
+    // Scheduled: every Monday ~07:00 - AFTER the 05:00 weekly-report freeze - to verify the
+    // just-completed week. A timer-triggered build forces WEEK=previous in the 'Resolve weekly
+    // fails' stage (a manual build keeps honouring the WEEK param). 'H' hashes the exact minute
+    // so many jobs don't all fire on the same tick. NOTE: this triggers directive is authoritative
+    // for a declarative pipeline - it (re)registers on the first build after this change is on the
+    // branch, so fire one build after pushing to arm the schedule.
+    triggers {
+        cron('H 7 * * 1')
+    }
+
     stages {
         stage('Pre-prod route gate') {
             agent { label 'probe' }
@@ -175,14 +185,22 @@ echo ffmpeg OK
 
         stage('Resolve weekly fails') {
             steps {
-                withEnv([
-                    "WEEK=${params.WEEK?.trim() ?: 'latest'}",
-                    "STATUSES=${params.STATUSES?.trim() ?: 'failed,broken'}",
-                    "MODE=${params.MODE ?: 'all'}",
-                    "SUITE=${params.SUITE ?: 'all'}"
-                ]) {
-                    // Writes rerun/_suites.txt + rerun/<Suite>.txt and echoes the plan.
-                    bat 'node ci\\weekly-fails-to-spec.js'
+                script {
+                    // Scheduled (Monday cron) runs verify the PREVIOUS (just-completed) week;
+                    // a manual build honours the WEEK param (default 'latest' = current week).
+                    def byTimer = false
+                    try { byTimer = currentBuild.getBuildCauses().any { (it._class ?: '').contains('TimerTrigger') } } catch (ignored) { byTimer = false }
+                    def wk = byTimer ? 'previous' : (params.WEEK?.trim() ?: 'latest')
+                    echo "Resolve: WEEK=${wk}  (timer-triggered=${byTimer}, MODE=${params.MODE ?: 'all'})"
+                    withEnv([
+                        "WEEK=${wk}",
+                        "STATUSES=${params.STATUSES?.trim() ?: 'failed,broken'}",
+                        "MODE=${params.MODE ?: 'all'}",
+                        "SUITE=${params.SUITE ?: 'all'}"
+                    ]) {
+                        // Writes rerun/_suites.txt + rerun/<Suite>.txt and echoes the plan.
+                        bat 'node ci\\weekly-fails-to-spec.js'
+                    }
                 }
             }
         }
