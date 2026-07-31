@@ -42,6 +42,8 @@ export interface DeferredVerifyRecord {
   // Which form the URL re-opens to, so round-2 picks the right reader. Absent = 'lead'
   // (back-compat: existing lead records have no recordType). 'opportunity' = converted Opp.
   recordType?: 'lead' | 'opportunity';
+  // Spec file path - round-2's dedup key (collapses retries, keeps same-tcId twins separate).
+  specFile?: string;
 }
 
 function manifestPath(): string | null {
@@ -58,6 +60,20 @@ function manifestPath(): string | null {
 function safeTitle(): string {
   try {
     return test.info().title;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Current spec FILE path, or '' outside a running test. Round-2 dedups on this (not tcId) so that
+ * retries of ONE spec (same file, different lead per attempt) collapse to the final attempt, while
+ * two DIFFERENT specs that happen to share a TC id (e.g. the Leads_Assignment and O12 twins both
+ * titled "TC.THD_3.2.1.5.2") stay as separate records and are BOTH re-verified.
+ */
+function safeFile(): string {
+  try {
+    return test.info().file;
   } catch {
     return '';
   }
@@ -108,7 +124,7 @@ export function recordAssignmentForDeferredVerify(
   const title = safeTitle();
   const tcId = extractTcId(title);
   const runAtIso = new Date().toISOString();
-  const base = { tcId, title, leadUrl, runAtIso };
+  const base = { tcId, title, specFile: safeFile(), leadUrl, runAtIso };
 
   // NEVER let a manifest-write error fail an otherwise-passing test - this emit runs at the end
   // of a green verification step. Any fs failure (disk full, permission, bad path) is swallowed
@@ -167,6 +183,7 @@ export function recordOpportunityFieldForDeferredVerify(
   const record: DeferredVerifyRecord = {
     tcId: extractTcId(title),
     title,
+    specFile: safeFile(),
     leadUrl,
     field,
     expected: NONEMPTY_EXPECTED,

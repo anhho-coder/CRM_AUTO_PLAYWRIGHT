@@ -38,6 +38,7 @@ interface DeferredRecord {
   firstRunActual: string;
   runAtIso: string;
   recordType?: 'lead' | 'opportunity';
+  specFile?: string;
 }
 
 function manifestPath(): string | null {
@@ -47,13 +48,15 @@ function manifestPath(): string | null {
 }
 
 /**
- * Load manifest, dedup by tcId+field (NOT leadUrl+field). A single test with Playwright
- * retries (CI retries:2) creates a NEW lead per attempt, so leadUrl differs across attempts
- * of the SAME test; keying on leadUrl would keep every abandoned lead and re-verify them,
- * risking false failures. Keying on tcId+field collapses all attempts to ONE record - the
- * winning one (a real team name from verifySalesTeamAssignment ALWAYS beats the NONEMPTY
- * sentinel; within the same tier the later line wins, i.e. the last / passing attempt). The
- * kept record carries its own leadUrl, which round-2 re-opens.
+ * Load manifest, dedup by specFile+field (NOT leadUrl, NOT tcId). A single test with Playwright
+ * retries (CI retries:2) creates a NEW lead per attempt, so leadUrl differs across attempts of the
+ * SAME test; keying on leadUrl would keep every abandoned lead and re-verify them, risking false
+ * failures. Keying on the spec FILE collapses all attempts of one spec to ONE record - the winning
+ * one (a real team name from verifySalesTeamAssignment ALWAYS beats the NONEMPTY sentinel; within
+ * the same tier the later line wins, i.e. the last / passing attempt). Unlike tcId, specFile keeps
+ * two DIFFERENT specs that share a TC id (the Leads_Assignment and O12 twins both titled
+ * "TC.THD_3.2.1.5.2") as SEPARATE records so BOTH are re-verified. Falls back to tcId for old
+ * records written before specFile existed.
  */
 function loadRecords(): DeferredRecord[] {
   const path = manifestPath();
@@ -69,7 +72,7 @@ function loadRecords(): DeferredRecord[] {
     } catch {
       continue;
     }
-    const key = `${rec.tcId}::${rec.field}`;
+    const key = `${rec.specFile || rec.tcId}::${rec.field}`;
     const prev = byKey.get(key);
     if (!prev) {
       byKey.set(key, rec);
