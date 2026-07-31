@@ -1,0 +1,47 @@
+{
+  "_readme": "Data source for the WEEKLY Allure Overview card 'Fix failed cases'. Each object is one failed test case from the weekly run that is being fixed / already fixed. Fields: section (suite, e.g. O12_CE_to_O12_CC), summary (full test title 'TC-ID: title'), error (the failing assertion/message), foundDate + fixDate (ISO yyyy-mm-dd; leave fixDate empty '' while still in progress), solution (what fixed it). Add/edit rows here; the weekly job copies this into the report as crm-fix-failed.json. Errors/solutions left '' render as a 'to fill' placeholder.",
+  "period": "weekly",
+  "week": "2026-W31",
+  "cases": [
+    {
+      "section": "O12_CE_to_O12_CC",
+      "summary": "TC.-B.1.3: Multi-product invoice portal Total equals the validated invoice net total (after Partner Discount)",
+      "error": "Error: Invoice \"INV/2026/1939\" was not found on the My Invoices list",
+      "foundDate": "2026-07-30",
+      "fixDate": "2026-07-30",
+      "solution": ""
+    },
+    {
+      "section": "O12_CE_to_O12_CC",
+      "summary": "TC.-A.4.4.3: Verify the converting process of a qualified lead to Opportunity and the assigned fields are correct",
+      "error": "",
+      "foundDate": "2026-07-30",
+      "fixDate": "2026-07-30",
+      "solution": ""
+    },
+    {
+      "section": "O12_CE_to_O12_CC",
+      "summary": "Discount-A.1.2.1.1: Invoice is discounted for a bronze partner",
+      "error": "",
+      "foundDate": "2026-07-30",
+      "fixDate": "2026-07-30",
+      "solution": ""
+    },
+    {
+      "section": "O12_CE_to_O12_CC",
+      "summary": "TC.-A.1.6: Verify the Reseller can view the submitted registrations in My Opportunities",
+      "error": "",
+      "foundDate": "2026-07-30",
+      "fixDate": "2026-07-30",
+      "solution": ""
+    },
+    {
+      "section": "O12_CE_to_O12_CC",
+      "summary": "TC.THD_3.2.1.5.2: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE, Country = India and State is blank",
+      "error": "",
+      "foundDate": "2026-07-30",
+      "fixDate": "",
+      "solution": ""
+    }
+  ]
+}
