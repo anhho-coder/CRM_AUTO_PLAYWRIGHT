@@ -138,22 +138,36 @@
     return card;
   }
 
-  // Allure's Overview uses a masonry grid: .widgets-grid is position:absolute
-  // (no flow height) and the real widgets live in two tall .widgets-grid__col
-  // columns inside it. A plain sibling after the grid renders at top:0 and
-  // overlaps. To sit full-width BELOW everything we append into .app__content
-  // (the relative scroll container) and push down by the tallest column's
-  // bottom - recomputed each pass so it tracks late-loading widgets.
+  function offsetTopWithin(el, ancestor) {
+    var t = 0;
+    while (el && el !== ancestor) { t += el.offsetTop; el = el.offsetParent; }
+    return t;
+  }
+
+  // Allure's Overview is a masonry grid: .widgets-grid is position:absolute (OUT of
+  // flow) and the widgets live in two tall .widgets-grid__col columns inside it.
+  // .app__content (position:relative, overflow:auto) is the scroll container: it stays
+  // viewport-height and scrolls because the absolute grid only extends its scrollHeight,
+  // not its flow height. We MUST mirror that: place the card position:absolute below the
+  // tallest column. An in-flow child with a big margin-top would instead inflate
+  // .app__content to full content height, handing the overflow to an ancestor
+  // (overflow:hidden) that clips it -> the page becomes unscrollable. Full width via
+  // left/right:0; top recomputed each pass so it tracks late-loading widgets.
   function placeBelowGrid(card) {
     var content = document.querySelector('.app__content');
     var cols = document.querySelectorAll('.widgets-grid__col');
     if (!content || !cols.length) return false;
     var maxBottom = 0;
     for (var i = 0; i < cols.length; i++) {
-      var bottom = cols[i].offsetTop + cols[i].offsetHeight;   // in .app__content coords (grid offsetTop = 0)
+      var bottom = offsetTopWithin(cols[i], content) + cols[i].offsetHeight;
       if (bottom > maxBottom) maxBottom = bottom;
     }
-    card.style.marginTop = (maxBottom + 16) + 'px';
+    if (getComputedStyle(content).position === 'static') content.style.position = 'relative';
+    card.style.position = 'absolute';
+    card.style.left = '0';
+    card.style.right = '0';
+    card.style.top = (maxBottom + 16) + 'px';
+    card.style.marginTop = '';
     if (card.parentNode !== content) content.appendChild(card);
     return true;
   }
@@ -166,8 +180,8 @@
       var card = document.getElementById(WIDGET_ID) || buildCard(data);
       // Primary: full-width, below the masonry columns (recomputes offset each pass).
       if (placeBelowGrid(card)) return;
-      // Fallback (non-masonry Allure): just append to the content area / body.
-      card.style.marginTop = '';
+      // Fallback (non-masonry Allure): normal in-flow append (clear the absolute styles).
+      card.style.position = ''; card.style.top = ''; card.style.left = ''; card.style.right = ''; card.style.marginTop = '';
       var host = document.querySelector('.app__content') || document.getElementById('content') || document.body;
       if (host && card.parentNode !== host) host.appendChild(card);
     });
