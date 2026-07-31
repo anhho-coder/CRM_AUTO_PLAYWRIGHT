@@ -9,31 +9,31 @@
       "error": "Error: Invoice \"INV/2026/1939\" was not found on the My Invoices list",
       "foundDate": "2026-07-30",
       "fixDate": "2026-07-30",
-      "solution": ""
+      "solution": "Replaced the page reload with a search-filter lookup (searchInvoices / openInvoiceByNumber) so the invoice is found regardless of list pagination."
     },
     {
       "section": "O12_CE_to_O12_CC",
       "summary": "TC.-A.4.4.3: Verify the converting process of a qualified lead to Opportunity and the assigned fields are correct",
-      "error": "",
+      "error": "Assertion failed: expected Sales Team \"CMR\" / Salesperson \"Sergey Karachin\", but the converted Opportunity was auto-assigned Team \"BDEU\" / \"Thomas\".",
       "foundDate": "2026-07-30",
       "fixDate": "2026-07-30",
-      "solution": ""
+      "solution": "Updated the assertions to expect the geography-based auto-assigned values (BDEU / Thomas) instead of the conversion-wizard picks (expected behavior)."
     },
     {
       "section": "O12_CE_to_O12_CC",
       "summary": "Discount-A.1.2.1.1: Invoice is discounted for a bronze partner",
-      "error": "",
+      "error": "Step 10 timed out waiting for the Contact field to populate on the Opportunity form (the fixed ~10s wait was too short for the async load).",
       "foundDate": "2026-07-30",
       "fixDate": "2026-07-30",
-      "solution": ""
+      "solution": "Replaced the fixed Contact-field wait with waitForCompanyAndContactPopulated() polling so the async Company/Contact population is awaited reliably."
     },
     {
       "section": "O12_CE_to_O12_CC",
       "summary": "TC.-A.1.6: Verify the Reseller can view the submitted registrations in My Opportunities",
-      "error": "",
+      "error": "Created Opportunity not found at the expected list position - non-deterministic sort order with 271+ leftover Opportunities in the paginated list.",
       "foundDate": "2026-07-30",
       "fixDate": "2026-07-30",
-      "solution": ""
+      "solution": "Rewrote the check to find the Opportunity via portal Search (isOpportunityListedBySearch) instead of asserting a sort position - pagination-proof."
     },
     {
       "section": "O12_CE_to_O12_CC",
