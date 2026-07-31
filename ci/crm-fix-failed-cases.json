@@ -38,10 +38,10 @@
     {
       "section": "O12_CE_to_O12_CC",
       "summary": "TC.THD_3.2.1.5.2: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE, Country = India and State is blank",
-      "error": "",
+      "error": "Lead not yet assigned to the THD team at check time - the Sales Team is assigned asynchronously (CRON) after the test completes, so the in-test assertion saw it unassigned.",
       "foundDate": "2026-07-30",
-      "fixDate": "",
-      "solution": ""
+      "fixDate": "2026-07-31",
+      "solution": "Not a defect: the THD Sales Team is assigned asynchronously after the run. Verified via a new deferred re-check job (Job B) CRM_Leads_Assignment_DeferredVerify that re-opens the lead ~1h later to confirm the THD assignment."
     }
   ]
 }
