@@ -278,9 +278,12 @@
   }
   function nowBadge(cs) {
     if (cs === 'passed') return '<span class="crm-badge b-fixed">Fixed</span>';
+    if (cs === 'async-ok') return '<span class="crm-badge b-fixed">Async &#10003; confirmed</span>';
     if (cs === 'failed' || cs === 'broken') return '<span class="crm-badge b-fail">Still failing</span>';
     return '<span class="crm-badge b-nr">Not re-run</span>';
   }
+  // A start-of-week case counts as resolved when re-run green OR confirmed by a fix branch.
+  function isResolved(cs) { return cs === 'passed' || cs === 'async-ok'; }
 
   // Collapsible case list with a Now (current-state) column. Used by both category
   // boxes: the frozen start-of-week set and the still-failing remainder.
@@ -459,7 +462,7 @@
     var statusByKey = {};
     (t.initialCasesStatus || []).forEach(function (s) { statusByKey[s.key] = s.currentStatus; });
 
-    var remainingCases = (begin.cases || []).filter(function (c) { return (statusByKey[c.key] || 'absent') !== 'passed'; });
+    var remainingCases = (begin.cases || []).filter(function (c) { return !isResolved(statusByKey[c.key] || 'absent'); });
 
     var html = '';
     // Categories - Start of week + Current status: compact (like the Allure Categories

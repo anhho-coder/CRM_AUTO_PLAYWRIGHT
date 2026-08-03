@@ -74,6 +74,45 @@ function keyOf(rec) {
   return rec.historyId ? ('h:' + rec.historyId) : ('n:' + rec.section + '::' + rec.name);
 }
 
+// Extract the greppable test-case id ("TC.THD_3.2.1.5.2", "CRM-1234") from a test name.
+// Used to cross-reference a beginning-of-week failure with the same case re-run on a fix
+// branch (crm-fix-branches.json keys tests by tcId, not by the report's historyId).
+function parseTcId(name) {
+  const m = String(name || '').match(/(TC\.[-\w.]+|CRM-\d+[\w.]*)/);
+  return m ? m[1].replace(/[:.]+$/, '') : '';
+}
+
+// Load fix-branch confirmations written by ci/allure-build-fix-branches.js (runs just
+// before this in the weekly pipeline). A start-of-week failure that a CRM_Rerun_* fix
+// branch has since re-run to green (status 'passed') or to an async-confirmed pass
+// ('async-ok', THD/lead-assignment CRON caught up per the round-2 deferred re-check) is
+// treated as RESOLVED here too, so the week Categories - Current status / Trend agree with
+// the "Verification branches" aggregate instead of still showing it as "1 left".
+// Returns key -> 'passed' | 'async-ok' (keyed by "<section>||<tcId>" and "tc||<tcId>").
+function loadBranchConfirmations() {
+  const map = {};
+  const RANK = { passed: 2, 'async-ok': 1 };
+  const fb = readJson(path.join(reportDir, 'crm-fix-branches.json'));
+  if (!fb || !Array.isArray(fb.branches)) return map;
+  fb.branches.forEach(function (b) {
+    (b.tests || []).forEach(function (t) {
+      const st = str(t.status).toLowerCase();
+      if (st !== 'passed' && st !== 'async-ok') return;
+      const tc = str(t.tcId);
+      if (!tc) return;
+      [str(t.section) + '||' + tc, 'tc||' + tc].forEach(function (k) {
+        if (!map[k] || RANK[st] > RANK[map[k]]) map[k] = st;
+      });
+    });
+  });
+  return map;
+}
+function branchConfirmOf(map, section, name) {
+  const tc = parseTcId(name);
+  if (!tc) return '';
+  return map[str(section) + '||' + tc] || map['tc||' + tc] || '';
+}
+
 function toCase(rec) {
   return {
     key: keyOf(rec),
@@ -171,31 +210,50 @@ function readCurrent() {
   const beginKeys = {};
   beginning.cases.forEach(function (c) { beginKeys[c.key] = c; });
 
+  // Fix-branch confirmations (cross-reference by tcId; see loadBranchConfirmations).
+  const branchConfirm = loadBranchConfirmations();
+
   // ---- Match each beginning case to its CURRENT status ----
-  let fixed = 0, stillFailing = 0, notRerun = 0;
+  // A case is RESOLVED if the weekly report re-ran it green, OR a fix branch confirmed it
+  // ('passed' / 'async-ok'). The branch verdict wins when the weekly report itself hasn't
+  // re-run the spec (still red / absent), so a confirmed-fixed case stops counting as "left".
+  let fixed = 0, stillFailing = 0, notRerun = 0, confirmedByBranch = 0;
   const initialCasesStatus = beginning.cases.map(function (c) {
     const now2 = cur.byKey[c.key];
-    const cs = now2 ? now2.status : 'absent';
-    const isFixed = cs === 'passed';
+    let cs = now2 ? now2.status : 'absent';
+    let byBranch = false;
+    if (cs !== 'passed') {
+      const bc = branchConfirmOf(branchConfirm, c.section, c.name);
+      if (bc) { cs = bc; byBranch = true; confirmedByBranch++; }
+    }
+    const isFixed = (cs === 'passed' || cs === 'async-ok');
     if (isFixed) fixed++;
     else if (RED[cs]) stillFailing++;
     else notRerun++;   // skipped / absent / unknown — not confirmed fixed
-    return { key: c.key, section: c.section, name: c.name, initialStatus: c.status, currentStatus: cs, fixed: isFixed };
+    return { key: c.key, section: c.section, name: c.name, initialStatus: c.status, currentStatus: cs, fixed: isFixed, confirmedByBranch: byBranch };
   });
 
   const remaining = beginning.total - fixed;
-  const newFailures = curFailedCases.filter(function (c) { return !(c.key in beginKeys); });
+
+  // A start-of-week failure still red in the weekly results but CONFIRMED fixed on a fix
+  // branch is no longer "failing now" — drop it from the current red set so the Trend KPIs
+  // ("Failing now", categories) agree with Categories - Current status.
+  const curFailedActive = curFailedCases.filter(function (c) {
+    return !((c.key in beginKeys) && branchConfirmOf(branchConfirm, c.section, c.name));
+  });
+  const newFailures = curFailedActive.filter(function (c) { return !(c.key in beginKeys); });
 
   const current = {
     capturedAt: today,
-    total: curFailedCases.length,
+    total: curFailedActive.length,
     fixedOfInitial: fixed,
     remainingOfInitial: remaining,
     stillFailing: stillFailing,
     notRerun: notRerun,
     newFailures: newFailures.length,
-    categories: breakdown(curFailedCases),
-    cases: curFailedCases.map(function (c) { return Object.assign({ inInitial: c.key in beginKeys }, c); }),
+    confirmedByBranch: confirmedByBranch,
+    categories: breakdown(curFailedActive),
+    cases: curFailedActive.map(function (c) { return Object.assign({ inInitial: c.key in beginKeys }, c); }),
   };
 
   // ---- Upsert today's burndown point (latest run of the day wins) ----
