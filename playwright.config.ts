@@ -211,6 +211,15 @@ export default defineConfig({
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/7.Pre-sales',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
+    {
+      // 1.Business-Process (Salesperson process) sub-tree of the O12 migration suite
+      // (74 specs across UC-A-1..UC-A-8, titles tc-a-x / tc-<team>-x). Its own project so a
+      // dedicated Jenkins job (CRM_O12_BusinessProcess) can run just this folder via
+      // --project=BusinessProcess. Overlaps with (is a subset of) the O12 project.
+      name: 'BusinessProcess',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+    },
 
     // {
     //   name: 'firefox',
