@@ -90,6 +90,11 @@
       W + ' .crm-fct-h{font-size:18px;font-weight:700;margin:0 0 2px;}' +
       W + ' .crm-fct-h .n{opacity:.55;font-weight:600;font-size:14px;margin-left:6px;}' +
       W + ' .crm-fct-sub{font-size:13.5px;opacity:.8;margin:0 0 14px;}' +
+      // compact Categories cards, side-by-side at the top
+      W + ' .crm-fct-catrow{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-start;margin:0 0 18px;}' +
+      W + ' .crm-fct-catcard{flex:1 1 360px;min-width:300px;margin:0;}' +
+      W + ' .crm-fct-catcard .crm-fct-h{font-size:15px;}' +
+      W + ' .crm-fct-catcard .crm-fct-h .n{font-size:12.5px;}' +
       // KPI strip
       W + ' .crm-fct-kpis{display:flex;flex-wrap:wrap;gap:12px;margin:2px 0 16px;}' +
       W + ' .crm-fct-kpi{flex:1 1 130px;min-width:120px;border:1px solid rgba(127,127,127,.22);' +
@@ -299,6 +304,16 @@
            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
+  // Compact category card (like the Allure "Categories" widget): title + count + red
+  // bars, with the full case list tucked behind a collapsed toggle. Used side-by-side.
+  function catCardCompact(title, countLabel, cats, cases, statusByKey, listId, toggleLabel, emptyMsg) {
+    return '<div class="widget island crm-fct-catcard">' +
+      '<div class="crm-fct-h">' + esc(title) + '<span class="n">' + esc(countLabel) + '</span></div>' +
+      catBars(cats) +
+      caseList(cases, statusByKey, listId, toggleLabel, emptyMsg) +
+    '</div>';
+  }
+
   // Section 3: the same "Fix failed cases" table as the Overview card.
   function fixFailedTable(ff) {
     var cases = (ff && ff.cases) || [];
@@ -444,34 +459,24 @@
     var statusByKey = {};
     (t.initialCasesStatus || []).forEach(function (s) { statusByKey[s.key] = s.currentStatus; });
 
-    var html = '';
-    // Aggregate of the week's verification branches (shown first when any ran).
-    html += aggregateCard(branches);
-    // 1. Categories - Start of week (the failed set, FROZEN for the whole period) — shown ABOVE the Trend
-    html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Categories - Start of week<span class="n">' + begin.total + ' failed case(s)</span></div>';
-    html += '<div class="crm-fct-sub">The failed set at the start of week <b>' + esc(t.week || '') + '</b> (captured ' +
-            esc(begin.capturedAt || '') + '). This set is <b>frozen</b> and does not change for the rest of the period.</div>';
-    html += catBars(begin.categories);
-    html += caseList(begin.cases, statusByKey, 'crm-fct-begin-list',
-              'Show the ' + begin.total + ' start-of-week failed case(s)',
-              'No failed cases at the start of this week.');
-    html += '</div>';
-
-    // 2. Categories - Current status (the members of the start-of-week set STILL not fixed)
     var remainingCases = (begin.cases || []).filter(function (c) { return (statusByKey[c.key] || 'absent') !== 'passed'; });
-    var fixedN = begin.total - remainingCases.length;
-    html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Categories - Current status<span class="n">' + remainingCases.length + ' of ' + begin.total + ' still failing</span></div>';
-    html += '<div class="crm-fct-sub"><b>' + fixedN + '</b> of the <b>' + begin.total + '</b> start-of-week failure(s) fixed so far &mdash; <b>' +
-            remainingCases.length + '</b> remaining' + (cur.newFailures ? ' (plus <b>' + cur.newFailures + '</b> new failure(s) this period, shown only in the KPIs above)' : '') + '.</div>';
-    html += catBars(breakdown(remainingCases));
-    html += caseList(remainingCases, statusByKey, 'crm-fct-cur-list',
-              'Show the ' + remainingCases.length + ' remaining failed case(s)',
-              'All start-of-week failures are fixed. 🎉');
+
+    var html = '';
+    // Categories - Start of week + Current status: compact (like the Allure Categories
+    // widget) and side-by-side, at the very TOP of the page for quick grasp.
+    html += '<div class="crm-fct-catrow">';
+    html += catCardCompact('Categories - Start of week', begin.total + ' failed', begin.categories,
+              begin.cases, statusByKey, 'crm-fct-begin-list',
+              'Show the ' + begin.total + ' start-of-week case(s)', 'No failed cases at the start of this week.');
+    html += catCardCompact('Categories - Current status', remainingCases.length + ' of ' + begin.total + ' left', breakdown(remainingCases),
+              remainingCases, statusByKey, 'crm-fct-cur-list',
+              'Show the ' + remainingCases.length + ' remaining case(s)', 'All start-of-week failures are fixed. 🎉');
     html += '</div>';
 
-    // 0. Trend (burndown) — now below the two Categories boxes
+    // Aggregate of the week's verification branches.
+    html += aggregateCard(branches);
+
+    // 0. Trend (burndown)
     html += '<div class="widget island">';
     html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
     html += '<div class="crm-fct-sub">Started the week with <b>' + begin.total + '</b> failed case(s). ' +
