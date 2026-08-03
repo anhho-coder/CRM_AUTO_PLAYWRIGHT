@@ -1,0 +1,88 @@
+// Jenkins pipeline: k6 concurrent-login load test against CRM PRE-PRODUCTION (Odoo).
+// Point a "Pipeline script from SCM" job at this file (branch now_code_on_Cursor,
+// Script Path: perf/Jenkinsfile.k6-login). Windows agent, same conventions as the
+// root Jenkinsfile (bat, publishHTML with hyphenated reportName).
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'VUS',      defaultValue: '10',   description: 'Concurrent virtual users = simultaneous logins (the "10 users at once").')
+        string(name: 'LOOPS',    defaultValue: '1',    description: 'Logins per VU (per-vu-iterations). 1 = a single VUS-user burst. Raise for a sustained login load.')
+        string(name: 'BASE_URL', defaultValue: 'http://pre-production.nakivo.site', description: 'Pre-prod base URL.')
+        string(name: 'MAP_IP',   defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to (k6 DNS map; mirrors HOST_RESOLVER_MAP). Blank to disable mapping.')
+        string(name: 'P95_MS',   defaultValue: '3000', description: 'Threshold: 95th-percentile login POST duration in ms. Build FAILS if exceeded.')
+    }
+
+    environment {
+        K6_DIR     = 'C:\\tools\\k6'
+        REPORT_DIR = 'perf\\k6\\report'
+    }
+
+    options {
+        timestamps()
+        timeout(time: 20, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Route pre-check (VPN to pre-prod)') {
+            steps {
+                powershell '''
+                    $ip = $env:MAP_IP
+                    if (-not $ip) { $ip = ([uri]$env:BASE_URL).Host }
+                    Write-Host "Probing pre-prod route to ${ip}:80 ..."
+                    $ok = Test-NetConnection -ComputerName $ip -Port 80 -InformationLevel Quiet
+                    if (-not $ok) {
+                        Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:80). Is the VPN up on the agent?"
+                        exit 1
+                    }
+                    Write-Host "Route OK."
+                '''
+            }
+        }
+
+        stage('Ensure k6') {
+            steps {
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\k6\\ensure-k6.ps1'
+            }
+        }
+
+        stage('Run k6 login load test') {
+            steps {
+                bat 'if not exist %REPORT_DIR% mkdir %REPORT_DIR%'
+                bat '''
+                    set "PATH=%K6_DIR%;%PATH%"
+                    k6 run ^
+                        -e BASE_URL=%BASE_URL% ^
+                        -e MAP_IP=%MAP_IP% ^
+                        -e VUS=%VUS% ^
+                        -e LOOPS=%LOOPS% ^
+                        -e P95_MS=%P95_MS% ^
+                        --summary-export=%REPORT_DIR%\\summary-export.json ^
+                        --out json=%REPORT_DIR%\\raw-metrics.json ^
+                        perf\\k6\\login-load.js
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'perf/k6/report',
+                reportFiles: 'index.html',
+                reportName: 'k6-Login-LoadTest'
+            ])
+            archiveArtifacts artifacts: 'perf/k6/report/**', allowEmptyArchive: true
+        }
+    }
+}
