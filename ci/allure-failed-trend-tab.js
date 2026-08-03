@@ -100,7 +100,7 @@
       W + ' .crm-fct-kpi.k-remain .v{color:#c9302c;}' +
       // chart
       W + ' .crm-fct-chartwrap{position:relative;width:100%;overflow-x:auto;}' +
-      W + ' .crm-fct-chart{width:100%;min-width:420px;height:auto;display:block;}' +
+      W + ' .crm-fct-chart{width:100%;min-width:420px;max-width:820px;height:auto;display:block;}' +
       W + ' .crm-fct-tt{position:absolute;pointer-events:none;z-index:5;background:rgba(30,32,38,.96);' +
         'color:#fff;font-size:12px;line-height:1.5;padding:7px 10px;border-radius:7px;white-space:nowrap;' +
         'box-shadow:0 4px 14px rgba(0,0,0,.28);transform:translate(-50%,-108%);opacity:0;transition:opacity .08s;}' +
