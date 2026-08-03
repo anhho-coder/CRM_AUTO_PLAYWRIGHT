@@ -274,17 +274,20 @@ if ($Scope -eq 'weekly') {
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed-card injection returned $LASTEXITCODE (continuing)." }
 
     # ---- "Failed cases trend" sidebar tab (WEEKLY report only) ----
+    # Per-verification-branch sub-tabs FIRST: each CRM_Rerun_* job that ran DURING this week
+    # (dated buckets $resultsRoot\<day>\<job>\<build>, days = $prefixes) becomes a sub-tab
+    # showing its re-run per-spec status (async THD failures flagged as pending re-check).
+    # This writes <reportDir>\crm-fix-branches.json, which the failed-trend build below then
+    # consumes so a start-of-week failure CONFIRMED FIXED on a fix branch (passed / async-ok)
+    # counts as resolved in the week Categories - Current status + Trend burndown.
+    node (Join-Path $Workspace 'ci\allure-build-fix-branches.js') $reportDir $resultsRoot 'C:\deferred-verify' 'http://10.8.81.44:8080' 'CRM_Rerun_' ($prefixes -join ',')
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-branches build returned $LASTEXITCODE (continuing)." }
     # Stateful: freezes the beginning-of-week failed set + a daily burndown into
     # $trendStore\weekly\<periodKey>.json (persists across the week's re-runs), then
-    # emits <reportDir>\crm-failed-trend.json for the tab to render.
+    # emits <reportDir>\crm-failed-trend.json for the tab to render (reads crm-fix-branches.json).
     $ftState = Join-Path $trendStore $Scope
     node (Join-Path $Workspace 'ci\allure-build-failed-trend.js') $reportDir "$periodKey" $Scope "$ftState"
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend build returned $LASTEXITCODE (continuing)." }
-    # Per-verification-branch sub-tabs: each CRM_Rerun_* job that ran DURING this week
-    # (dated buckets $resultsRoot\<day>\<job>\<build>, days = $prefixes) becomes a sub-tab
-    # showing its re-run per-spec status (async THD failures flagged as pending re-check).
-    node (Join-Path $Workspace 'ci\allure-build-fix-branches.js') $reportDir $resultsRoot 'C:\deferred-verify' 'http://10.8.81.44:8080' 'CRM_Rerun_' ($prefixes -join ',')
-    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-branches build returned $LASTEXITCODE (continuing)." }
     node (Join-Path $Workspace 'ci\allure-inject-failed-trend-tab.js') $reportDir
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend-tab injection returned $LASTEXITCODE (continuing)." }
 }
