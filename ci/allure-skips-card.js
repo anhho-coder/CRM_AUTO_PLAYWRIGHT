@@ -21,6 +21,10 @@
  * Per suite: grey "skipped" = (1.1 deliberate) + (1.2 did-not-run). This script
  * only RENDERS those two files; it computes nothing itself.
  *
+ * At the top of the card a "Categories — list of skipped cases" summary tallies
+ * the skipped test-case count per cause (1.1 bug-blocked + 1.2 did-not-run, plus
+ * their total), so the two numbers are visible before the per-suite detail tables.
+ *
  * Placement: inserted right after the Overview "Suites" widget. Idempotent,
  * dark-mode friendly, re-applies on hash navigation via a MutationObserver.
  */
@@ -61,6 +65,12 @@
       '#' + WIDGET_ID + ' .crm-sec-h{font-size:15px;font-weight:700;margin:0 0 2px;letter-spacing:.01em;}' +
       '#' + WIDGET_ID + ' .crm-sec-h .n{font-weight:700;margin-right:5px;}' +
       '#' + WIDGET_ID + ' .crm-sec-sub{font-size:13px;margin:0 0 10px;}' +
+      // categories summary specifics
+      '#' + WIDGET_ID + ' .crm-cats table{min-width:0;max-width:640px;}' +
+      '#' + WIDGET_ID + ' .crm-cat-n{font-weight:700;white-space:nowrap;}' +
+      '#' + WIDGET_ID + ' .crm-cats td{vertical-align:middle;}' +
+      '#' + WIDGET_ID + ' tr.crm-cat-total td{border-top:2px solid rgba(127,127,127,.30);border-bottom:none;font-weight:700;}' +
+      '#' + WIDGET_ID + ' .crm-cat-pct{font-size:13px;opacity:.7;}' +
       '#' + WIDGET_ID + ' .crm-scroll{overflow-x:auto;}' +
       '#' + WIDGET_ID + ' table{width:100%;border-collapse:collapse;font-size:15px;min-width:720px;}' +
       '#' + WIDGET_ID + ' th{text-align:left;font-size:13px;text-transform:uppercase;letter-spacing:.03em;' +
@@ -136,6 +146,45 @@
     var items = (tests || []).map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('');
     if (more > 0) items += '<li class="more">…and ' + more + ' more</li>';
     return items;
+  }
+
+  // ---- Categories summary: skipped TC count per cause (1.1 + 1.2) ----
+  function sectionCategories(bundle) {
+    var byBug = (bundle.skips && bundle.skips.totalSkipped) || 0;
+    var byDnr = (bundle.dnr && bundle.dnr.totalDidNotRun) || 0;
+    var total = byBug + byDnr;
+    if (!total) return '';
+    var pct = function (n) { return total ? Math.round((n / total) * 100) : 0; };
+    var rows = [
+      { n: '1.1', dot: 'cat-new', label: 'Skipped by reported bugs',
+        desc: 'Deliberately skipped in code (test.skip / describe.skip), each blocked by a Jira bug.',
+        count: byBug },
+      { n: '1.2', dot: 'cat-unknown', label: 'Did-not-run',
+        desc: 'Queued but never executed — job/build timeout, aborted run, or a cascade from an earlier failure in the same spec.',
+        count: byDnr }
+    ];
+    var html = '<div class="crm-sec crm-cats">';
+    html += '<div class="crm-sec-h">Categories &mdash; list of skipped cases</div>';
+    html += '<div class="crm-sec-sub">Every grey &ldquo;skipped&rdquo; test falls into one of the causes below. ' +
+            '<b>' + total + '</b> skipped test case(s) total &mdash; the per-suite breakdown follows in 1.1 and 1.2.</div>';
+    html += '<div class="crm-scroll"><table><thead><tr>' +
+              '<th>#</th><th>Category</th><th>What it means</th><th class="num">TCs</th>' +
+            '</tr></thead><tbody>';
+    rows.forEach(function (r) {
+      html += '<tr>' +
+                '<td><span class="crm-cat-n">' + r.n + '</span></td>' +
+                '<td><span class="crm-dot ' + r.dot + '"></span><b>' + esc(r.label) + '</b></td>' +
+                '<td>' + esc(r.desc) + '</td>' +
+                '<td class="num">' + r.count +
+                  ' <span class="crm-cat-pct">(' + pct(r.count) + '%)</span></td>' +
+              '</tr>';
+    });
+    html += '<tr class="crm-cat-total">' +
+              '<td></td><td>Total</td><td></td><td class="num">' + total + '</td>' +
+            '</tr>';
+    html += '</tbody></table></div>';
+    html += '</div>';
+    return html;
   }
 
   // ---- Section 1.1: deliberate skips, blocked by a bug (from crm-skips.json) ----
@@ -269,6 +318,7 @@
     html += '<div class="crm-skips-h">Skipped Test cases</div>';
     html += '<div class="crm-skips-sub">The Suites bar counts every skipped test as one grey block, but skips ' +
             'have two causes. Per suite: <b>grey skipped = deliberate (1.1) + did-not-run (1.2)</b>.</div>';
+    html += sectionCategories(bundle);
     html += section11(bundle.skips);
     html += section12(bundle.dnr);
 
