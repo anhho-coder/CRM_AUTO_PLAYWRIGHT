@@ -8,7 +8,7 @@ pipeline {
     parameters {
         string(name: 'VUS',      defaultValue: '10',   description: 'Concurrent virtual users = simultaneous logins (the "10 users at once").')
         string(name: 'LOOPS',    defaultValue: '1',    description: 'Logins per VU (per-vu-iterations). 1 = a single VUS-user burst. Raise for a sustained login load.')
-        string(name: 'BASE_URL', defaultValue: 'http://pre-production.nakivo.site', description: 'Pre-prod base URL.')
+        string(name: 'BASE_URL', defaultValue: 'https://pre-production.nakivo.site', description: 'Pre-prod base URL (HTTPS - the site forces https).')
         string(name: 'MAP_IP',   defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to (k6 DNS map; mirrors HOST_RESOLVER_MAP). Blank to disable mapping.')
         string(name: 'P95_MS',   defaultValue: '3000', description: 'Threshold: 95th-percentile login POST duration in ms. Build FAILS if exceeded.')
     }
@@ -31,18 +31,33 @@ pipeline {
             }
         }
 
+        stage('Resolve config') {
+            steps {
+                script {
+                    // First build of a parameterized pipeline has NO params yet -> fall back to defaults.
+                    env.EFF_BASE_URL = (params.BASE_URL?.trim()) ?: 'https://pre-production.nakivo.site'
+                    env.EFF_MAP_IP   = (params.MAP_IP != null) ? params.MAP_IP.trim() : '10.220.222.100'
+                    env.EFF_VUS      = (params.VUS?.trim()) ?: '10'
+                    env.EFF_LOOPS    = (params.LOOPS?.trim()) ?: '1'
+                    env.EFF_P95_MS   = (params.P95_MS?.trim()) ?: '3000'
+                    echo "Effective -> BASE_URL=${env.EFF_BASE_URL} | MAP_IP=${env.EFF_MAP_IP} | VUS=${env.EFF_VUS} | LOOPS=${env.EFF_LOOPS} | P95_MS=${env.EFF_P95_MS}"
+                }
+            }
+        }
+
         stage('Route pre-check (VPN to pre-prod)') {
             steps {
                 powershell '''
-                    $ip = $env:MAP_IP
-                    if (-not $ip) { $ip = ([uri]$env:BASE_URL).Host }
-                    Write-Host "Probing pre-prod route to ${ip}:80 ..."
-                    $ok = Test-NetConnection -ComputerName $ip -Port 80 -InformationLevel Quiet
+                    $ip = $env:EFF_MAP_IP
+                    if (-not $ip) { try { $ip = ([uri]$env:EFF_BASE_URL).Host } catch { $ip = "" } }
+                    if (-not $ip) { $ip = "10.220.222.100" }
+                    Write-Host "Probing pre-prod route to ${ip}:443 ..."
+                    $ok = Test-NetConnection -ComputerName $ip -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
                     if (-not $ok) {
-                        Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:80). Is the VPN up on the agent?"
+                        Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:443). Is the VPN up on the agent?"
                         exit 1
                     }
-                    Write-Host "Route OK."
+                    Write-Host "Route OK (${ip}:443 reachable)."
                 '''
             }
         }
@@ -59,11 +74,11 @@ pipeline {
                 bat '''
                     set "PATH=%K6_DIR%;%PATH%"
                     k6 run ^
-                        -e BASE_URL=%BASE_URL% ^
-                        -e MAP_IP=%MAP_IP% ^
-                        -e VUS=%VUS% ^
-                        -e LOOPS=%LOOPS% ^
-                        -e P95_MS=%P95_MS% ^
+                        -e BASE_URL=%EFF_BASE_URL% ^
+                        -e MAP_IP=%EFF_MAP_IP% ^
+                        -e VUS=%EFF_VUS% ^
+                        -e LOOPS=%EFF_LOOPS% ^
+                        -e P95_MS=%EFF_P95_MS% ^
                         --summary-export=%REPORT_DIR%\\summary-export.json ^
                         --out json=%REPORT_DIR%\\raw-metrics.json ^
                         perf\\k6\\login-load.js

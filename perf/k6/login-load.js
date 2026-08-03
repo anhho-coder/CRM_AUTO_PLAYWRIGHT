@@ -7,7 +7,9 @@
  *
  * Flow per VU/iteration:
  *   1) GET  /web/login   -> obtain a session cookie + scrape the csrf_token
- *   2) POST /web/login   -> login + password (+ csrf_token); success = 303/302 redirect
+ *   2) POST /web/login   -> login + password (+ csrf_token)
+ *      success = HTTP 200 whose body is Odoo's JS redirect: window.location = '/web'
+ *      failure = HTTP 200 re-rendering the login form (name="password" + alert-danger)
  *
  * Config via env (all optional, sensible defaults):
  *   BASE_URL  pre-prod base url          (default http://pre-production.nakivo.site)
@@ -29,7 +31,7 @@ import { SharedArray } from 'k6/data';
 import { Trend, Rate, Counter } from 'k6/metrics';
 
 // ---- Config from env ----
-const BASE_URL = (__ENV.BASE_URL || 'http://pre-production.nakivo.site').replace(/\/+$/, '');
+const BASE_URL = (__ENV.BASE_URL || 'https://pre-production.nakivo.site').replace(/\/+$/, '');
 const MAP_IP = __ENV.MAP_IP === undefined ? '10.220.222.100' : __ENV.MAP_IP;
 const VUS = parseInt(__ENV.VUS || '10', 10);
 const LOOPS = parseInt(__ENV.LOOPS || '1', 10);
@@ -61,6 +63,7 @@ const loginAttempts = new Counter('login_attempts');
 
 export const options = {
   hosts: hostsMap,
+  insecureSkipTLSVerify: true, // internal pre-prod TLS cert is not publicly trusted
   scenarios: {
     simultaneous_login: {
       executor: 'per-vu-iterations',
@@ -94,22 +97,23 @@ export default function () {
   if (csrf) payload.csrf_token = csrf;
 
   const res = http.post(`${BASE_URL}/web/login`, payload, {
-    redirects: 0,
     tags: { step: 'post_login' },
   });
 
   loginDuration.add(res.timings.duration);
   loginAttempts.add(1);
 
-  // Odoo redirects (303/302) on success; re-renders login (200) with an alert on failure.
-  const location = res.headers['Location'] || res.headers['location'] || '';
-  const ok = res.status === 303 || res.status === 302;
+  // This Odoo returns 200 + a tiny JS redirect page on SUCCESS:
+  //   <script>window.location = '/web' + location.hash;</script>
+  // On FAILURE it re-renders the ~16KB login form (name="password" + alert-danger).
+  const body = res.body || '';
+  const ok = res.status === 200 && body.indexOf("window.location = '/web'") !== -1;
 
   loginSuccess.add(ok);
-  check(res, { 'login accepted (redirect after POST /web/login)': () => ok });
+  check(res, { 'login accepted (Odoo JS redirect to /web)': () => ok });
 
   if (!ok) {
-    console.error(`LOGIN FAILED user=${u.email} status=${res.status} loc=${location}`);
+    console.error(`LOGIN FAILED user=${u.email} status=${res.status} bodyLen=${body.length}`);
   }
 }
 

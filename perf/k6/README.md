@@ -25,7 +25,7 @@ k6 run -e VUS=25 -e P95_MS=4000 perf/k6/login-load.js
 |---|---|---|
 | `VUS` | 10 | Concurrent virtual users (simultaneous logins). |
 | `LOOPS` | 1 | Logins per VU. 1 = a single VUS-user burst. |
-| `BASE_URL` | http://pre-production.nakivo.site | Pre-prod base URL. |
+| `BASE_URL` | https://pre-production.nakivo.site | Pre-prod base URL (site forces HTTPS; internal cert -> `insecureSkipTLSVerify`). |
 | `MAP_IP` | 10.220.222.100 | Host→IP map (mirrors `HOST_RESOLVER_MAP`). Blank to disable. |
 | `P95_MS` | 3000 | p95 login-duration gate (ms). Build fails if exceeded. |
 
