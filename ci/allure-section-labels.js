@@ -108,7 +108,28 @@
     widget.insertBefore(eyebrow(num, desc), widget.firstChild);
   }
 
+  // Rename the Overview "Categories" widget title (NOT the left-sidebar nav tab).
+  // Match the widget header whose trimmed text is exactly "Categories" so the
+  // rename is idempotent (after renaming it no longer equals "Categories").
+  var CAT_TITLE = 'Categories - list of failed cases';
+  function renameCategories() {
+    var titles = document.querySelectorAll('.widget__title, .pane__title, .widget h2');
+    for (var i = 0; i < titles.length; i++) {
+      var el = titles[i];
+      // The Allure title node also holds an "N items total" counter span; read
+      // only the leading text node so the counter is preserved untouched.
+      var first = el.firstChild;
+      if (first && first.nodeType === 3 && first.nodeValue.trim() === 'Categories') {
+        first.nodeValue = CAT_TITLE;
+      } else if (el.childNodes.length === 1 && el.textContent.trim() === 'Categories') {
+        el.textContent = CAT_TITLE;
+      }
+    }
+  }
+
   function enhance() {
+    renameCategories();
+
     // Section 2: the Suites widget (its rows link to #suites/<uid>)
     var suitesRow = document.querySelector('a.table__row[href^="#suites/"]');
     if (suitesRow) label(suitesRow.closest('.widget'), 'Section 2', 'Latest result per suite by unique test case');
@@ -117,6 +138,10 @@
     var widgets = document.querySelectorAll('.widget');
     for (var i = 0; i < widgets.length; i++) {
       var w = widgets[i];
+      // Skip the "Failed cases trend" tab's own cards: they reuse .widget/.island for
+      // theme chrome and contain charts + "case(s)" text, which would otherwise be
+      // mislabeled "Section 1 / Total test cases run this period".
+      if (w.closest && w.closest('#crm-fct-panel')) continue;
       if (/test cases/i.test(w.textContent) && w.querySelector('svg, .chart, canvas')) {
         label(w, 'Section 1', 'Total test cases run this period');
         addQaSplit(w); // per-QA "Executed by" split (host -> QA)

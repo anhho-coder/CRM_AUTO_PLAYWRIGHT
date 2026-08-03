@@ -350,8 +350,9 @@
       html += '<div class="crm-fct-subtabs" role="tablist">';
       html += '<button type="button" class="crm-fct-subtab is-active" data-view="overview">Week overview</button>';
       branches.forEach(function (b, i) {
+        var resolved = b.passed + (b.asyncConfirmed || 0);   // async-confirmed counts as resolved
         html += '<button type="button" class="crm-fct-subtab" data-view="b' + i + '" title="' + esc(b.jobName) + '">' +
-                esc(b.jobName) + '<span class="crm-fct-subtab-n">' + b.passed + '/' + b.total + '</span></button>';
+                esc(b.jobName) + '<span class="crm-fct-subtab-n">' + resolved + '/' + b.total + '</span></button>';
       });
       html += '</div>';
     }
@@ -416,14 +417,14 @@
       { labels: BR_LABELS, totalLabel: 'Total target', titleOf: function (p) { return fmtDay(p.date); }, emptyMsg: 'No verification branches ran this week.' });
     // per-branch summary
     html += '<div class="crm-fct-listwrap open" style="margin-top:14px"><table class="crm-fct-tbl"><thead><tr>' +
-      '<th class="num">#</th><th>Branch (job)</th><th>Latest run</th><th>Passed</th><th>Async &check;</th><th>Pending</th><th>Failing</th><th>Build</th>' +
+      '<th class="num">#</th><th>Branch (job)</th><th>Latest run</th><th>Resolved</th><th>Async &check;</th><th>Pending</th><th>Failing</th><th>Build</th>' +
       '</tr></thead><tbody>';
     branches.forEach(function (b, i) {
       html += '<tr>' +
         '<td class="num">' + (i + 1) + '</td>' +
         '<td class="sum">' + esc(b.jobName) + '<br><span style="opacity:.6;font-weight:400">branch ' + esc(b.branch) + '</span></td>' +
         '<td>' + esc(b.date || '—') + ' #' + b.build + '</td>' +
-        '<td>' + b.passed + '/' + b.total + '</td>' +
+        '<td>' + (b.passed + (b.asyncConfirmed || 0)) + '/' + b.total + '</td>' +
         '<td>' + (b.asyncConfirmed || 0) + '</td>' +
         '<td>' + b.asyncPending + '</td>' +
         '<td>' + b.failed + '</td>' +

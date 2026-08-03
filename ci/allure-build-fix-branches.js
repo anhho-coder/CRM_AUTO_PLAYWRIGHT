@@ -140,13 +140,6 @@ function applyAsync(tests, deferred, dv) {
   });
   return tests;
 }
-// Lighter marking for the per-build burndown: a red spec with a manifest is "async"
-// (pending) for THAT build — no retroactive deferred-confirm, so the trend shows the
-// branch's honest re-run progress (a spec stays pending until a build actually passes it).
-function applyManifestAsync(tests, deferred) {
-  tests.forEach(function (t) { if (RED[t.status] && t.tcId && deferred[t.tcId]) t.status = 'async'; });
-  return tests;
-}
 function countStatuses(tests) {
   return {
     total: tests.length,
@@ -207,8 +200,9 @@ function readResultsDir(dir) {
     // Burndown series: one point per build in the window (chronological) so the branch
     // sub-tab can show a trend of its target specs being fixed across re-runs.
     const series = allB.map(function (bd) {
-      const c = countStatuses(applyManifestAsync(readResultsDir(bd.dir), deferred));
-      return { date: bd.day, build: bd.build, fixed: c.passed, stillFailing: c.failed, notRerun: c.asyncPending, total: c.total, remaining: c.total - c.passed };
+      const c = countStatuses(applyAsync(readResultsDir(bd.dir), deferred, dv));
+      const resolved = c.passed + c.asyncOk;   // async-confirmed (deferred re-check passed) counts as resolved
+      return { date: bd.day, build: bd.build, fixed: resolved, stillFailing: c.failed, notRerun: c.asyncPending, total: c.total, remaining: c.total - resolved };
     });
 
     // Latest build -> the per-spec table + headline counts.
