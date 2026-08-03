@@ -98,11 +98,14 @@
       W + ' .crm-fct-legend span{display:inline-flex;align-items:center;gap:6px;}' +
       W + ' .crm-fct-legend i{width:12px;height:12px;border-radius:3px;display:inline-block;}' +
       W + ' .crm-fct-empty{opacity:.6;font-size:14px;padding:20px 0;}' +
-      // category chips
-      W + ' .crm-fct-cats{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}' +
-      W + ' .crm-fct-cat{display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(217,83,79,.30);' +
-        'background:rgba(217,83,79,.08);border-radius:999px;padding:3px 12px;font-size:13px;}' +
-      W + ' .crm-fct-cat b{font-variant-numeric:tabular-nums;}' +
+      // category bars (mirror the Allure "Categories" widget: name + red count bar)
+      W + ' .crm-fct-bars{margin:2px 0 14px;}' +
+      W + ' .crm-fct-brow{display:flex;align-items:center;gap:12px;margin:7px 0;}' +
+      W + ' .crm-fct-bname{flex:0 0 40%;max-width:40%;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
+      W + ' .crm-fct-btrack{flex:1;min-width:60px;background:rgba(127,127,127,.14);border-radius:5px;height:24px;overflow:hidden;}' +
+      W + ' .crm-fct-bbar{height:100%;min-width:28px;background:#e5533d;border-radius:5px;display:flex;align-items:center;' +
+        'justify-content:flex-end;padding-right:9px;box-sizing:border-box;}' +
+      W + ' .crm-fct-bnum{color:#fff;font-weight:700;font-size:12.5px;font-variant-numeric:tabular-nums;}' +
       // tables
       W + ' .crm-fct-toggle{cursor:pointer;user-select:none;font-size:13.5px;font-weight:600;' +
         'display:inline-flex;align-items:center;gap:6px;opacity:.9;}' +
@@ -218,11 +221,26 @@
     return '<div class="crm-fct-chartwrap"><div class="crm-fct-tt" id="crm-fct-tt"></div>' + svg + '</div>' + legend;
   }
 
-  // ---------- category chips + case list ----------
-  function catChips(cats) {
-    if (!cats || !cats.length) return '';
-    return '<div class="crm-fct-cats">' + cats.map(function (c) {
-      return '<span class="crm-fct-cat">' + esc(c.name) + ' <b>' + c.count + '</b></span>';
+  // ---------- category bars + case list ----------
+  // Group a list of cases by their category -> [{name,count}] (desc), like the build.
+  function breakdown(cases) {
+    var by = {};
+    (cases || []).forEach(function (c) { var k = c.category || 'Uncategorized'; by[k] = (by[k] || 0) + 1; });
+    return Object.keys(by).sort(function (a, b) { return by[b] - by[a] || a.localeCompare(b); })
+      .map(function (k) { return { name: k, count: by[k] }; });
+  }
+  // Render a category breakdown as the Allure "Categories" widget does: name + a red
+  // count bar (width proportional to the largest count).
+  function catBars(cats) {
+    if (!cats || !cats.length) return '<div class="crm-fct-empty">No categories.</div>';
+    var max = cats.reduce(function (m, c) { return Math.max(m, c.count); }, 0) || 1;
+    return '<div class="crm-fct-bars">' + cats.map(function (c) {
+      var w = Math.max(8, Math.round((c.count / max) * 100));
+      return '<div class="crm-fct-brow">' +
+        '<div class="crm-fct-bname" title="' + esc(c.name) + '">' + esc(c.name) + '</div>' +
+        '<div class="crm-fct-btrack"><div class="crm-fct-bbar" style="width:' + w + '%">' +
+        '<span class="crm-fct-bnum">' + c.count + '</span></div></div>' +
+      '</div>';
     }).join('') + '</div>';
   }
   function errCell(e) {
@@ -234,9 +252,10 @@
     return '<span class="crm-badge b-nr">Not re-run</span>';
   }
 
-  // Beginning-of-week list: each initial case + its CURRENT status.
-  function beginningList(begin, statusByKey, listId) {
-    var cases = begin.cases || [];
+  // Collapsible case list with a Now (current-state) column. Used by both category
+  // boxes: the frozen start-of-week set and the still-failing remainder.
+  function caseList(cases, statusByKey, listId, toggleLabel, emptyMsg) {
+    cases = cases || [];
     var rows = cases.map(function (c, i) {
       var cs = statusByKey[c.key] || 'absent';
       return '<tr>' +
@@ -248,34 +267,10 @@
         '<td class="err">' + errCell(c.error) + '</td>' +
       '</tr>';
     }).join('');
-    if (!cases.length) rows = '<tr><td colspan="6" class="crm-fct-empty">No failed cases at the beginning of this week.</td></tr>';
-    return '<div class="crm-fct-toggle" data-target="' + listId + '"><span class="caret">▶</span>' +
-             'Show the ' + cases.length + ' beginning-of-week failed case(s)</div>' +
+    if (!cases.length) rows = '<tr><td colspan="6" class="crm-fct-empty">' + esc(emptyMsg || 'None.') + '</td></tr>';
+    return '<div class="crm-fct-toggle" data-target="' + listId + '"><span class="caret">▶</span>' + esc(toggleLabel) + '</div>' +
            '<div class="crm-fct-listwrap" id="' + listId + '"><table class="crm-fct-tbl"><thead><tr>' +
              '<th class="num">#</th><th>Section</th><th>Test case</th><th>Category</th><th>Now</th><th>Error</th>' +
-           '</tr></thead><tbody>' + rows + '</tbody></table></div>';
-  }
-
-  // Current failing list.
-  function currentList(cur, listId) {
-    var cases = cur.cases || [];
-    var rows = cases.map(function (c, i) {
-      var isNew = c.inInitial === false;
-      var st = (c.status === 'broken') ? '<span class="crm-badge b-fail">broken</span>' : '<span class="crm-badge b-fail">failed</span>';
-      return '<tr>' +
-        '<td class="num">' + (i + 1) + '</td>' +
-        '<td><span class="crm-fct-sec">' + esc(c.section) + '</span></td>' +
-        '<td class="sum">' + esc(c.name) + (isNew ? '<span class="crm-badge b-new">new this week</span>' : '') + '</td>' +
-        '<td class="cat">' + esc(c.category) + '</td>' +
-        '<td>' + st + '</td>' +
-        '<td class="err">' + errCell(c.error) + '</td>' +
-      '</tr>';
-    }).join('');
-    if (!cases.length) rows = '<tr><td colspan="6" class="crm-fct-empty">No test cases are failing right now. 🎉</td></tr>';
-    return '<div class="crm-fct-toggle" data-target="' + listId + '"><span class="caret">▶</span>' +
-             'Show the ' + cases.length + ' currently-failing case(s)</div>' +
-           '<div class="crm-fct-listwrap" id="' + listId + '"><table class="crm-fct-tbl"><thead><tr>' +
-             '<th class="num">#</th><th>Section</th><th>Test case</th><th>Category</th><th>Status</th><th>Error</th>' +
            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
@@ -342,20 +337,28 @@
     html += buildChart(t.series || [], begin.total);
     html += '</div>';
 
-    // 1. Beginning
+    // 1. Categories - Start of week (the failed set, FROZEN for the whole period)
     html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Categories &mdash; failed items at the beginning of the week<span class="n">' + begin.total + ' case(s)</span></div>';
-    html += '<div class="crm-fct-sub">The failed set captured on <b>' + esc(begin.capturedAt || '') + '</b>. The <b>Now</b> column shows each one\'s current state.</div>';
-    html += catChips(begin.categories);
-    html += beginningList(begin, statusByKey, 'crm-fct-begin-list');
+    html += '<div class="crm-fct-h">Categories - Start of week<span class="n">' + begin.total + ' failed case(s)</span></div>';
+    html += '<div class="crm-fct-sub">The failed set at the start of week <b>' + esc(t.week || '') + '</b> (captured ' +
+            esc(begin.capturedAt || '') + '). This set is <b>frozen</b> and does not change for the rest of the period.</div>';
+    html += catBars(begin.categories);
+    html += caseList(begin.cases, statusByKey, 'crm-fct-begin-list',
+              'Show the ' + begin.total + ' start-of-week failed case(s)',
+              'No failed cases at the start of this week.');
     html += '</div>';
 
-    // 2. Current
+    // 2. Categories - Current status (the members of the start-of-week set STILL not fixed)
+    var remainingCases = (begin.cases || []).filter(function (c) { return (statusByKey[c.key] || 'absent') !== 'passed'; });
+    var fixedN = begin.total - remainingCases.length;
     html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Categories &mdash; failed items currently<span class="n">' + cur.total + ' case(s)</span></div>';
-    html += '<div class="crm-fct-sub">Failing right now' + (cur.newFailures ? ' &mdash; including <b>' + cur.newFailures + '</b> new failure(s) that were not failing at the start of the week' : '') + '.</div>';
-    html += catChips(cur.categories);
-    html += currentList(cur, 'crm-fct-cur-list');
+    html += '<div class="crm-fct-h">Categories - Current status<span class="n">' + remainingCases.length + ' of ' + begin.total + ' still failing</span></div>';
+    html += '<div class="crm-fct-sub"><b>' + fixedN + '</b> of the <b>' + begin.total + '</b> start-of-week failure(s) fixed so far &mdash; <b>' +
+            remainingCases.length + '</b> remaining' + (cur.newFailures ? ' (plus <b>' + cur.newFailures + '</b> new failure(s) this period, shown only in the KPIs above)' : '') + '.</div>';
+    html += catBars(breakdown(remainingCases));
+    html += caseList(remainingCases, statusByKey, 'crm-fct-cur-list',
+              'Show the ' + remainingCases.length + ' remaining failed case(s)',
+              'All start-of-week failures are fixed. 🎉');
     html += '</div>';
 
     // 3. Fix failed cases
