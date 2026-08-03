@@ -25,6 +25,15 @@
  * the skipped test-case count per cause (1.1 bug-blocked + 1.2 did-not-run, plus
  * their total), so the two numbers are visible before the per-suite detail tables.
  *
+ * RUN-SCOPED: both the Categories summary and §1.1 describe only the skips actually
+ * present in THIS report (its grey bar), NOT crm-skips.json's whole-source registry
+ * — which also counts deliberate skips in suites that never ran this period. The
+ * run-scoped counts come from crm-didnotrun.json.runScope (totalIntentional +
+ * totalDidNotRun + intentionalBySuite); §1.1 keeps only suites in intentionalBySuite
+ * and uses those counts, so §1.1 total + §1.2 total === the Suites grey total. §1.1's
+ * bug rows/reasons/Jira meta still come from crm-skips.json (source). Older reports
+ * without runScope fall back to the full source registry.
+ *
  * Placement: inserted right after the Overview "Suites" widget. Idempotent,
  * dark-mode friendly, re-applies on hash navigation via a MutationObserver.
  */
@@ -150,7 +159,11 @@
 
   // ---- Categories summary: skipped TC count per cause (1.1 + 1.2) ----
   function sectionCategories(bundle) {
-    var byBug = (bundle.skips && bundle.skips.totalSkipped) || 0;
+    // Run-scoped: count only the deliberate + did-not-run skips actually present in
+    // THIS report (from crm-didnotrun.json.runScope), so the total reconciles with
+    // the Suites grey bar. Fall back to the source-registry total on older data.
+    var rs = bundle.dnr && bundle.dnr.runScope;
+    var byBug = rs ? (rs.totalIntentional || 0) : ((bundle.skips && bundle.skips.totalSkipped) || 0);
     var byDnr = (bundle.dnr && bundle.dnr.totalDidNotRun) || 0;
     var total = byBug + byDnr;
     if (!total) return '';
@@ -188,24 +201,43 @@
   }
 
   // ---- Section 1.1: deliberate skips, blocked by a bug (from crm-skips.json) ----
-  function section11(data) {
+  function section11(data, dnr) {
     if (!data || !data.suites || !data.suites.length) return '';
     var jira = data.jiraBase || 'http://jira.nakivo.com/browse/';
     var meta = data.bugMeta || {};
+
+    // Run-scope §1.1 to THIS report: keep only suites whose deliberate skips actually
+    // ran (crm-didnotrun.json.runScope.intentionalBySuite) and show run-scoped counts,
+    // so §1.1 + Categories reconcile with the Suites grey bar instead of the whole-
+    // source registry (crm-skips.json also counts skips in suites that never ran this
+    // period). Fall back to the full source list on older data with no runScope.
+    var intBySuite = dnr && dnr.runScope && dnr.runScope.intentionalBySuite;
+    var runCount = function (s) { return intBySuite ? (intBySuite[s.suite] || 0) : s.count; };
+    var suites = intBySuite
+      ? data.suites.filter(function (s) { return (intBySuite[s.suite] || 0) > 0; })
+      : data.suites;
+    if (!suites.length) return '';
+    var bugSet = {};
+    suites.forEach(function (s) {
+      (s.bugRows || []).forEach(function (br) { if (br.bug) bugSet[br.bug] = 1; });
+    });
+    var totalSkipped = intBySuite ? (dnr.runScope.totalIntentional || 0) : data.totalSkipped;
+    var totalBugs = intBySuite ? Object.keys(bugSet).length : data.totalBugs;
+
     var html = '<div class="crm-sec">';
     html += '<div class="crm-sec-h"><span class="n">1.1</span>Skipped by reported bugs</div>';
-    html += '<div class="crm-sec-sub">Deliberate skips in code &mdash; <b>' + data.totalSkipped +
-            '</b> test case(s) across <b>' + data.suites.length + '</b> suite(s), blocked by <b>' +
-            data.totalBugs + '</b> bug(s). Click a bug to list its tests.</div>';
+    html += '<div class="crm-sec-sub">Deliberate skips in code &mdash; <b>' + totalSkipped +
+            '</b> test case(s) across <b>' + suites.length + '</b> suite(s), blocked by <b>' +
+            totalBugs + '</b> bug(s). Click a bug to list its tests.</div>';
     html += '<div class="crm-scroll"><table><thead><tr>' +
               '<th>Suite</th><th class="num">Skipped</th><th>Bug</th>' +
               '<th>Bug Status</th><th>Assignee</th><th>Latest Update</th><th>Reason</th>' +
             '</tr></thead><tbody>';
-    data.suites.forEach(function (s) {
+    suites.forEach(function (s) {
       (s.bugRows || []).forEach(function (br, ri) {
         var first = ri === 0;
         var suiteCell = first
-          ? '<span class="crm-suite">' + esc(s.suite) + ' <span class="tot">(' + s.count + ' total)</span></span>'
+          ? '<span class="crm-suite">' + esc(s.suite) + ' <span class="tot">(' + runCount(s) + ' total)</span></span>'
           : '';
         var m = br.bug ? (meta[br.bug] || null) : null;
         var bugCell = br.bug
@@ -319,7 +351,7 @@
     html += '<div class="crm-skips-sub">The Suites bar counts every skipped test as one grey block, but skips ' +
             'have two causes. Per suite: <b>grey skipped = deliberate (1.1) + did-not-run (1.2)</b>.</div>';
     html += sectionCategories(bundle);
-    html += section11(bundle.skips);
+    html += section11(bundle.skips, bundle.dnr);
     html += section12(bundle.dnr);
 
     card.innerHTML = html;
