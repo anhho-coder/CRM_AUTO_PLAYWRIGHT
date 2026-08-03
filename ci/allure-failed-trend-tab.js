@@ -447,21 +447,7 @@
     var html = '';
     // Aggregate of the week's verification branches (shown first when any ran).
     html += aggregateCard(branches);
-    // 0. Trend
-    html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
-    html += '<div class="crm-fct-sub">Started the week with <b>' + begin.total + '</b> failed case(s). ' +
-            'Each day the report re-runs, the fixed ones drop out and the chart shows how many remain.</div>';
-    html += '<div class="crm-fct-kpis">' +
-      '<div class="crm-fct-kpi"><div class="v">' + begin.total + '</div><div class="l">Failed at start of week</div></div>' +
-      '<div class="crm-fct-kpi k-fixed"><div class="v">' + cur.fixedOfInitial + '</div><div class="l">Fixed so far (' + pct(cur.fixedOfInitial, begin.total) + '%)</div></div>' +
-      '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining of the initial set</div></div>' +
-      '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Failing now (incl. ' + cur.newFailures + ' new)</div></div>' +
-      '</div>';
-    html += buildChart(t.series || [], begin.total, { emptyMsg: 'No failed cases were recorded at the beginning of this week — nothing to burn down.' });
-    html += '</div>';
-
-    // 1. Categories - Start of week (the failed set, FROZEN for the whole period)
+    // 1. Categories - Start of week (the failed set, FROZEN for the whole period) — shown ABOVE the Trend
     html += '<div class="widget island">';
     html += '<div class="crm-fct-h">Categories - Start of week<span class="n">' + begin.total + ' failed case(s)</span></div>';
     html += '<div class="crm-fct-sub">The failed set at the start of week <b>' + esc(t.week || '') + '</b> (captured ' +
@@ -483,6 +469,20 @@
     html += caseList(remainingCases, statusByKey, 'crm-fct-cur-list',
               'Show the ' + remainingCases.length + ' remaining failed case(s)',
               'All start-of-week failures are fixed. 🎉');
+    html += '</div>';
+
+    // 0. Trend (burndown) — now below the two Categories boxes
+    html += '<div class="widget island">';
+    html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
+    html += '<div class="crm-fct-sub">Started the week with <b>' + begin.total + '</b> failed case(s). ' +
+            'Each day the report re-runs, the fixed ones drop out and the chart shows how many remain.</div>';
+    html += '<div class="crm-fct-kpis">' +
+      '<div class="crm-fct-kpi"><div class="v">' + begin.total + '</div><div class="l">Failed at start of week</div></div>' +
+      '<div class="crm-fct-kpi k-fixed"><div class="v">' + cur.fixedOfInitial + '</div><div class="l">Fixed so far (' + pct(cur.fixedOfInitial, begin.total) + '%)</div></div>' +
+      '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining of the initial set</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Failing now (incl. ' + cur.newFailures + ' new)</div></div>' +
+      '</div>';
+    html += buildChart(t.series || [], begin.total, { emptyMsg: 'No failed cases were recorded at the beginning of this week — nothing to burn down.' });
     html += '</div>';
 
     // 3. Fix failed cases
