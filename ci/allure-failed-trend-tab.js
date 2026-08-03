@@ -47,8 +47,8 @@
   }
   function loadData() {
     if (dataPromise) return dataPromise;
-    dataPromise = Promise.all([getJson('crm-failed-trend.json'), getJson('crm-fix-failed.json')])
-      .then(function (res) { return { trend: res[0], ff: res[1] }; });
+    dataPromise = Promise.all([getJson('crm-failed-trend.json'), getJson('crm-fix-failed.json'), getJson('crm-fix-branches.json')])
+      .then(function (res) { return { trend: res[0], ff: res[1], branches: (res[2] && res[2].branches) || [] }; });
     return dataPromise;
   }
 
@@ -73,7 +73,19 @@
       W + '{display:none;flex:1 1 auto;min-width:0;overflow:auto;padding:24px 30px 60px;box-sizing:border-box;}' +
       W + '.is-on{display:block;}' +
       W + ' .crm-fct-title{font-size:24px;font-weight:800;margin:0 0 2px;}' +
-      W + ' .crm-fct-lead{font-size:14px;opacity:.75;margin:0 0 18px;}' +
+      W + ' .crm-fct-lead{font-size:14px;opacity:.75;margin:0 0 14px;}' +
+      // sub-tab bar (Week overview | per verification branch)
+      W + ' .crm-fct-subtabs{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px;border-bottom:1px solid rgba(127,127,127,.2);padding-bottom:12px;}' +
+      W + ' .crm-fct-subtab{font:inherit;font-size:13px;font-weight:600;cursor:pointer;color:inherit;background:transparent;' +
+        'border:1px solid rgba(128,128,128,.35);border-radius:999px;padding:6px 14px;opacity:.82;display:inline-flex;align-items:center;gap:7px;}' +
+      W + ' .crm-fct-subtab:hover{opacity:1;border-color:#4b6bfb;}' +
+      W + ' .crm-fct-subtab.is-active{background:#4b6bfb;color:#fff;border-color:#4b6bfb;opacity:1;}' +
+      W + ' .crm-fct-subtab-n{font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;background:rgba(127,127,127,.18);' +
+        'border-radius:999px;padding:0 7px;}' +
+      W + ' .crm-fct-subtab.is-active .crm-fct-subtab-n{background:rgba(255,255,255,.25);}' +
+      W + ' .crm-fct-bh a{color:#4b6bfb;text-decoration:none;font-weight:600;font-size:13px;}' +
+      W + ' .crm-fct-bh a:hover{text-decoration:underline;}' +
+      W + ' .b-async{background:rgba(201,154,46,.16);color:#a9791f;border:1px solid rgba(201,154,46,.34);}' +
       W + ' .widget.island{padding:18px 22px;margin-bottom:20px;}' +
       W + ' .crm-fct-h{font-size:18px;font-weight:700;margin:0 0 2px;}' +
       W + ' .crm-fct-h .n{opacity:.55;font-weight:600;font-size:14px;margin-left:6px;}' +
@@ -313,16 +325,50 @@
       return;
     }
     try {
+    var branches = bundle.branches || [];
+    var html = '';
+    html += '<div class="crm-fct-title">' + TITLE + '</div>';
+    html += '<div class="crm-fct-lead">Tracks the failed test cases that existed at the <b>start of the week</b> and how they are fixed across the week &mdash; week ' +
+            esc(t.week || '') + '.</div>';
+
+    // Sub-tab bar: Week overview + one per verification branch (a CRM_Rerun_* job that
+    // re-runs specific failed cases on its own fix branch). Shown only when present.
+    if (branches.length) {
+      html += '<div class="crm-fct-subtabs" role="tablist">';
+      html += '<button type="button" class="crm-fct-subtab is-active" data-view="overview">Week overview</button>';
+      branches.forEach(function (b, i) {
+        html += '<button type="button" class="crm-fct-subtab" data-view="b' + i + '" title="' + esc(b.jobName) + '">' +
+                esc(b.jobName) + '<span class="crm-fct-subtab-n">' + b.passed + '/' + b.total + '</span></button>';
+      });
+      html += '</div>';
+    }
+
+    // Views (only one visible at a time; switched client-side by the sub-tab bar).
+    html += '<div class="crm-fct-views">';
+    html += '<div class="crm-fct-view" data-view="overview">' + overviewHtml(t, bundle.ff) + '</div>';
+    branches.forEach(function (b, i) {
+      html += '<div class="crm-fct-view" data-view="b' + i + '" style="display:none">' + branchHtml(b) + '</div>';
+    });
+    html += '</div>';
+
+    html += '<div class="crm-fct-foot">Source: crm-failed-trend.json + crm-fix-failed.json' +
+            (branches.length ? ' + crm-fix-branches.json (CRM_Rerun_* jobs)' : '') +
+            (t.generatedAt ? ' &middot; as of ' + esc(fmtDay(t.generatedAt)) : '') + '.</div>';
+
+    panel.innerHTML = html;
+    wire(panel, t);
+    panel.setAttribute('data-painted', '1');
+    } catch (e) { console.error('FCT renderPanel error:', (e && e.stack) || e); }
+  }
+
+  // "Week overview" sub-view: the burndown + the two Categories boxes + Fix failed cases.
+  function overviewHtml(t, ff) {
     var begin = t.beginning || { total: 0, cases: [], categories: [] };
     var cur = t.current || { total: 0, cases: [], categories: [], fixedOfInitial: 0, remainingOfInitial: begin.total, newFailures: 0 };
     var statusByKey = {};
     (t.initialCasesStatus || []).forEach(function (s) { statusByKey[s.key] = s.currentStatus; });
 
     var html = '';
-    html += '<div class="crm-fct-title">' + TITLE + '</div>';
-    html += '<div class="crm-fct-lead">Tracks the failed test cases that existed at the <b>start of the week</b> and how they are fixed across the week &mdash; week ' +
-            esc(t.week || '') + '.</div>';
-
     // 0. Trend
     html += '<div class="widget island">';
     html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
@@ -362,21 +408,61 @@
     html += '</div>';
 
     // 3. Fix failed cases
-    html += '<div class="widget island">';
-    html += fixFailedTable(bundle.ff);
-    html += '</div>';
-
-    html += '<div class="crm-fct-foot">Source: crm-failed-trend.json (built from the run) + crm-fix-failed.json (ci/crm-fix-failed-cases.json)' +
-            (t.generatedAt ? ' &middot; as of ' + esc(fmtDay(t.generatedAt)) : '') + '.</div>';
-
-    panel.innerHTML = html;
-    wire(panel, t);
-    panel.setAttribute('data-painted', '1');
-    } catch (e) { console.error('FCT renderPanel error:', (e && e.stack) || e); }
+    html += '<div class="widget island">' + fixFailedTable(ff) + '</div>';
+    return html;
   }
 
-  // expand/collapse toggles + chart hover tooltip
+  function branchStatusBadge(s) {
+    if (s === 'passed') return '<span class="crm-badge b-fixed">Passed</span>';
+    if (s === 'async') return '<span class="crm-badge b-async">Async &middot; re-check</span>';
+    if (s === 'failed' || s === 'broken') return '<span class="crm-badge b-fail">Failed</span>';
+    if (s === 'skipped') return '<span class="crm-badge b-nr">Skipped</span>';
+    return '<span class="crm-badge b-nr">' + esc(s || '—') + '</span>';
+  }
+
+  // A verification-branch sub-view: header + KPIs + per-spec status table.
+  function branchHtml(b) {
+    var rows = (b.tests || []).map(function (tst, i) {
+      return '<tr>' +
+        '<td class="num">' + (i + 1) + '</td>' +
+        '<td>' + (tst.section ? '<span class="crm-fct-sec">' + esc(tst.section) + '</span>' : '') + '</td>' +
+        '<td class="cat">' + esc(tst.tcId || '') + '</td>' +
+        '<td class="sum">' + esc(tst.title || '') + '</td>' +
+        '<td>' + branchStatusBadge(tst.status) + '</td>' +
+        '<td class="err">' + errCell(tst.error) + '</td>' +
+      '</tr>';
+    }).join('');
+    if (!(b.tests || []).length) rows = '<tr><td colspan="6" class="crm-fct-empty">No results for this branch yet.</td></tr>';
+
+    var html = '<div class="widget island">';
+    html += '<div class="crm-fct-h crm-fct-bh">' + esc(b.jobName) +
+            '<span class="n">branch ' + esc(b.branch) + ' &middot; latest run ' + esc(b.date || '—') +
+            ' &middot; <a href="' + esc(b.buildUrl) + '" target="_blank" rel="noopener">open build ↗</a></span></div>';
+    html += '<div class="crm-fct-sub">Re-run of ' + b.total + ' target spec(s): <b>' + b.passed + '</b> passed' +
+            (b.asyncPending ? ', <b>' + b.asyncPending + '</b> async (Sales-Team assigned by a later CRON &mdash; the deferred re-check confirms these ~1h later)' : '') +
+            (b.failed ? ', <b>' + b.failed + '</b> still failing' : '') + '.</div>';
+    html += '<div class="crm-fct-kpis">' +
+      '<div class="crm-fct-kpi k-fixed"><div class="v">' + b.passed + '</div><div class="l">Passed / fixed</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + b.asyncPending + '</div><div class="l">Async (pending re-check)</div></div>' +
+      '<div class="crm-fct-kpi k-remain"><div class="v">' + b.failed + '</div><div class="l">Still failing</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + b.total + '</div><div class="l">Target specs</div></div>' +
+      '</div>';
+    html += '<div class="crm-fct-listwrap open"><table class="crm-fct-tbl"><thead><tr>' +
+      '<th class="num">#</th><th>Section</th><th>TC</th><th>Test case</th><th>Status</th><th>Error</th>' +
+      '</tr></thead><tbody>' + rows + '</tbody></table></div>';
+    html += '</div>';
+    return html;
+  }
+
+  // sub-tab switching + expand/collapse toggles + chart hover tooltip
   function wire(panel, trend) {
+    Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-subtab'), function (tab) {
+      tab.addEventListener('click', function () {
+        var v = tab.getAttribute('data-view');
+        Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-subtab'), function (x) { x.classList.toggle('is-active', x === tab); });
+        Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-view'), function (x) { x.style.display = (x.getAttribute('data-view') === v) ? '' : 'none'; });
+      });
+    });
     Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-toggle'), function (tg) {
       tg.addEventListener('click', function () {
         var w = panel.querySelector('#' + tg.getAttribute('data-target'));

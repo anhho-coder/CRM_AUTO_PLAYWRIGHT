@@ -280,6 +280,11 @@ if ($Scope -eq 'weekly') {
     $ftState = Join-Path $trendStore $Scope
     node (Join-Path $Workspace 'ci\allure-build-failed-trend.js') $reportDir "$periodKey" $Scope "$ftState"
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend build returned $LASTEXITCODE (continuing)." }
+    # Per-verification-branch sub-tabs: each CRM_Rerun_* job (stashed to C:\allure\results\<job>)
+    # becomes a sub-tab showing its re-run per-spec status (async THD failures flagged as pending
+    # re-check). Defaults: resultsRoot=C:\allure\results, deferredRoot=C:\deferred-verify.
+    node (Join-Path $Workspace 'ci\allure-build-fix-branches.js') $reportDir
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-branches build returned $LASTEXITCODE (continuing)." }
     node (Join-Path $Workspace 'ci\allure-inject-failed-trend-tab.js') $reportDir
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: failed-trend-tab injection returned $LASTEXITCODE (continuing)." }
 }
