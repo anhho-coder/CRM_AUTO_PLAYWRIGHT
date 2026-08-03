@@ -414,6 +414,7 @@
 
   function branchStatusBadge(s) {
     if (s === 'passed') return '<span class="crm-badge b-fixed">Passed</span>';
+    if (s === 'async-ok') return '<span class="crm-badge b-fixed">Async &check; confirmed</span>';
     if (s === 'async') return '<span class="crm-badge b-async">Async &middot; re-check</span>';
     if (s === 'failed' || s === 'broken') return '<span class="crm-badge b-fail">Failed</span>';
     if (s === 'skipped') return '<span class="crm-badge b-nr">Skipped</span>';
@@ -438,12 +439,15 @@
     html += '<div class="crm-fct-h crm-fct-bh">' + esc(b.jobName) +
             '<span class="n">branch ' + esc(b.branch) + ' &middot; latest run ' + esc(b.date || '—') +
             ' &middot; <a href="' + esc(b.buildUrl) + '" target="_blank" rel="noopener">open build ↗</a></span></div>';
+    var asyncOk = b.asyncConfirmed || 0;
     html += '<div class="crm-fct-sub">Re-run of ' + b.total + ' target spec(s): <b>' + b.passed + '</b> passed' +
-            (b.asyncPending ? ', <b>' + b.asyncPending + '</b> async (Sales-Team assigned by a later CRON &mdash; the deferred re-check confirms these ~1h later)' : '') +
+            (asyncOk ? ', <b>' + asyncOk + '</b> async-confirmed (Sales-Team assigned by a later CRON, verified by the deferred re-check)' : '') +
+            (b.asyncPending ? ', <b>' + b.asyncPending + '</b> async pending re-check' : '') +
             (b.failed ? ', <b>' + b.failed + '</b> still failing' : '') + '.</div>';
     html += '<div class="crm-fct-kpis">' +
       '<div class="crm-fct-kpi k-fixed"><div class="v">' + b.passed + '</div><div class="l">Passed / fixed</div></div>' +
-      '<div class="crm-fct-kpi"><div class="v">' + b.asyncPending + '</div><div class="l">Async (pending re-check)</div></div>' +
+      '<div class="crm-fct-kpi k-fixed"><div class="v">' + asyncOk + '</div><div class="l">Async &check; confirmed</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + b.asyncPending + '</div><div class="l">Async pending</div></div>' +
       '<div class="crm-fct-kpi k-remain"><div class="v">' + b.failed + '</div><div class="l">Still failing</div></div>' +
       '<div class="crm-fct-kpi"><div class="v">' + b.total + '</div><div class="l">Target specs</div></div>' +
       '</div>';

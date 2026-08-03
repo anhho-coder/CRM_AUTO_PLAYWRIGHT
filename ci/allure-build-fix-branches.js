@@ -32,6 +32,8 @@ const deferredRoot      = process.argv[4] || 'C:\\deferred-verify';
 const jenkinsBase       = (process.argv[5] || 'http://10.8.81.44:8080').replace(/\/+$/, '');
 const jobPrefix         = process.argv[6] || 'CRM_Rerun_';
 const daysCsv           = process.argv[7] || '';
+const jenkinsHome       = process.argv[8] || 'C:\\ProgramData\\Jenkins\\.jenkins';
+const DV_JOB            = 'CRM_Leads_Assignment_DeferredVerify';
 
 const RED = { failed: 1, broken: 1 };
 const days = daysCsv.split(',').map(function (d) { return d.trim(); }).filter(function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); });
@@ -81,6 +83,37 @@ function deferredTcIdsForJob(jobName) {
       });
   });
   return ids;
+}
+
+// Per-tcId verdict from the CRM_Leads_Assignment_DeferredVerify job's build console logs
+// (round-2 authoritative re-check). Each build logs one line per checkpoint:
+//   "  PASS TC.THD_3.2.1.5.2 [sales_team] expected=... now=..."   (or FAIL / DEAD)
+// A tcId is 'confirmed' when its LATEST deferred build had all its fields PASS (the async
+// CRON caught up); 'stillwrong' when the latest still had a FAIL. Read straight off the
+// agent's Jenkins home (this build runs on the agent). Best-effort: unreadable -> {} ->
+// the spec stays "async" (pending), never a crash.
+function deferredVerdicts() {
+  const latest = {};   // tcId -> 'confirmed' | 'stillwrong'  (later build wins)
+  const buildsDir = path.join(jenkinsHome, 'jobs', DV_JOB, 'builds');
+  const builds = readdir(buildsDir).filter(function (b) { return /^\d+$/.test(b); })
+    .map(Number).sort(function (a, b) { return a - b; });
+  builds.slice(-50).forEach(function (n) {
+    let txt = '';
+    try { txt = fs.readFileSync(path.join(buildsDir, String(n), 'log'), 'utf8'); } catch (e) { return; }
+    const thisBuild = {};   // tcId -> {pass, fail}
+    txt.split('\n').forEach(function (line) {
+      const m = line.match(/\b(PASS|FAIL)\s+(TC\.[-\w.]+|CRM-\d+[\w.]*)\s+\[/);
+      if (!m) return;
+      const tc = m[2].replace(/[:.]+$/, '');
+      if (!thisBuild[tc]) thisBuild[tc] = { pass: 0, fail: 0 };
+      if (m[1] === 'PASS') thisBuild[tc].pass++; else thisBuild[tc].fail++;
+    });
+    Object.keys(thisBuild).forEach(function (tc) {
+      const v = thisBuild[tc];
+      latest[tc] = (v.fail === 0 && v.pass > 0) ? 'confirmed' : 'stillwrong';   // later build overrides
+    });
+  });
+  return latest;
 }
 
 // The latest {day, build, dir} for a job across the window's dated buckets.
@@ -137,17 +170,28 @@ function readResultsDir(dir) {
       .forEach(function (d) { jobsSet[d] = true; });
   });
 
+  const dv = deferredVerdicts();
+
   Object.keys(jobsSet).forEach(function (jobName) {
     const latest = latestBuildInWindow(jobName);
     if (!latest) return;
     const tests = readResultsDir(latest.dir);
     if (!tests.length) { log('skip ' + jobName + ' (no results in window).'); return; }
 
+    // A red lead-assignment spec whose tcId has a deferred manifest is an async candidate.
+    // Refine with the round-2 verdict: confirmed -> async-ok (green), stillwrong after re-check
+    // -> failed (real), no verdict yet -> async (amber, pending).
     const deferred = deferredTcIdsForJob(jobName);
-    tests.forEach(function (t) { if (RED[t.status] && t.tcId && deferred[t.tcId]) t.status = 'async'; });
+    tests.forEach(function (t) {
+      if (RED[t.status] && t.tcId && deferred[t.tcId]) {
+        const v = dv[t.tcId];
+        t.status = v === 'confirmed' ? 'async-ok' : v === 'stillwrong' ? 'failed' : 'async';
+      }
+    });
     tests.sort(function (a, b) { return (a.tcId || a.title).localeCompare(b.tcId || b.title); });
 
     const passed = tests.filter(function (t) { return t.status === 'passed'; }).length;
+    const asyncOk = tests.filter(function (t) { return t.status === 'async-ok'; }).length;
     const asyncN = tests.filter(function (t) { return t.status === 'async'; }).length;
     const failed = tests.filter(function (t) { return RED[t.status]; }).length;
 
@@ -161,6 +205,7 @@ function readResultsDir(dir) {
       passed: passed,
       failed: failed,
       asyncPending: asyncN,
+      asyncConfirmed: asyncOk,
       tests: tests,
     });
   });
@@ -172,7 +217,7 @@ function readResultsDir(dir) {
     fs.mkdirSync(reportDir, { recursive: true });
     fs.writeFileSync(path.join(reportDir, 'crm-fix-branches.json'), JSON.stringify(out, null, 2));
     log('wrote ' + out.branches.length + ' branch(es) for week ' + out.week + ': ' +
-        out.branches.map(function (b) { return b.jobName + '#' + b.build + '(' + b.passed + '/' + b.total + (b.asyncPending ? ',' + b.asyncPending + ' async' : '') + ')'; }).join(', '));
+        out.branches.map(function (b) { return b.jobName + '#' + b.build + '(' + b.passed + '/' + b.total + (b.asyncConfirmed ? ',' + b.asyncConfirmed + ' async-ok' : '') + (b.asyncPending ? ',' + b.asyncPending + ' async' : '') + ')'; }).join(', '));
   } catch (e) {
     log('WARNING: could not write crm-fix-branches.json (' + e.message + ').');
   }

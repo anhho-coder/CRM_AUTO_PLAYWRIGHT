@@ -11,8 +11,9 @@
 // waitForSalesTeamAssignment). Each round-1 build stashes its manifest to a DATED bucket
 // C:\deferred-verify\<yyyy-MM-dd>\<JOB>-<BUILD>.jsonl (main Jenkinsfile + ci/Jenkinsfile.slow post{}).
 //
-// WHAT THIS JOB DOES: ~1h after the round-1 runs finish (scheduled by CRON at a fixed hour, see
-// triggers below - decoupled, so no executor is held waiting), it UNIONS every manifest of the
+// WHAT THIS JOB DOES: ~30 min after the round-1 runs finish (EVENT-DRIVEN - an upstream() trigger
+// fires the moment a round-1 job completes, and a 30-min quietPeriod delays the start; see triggers
+// below - decoupled, so no executor is held waiting), it UNIONS every manifest of the
 // chosen DAY into one cluster and runs a single spec that logs in once and re-opens each saved
 // lead URL to check whether the async cron has by now assigned the expected value. THIS is the
 // source of truth for lead assignment: a record still wrong here (1h later) is a real defect; a
@@ -50,11 +51,23 @@ pipeline {
         )
     }
 
-    // CRON lech gio: fire ~1h AFTER the round-1 lead-assignment runs are expected to finish.
-    // Adjust the hour to your schedule (section jobs' nightly finish + 1h). H = jitter the minute.
-    // Example: round-1 nightly done by ~05:00 -> re-verify at 06:30.
+    // EVENT-DRIVEN trigger: auto-fire ~30 min AFTER the round-1 lead-assignment runs FINISH.
+    // upstream() fires the instant a listed round-1 job completes; the job-level quietPeriod(1800)
+    // in options{} then holds the build in the queue for 30 min before it starts. Several round-1
+    // jobs finishing in one nightly window COALESCE (disableConcurrentBuilds) into ONE round-2 build,
+    // so round-2 effectively starts ~30 min after the round-1 cluster finishes - no fixed clock, no
+    // held executor. Manual / API runs bypass the 30-min wait via ?delay=0sec (see the driver script).
+    //
+    // threshold: FAILURE (NOT SUCCESS) is REQUIRED - round-1 assignment builds legitimately end
+    // FAILURE when the async cron has not run yet (Received: ""), and those are exactly the ones we
+    // want to re-verify. FAILURE threshold fires on SUCCESS / UNSTABLE / FAILURE (any real
+    // completion, not ABORTED/NOT_BUILT). Keep this list = the round-1 jobs that run assignment /
+    // convert-to-opp specs (they all stash into the same C:\deferred-verify\<day>\ cluster).
     triggers {
-        cron('H 6 * * *')
+        upstream(
+            upstreamProjects: 'CRM_Leads_Assignment, CRM_Leads_Assignment_THD_SlowLane, CRM_O12, CRM_O12_b, CRM_O12_c, CRM_O12_PreSales',
+            threshold: hudson.model.Result.FAILURE
+        )
     }
 
     environment {
@@ -68,6 +81,10 @@ pipeline {
     }
 
     options {
+        // 30-min queue delay: an upstream (round-1) completion fires this build, and quietPeriod holds
+        // it 30 min so the async assignment cron has time to run before round-2 re-reads. Manual/API
+        // runs override this with ?delay=0sec (run_deferred_verify.sh) so on-demand runs stay instant.
+        quietPeriod(1800)
         timeout(time: 240, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
         buildDiscarder(logRotator(numToKeepStr: '20'))
         disableConcurrentBuilds()
