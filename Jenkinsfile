@@ -15,7 +15,7 @@ pipeline {
     parameters {
         choice(
             name: 'PROJECT',
-            choices: ['auto', 'Investments', 'Lead_Merging', 'Leads_Assignment', 'SalesReport_Performance', 'CRM_Module', 'O12'],
+            choices: ['auto', 'Investments', 'Lead_Merging', 'Leads_Assignment', 'SalesReport_Performance', 'CRM_Module', 'O12', 'PreSales'],
             description: 'Section to run. "auto" = pick by job name (e.g. CRM_Investments -> Investments).'
         )
         string(
@@ -232,6 +232,7 @@ echo ffmpeg OK
                         'CRM_SalesReport_Perf' : 'SalesReport_Performance',
                         'CRM_CRM_Module'       : 'CRM_Module',
                         'CRM_O12'              : 'O12',
+                        'CRM_O12_PreSales'     : 'PreSales',
                     ]
                     def spec = params.SPEC?.trim()
                     // JIRA_PATH (Jira/Xray Test Repository path) -> spec list via the resolver.
@@ -273,6 +274,13 @@ echo ffmpeg OK
                     // the THD_team folder is not guillotined. Scripted context here allows the
                     // Groovy expression that the declarative options{} block rejects.
                     def runTimeout = (params.TIMEOUT_MIN ?: '90').toInteger()
+                    // Per-job MINIMUM timeout floor: a whole-folder section that runs serially
+                    // (workers:1) can exceed the 90-min default. CRM_O12_PreSales runs all 16
+                    // 7.Pre-sales specs in one build (~2.5h + CI-retry headroom), so floor it at
+                    // 240 even on a plain Build. Other jobs unaffected (floor 0). A user can still
+                    // raise it further via TIMEOUT_MIN (max wins); it just can't drop below 240 here.
+                    def jobMinTimeout = [ 'CRM_O12_PreSales' : 240 ]
+                    runTimeout = Math.max(runTimeout, (jobMinTimeout[env.JOB_BASE_NAME] ?: 0))
                     // Resolve this run's single Playwright invocation into a closure so it can
                     // run under the mid-run VPN watchdog below.
                     def runPlaywright

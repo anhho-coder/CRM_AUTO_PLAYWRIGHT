@@ -203,6 +203,14 @@ export default defineConfig({
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
+    {
+      // 7.Pre-sales sub-tree of the O12 migration suite (16 specs, titles pre-sale-7.x).
+      // Its own project so a dedicated Jenkins job (CRM_O12_PreSales) can run just this
+      // folder via --project=PreSales. Overlaps with (is a subset of) the O12 project.
+      name: 'PreSales',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/7.Pre-sales',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+    },
 
     // {
     //   name: 'firefox',
