@@ -159,9 +159,16 @@
 
   // ---------- burndown chart ----------
   var COL = { fixed: '#3ca25b', fail: '#d9534f', nr: '#9aa0a6' };
-  function buildChart(series, total) {
+  // Stacked-area burndown, reused by Week overview, the aggregate card and each branch.
+  // opts.labels = {fixed, mid, top}; opts.totalLabel; opts.titleOf(p); opts.emptyMsg.
+  // Each hover slot carries its own tooltip (data-tt) so multiple charts coexist.
+  function buildChart(series, total, opts) {
+    opts = opts || {};
+    var lbl = opts.labels || { fixed: 'Fixed (confirmed passing)', mid: 'Still failing', top: 'Not re-run yet' };
+    var totalLabel = opts.totalLabel || 'Initial total';
+    var titleOf = opts.titleOf || function (p) { return fmtDay(p.date); };
     if (!series || !series.length || !total) {
-      return '<div class="crm-fct-empty">No failed cases were recorded at the beginning of this week — nothing to burn down.</div>';
+      return '<div class="crm-fct-empty">' + esc(opts.emptyMsg || 'No data to chart yet.') + '</div>';
     }
     var W = 820, H = 300, padL = 40, padR = 14, padT = 14, padB = 44;
     var plotW = W - padL - padR, plotH = H - padT - padB;
@@ -213,24 +220,30 @@
       // keep the first/last labels from overflowing the viewBox
       var anc = (n > 1 && k === 0) ? 'start' : (n > 1 && k === n - 1) ? 'end' : 'middle';
       svg += '<text x="' + xs[k] + '" y="' + (H - 24) + '" text-anchor="' + anc + '" font-size="11" fill="currentColor" opacity=".7">' +
-             esc(fmtDay(p.date)) + '</text>';
+             esc(titleOf(p)) + '</text>';
       svg += '<text x="' + xs[k] + '" y="' + (H - 10) + '" text-anchor="' + anc + '" font-size="10.5" fill="' + COL.fail + '">' +
              p.remaining + ' left</text>';
-      // invisible hover slot
+      // per-slot tooltip payload (so several charts on one page each show their own data)
+      var ttHtml = '<b>' + esc(titleOf(p)) + '</b><br>' +
+        '<span class="sw" style="background:' + COL.fixed + '"></span>' + esc(lbl.fixed) + ': <b>' + p.fixed + '</b><br>' +
+        '<span class="sw" style="background:' + COL.fail + '"></span>' + esc(lbl.mid) + ': <b>' + p.stillFailing + '</b><br>' +
+        '<span class="sw" style="background:' + COL.nr + '"></span>' + esc(lbl.top) + ': <b>' + p.notRerun + '</b><br>' +
+        'Remaining: <b>' + p.remaining + '</b> / ' + total +
+        (p.currentTotalFailed != null ? '<br>Failing now (all): <b>' + p.currentTotalFailed + '</b>' : '');
       var rx = xs[k] - slotW / 2;
       svg += '<rect class="crm-fct-slot" x="' + rx + '" y="' + padT + '" width="' + slotW + '" height="' + plotH +
-             '" fill="transparent" data-i="' + k + '"/>';
+             '" fill="transparent" data-tt="' + encodeURIComponent(ttHtml) + '"/>';
     }
     svg += '</svg>';
 
     var legend = '<div class="crm-fct-legend">' +
-      '<span><i style="background:' + COL.fixed + '"></i>Fixed (confirmed passing)</span>' +
-      '<span><i style="background:' + COL.fail + '"></i>Still failing</span>' +
-      '<span><i style="background:' + COL.nr + '"></i>Not re-run yet</span>' +
-      '<span><i style="border:1px dashed rgba(127,127,127,.7);background:none"></i>Initial total</span>' +
+      '<span><i style="background:' + COL.fixed + '"></i>' + esc(lbl.fixed) + '</span>' +
+      '<span><i style="background:' + COL.fail + '"></i>' + esc(lbl.mid) + '</span>' +
+      '<span><i style="background:' + COL.nr + '"></i>' + esc(lbl.top) + '</span>' +
+      '<span><i style="border:1px dashed rgba(127,127,127,.7);background:none"></i>' + esc(totalLabel) + '</span>' +
       '</div>';
 
-    return '<div class="crm-fct-chartwrap"><div class="crm-fct-tt" id="crm-fct-tt"></div>' + svg + '</div>' + legend;
+    return '<div class="crm-fct-chartwrap"><div class="crm-fct-tt"></div>' + svg + '</div>' + legend;
   }
 
   // ---------- category bars + case list ----------
@@ -345,7 +358,7 @@
 
     // Views (only one visible at a time; switched client-side by the sub-tab bar).
     html += '<div class="crm-fct-views">';
-    html += '<div class="crm-fct-view" data-view="overview">' + overviewHtml(t, bundle.ff) + '</div>';
+    html += '<div class="crm-fct-view" data-view="overview">' + overviewHtml(t, bundle.ff, branches) + '</div>';
     branches.forEach(function (b, i) {
       html += '<div class="crm-fct-view" data-view="b' + i + '" style="display:none">' + branchHtml(b) + '</div>';
     });
@@ -361,14 +374,78 @@
     } catch (e) { console.error('FCT renderPanel error:', (e && e.stack) || e); }
   }
 
-  // "Week overview" sub-view: the burndown + the two Categories boxes + Fix failed cases.
-  function overviewHtml(t, ff) {
+  // ---------- aggregate across verification branches (Week overview roll-up) ----------
+  var BR_LABELS = { fixed: 'Fixed / confirmed', mid: 'Still failing', top: 'Async pending' };
+  function aggregateTotals(branches) {
+    var a = { count: branches.length, total: 0, passed: 0, asyncConfirmed: 0, asyncPending: 0, failed: 0 };
+    branches.forEach(function (b) {
+      a.total += b.total || 0; a.passed += b.passed || 0; a.asyncConfirmed += b.asyncConfirmed || 0;
+      a.asyncPending += b.asyncPending || 0; a.failed += b.failed || 0;
+    });
+    return a;
+  }
+  // Combined burndown: for every date any branch ran, sum each branch's latest point up to
+  // that date (carry-forward), so the stack reflects the whole week's verification state.
+  function aggregateSeries(branches) {
+    var dset = {};
+    branches.forEach(function (b) { (b.series || []).forEach(function (p) { dset[p.date] = 1; }); });
+    return Object.keys(dset).sort().map(function (d) {
+      var acc = { date: d, fixed: 0, stillFailing: 0, notRerun: 0, total: 0, remaining: 0 };
+      branches.forEach(function (b) {
+        var pt = null;
+        (b.series || []).forEach(function (p) { if (p.date <= d) pt = p; });   // series is chronological
+        if (pt) { acc.fixed += pt.fixed; acc.stillFailing += pt.stillFailing; acc.notRerun += pt.notRerun; acc.total += pt.total; acc.remaining += pt.remaining; }
+      });
+      return acc;
+    });
+  }
+  function aggregateCard(branches) {
+    if (!branches.length) return '';
+    var agg = aggregateTotals(branches);
+    var html = '<div class="widget island">';
+    html += '<div class="crm-fct-h">Verification branches &mdash; this week<span class="n">' + agg.count + ' branch(es), ' + agg.total + ' target spec(s)</span></div>';
+    html += '<div class="crm-fct-sub">Aggregate of every <b>CRM_Rerun_*</b> fix branch run this week (click a branch tab above for its detail).</div>';
+    html += '<div class="crm-fct-kpis">' +
+      '<div class="crm-fct-kpi k-fixed"><div class="v">' + agg.passed + '</div><div class="l">Passed / fixed</div></div>' +
+      '<div class="crm-fct-kpi k-fixed"><div class="v">' + agg.asyncConfirmed + '</div><div class="l">Async &check; confirmed</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + agg.asyncPending + '</div><div class="l">Async pending</div></div>' +
+      '<div class="crm-fct-kpi k-remain"><div class="v">' + agg.failed + '</div><div class="l">Still failing</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + agg.total + '</div><div class="l">Target specs</div></div>' +
+      '</div>';
+    html += buildChart(aggregateSeries(branches), agg.total || 1,
+      { labels: BR_LABELS, totalLabel: 'Total target', titleOf: function (p) { return fmtDay(p.date); }, emptyMsg: 'No verification branches ran this week.' });
+    // per-branch summary
+    html += '<div class="crm-fct-listwrap open" style="margin-top:14px"><table class="crm-fct-tbl"><thead><tr>' +
+      '<th class="num">#</th><th>Branch (job)</th><th>Latest run</th><th>Passed</th><th>Async &check;</th><th>Pending</th><th>Failing</th><th>Build</th>' +
+      '</tr></thead><tbody>';
+    branches.forEach(function (b, i) {
+      html += '<tr>' +
+        '<td class="num">' + (i + 1) + '</td>' +
+        '<td class="sum">' + esc(b.jobName) + '<br><span style="opacity:.6;font-weight:400">branch ' + esc(b.branch) + '</span></td>' +
+        '<td>' + esc(b.date || '—') + ' #' + b.build + '</td>' +
+        '<td>' + b.passed + '/' + b.total + '</td>' +
+        '<td>' + (b.asyncConfirmed || 0) + '</td>' +
+        '<td>' + b.asyncPending + '</td>' +
+        '<td>' + b.failed + '</td>' +
+        '<td><a href="' + esc(b.buildUrl) + '" target="_blank" rel="noopener">open ↗</a></td>' +
+      '</tr>';
+    });
+    html += '</tbody></table></div></div>';
+    return html;
+  }
+
+  // "Week overview" sub-view: an aggregate of the week's fix branches, then the burndown +
+  // the two Categories boxes + Fix failed cases.
+  function overviewHtml(t, ff, branches) {
+    branches = branches || [];
     var begin = t.beginning || { total: 0, cases: [], categories: [] };
     var cur = t.current || { total: 0, cases: [], categories: [], fixedOfInitial: 0, remainingOfInitial: begin.total, newFailures: 0 };
     var statusByKey = {};
     (t.initialCasesStatus || []).forEach(function (s) { statusByKey[s.key] = s.currentStatus; });
 
     var html = '';
+    // Aggregate of the week's verification branches (shown first when any ran).
+    html += aggregateCard(branches);
     // 0. Trend
     html += '<div class="widget island">';
     html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
@@ -380,7 +457,7 @@
       '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining of the initial set</div></div>' +
       '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Failing now (incl. ' + cur.newFailures + ' new)</div></div>' +
       '</div>';
-    html += buildChart(t.series || [], begin.total);
+    html += buildChart(t.series || [], begin.total, { emptyMsg: 'No failed cases were recorded at the beginning of this week — nothing to burn down.' });
     html += '</div>';
 
     // 1. Categories - Start of week (the failed set, FROZEN for the whole period)
@@ -451,7 +528,11 @@
       '<div class="crm-fct-kpi k-remain"><div class="v">' + b.failed + '</div><div class="l">Still failing</div></div>' +
       '<div class="crm-fct-kpi"><div class="v">' + b.total + '</div><div class="l">Target specs</div></div>' +
       '</div>';
-    html += '<div class="crm-fct-listwrap open"><table class="crm-fct-tbl"><thead><tr>' +
+    // Burndown of this branch's target specs across its re-runs (builds) this week.
+    html += buildChart(b.series || [], b.total || 1,
+      { labels: BR_LABELS, totalLabel: 'Target specs', titleOf: function (p) { return '#' + p.build; },
+        emptyMsg: 'No builds recorded for this branch this week.' });
+    html += '<div class="crm-fct-listwrap open" style="margin-top:14px"><table class="crm-fct-tbl"><thead><tr>' +
       '<th class="num">#</th><th>Section</th><th>TC</th><th>Test case</th><th>Status</th><th>Error</th>' +
       '</tr></thead><tbody>' + rows + '</tbody></table></div>';
     html += '</div>';
@@ -475,25 +556,17 @@
         w.classList.toggle('open');
       });
     });
-    var tt = panel.querySelector('#crm-fct-tt');
-    var series = (trend && trend.series) || [];
     Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-slot'), function (slot) {
+      function ttEl() { var w = slot.ownerSVGElement && slot.ownerSVGElement.parentNode; return w && w.querySelector('.crm-fct-tt'); }
       slot.addEventListener('mousemove', function (ev) {
-        var p = series[+slot.getAttribute('data-i')];
-        if (!p || !tt) return;
-        tt.innerHTML = '<b>' + esc(fmtDay(p.date)) + '</b><br>' +
-          '<span class="sw" style="background:' + COL.fixed + '"></span>Fixed: <b>' + p.fixed + '</b><br>' +
-          '<span class="sw" style="background:' + COL.fail + '"></span>Still failing: <b>' + p.stillFailing + '</b><br>' +
-          '<span class="sw" style="background:' + COL.nr + '"></span>Not re-run: <b>' + p.notRerun + '</b><br>' +
-          'Remaining: <b>' + p.remaining + '</b> / ' + p.total +
-          (p.currentTotalFailed != null ? '<br>Failing now (all): <b>' + p.currentTotalFailed + '</b>' : '');
-        var wrap = slot.ownerSVGElement.parentNode;   // .crm-fct-chartwrap
-        var rect = wrap.getBoundingClientRect();
+        var tt = ttEl(); if (!tt) return;
+        tt.innerHTML = decodeURIComponent(slot.getAttribute('data-tt') || '');
+        var rect = tt.parentNode.getBoundingClientRect();
         tt.style.left = (ev.clientX - rect.left) + 'px';
         tt.style.top = (ev.clientY - rect.top) + 'px';
         tt.style.opacity = '1';
       });
-      slot.addEventListener('mouseleave', function () { if (tt) tt.style.opacity = '0'; });
+      slot.addEventListener('mouseleave', function () { var tt = ttEl(); if (tt) tt.style.opacity = '0'; });
     });
   }
 
