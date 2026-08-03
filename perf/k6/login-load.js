@@ -103,11 +103,15 @@ export default function () {
   loginDuration.add(res.timings.duration);
   loginAttempts.add(1);
 
-  // This Odoo returns 200 + a tiny JS redirect page on SUCCESS:
-  //   <script>window.location = '/web' + location.hash;</script>
-  // On FAILURE it re-renders the ~16KB login form (name="password" + alert-danger).
+  // This Odoo returns 200 + a tiny JS redirect page on SUCCESS. The target depends on the
+  // redirect param: window.location = '/web'  OR  '/web?'  (+ location.hash).
+  // On FAILURE it re-renders the ~16KB login form (name="password" + alert-danger),
+  // or loops back to '/web/login'. So: success = a JS redirect to /web that is NOT /web/login.
   const body = res.body || '';
-  const ok = res.status === 200 && body.indexOf("window.location = '/web'") !== -1;
+  const ok =
+    res.status === 200 &&
+    body.indexOf("window.location = '/web") !== -1 &&
+    body.indexOf('/web/login') === -1;
 
   loginSuccess.add(ok);
   check(res, { 'login accepted (Odoo JS redirect to /web)': () => ok });
