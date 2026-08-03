@@ -116,18 +116,45 @@ function deferredVerdicts() {
   return latest;
 }
 
-// The latest {day, build, dir} for a job across the window's dated buckets.
-function latestBuildInWindow(jobName) {
-  let best = null;
+// All {day, build, dir} for a job across the window's dated buckets, chronological.
+function allBuildsInWindow(jobName) {
+  const out = [];
   days.forEach(function (day) {
     const jobDay = path.join(periodsResultsRoot, day, jobName);
     readdir(jobDay).filter(function (b) { return /^\d+$/.test(b) && isDir(path.join(jobDay, b)); })
-      .forEach(function (b) {
-        const cand = { day: day, build: parseInt(b, 10), dir: path.join(jobDay, b) };
-        if (!best || day > best.day || (day === best.day && cand.build > best.build)) best = cand;
-      });
+      .forEach(function (b) { out.push({ day: day, build: parseInt(b, 10), dir: path.join(jobDay, b) }); });
   });
-  return best;
+  out.sort(function (a, b) { return a.day < b.day ? -1 : a.day > b.day ? 1 : a.build - b.build; });
+  return out;
+}
+
+// Refine a test list with the async/deferred logic (in place): a red lead-assignment
+// spec whose tcId has a deferred manifest becomes async-ok (round-2 confirmed) / failed
+// (still wrong after re-check) / async (pending, not re-checked yet).
+function applyAsync(tests, deferred, dv) {
+  tests.forEach(function (t) {
+    if (RED[t.status] && t.tcId && deferred[t.tcId]) {
+      const v = dv[t.tcId];
+      t.status = v === 'confirmed' ? 'async-ok' : v === 'stillwrong' ? 'failed' : 'async';
+    }
+  });
+  return tests;
+}
+// Lighter marking for the per-build burndown: a red spec with a manifest is "async"
+// (pending) for THAT build — no retroactive deferred-confirm, so the trend shows the
+// branch's honest re-run progress (a spec stays pending until a build actually passes it).
+function applyManifestAsync(tests, deferred) {
+  tests.forEach(function (t) { if (RED[t.status] && t.tcId && deferred[t.tcId]) t.status = 'async'; });
+  return tests;
+}
+function countStatuses(tests) {
+  return {
+    total: tests.length,
+    passed: tests.filter(function (t) { return t.status === 'passed'; }).length,
+    asyncOk: tests.filter(function (t) { return t.status === 'async-ok'; }).length,
+    asyncPending: tests.filter(function (t) { return t.status === 'async'; }).length,
+    failed: tests.filter(function (t) { return RED[t.status]; }).length,
+  };
 }
 
 // Read one build's allure-results dir -> deduped-by-historyId per-test list.
@@ -173,27 +200,23 @@ function readResultsDir(dir) {
   const dv = deferredVerdicts();
 
   Object.keys(jobsSet).forEach(function (jobName) {
-    const latest = latestBuildInWindow(jobName);
-    if (!latest) return;
-    const tests = readResultsDir(latest.dir);
-    if (!tests.length) { log('skip ' + jobName + ' (no results in window).'); return; }
-
-    // A red lead-assignment spec whose tcId has a deferred manifest is an async candidate.
-    // Refine with the round-2 verdict: confirmed -> async-ok (green), stillwrong after re-check
-    // -> failed (real), no verdict yet -> async (amber, pending).
+    const allB = allBuildsInWindow(jobName);
+    if (!allB.length) return;
     const deferred = deferredTcIdsForJob(jobName);
-    tests.forEach(function (t) {
-      if (RED[t.status] && t.tcId && deferred[t.tcId]) {
-        const v = dv[t.tcId];
-        t.status = v === 'confirmed' ? 'async-ok' : v === 'stillwrong' ? 'failed' : 'async';
-      }
-    });
-    tests.sort(function (a, b) { return (a.tcId || a.title).localeCompare(b.tcId || b.title); });
 
-    const passed = tests.filter(function (t) { return t.status === 'passed'; }).length;
-    const asyncOk = tests.filter(function (t) { return t.status === 'async-ok'; }).length;
-    const asyncN = tests.filter(function (t) { return t.status === 'async'; }).length;
-    const failed = tests.filter(function (t) { return RED[t.status]; }).length;
+    // Burndown series: one point per build in the window (chronological) so the branch
+    // sub-tab can show a trend of its target specs being fixed across re-runs.
+    const series = allB.map(function (bd) {
+      const c = countStatuses(applyManifestAsync(readResultsDir(bd.dir), deferred));
+      return { date: bd.day, build: bd.build, fixed: c.passed, stillFailing: c.failed, notRerun: c.asyncPending, total: c.total, remaining: c.total - c.passed };
+    });
+
+    // Latest build -> the per-spec table + headline counts.
+    const latest = allB[allB.length - 1];
+    const tests = applyAsync(readResultsDir(latest.dir), deferred, dv);
+    if (!tests.length) { log('skip ' + jobName + ' (no results in window).'); return; }
+    tests.sort(function (a, b) { return (a.tcId || a.title).localeCompare(b.tcId || b.title); });
+    const c = countStatuses(tests);
 
     out.branches.push({
       jobName: jobName,
@@ -201,11 +224,12 @@ function readResultsDir(dir) {
       buildUrl: jenkinsBase + '/job/' + jobName + '/' + latest.build + '/',
       date: latest.day,
       build: latest.build,
-      total: tests.length,
-      passed: passed,
-      failed: failed,
-      asyncPending: asyncN,
-      asyncConfirmed: asyncOk,
+      total: c.total,
+      passed: c.passed,
+      failed: c.failed,
+      asyncPending: c.asyncPending,
+      asyncConfirmed: c.asyncOk,
+      series: series,
       tests: tests,
     });
   });
