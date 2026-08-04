@@ -321,9 +321,25 @@ export function handleSummary(data) {
   .note{font-size:12px;opacity:.7;margin-top:6px}
   .mn{display:block;font-size:11px;opacity:.55;font-weight:400}
   .ns{display:inline-block;background:#0a7;color:#fff;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700}
+  .desc{max-width:850px;margin-bottom:16px}
+  .desc p{opacity:.78;font-size:13px;margin:0 0 10px;line-height:1.5}
+  .win{border:1px solid #8884;border-left:4px solid #2a9d5a;background:#8881;border-radius:6px;padding:11px 14px;font-size:13px;line-height:1.55}
+  .win .wt{font-weight:700;margin-bottom:6px}
+  .win .row{margin:6px 0}
+  .tag{display:inline-block;color:#fff;font-weight:700;font-size:11px;padding:1px 7px;border-radius:4px;margin-right:7px;letter-spacing:.3px;vertical-align:1px}
+  .tag-s{background:#1a7f37}.tag-e{background:#a50e0e}
+  .win .seq{opacity:.72;font-size:12px;margin-top:8px}
 </style></head><body>
   <h1>k6 Create-Lead <span class="ns">NO&nbsp;SAVE</span> Scaling Report - Nakivo CRM Pre-Production</h1>
-  <div class="sub">Simulates opening the New Lead form and filling it (default_get + onchange, in-memory ORM) under concurrency. <b>No crm.lead row is ever written</b> - so no assignment-cron lock, no cleanup, no DB drift.</div>
+  <div class="desc">
+    <p>Simulates a sales user opening the <b>New Lead</b> form and filling it in under concurrency — the exact RPC sequence the Odoo web client fires while a form is open: <code>default_get</code> (open the blank form) then a chain of <code>onchange()</code> calls that build an <b>in-memory</b> record (ORM <code>new()</code> / NewId). <b>No crm.lead row is ever written</b> (no <code>create()</code>, no Save) — so no assignment-cron lock, no cleanup, no admin account, no DB drift.</p>
+    <div class="win">
+      <div class="wt">What the measured latency covers &mdash; one value = one user filling the New-Lead form once:</div>
+      <div class="row"><span class="tag tag-s">START</span>the instant the user clicks <b>New / Create</b> to <b>OPEN</b> the form &mdash; i.e. right before the <code>default_get</code> RPC. <b>Not</b> the Save button.</div>
+      <div class="row"><span class="tag tag-e">END</span>when the <b>last <code>onchange</code></b> (contact e-mail + studio field) returns &mdash; the form is fully filled and the lead is ready <b>in memory</b>, but <b>not saved</b> and <b>no DB row exists</b> (the VERIFY step confirms 0). <b>Not</b> &ldquo;lead created / persisted&rdquo;.</div>
+      <div class="seq">Window = default_get &rarr; onchange(name) &rarr; onchange(user_id) &rarr; onchange(partner_id) &rarr; onchange(contact + studio). Login happens once per user and is <b>not</b> included. To measure the Save &rarr; row-persisted path instead, see the sibling job <code>CRM-K6-CreateLead-Scale</code>.</div>
+    </div>
+  </div>
   <div class="verdict ${allPass ? 'v-pass' : 'v-fail'}">${allPass ? 'ALL LEVELS PASSED' : 'SOME LEVELS FAILED'}</div>
 
   <h2>In-memory lead-form performance by concurrent users</h2>
