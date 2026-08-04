@@ -30,9 +30,10 @@
         "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"testid\"",
         "refresh": 1,
         "sort": 1,
-        "includeAll": false,
-        "multi": false,
-        "current": {}
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
       },
       {
         "name": "build",
@@ -42,9 +43,10 @@
         "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"build\" WHERE \"testid\" =~ /^$testid$/",
         "refresh": 2,
         "sort": 4,
-        "includeAll": false,
-        "multi": false,
-        "current": {}
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": { "text": ["All"], "value": ["$__all"] }
       },
       {
         "name": "level",
@@ -66,14 +68,16 @@
   "timezone": "",
   "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
   "uid": "k6-crm-load",
-  "version": 1,
+  "version": 2,
   "panels": [
     {
       "id": 1,
       "type": "timeseries",
-      "title": "Goal 1 - p95 latency by concurrency level (build $build)",
-      "description": "How login/RPC latency (p95) scales as concurrent users go 10 -> 30 -> 50 -> 100. Each series = one concurrency level; the sequential bursts appear left-to-right.",
+      "title": "Goal 1 - p95 by concurrency - $testid (build $build)",
+      "description": "How latency (p95) scales as concurrent users go 10 -> 30 -> 50 -> 100. One panel per test (repeats over $testid), each auto-scaled. Teardown/cleanup requests (no level tag) are excluded.",
       "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "repeat": "testid",
+      "repeatDirection": "h",
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
@@ -90,7 +94,7 @@
         {
           "refId": "A",
           "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(none)",
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(none)",
           "rawQuery": true,
           "resultFormat": "time_series",
           "alias": "$tag_level users"
@@ -100,9 +104,11 @@
     {
       "id": 4,
       "type": "table",
-      "title": "Error rate by concurrency level (build $build)",
-      "description": "http_req_failed averaged per level -> % of failed HTTP requests at each concurrency. Should stay ~0%.",
+      "title": "Error rate by concurrency - $testid (build $build)",
+      "description": "http_req_failed averaged per level -> % of failed HTTP requests at each concurrency. Should stay ~0%. One panel per test.",
       "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "repeat": "testid",
+      "repeatDirection": "h",
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
       "fieldConfig": {
         "defaults": { "unit": "percent" },
@@ -121,7 +127,7 @@
         {
           "refId": "A",
           "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT mean(\"value\") * 100 AS \"error_pct\" FROM \"http_req_failed\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY \"level\"",
+          "query": "SELECT mean(\"value\") * 100 AS \"error_pct\" FROM \"http_req_failed\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\"",
           "rawQuery": true,
           "resultFormat": "table"
         }
@@ -130,9 +136,11 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Goal 2 - p95 trend across builds (by level) - compare vs baseline",
-      "description": "Each cluster of points = one build/run over calendar time (time order = build order). Rising over time = regression vs the earlier baseline. Widen the time range (top-right) to see more history. The dashed threshold line is a visual baseline - edit it per test.",
+      "title": "Goal 2 - p95 trend across builds - $testid",
+      "description": "Each cluster of points = one build/run over calendar time (time order = build order). Rising over time = regression vs the earlier baseline. Widen the time range (top-right) to see more history. One panel per test (auto-scaled).",
       "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "repeat": "testid",
+      "repeatDirection": "h",
       "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
       "fieldConfig": {
         "defaults": {
@@ -173,9 +181,11 @@
     {
       "id": 3,
       "type": "table",
-      "title": "Goal 3 - Bottleneck: latency by operation (build $build)",
-      "description": "http_req_duration broken down by concurrency level and by operation tag (step=get/post for login; rpc=create/search/unlink for create-lead) plus the URL (name). Sorted by p95 descending -> the slowest operation is at the top.",
+      "title": "Goal 3 - Bottleneck: latency by operation - $testid (build $build)",
+      "description": "http_req_duration broken down by concurrency level and by operation tag (step=get/post for login; rpc=create/search/unlink for create-lead) plus the URL (name). Sorted by p95 descending -> the slowest operation is at the top. One panel per test.",
       "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "repeat": "testid",
+      "repeatDirection": "h",
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
       "fieldConfig": {
         "defaults": { "unit": "ms", "custom": { "align": "auto" } },
