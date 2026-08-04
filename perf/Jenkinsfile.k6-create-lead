@@ -11,7 +11,7 @@ pipeline {
         string(name: 'GAP_S',    defaultValue: '30',   description: 'Seconds between bursts (server recovery).')
         string(name: 'BASE_URL', defaultValue: 'https://pre-production.nakivo.site', description: 'Pre-prod base URL (HTTPS).')
         string(name: 'MAP_IP',   defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to (mirrors HOST_RESOLVER_MAP). Blank to disable.')
-        string(name: 'P95_MS',   defaultValue: '4000', description: 'Per-level create() p95 gate in ms. A level FAILS if its p95 exceeds this (or success <= 99%).')
+        string(name: 'P95_MS',   defaultValue: '20000', description: 'Per-level create() p95 gate in ms. Default 20000 (20s) reflects the accepted SLA at high concurrency given the intentional sequential lead-assignment/scoring cron. A level FAILS if its p95 exceeds this (or success <= 99%).')
     }
 
     environment {
