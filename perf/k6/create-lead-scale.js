@@ -233,7 +233,6 @@ export function handleSummary(data) {
     okD: thrOk('lead_create_duration_' + n),
   }));
   const allPass = rows.every((r) => r.okS !== false && r.okD !== false);
-  const maxP95 = Math.max(1, ...rows.map((r) => r.p95 || 0));
 
   const badge = (ok) =>
     ok === null ? '<span class="b b-na">n/a</span>' : ok ? '<span class="b b-pass">PASS</span>' : '<span class="b b-fail">FAIL</span>';
@@ -246,15 +245,6 @@ export function handleSummary(data) {
       return `<tr><td class="n">${r.n}</td><td class="n">${num(r.att)}</td><td class="n">${num(sp, 2)}%</td>
       ${cell(r.avg)}${cell(r.p90)}${cellB(r.p95)}${cell(r.mx)}
       <td>${badge(r.okS !== false && r.okD !== false)}</td></tr>`;
-    })
-    .join('\n');
-
-  const bars = rows
-    .map((r) => {
-      const w = Math.round(((r.p95 || 0) / maxP95) * 100);
-      return `<div class="barrow"><div class="barlbl">${r.n} users</div>
-      <div class="bartrack"><div class="bar" style="width:${w}%"></div></div>
-      <div class="barval">${num(r.p95)} ms &middot; ${toMin(r.p95)} min</div></div>`;
     })
     .join('\n');
 
@@ -281,24 +271,18 @@ export function handleSummary(data) {
   .mn{display:block;font-size:11px;opacity:.55;font-weight:400}
   .cfg{margin-top:20px;font-size:13px;opacity:.85}code{background:#8882;padding:1px 5px;border-radius:3px}
   .note{font-size:12px;opacity:.7;margin-top:6px}
-  .tl{margin:8px 0 20px;border:1px solid #8883;border-radius:8px;overflow:hidden;max-width:840px}
-  .tl-h{font-size:12.5px;padding:8px 12px;background:#8881;font-weight:600}
-  .tl-s{font-size:13px;padding:7px 12px;border-top:1px solid #8882;display:flex;justify-content:space-between;gap:14px;align-items:center}
-  .tl-out{opacity:.5}
-  .tl-in{background:rgba(42,122,222,.12);border-left:3px solid #2a7ade}
-  .tl-tag{font-size:11px;opacity:.7;white-space:nowrap}
-  .tl-hot{color:#2a7ade;font-weight:700;opacity:1}
+  table.rpc{border-collapse:collapse;width:100%;max-width:880px;margin:8px 0 6px}
+  table.rpc th,table.rpc td{border:1px solid #8884;padding:7px 10px;font-size:13px;text-align:left;vertical-align:top}
+  table.rpc th{background:#8881}
+  table.rpc tr.ro{opacity:.5}
+  table.rpc tr.ri td{background:rgba(42,122,222,.12)}
+  table.rpc tr.rstart td{border-top:2px solid #2a7ade}
+  table.rpc tr.rend td{border-bottom:2px solid #2a7ade}
+  table.rpc code{background:#8882;padding:1px 5px;border-radius:3px;font-size:12px}
+  .hot{color:#2a7ade;font-weight:700}
 </style></head><body>
   <h1>k6 Create-Lead Scaling Report - Nakivo CRM Pre-Production</h1>
-  <div class="tl">
-    <div class="tl-h">What the number measures: the crm.lead <b>create()</b> RPC = the <b>Save</b> of a new lead. Login &amp; form-open are excluded. Created leads are auto-deleted after the run.</div>
-    <div class="tl-s tl-out"><span>1. Click <b>Create / New</b> &rarr; form opens (default_get + onchange)</span><span class="tl-tag">not measured &mdash; the "no-save" variant covers this</span></div>
-    <div class="tl-s tl-out"><span>2. Fill fields</span><span class="tl-tag">not measured</span></div>
-    <div class="tl-s tl-in"><span>3. Click <b>SAVE</b> &rarr; create() RPC sent</span><span class="tl-tag tl-hot">&#9654; MEASUREMENT STARTS</span></div>
-    <div class="tl-s tl-in"><span>4. Server INSERT + synchronous compute (this is the 2.7&ndash;15s)</span><span class="tl-tag">measured</span></div>
-    <div class="tl-s tl-in"><span>5. Server returns the new lead ID &mdash; row committed to DB</span><span class="tl-tag tl-hot">&#9632; MEASUREMENT ENDS</span></div>
-    <div class="tl-s tl-out"><span>6. Async Sales-Team / Salesperson assignment cron runs later</span><span class="tl-tag">not measured (async, up to ~30 min)</span></div>
-  </div>
+  <div class="sub">Concurrent crm.lead create() via JSON-RPC (server-side ORM). Created leads are auto-deleted after the run.</div>
   <div class="verdict ${allPass ? 'v-pass' : 'v-fail'}">${allPass ? 'ALL LEVELS PASSED' : 'SOME LEVELS FAILED'}</div>
 
   <h2>Create-lead performance by concurrent users</h2>
@@ -308,8 +292,17 @@ export function handleSummary(data) {
   </table>
   <div class="note">Gate = create success &gt; 99% AND p95 &lt; ${P95_MS} ms at that level. Latency = the create() RPC only (login done once per user, not counted). Each latency cell shows milliseconds with the minute equivalent below.</div>
 
-  <h2>Create latency (p95) by concurrency</h2>
-  ${bars}
+  <h2>What is measured: the create() RPC sequence</h2>
+  <table class="rpc">
+    <tr><th>Step (UI action)</th><th>Odoo RPC</th><th>In the measured window?</th></tr>
+    <tr class="ro"><td>Click <b>Create / New</b> - form opens</td><td><code>call_kw</code> crm.lead <code>default_get</code>, then <code>onchange</code></td><td>no - form open (the "no-save" variant measures this)</td></tr>
+    <tr class="ro"><td>Fill fields</td><td><code>call_kw</code> crm.lead <code>onchange</code> (per field)</td><td>no</td></tr>
+    <tr class="ri rstart"><td><b>Click SAVE</b> - request sent</td><td><code>POST /web/dataset/call_kw</code> &rarr; crm.lead <code>create</code>([{...}])</td><td><span class="hot">&#9654; START</span></td></tr>
+    <tr class="ri"><td>Server INSERT + synchronous compute</td><td>inside <code>create()</code> - this is the 2.7-15 s</td><td>yes</td></tr>
+    <tr class="ri rend"><td>Response returns the new lead id</td><td><code>{"result": &lt;id&gt;}</code> - row committed to DB</td><td><span class="hot">&#9632; END</span></td></tr>
+    <tr class="ro"><td>Sales-Team / Salesperson assignment</td><td>server-side cron (no client RPC)</td><td>no - async, up to ~30 min</td></tr>
+  </table>
+  <div class="note">The highlighted rows are the measured window: exactly one <code>create()</code> round-trip, from the Save request until the server returns the new id. Form-open RPCs (above) and the async cron (below) are excluded; login is done once per user and not counted.</div>
 
   <div class="cfg">
     <b>Config:</b> LEVELS=<code>${LEVELS.join(', ')}</code> &middot; LOOPS=<code>${LOOPS}</code>/user &middot;
