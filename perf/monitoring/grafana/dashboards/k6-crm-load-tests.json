@@ -57,7 +57,7 @@
         "refresh": 2,
         "sort": 3,
         "includeAll": true,
-        "allValue": ".*",
+        "allValue": ".+",
         "multi": true,
         "current": {}
       }
@@ -68,7 +68,7 @@
   "timezone": "",
   "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
   "uid": "k6-crm-load",
-  "version": 4,
+  "version": 5,
   "panels": [
     {
       "id": 1,
@@ -87,7 +87,7 @@
         "overrides": []
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean"] },
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean"], "sortBy": "Max", "sortDesc": false },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
@@ -121,8 +121,11 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [{ "displayName": "error_pct", "desc": true }]
+        "sortBy": [{ "displayName": "level", "desc": false }]
       },
+      "transformations": [
+        { "id": "convertFieldType", "options": { "fields": {}, "conversions": [{ "targetField": "level", "destinationType": "number" }] } }
+      ],
       "targets": [
         {
           "refId": "A",
@@ -164,7 +167,7 @@
         "overrides": []
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean", "last"] },
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean", "last"], "sortBy": "Max", "sortDesc": false },
         "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
@@ -209,8 +212,11 @@
       },
       "options": {
         "showHeader": true,
-        "sortBy": [{ "displayName": "p95_ms", "desc": true }]
+        "sortBy": [{ "displayName": "level", "desc": false }]
       },
+      "transformations": [
+        { "id": "convertFieldType", "options": { "fields": {}, "conversions": [{ "targetField": "level", "destinationType": "number" }] } }
+      ],
       "targets": [
         {
           "refId": "A",
