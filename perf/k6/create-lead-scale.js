@@ -205,6 +205,7 @@ export function handleSummary(data) {
   const v = (name, key) =>
     m[name] && m[name].values && m[name].values[key] !== undefined ? m[name].values[key] : null;
   const num = (x, d = 0) => (x === null ? 'n/a' : Number(x).toFixed(d));
+  const toMin = (ms) => (ms === null || ms === undefined ? 'n/a' : (Number(ms) / 60000).toFixed(2));
   const thrOk = (name) => {
     const t = m[name] && m[name].thresholds;
     if (!t) return null;
@@ -228,12 +229,14 @@ export function handleSummary(data) {
   const badge = (ok) =>
     ok === null ? '<span class="b b-na">n/a</span>' : ok ? '<span class="b b-pass">PASS</span>' : '<span class="b b-fail">FAIL</span>';
 
+  const cell = (ms) => `<td class="n">${num(ms)}<span class="mn">${toMin(ms)} min</span></td>`;
+  const cellB = (ms) => `<td class="n"><b>${num(ms)}</b><span class="mn">${toMin(ms)} min</span></td>`;
   const trs = rows
     .map((r) => {
       const sp = r.succ === null ? null : r.succ * 100;
       return `<tr><td class="n">${r.n}</td><td class="n">${num(r.att)}</td><td class="n">${num(sp, 2)}%</td>
-      <td class="n">${num(r.avg)}</td><td class="n">${num(r.p90)}</td><td class="n"><b>${num(r.p95)}</b></td>
-      <td class="n">${num(r.mx)}</td><td>${badge(r.okS !== false && r.okD !== false)}</td></tr>`;
+      ${cell(r.avg)}${cell(r.p90)}${cellB(r.p95)}${cell(r.mx)}
+      <td>${badge(r.okS !== false && r.okD !== false)}</td></tr>`;
     })
     .join('\n');
 
@@ -242,7 +245,7 @@ export function handleSummary(data) {
       const w = Math.round(((r.p95 || 0) / maxP95) * 100);
       return `<div class="barrow"><div class="barlbl">${r.n} users</div>
       <div class="bartrack"><div class="bar" style="width:${w}%"></div></div>
-      <div class="barval">${num(r.p95)} ms</div></div>`;
+      <div class="barval">${num(r.p95)} ms &middot; ${toMin(r.p95)} min</div></div>`;
     })
     .join('\n');
 
@@ -265,7 +268,8 @@ export function handleSummary(data) {
   .barlbl{width:80px;text-align:right;opacity:.85}
   .bartrack{flex:1;background:#8882;border-radius:4px;height:18px;overflow:hidden}
   .bar{height:100%;background:linear-gradient(90deg,#2a7ade,#1a56b0)}
-  .barval{width:80px;font-variant-numeric:tabular-nums}
+  .barval{width:160px;font-variant-numeric:tabular-nums}
+  .mn{display:block;font-size:11px;opacity:.55;font-weight:400}
   .cfg{margin-top:20px;font-size:13px;opacity:.85}code{background:#8882;padding:1px 5px;border-radius:3px}
   .note{font-size:12px;opacity:.7;margin-top:6px}
 </style></head><body>
@@ -275,10 +279,10 @@ export function handleSummary(data) {
 
   <h2>Create-lead performance by concurrent users</h2>
   <table>
-    <tr><th>Concurrent users</th><th>Leads created</th><th>Success</th><th>avg (ms)</th><th>p90 (ms)</th><th>p95 (ms)</th><th>max (ms)</th><th>Gate</th></tr>
+    <tr><th>Concurrent users</th><th>Leads created</th><th>Success</th><th>avg<br>(ms / min)</th><th>p90<br>(ms / min)</th><th>p95<br>(ms / min)</th><th>max<br>(ms / min)</th><th>Gate</th></tr>
     ${trs}
   </table>
-  <div class="note">Gate = create success &gt; 99% AND p95 &lt; ${P95_MS} ms at that level. Latency = the create() RPC only (login done once per user, not counted).</div>
+  <div class="note">Gate = create success &gt; 99% AND p95 &lt; ${P95_MS} ms at that level. Latency = the create() RPC only (login done once per user, not counted). Each latency cell shows milliseconds with the minute equivalent below.</div>
 
   <h2>Create latency (p95) by concurrency</h2>
   ${bars}
