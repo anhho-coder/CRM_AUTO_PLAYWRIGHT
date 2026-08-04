@@ -281,9 +281,24 @@ export function handleSummary(data) {
   .mn{display:block;font-size:11px;opacity:.55;font-weight:400}
   .cfg{margin-top:20px;font-size:13px;opacity:.85}code{background:#8882;padding:1px 5px;border-radius:3px}
   .note{font-size:12px;opacity:.7;margin-top:6px}
+  .tl{margin:8px 0 20px;border:1px solid #8883;border-radius:8px;overflow:hidden;max-width:840px}
+  .tl-h{font-size:12.5px;padding:8px 12px;background:#8881;font-weight:600}
+  .tl-s{font-size:13px;padding:7px 12px;border-top:1px solid #8882;display:flex;justify-content:space-between;gap:14px;align-items:center}
+  .tl-out{opacity:.5}
+  .tl-in{background:rgba(42,122,222,.12);border-left:3px solid #2a7ade}
+  .tl-tag{font-size:11px;opacity:.7;white-space:nowrap}
+  .tl-hot{color:#2a7ade;font-weight:700;opacity:1}
 </style></head><body>
   <h1>k6 Create-Lead Scaling Report - Nakivo CRM Pre-Production</h1>
-  <div class="sub">Concurrent crm.lead create() via JSON-RPC (server-side ORM). Created leads are auto-deleted after the run.</div>
+  <div class="tl">
+    <div class="tl-h">What the number measures: the crm.lead <b>create()</b> RPC = the <b>Save</b> of a new lead. Login &amp; form-open are excluded. Created leads are auto-deleted after the run.</div>
+    <div class="tl-s tl-out"><span>1. Click <b>Create / New</b> &rarr; form opens (default_get + onchange)</span><span class="tl-tag">not measured &mdash; the "no-save" variant covers this</span></div>
+    <div class="tl-s tl-out"><span>2. Fill fields</span><span class="tl-tag">not measured</span></div>
+    <div class="tl-s tl-in"><span>3. Click <b>SAVE</b> &rarr; create() RPC sent</span><span class="tl-tag tl-hot">&#9654; MEASUREMENT STARTS</span></div>
+    <div class="tl-s tl-in"><span>4. Server INSERT + synchronous compute (this is the 2.7&ndash;15s)</span><span class="tl-tag">measured</span></div>
+    <div class="tl-s tl-in"><span>5. Server returns the new lead ID &mdash; row committed to DB</span><span class="tl-tag tl-hot">&#9632; MEASUREMENT ENDS</span></div>
+    <div class="tl-s tl-out"><span>6. Async Sales-Team / Salesperson assignment cron runs later</span><span class="tl-tag">not measured (async, up to ~30 min)</span></div>
+  </div>
   <div class="verdict ${allPass ? 'v-pass' : 'v-fail'}">${allPass ? 'ALL LEVELS PASSED' : 'SOME LEVELS FAILED'}</div>
 
   <h2>Create-lead performance by concurrent users</h2>
