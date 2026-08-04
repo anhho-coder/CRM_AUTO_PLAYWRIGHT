@@ -220,6 +220,24 @@ export default defineConfig({
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
     },
+    {
+      // 3 team sub-folders of 2.Leads_Assignment run as ONE job:
+      // Marketing_BDEU (23) + CMR_team (13) + THD_team (32) = 68 async-assignment specs.
+      // Its own project so a dedicated Jenkins job (CRM_Leads_Assignment_3Teams) runs
+      // exactly these three sibling folders via --project=Leads_Assignment_3Teams (a strict
+      // subset of the full Leads_Assignment project's 7 team folders). testDir is the whole
+      // 2.Leads_Assignment tree and testMatch narrows collection to just these three folders.
+      // All 68 poll the async Sales-Team/Salesperson cron (up to 35 min each; the poll breaks
+      // early once assigned); THD_team is the slow lane, so the job floors its timeout at 480m.
+      name: 'Leads_Assignment_3Teams',
+      testDir: './tests/1.Project_CRM/2.Leads_Assignment',
+      testMatch: [
+        '**/Marketing_BDEU/**/*.spec.ts',
+        '**/CMR_team/**/*.spec.ts',
+        '**/THD_team/**/*.spec.ts',
+      ],
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+    },
 
     // {
     //   name: 'firefox',
