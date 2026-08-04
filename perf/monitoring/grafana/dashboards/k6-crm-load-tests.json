@@ -68,7 +68,7 @@
   "timezone": "",
   "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
   "uid": "k6-crm-load",
-  "version": 3,
+  "version": 4,
   "panels": [
     {
       "id": 1,
@@ -181,8 +181,8 @@
     {
       "id": 3,
       "type": "table",
-      "title": "Goal 3 - Bottleneck: latency by operation - $testid (build $build)",
-      "description": "http_req_duration broken down by concurrency level and by operation tag (step=get/post for login; rpc=create/search/unlink for create-lead) plus the URL (name). Sorted by p95 descending -> the slowest operation is at the top. One panel per test.",
+      "title": "Goal 3 - Bottleneck: measured requests by operation - $testid (build $build)",
+      "description": "MEASURED in-test requests only, by concurrency level and operation (step=get/post for login; rpc=create for create-lead), sorted by p95 desc so the slowest measured op is on top. Teardown cleanup (unlink/search, no concurrency level) is excluded here and shown separately in the lock-contention evidence panel below. One panel per test.",
       "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
       "repeat": "testid",
       "repeatDirection": "h",
@@ -215,7 +215,33 @@
         {
           "refId": "A",
           "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY \"level\", \"step\", \"rpc\"",
+          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\", \"step\", \"rpc\"",
+          "rawQuery": true,
+          "resultFormat": "table"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Teardown lock-contention evidence - delete vs read on the SAME new leads (create-lead)",
+      "description": "NOT part of the measured load. During cleanup the test deletes the leads it just created. On identical rows a read (search) returns in under 1 s, but a delete (unlink) blocks up to ~2 min -> the new leads are lock-held by the assignment/scoring cron. This delete/read gap is the fingerprint of the create() serialization behind Goal 1 and Goal 3.",
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "align": "auto" } },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "reqs" }, "properties": [{ "id": "unit", "value": "short" }] },
+          { "matcher": { "id": "byName", "options": "rpc" }, "properties": [{ "id": "unit", "value": "string" }, { "id": "displayName", "value": "operation" }] },
+          { "matcher": { "id": "byName", "options": "max_ms" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 5000 }, { "color": "red", "value": 30000 }] } }] }
+        ]
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "max_ms", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" = 'create-lead-scale' AND (\"rpc\" = 'unlink' OR \"rpc\" = 'search') AND $timeFilter GROUP BY \"rpc\"",
           "rawQuery": true,
           "resultFormat": "table"
         }
@@ -225,7 +251,7 @@
       "id": 5,
       "type": "text",
       "title": "Bottleneck diagnosis - risk / cause / evidence",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
       "options": {
         "mode": "markdown",
         "content": "### Create-lead - the bottleneck  (latency / scaling risk, 0 failures)\n- **Risk** - create() p95 = **15.1 s** at 100 concurrent users (**75%** of the 20 s gate); scales **~5.5x** from 10 -> 100 users, so ~130-140 concurrent creates would breach the gate. Lead intake is the first thing to buckle under a spike.\n- **Cause** - create() is **serialized**, not compute-bound: latency grows with *concurrency* (requests queue), not payload - the signature of a shared serial resource (Odoo's synchronous lead assignment / scoring + row locks on each new lead).\n- **Evidence** - on the *same* new leads, a `search` returns in **0.68 s** avg but a `delete` (`unlink`) **blocks up to 121 s** (avg **62.7 s**, p95 **92 s**). Fast read + stalled write on identical rows = they are **lock-held by the assignment cron** - the same contention that inflates create() under load. (Deletes are cleanup-only, so they never fail the test - but they are the clearest fingerprint of the lock.)\n\n### Login - healthy\np95 stays **< 1 s** even at 100 users and scales **sub-linearly** (2.2x for a 10x user increase). Heavier half is the initial `GET /web/login` CSRF page (p95 1.14 s) vs the auth `POST` (0.95 s) - a static-asset detail, not a scaling concern.\n\n_Baseline: login #2, create-lead #6. All requests succeeded - this is a latency/scaling risk, not a functional defect. Watch create() p95 @ 100u build-over-build._"
