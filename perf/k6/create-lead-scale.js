@@ -101,6 +101,9 @@ export const options = {
   insecureSkipTLSVerify: true,
   scenarios: scenarios,
   thresholds: thresholds,
+  // Deleting many crm.lead on this Odoo is slow (~1-2s each) - give teardown room and
+  // unlink in small batches (see teardown) so cleanup never times out and leaves orphans.
+  teardownTimeout: '600s',
 };
 
 // ---- helpers ----
@@ -177,13 +180,23 @@ export function teardown() {
   } catch (e) {
     ids = [];
   }
-  if (ids.length) {
-    const ul = callKw('crm.lead', 'unlink', [ids], {});
-    const okDel = (ul.body || '').indexOf('"result": true') !== -1 || (ul.body || '').indexOf('"result":true') !== -1;
-    console.log(`CLEANUP: deleted ${ids.length} leads for RUN_ID=${RUN_ID} (unlink ok=${okDel})`);
-  } else {
+  if (!ids.length) {
     console.log(`CLEANUP: no leads found for prefix ${PREFIX}`);
+    return;
   }
+  // Delete in small batches (8) - one big unlink of ~190 leads exceeds the timeout.
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += 8) {
+    const chunk = ids.slice(i, i + 8);
+    const ul = callKw('crm.lead', 'unlink', [chunk], {});
+    const body = ul.body || '';
+    if (body.indexOf('"result": true') !== -1 || body.indexOf('"result":true') !== -1) {
+      deleted += chunk.length;
+    } else {
+      console.error(`CLEANUP batch@${i} failed: ${body.substring(0, 150)}`);
+    }
+  }
+  console.log(`CLEANUP: deleted ${deleted}/${ids.length} leads for RUN_ID=${RUN_ID}`);
 }
 
 // ---- Comparison report ----
