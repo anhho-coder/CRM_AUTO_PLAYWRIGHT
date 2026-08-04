@@ -1,0 +1,58 @@
+// Jenkins pipeline: deploy the k6 aggregate-report stack (InfluxDB 1.8 + Grafana) as
+// NATIVE Windows services ON the Jenkins server itself. Pinned to the built-in node so
+// InfluxDB/Grafana land on 10.8.81.44 (the host k6 agents push to). No Docker/WSL.
+//
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.k6-monitoring-deploy.
+// The heavy lifting is in perf/monitoring/native/install-windows.ps1 (idempotent).
+pipeline {
+    agent { label 'built-in' }   // MUST be the server; do not run on the 'probe' agent
+
+    parameters {
+        choice(name: 'ACTION', choices: ['install', 'status', 'uninstall'], description: 'install = download+configure+(re)start services; status = report health; uninstall = remove services (keeps data).')
+        string(name: 'INSTALL_DIR',       defaultValue: 'E:\\monitoring', description: 'Install root (E: has space; C: is tight).')
+        string(name: 'INFLUX_VER',        defaultValue: '1.8.10',  description: 'InfluxDB v1 version (native k6 -o influxdb speaks v1 line protocol).')
+        string(name: 'GRAFANA_VER',       defaultValue: '11.2.0',  description: 'Grafana OSS version.')
+        string(name: 'NSSM_VER',          defaultValue: '2.24',    description: 'NSSM (service wrapper) version.')
+        password(name: 'GF_ADMIN_PASSWORD', defaultValue: 'nakivo-k6', description: 'Grafana admin password (anon view is on; login only needed to edit).')
+        string(name: 'INFLUX_DB',         defaultValue: 'k6',      description: 'InfluxDB database name k6 writes into.')
+    }
+
+    environment {
+        ACTION            = "${params.ACTION}"
+        INSTALL_DIR       = "${params.INSTALL_DIR}"
+        INFLUX_VER        = "${params.INFLUX_VER}"
+        GRAFANA_VER       = "${params.GRAFANA_VER}"
+        NSSM_VER          = "${params.NSSM_VER}"
+        GF_ADMIN_PASSWORD = "${params.GF_ADMIN_PASSWORD}"
+        INFLUX_DB         = "${params.INFLUX_DB}"
+    }
+
+    options {
+        timestamps()
+        timeout(time: 25, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+        stage('Deploy monitoring stack') {
+            steps {
+                script { env.REPO_MONITORING = "${env.WORKSPACE}\\perf\\monitoring" }
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\monitoring\\native\\install-windows.ps1'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Monitoring stack action OK. InfluxDB http://10.8.81.44:8086  |  Grafana http://10.8.81.44:3000'
+        }
+        failure {
+            echo 'FAILED. Check the log above; service stderr is under <INSTALL_DIR>\\logs and Grafana log under <INSTALL_DIR>\\grafana-data\\log.'
+        }
+    }
+}
