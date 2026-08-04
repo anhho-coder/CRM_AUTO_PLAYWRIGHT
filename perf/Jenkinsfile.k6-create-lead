@@ -21,7 +21,8 @@ pipeline {
 
     options {
         timestamps()
-        timeout(time: 25, unit: 'MINUTES')
+        // Wide: teardown may grind through ~190 slow deletes while the assignment cron drains.
+        timeout(time: 45, unit: 'MINUTES')
     }
 
     stages {
