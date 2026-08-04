@@ -1,0 +1,215 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": ["k6", "crm", "load-test"],
+  "templating": {
+    "list": [
+      {
+        "name": "testid",
+        "label": "Test",
+        "type": "query",
+        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"testid\"",
+        "refresh": 1,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      },
+      {
+        "name": "build",
+        "label": "Build",
+        "type": "query",
+        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"build\" WHERE \"testid\" =~ /^$testid$/",
+        "refresh": 2,
+        "sort": 4,
+        "includeAll": false,
+        "multi": false,
+        "current": {}
+      },
+      {
+        "name": "level",
+        "label": "Concurrency",
+        "type": "query",
+        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"level\" WHERE \"testid\" =~ /^$testid$/",
+        "refresh": 2,
+        "sort": 3,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": true,
+        "current": {}
+      }
+    ]
+  },
+  "time": { "from": "now-7d", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
+  "uid": "k6-crm-load",
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Goal 1 - p95 latency by concurrency level (build $build)",
+      "description": "How login/RPC latency (p95) scales as concurrent users go 10 -> 30 -> 50 -> 100. Each series = one concurrency level; the sequential bursts appear left-to-right.",
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "bars", "fillOpacity": 40, "lineWidth": 1, "barAlignment": 0 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(none)",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "$tag_level users"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "table",
+      "title": "Error rate by concurrency level (build $build)",
+      "description": "http_req_failed averaged per level -> % of failed HTTP requests at each concurrency. Should stay ~0%.",
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": { "unit": "percent" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "level" },
+            "properties": [{ "id": "unit", "value": "short" }, { "id": "custom.width", "value": 120 }]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "error_pct", "desc": true }]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+          "query": "SELECT mean(\"value\") * 100 AS \"error_pct\" FROM \"http_req_failed\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY \"level\"",
+          "rawQuery": true,
+          "resultFormat": "table"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Goal 2 - p95 trend across builds (by level) - compare vs baseline",
+      "description": "Each cluster of points = one build/run over calendar time (time order = build order). Rising over time = regression vs the earlier baseline. Widen the time range (top-right) to see more history. The dashed threshold line is a visual baseline - edit it per test.",
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "points": "always",
+            "pointSize": 6,
+            "spanNulls": false,
+            "thresholdsStyle": { "mode": "line+area" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 5000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean", "last"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(null)",
+          "rawQuery": true,
+          "resultFormat": "time_series",
+          "alias": "$tag_level users"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "table",
+      "title": "Goal 3 - Bottleneck: latency by operation (build $build)",
+      "description": "http_req_duration broken down by concurrency level and by operation tag (step=get/post for login; rpc=create/search/unlink for create-lead) plus the URL (name). Sorted by p95 descending -> the slowest operation is at the top.",
+      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "align": "auto" } },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "reqs" },
+            "properties": [{ "id": "unit", "value": "short" }]
+          },
+          {
+            "matcher": { "id": "byRegexp", "options": "/level|step|rpc|name/" },
+            "properties": [{ "id": "unit", "value": "string" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "p95_ms" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
+              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 2000 }, { "color": "red", "value": 5000 }] } }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "p95_ms", "desc": true }]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND $timeFilter GROUP BY \"level\", \"step\", \"rpc\", \"name\"",
+          "rawQuery": true,
+          "resultFormat": "table"
+        }
+      ]
+    }
+  ]
+}

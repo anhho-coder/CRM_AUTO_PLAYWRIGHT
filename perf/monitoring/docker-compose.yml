@@ -1,0 +1,50 @@
+# k6 -> InfluxDB -> Grafana stack for the CRM load-test aggregate report.
+#
+# Runs on the Jenkins server (10.8.81.44). The k6 Jenkins agents push metrics to
+# InfluxDB over :8086; the team views trends in Grafana on :3000.
+#
+# Bring up (at the server console, via RDP - see README.md):
+#   cd perf\monitoring
+#   docker compose up -d
+#
+# Requires Docker with LINUX containers (Docker Desktop/WSL2 backend, or a Linux
+# Docker host). influxdb:1.8 is chosen to match k6 v0.49's built-in `-o influxdb`
+# output (InfluxDB v1 line protocol) - no xk6 rebuild needed.
+services:
+  influxdb:
+    image: influxdb:1.8
+    container_name: k6-influxdb
+    restart: unless-stopped
+    ports:
+      - "8086:8086"                 # k6 agents push here: http://10.8.81.44:8086/k6
+    environment:
+      INFLUXDB_DB: k6               # auto-create the k6 database on first init
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"   # internal network only
+      INFLUXDB_REPORTING_DISABLED: "true"
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+
+  grafana:
+    image: grafana/grafana-oss:11.2.0
+    container_name: k6-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"                 # dashboard: http://10.8.81.44:3000
+    depends_on:
+      - influxdb
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GF_ADMIN_PASSWORD:-nakivo-k6}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Let the team VIEW without a login (edit still needs the admin account),
+      # mirroring how the publishHTML k6 reports are open to everyone.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+
+volumes:
+  influxdb-data:
+  grafana-data:

@@ -1,0 +1,16 @@
+# Auto-provisioned InfluxDB v1 datasource for the k6 CRM load-test dashboard.
+# The dashboard JSON references this by uid "influxdb-k6".
+apiVersion: 1
+
+datasources:
+  - name: k6-InfluxDB
+    uid: influxdb-k6
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086      # container-to-container (compose service name)
+    database: k6
+    isDefault: true
+    editable: true
+    jsonData:
+      httpMode: GET
+      dbName: k6
