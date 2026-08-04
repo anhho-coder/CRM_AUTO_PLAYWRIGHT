@@ -123,11 +123,13 @@ function login(u) {
   return r.status === 200 && (r.body || '').indexOf("window.location = '/web") !== -1;
 }
 
-function callKw(model, method, args, kwargs) {
+function callKw(model, method, args, kwargs, timeoutSec) {
+  const params = { headers: { 'Content-Type': 'application/json' }, tags: { rpc: method } };
+  if (timeoutSec) params.timeout = timeoutSec + 's'; // default k6 timeout is 60s - too short for slow unlink
   return http.post(
     `${BASE_URL}/web/dataset/call_kw`,
     JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method, args, kwargs: kwargs || {} } }),
-    { headers: { 'Content-Type': 'application/json' }, tags: { rpc: method } }
+    params
   );
 }
 
@@ -175,30 +177,35 @@ export function teardown() {
     console.error(`CLEANUP SKIPPED: no/failed admin login. Manually delete leads name like '${PREFIX}%'.`);
     return;
   }
-  const sr = callKw('crm.lead', 'search', [[['name', '=like', PREFIX + '%']]], {});
-  let ids = [];
-  try {
-    ids = JSON.parse(sr.body).result || [];
-  } catch (e) {
-    ids = [];
-  }
-  if (!ids.length) {
-    console.log(`CLEANUP: no leads found for prefix ${PREFIX}`);
-    return;
-  }
-  // Delete in small batches (8) - one big unlink of ~190 leads exceeds the timeout.
+  // Delete in small batches with RETRY: a freshly-created lead can be locked by the sequential
+  // assignment cron, so an unlink may time out. Re-search + retry picks it up once the cron
+  // releases it (mirrors the proven manual sweep). Long per-request timeout; teardownTimeout caps it.
   let deleted = 0;
-  for (let i = 0; i < ids.length; i += 8) {
-    const chunk = ids.slice(i, i + 8);
-    const ul = callKw('crm.lead', 'unlink', [chunk], {});
-    const body = ul.body || '';
-    if (body.indexOf('"result": true') !== -1 || body.indexOf('"result":true') !== -1) {
-      deleted += chunk.length;
-    } else {
-      console.error(`CLEANUP batch@${i} failed: ${body.substring(0, 150)}`);
+  let rounds = 0;
+  while (rounds < 120) {
+    rounds++;
+    const sr = callKw('crm.lead', 'search', [[['name', '=like', PREFIX + '%']]], { limit: 8 }, 60);
+    let ids = [];
+    try {
+      ids = JSON.parse(sr.body).result || [];
+    } catch (e) {
+      ids = [];
     }
+    if (!ids.length) break;
+    const ul = callKw('crm.lead', 'unlink', [ids], {}, 180);
+    const body = ul.body || '';
+    if (body.indexOf('"result": true') !== -1 || body.indexOf('"result":true') !== -1) deleted += ids.length;
+    // else: timed out / locked -> next round re-searches the same ids and retries
   }
-  console.log(`CLEANUP: deleted ${deleted}/${ids.length} leads for RUN_ID=${RUN_ID}`);
+  // Definitive remaining count
+  const fc = callKw('crm.lead', 'search_count', [[['name', '=like', PREFIX + '%']]], {}, 60);
+  let left = '?';
+  try {
+    left = JSON.parse(fc.body).result;
+  } catch (e) {
+    left = '?';
+  }
+  console.log(`CLEANUP: deleted ~${deleted} over ${rounds} rounds for RUN_ID=${RUN_ID}; remaining=${left}`);
 }
 
 // ---- Comparison report ----
