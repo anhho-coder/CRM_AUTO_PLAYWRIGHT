@@ -1,2 +1,4 @@
 # k6 runtime output - generated per build, never committed
 report/
+# admin creds for local cleanup runs - NEVER commit (Jenkins uses a credential instead)
+admin.csv
