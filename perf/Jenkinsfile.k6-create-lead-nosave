@@ -1,0 +1,116 @@
+// Jenkins pipeline: k6 CREATE-LEAD (NO SAVE) scaling load test vs CRM PRE-PRODUCTION (Odoo JSON-RPC).
+// Simulates opening the New Lead form and filling it (default_get + onchange, in-memory ORM) at
+// increasing concurrency (default 10,30,50,100) - but NEVER writes a crm.lead row. So, unlike the
+// sibling create-lead job, there is NO admin cleanup, NO assignment-cron lock, and NO DB drift.
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.k6-create-lead-nosave.
+// Windows agent.
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'LEVELS',     defaultValue: '10,30,50,100', description: 'Comma list of concurrency levels (simultaneous users filling a lead form), in order.')
+        string(name: 'LOOPS',      defaultValue: '1',    description: 'No-save lead sequences per user per level.')
+        string(name: 'GAP_S',      defaultValue: '20',   description: 'Seconds between bursts (server recovery).')
+        string(name: 'BASE_URL',   defaultValue: 'https://pre-production.nakivo.site', description: 'Pre-prod base URL (HTTPS).')
+        string(name: 'MAP_IP',     defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to (mirrors HOST_RESOLVER_MAP). Blank to disable.')
+        string(name: 'P95_MS',     defaultValue: '4000', description: 'Per-level p95 gate in ms for the whole no-save form sequence. Pure server compute (no assignment cron in the path), so far lower than the create() job. A level FAILS if its p95 exceeds this (or success <= 99%).')
+        string(name: 'PARTNER_ID', defaultValue: '0',    description: 'Customer partner id to select in onchange(partner_id). 0 = auto-pick one company on pre-prod in setup().')
+        booleanParam(name: 'VERIFY_NOSAVE', defaultValue: true, description: 'After the run, assert 0 crm.lead rows exist for this run marker (proves nothing was saved).')
+    }
+
+    environment {
+        K6_DIR     = 'C:\\tools\\k6'
+        REPORT_DIR = 'perf\\k6\\report'
+    }
+
+    options {
+        timestamps()
+        timeout(time: 25, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Resolve config') {
+            steps {
+                script {
+                    env.EFF_LEVELS     = (params.LEVELS?.trim()) ?: '10,30,50,100'
+                    env.EFF_LOOPS      = (params.LOOPS?.trim()) ?: '1'
+                    env.EFF_GAP_S      = (params.GAP_S?.trim()) ?: '20'
+                    env.EFF_BASE_URL   = (params.BASE_URL?.trim()) ?: 'https://pre-production.nakivo.site'
+                    env.EFF_MAP_IP     = (params.MAP_IP != null) ? params.MAP_IP.trim() : '10.220.222.100'
+                    env.EFF_P95_MS     = (params.P95_MS?.trim()) ?: '4000'
+                    env.EFF_PARTNER_ID = (params.PARTNER_ID?.trim()) ?: '0'
+                    env.EFF_VERIFY     = (params.VERIFY_NOSAVE == false) ? '0' : '1'
+                    env.EFF_RUN_ID     = 'j' + env.BUILD_NUMBER
+                    echo "Effective -> LEVELS=${env.EFF_LEVELS} | LOOPS=${env.EFF_LOOPS} | GAP_S=${env.EFF_GAP_S} | RUN_ID=${env.EFF_RUN_ID} | BASE_URL=${env.EFF_BASE_URL} | MAP_IP=${env.EFF_MAP_IP} | P95_MS=${env.EFF_P95_MS} | PARTNER_ID=${env.EFF_PARTNER_ID} | VERIFY_NOSAVE=${env.EFF_VERIFY}"
+                }
+            }
+        }
+
+        stage('Route pre-check (VPN to pre-prod)') {
+            steps {
+                powershell '''
+                    $ip = $env:EFF_MAP_IP
+                    if (-not $ip) { try { $ip = ([uri]$env:EFF_BASE_URL).Host } catch { $ip = "" } }
+                    if (-not $ip) { $ip = "10.220.222.100" }
+                    Write-Host "Probing pre-prod route to ${ip}:443 ..."
+                    $ok = Test-NetConnection -ComputerName $ip -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
+                    if (-not $ok) {
+                        Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:443). Is the VPN up on the agent?"
+                        exit 1
+                    }
+                    Write-Host "Route OK (${ip}:443 reachable)."
+                '''
+            }
+        }
+
+        stage('Ensure k6') {
+            steps {
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\k6\\ensure-k6.ps1'
+            }
+        }
+
+        stage('Run k6 create-lead NO-SAVE scaling test') {
+            steps {
+                bat 'if not exist %REPORT_DIR% mkdir %REPORT_DIR%'
+                // No admin credentials needed: this test never creates a lead, so there is nothing to clean up.
+                bat '''
+                    set "PATH=%K6_DIR%;%PATH%"
+                    k6 run ^
+                        -e BASE_URL=%EFF_BASE_URL% ^
+                        -e MAP_IP=%EFF_MAP_IP% ^
+                        -e LEVELS=%EFF_LEVELS% ^
+                        -e LOOPS=%EFF_LOOPS% ^
+                        -e GAP_S=%EFF_GAP_S% ^
+                        -e P95_MS=%EFF_P95_MS% ^
+                        -e PARTNER_ID=%EFF_PARTNER_ID% ^
+                        -e VERIFY_NOSAVE=%EFF_VERIFY% ^
+                        -e RUN_ID=%EFF_RUN_ID% ^
+                        --summary-export=%REPORT_DIR%\\summary-export.json ^
+                        --out json=%REPORT_DIR%\\raw-metrics.json ^
+                        perf\\k6\\create-lead-nosave.js
+                '''
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'perf/k6/report',
+                reportFiles: 'index.html',
+                reportName: 'k6-CreateLead-NoSave'
+            ])
+            archiveArtifacts artifacts: 'perf/k6/report/**', allowEmptyArchive: true
+        }
+    }
+}
