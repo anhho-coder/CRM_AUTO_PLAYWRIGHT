@@ -44,7 +44,10 @@ pipeline {
 
     // Each job picks up only the cron line that matches its own name. All in the 05:00 hour;
     // 'H' staggers the minute per job so they don't fire simultaneously.
-    // CRON runs freeze the PREVIOUS (completed) period -> clean archival snapshot.
+    // The cron is now a safety heartbeat + period roll-over on the 1st (daily/weekly cron still
+    // freeze the previous day/week); monthly/quarterly/yearly resolve to the CURRENT period and
+    // are kept fresh by the upstream trigger below. The completed period stays reachable as the
+    // "Previous" switcher tab (frozen snapshot), so no archival is lost.
     triggers {
         cron(
             env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? 'H 5 * * 1'        :
@@ -53,14 +56,13 @@ pipeline {
             env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
                                                           'H 5 * * *'          // default: daily
         )
-        // LIVE refresh: Daily, Weekly AND Quarterly rebuild after any section job finishes and
-        // (see Resolve stage) generate the CURRENT period so runs show up same-day. Quarterly
-        // defaults to the current quarter (and embeds the previous quarter behind a switcher),
-        // so it must stay live too. Monthly/Yearly remain cron-only (change slowly).
+        // LIVE refresh: ALL period reports rebuild after any section job finishes and
+        // (see Resolve stage) generate the CURRENT period so runs show up same-day. Monthly,
+        // Quarterly and Yearly each default to the current period (and embed the previous one
+        // behind a switcher), so they must stay live too. The cron lines above are now just a
+        // safety heartbeat / period roll-over on the 1st; day-to-day freshness comes from here.
         upstream(
-            upstreamProjects: (env.JOB_BASE_NAME == 'CRM-Allure-Daily' || env.JOB_BASE_NAME == 'CRM-Allure-Weekly' || env.JOB_BASE_NAME == 'CRM-Allure-Quarterly')
-                ? 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12'
-                : '',
+            upstreamProjects: 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12',
             threshold: hudson.model.Result.FAILURE   // refresh even when some tests failed
         )
     }
@@ -86,8 +88,8 @@ pipeline {
                     if (params.PERIOD?.trim())      { env.CURRENT = 'false' }   // explicit period wins
                     else if (view == 'current')     { env.CURRENT = 'true'  }   // force in-progress period
                     else if (view == 'previous')    { env.CURRENT = 'false' }   // force last completed period (e.g. Q2)
-                    else if (env.SCOPE == 'quarterly') { env.CURRENT = 'true' } // auto: Quarterly defaults to the CURRENT quarter (embeds previous behind a switcher)
-                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto: others -> live on upstream, else previous
+                    else if (env.SCOPE in ['monthly', 'quarterly', 'yearly']) { env.CURRENT = 'true' } // auto: calendar-period reports default to the CURRENT period (embed previous behind a switcher)
+                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto: daily/weekly -> live on upstream, else the previous completed period
                     echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  VIEW=${view}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
                 }
             }
