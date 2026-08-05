@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Merging Test - IB Renewal (IBNC Team) and Partner Signup Leads
  * Test Case ID: CRM-542_2.4.1
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
+ *
  * Summary: Verify that the merging lead do NOT happens successfully when the leads from IB renewal leads - team IBNC and Partner sign up leads
  * 
  * Command to run:
@@ -335,9 +338,16 @@ test.describe('CRM-542_2.4.1 - Lead Merging: IB Renewal (IBNC Team) and Partner 
       console.log('\n=== STEP 1: WAITING FOR LEAD MERGING ===');
       console.log(`Checking Lead #2 (${lead2Id}) for merge notification...`);
       console.log(`Lead #2 should NOT receive merge message: "This lead has been merged into ${lead1Name}"`);
-      
+
       // Wait for 90 seconds to allow merge time window to pass
       await leadPage.waitForNoMergeConfirmation();
+
+      // DEFERRED RE-VERIFY (merging): the no-merge assertions below only span this 90s window; a
+      // wrongly-slow merge could still land AFTER it. Record BOTH leads so the round-2 job re-opens them
+      // ~1h later and confirms neither merged (Lead #1 = would-be TARGET, Lead #2 = would-be SOURCE).
+      recordNoMergeForDeferredVerify(page, lead1Url, 'target', lead2Name);
+      recordNoMergeForDeferredVerify(page, lead2Url, 'source', lead1Name);
+
       console.log('✓ Step 1 completed: Waited for merge time window\n');
     });
 
