@@ -7,7 +7,9 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Lead Assignment Test - THD Team - India (State Blank) with Nakivo Customer = TRUE and Partner = TRUE
  * Test Case ID: TC.THD_3.2.1.5.2
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
+ *
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = TRUE, Partner = TRUE, Country = India and State is blank
  * 
  * Command to run:
@@ -233,10 +235,14 @@ test.describe('TC.THD_3.2.1.5.2 - THD Team Assignment for India (State Blank) wi
     // Step 8: Wait for Sales Team and Salesperson auto-assignment
     await test.step('Step 8: Wait for Sales Team and Salesperson auto-assignment', async () => {
       console.log('Step 8: Waiting for Sales Team and Salesperson auto-assignment');
-      console.log('  - Waiting for at least 1.5 minutes for Sales Team and Salesperson to be assigned...');
-      
+      console.log('  - Waiting up to 8 minutes for the async assignment cron to fill Sales Team and Salesperson...');
+
+      // Sales-Team assignment is async (cron); a 5-min ceiling under-caught it inline and left the
+      // Team empty (Received "" at verify). Wait up to salesTeamAssignment.maxWaitTime (8 min, still
+      // within the 15-min test timeout); the poll breaks early once assigned. A lead still unassigned
+      // at this ceiling is picked up by the round-2 deferred-verify re-check, not a false fail.
       const result = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.ibsaTeamAssignment,
+        config.timeouts.salesTeamAssignment.maxWaitTime,
         config.timeouts.salesTeamAssignment.checkInterval
       );
       

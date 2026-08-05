@@ -192,7 +192,18 @@ export async function createValidatedInvoiceAsThomas(
       await invoicePage.dismissErrorDialog();
       await invoicePage.clickValidate();
       result.validated = true;
-      try { result.invoiceNumber = (await invoicePage.getInvoiceNumber()) || result.invoiceNumber; } catch { /* keep */ }
+      // After VALIDATE, O12 assigns the posted Invoice Number server-side; on slow pre-prod the
+      // number span (//span[@name="number"]) can stay empty for a few seconds while the form
+      // re-renders. Poll (reloading between attempts) until it is non-empty instead of reading it
+      // once and false-failing on the empty draft placeholder (was a single read -> Received "").
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        try { result.invoiceNumber = (await invoicePage.getInvoiceNumber()) || result.invoiceNumber; } catch { /* keep prior */ }
+        if (result.invoiceNumber) break;
+        console.log(`  - Invoice Number #1 not posted yet (poll ${attempt}/5), reloading...`);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await invoicePage.dismissErrorDialog();
+        await page.waitForTimeout(CommonUtils.waitTimes.long);
+      }
       try { result.status = await invoicePage.getInvoiceStatus(); } catch { /* best-effort */ }
       try { result.amountDue = await invoicePage.getAmountDue(); } catch { /* best-effort */ }
       try { result.invoiceTotal = await invoicePage.getInvoiceTotal(); } catch { /* best-effort */ }
