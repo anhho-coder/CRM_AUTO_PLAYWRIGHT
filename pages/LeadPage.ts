@@ -2201,13 +2201,20 @@ export class LeadPage extends BasePage {
   /**
    * Wait for Sales Team and Salesperson to be auto-assigned
    * Periodically refreshes the page and checks if the fields are populated
-   * @param maxWaitTime - Maximum time to wait in milliseconds
+   * @param maxWaitTime - Maximum time to wait in milliseconds (the SHORT ceiling, e.g.
+   *   CommonUtils.waitTimes.assignmentMaxWait = 15 min). A lead still unassigned at this ceiling
+   *   is left for the round-2 deferred re-verify job - the caller should SKIP (not fail) that spec.
    * @param checkInterval - Time between checks in milliseconds (default: 5000)
+   * @param expectedSalesTeam - Optional exact Sales Team the caller expects (positive "assign to X"
+   *   specs). When given, the deferred record carries the EXACT team so round-2 does an exact match.
+   *   OMIT for salesperson-only and NOT_assign specs (records the NONEMPTY sentinel instead - round-2
+   *   only confirms the async cron eventually populated the field, never demanding the excluded team).
    * @returns Object containing salesTeamValue, salespersonValue, and assignment status
    */
   async waitForSalesTeamAssignment(
     maxWaitTime: number,
-    checkInterval: number = 5000
+    checkInterval: number = 5000,
+    expectedSalesTeam?: string
   ): Promise<{
     salesTeamValue: string;
     salespersonValue: string;
@@ -2283,11 +2290,17 @@ export class LeadPage extends BasePage {
       console.log(`  - Salesperson Value: "${salespersonValue}"`);
     }
 
-    // Deferred re-verify: record this lead for the ~1h-later verification round (no-op unless
-    // env DEFERRED_MANIFEST is set). Uses the NONEMPTY sentinel since the expected team is not
-    // known here; a later verifySalesTeamAssignment(team) call supersedes it. This covers the
-    // many assignment specs that poll here then assert inline without calling verify.
-    recordAssignmentNonEmptyForDeferredVerify(this.page, salesTeamValue, salespersonValue);
+    // Deferred re-verify: record this lead for the round-2 verification job (no-op unless env
+    // DEFERRED_MANIFEST is set). Fires on BOTH the assigned and the unassigned (defer) paths - a lead
+    // still unassigned within the 15-min short wait is handed to round-2 rather than failing round-1.
+    // When the caller passes the expected team (positive "assign to X" specs) we record the EXACT team
+    // so round-2 exact-matches; otherwise (salesperson-only / NOT_assign) we record the NONEMPTY
+    // sentinel so round-2 only confirms the field became non-empty (never demands the excluded team).
+    if (expectedSalesTeam && expectedSalesTeam !== '') {
+      recordAssignmentForDeferredVerify(this.page, expectedSalesTeam, salesTeamValue, salespersonValue);
+    } else {
+      recordAssignmentNonEmptyForDeferredVerify(this.page, salesTeamValue, salespersonValue);
+    }
 
     return {
       salesTeamValue,

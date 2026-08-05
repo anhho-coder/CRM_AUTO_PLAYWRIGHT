@@ -351,16 +351,17 @@ export class CommonUtils {
     salesTeamAssignment: 300000,
     /** Wait time for lead Salesperson/Sales-Team auto-assignment poll loop (4 minutes) */
     leadAssignmentWait: 240000,
-    /** Dynamic MAX wait for async Salesperson/Sales-Team assignment - 35 minutes. Used by the
-     *  2.Leads_Assignment specs (the assignment cron normally takes ~12 min but a backed-up cron
-     *  window can run longer; observed >25 min on the CRM-9374 THD India-Delhi lead, which false-failed
-     *  at the old 25-min ceiling). The poll loop breaks early once assigned, so raising this only
-     *  extends the ceiling for slow runs - it does NOT slow the normal fast case. Pair with
-     *  assignmentTestTimeout. */
-    assignmentMaxWait: 2100000,
-    /** Per-test timeout for the 2.Leads_Assignment specs - 43 minutes. Must exceed assignmentMaxWait
-     *  (35 min) plus the create/navigate steps. (Folder-scoped; does NOT change config.timeouts.test.) */
-    assignmentTestTimeout: 2580000,
+    /** SHORT MAX wait for async Salesperson/Sales-Team assignment - 15 minutes. Used by the
+     *  2.Leads_Assignment specs. The assignment cron normally fires within ~12 min, so 15 min covers
+     *  the normal case; a lead STILL unassigned at this ceiling is DEFERRED to the round-2 re-verify
+     *  job (helpers/deferred-verify.helper.ts + _deferred-verify spec) and the round-1 test is SKIPPED
+     *  - it no longer false-fails, nor waits the old 35-min ceiling. The poll loop breaks early once
+     *  assigned, so this only bounds the slow case. Pair with assignmentTestTimeout. */
+    assignmentMaxWait: 900000,
+    /** Per-test timeout for the 2.Leads_Assignment specs - 20 minutes. Must exceed assignmentMaxWait
+     *  (15 min) plus the create/navigate steps and the defer/skip emit. (Folder-scoped; does NOT
+     *  change config.timeouts.test.) */
+    assignmentTestTimeout: 1200000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
     /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */

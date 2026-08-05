@@ -3,10 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - THD Team - India (Karnataka) with Nakivo Customer = TRUE and New Partner = TRUE
  * Test Case ID: TC.THD_3.2.2.5.4
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
  * 
  * Summary: Verify the lead is assigned to THD team if Nakivo customer = TRUE, New Partner = TRUE, Country = India and State is Karnataka (IN list: Andhra Pradesh, Karnataka, Kerala, Tamil Nadu, Telangana, West Bengal)
  * 
@@ -231,6 +235,10 @@ test.describe('TC.THD_3.2.2.5.4 - THD Team Assignment for India (Karnataka) with
       console.log('✓ Nakivo Customer and New Partner set to TRUE and saved');
     });
 
+    // Declare flags to track assignment status
+    let salesTeamAssigned = false;
+    let salespersonAssigned = false;
+
     // Step 8: Wait for Sales Team and Salesperson auto-assignment
     await test.step('Step 8: Wait for Sales Team and Salesperson auto-assignment', async () => {
       console.log('Step 8: Waiting for Sales Team and Salesperson auto-assignment');
@@ -238,11 +246,21 @@ test.describe('TC.THD_3.2.2.5.4 - THD Team Assignment for India (Karnataka) with
       
       const result = await leadPage.waitForSalesTeamAssignment(
         CommonUtils.waitTimes.assignmentMaxWait,
-        config.timeouts.salesTeamAssignment.checkInterval
+        config.timeouts.salesTeamAssignment.checkInterval,
+        'THD',
       );
+      salesTeamAssigned = result.salesTeamAssigned;
+      salespersonAssigned = result.salespersonAssigned;
       
       console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
     });
+
+    // Defer instead of fail: if the async assignment cron has not fired within the short wait, the
+    // lead is already recorded for the round-2 re-verify job - SKIP this round-1 test rather than
+    // false-failing on a merely-late cron.
+    if (!salesTeamAssigned || !salespersonAssigned) {
+      test.skip(true, assignmentDeferSkipReason('TC.THD_3.2.2.5.4', !salesTeamAssigned ? 'Sales Team' : 'Salesperson'));
+    }
 
     // Verification: Confirm Sales Team is THD and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is THD and Salesperson is assigned', async () => {

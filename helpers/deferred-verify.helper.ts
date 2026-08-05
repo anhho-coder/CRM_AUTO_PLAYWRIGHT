@@ -31,6 +31,21 @@ export const NONEMPTY_EXPECTED = '<non-empty>';
 /** @deprecated use NONEMPTY_EXPECTED */
 export const SALESPERSON_EXPECTED = NONEMPTY_EXPECTED;
 
+/**
+ * Build the canonical `test.skip()` reason used by the 2.Leads_Assignment specs when the async
+ * Sales Team / Salesperson assignment has NOT completed within the short poll ceiling
+ * (CommonUtils.waitTimes.assignmentMaxWait, 15 min). The spec emits its deferred record (via the
+ * LeadPage wait chokepoint) and then skips with this message, handing the authoritative verdict to
+ * the round-2 re-verify job instead of false-failing on a merely-late cron. Kept here so the wording
+ * stays identical across all ~90 assignment specs. ASCII-only (spec/step labels must be plain ASCII).
+ */
+export function assignmentDeferSkipReason(
+  tcId: string,
+  field: 'Sales Team' | 'Salesperson',
+): string {
+  return `${tcId}: ${field} not auto-assigned within the 15-min short wait - deferred to round-2 re-verify (not a failure).`;
+}
+
 export interface DeferredVerifyRecord {
   tcId: string;
   title: string;

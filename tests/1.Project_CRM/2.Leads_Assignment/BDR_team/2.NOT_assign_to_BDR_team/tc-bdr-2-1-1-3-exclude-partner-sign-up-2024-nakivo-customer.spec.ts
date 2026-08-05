@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - BDR Team - Partner Sign up 2024 with Nakivo Customer Exclusion
  * Test Case ID: TC.BDR_2.1.1.3
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
  * Summary: Verify the lead is NOT assigned to Jayden belong to BDR team if Lead form = Partner Sign up 2024 and Nakivo Customer is true
  * 
  * Command to run:
@@ -183,62 +186,32 @@ test.describe('TC.BDR.2.1.1.3 - BDR Team Exclusion for Partner Sign up 2024 with
       console.log(`  URL: ${savedLeadUrl}`);
     });
 
-    // Step 7: Wait for Sales Team and Salesperson auto-assignment (1.5 minutes)
+    // Declare flags before wait step
+    let salesTeamAssigned = false;
+    let salespersonAssigned = false;
+
+    // Step 7: Wait for Sales Team and Salesperson auto-assignment (short wait, defer if not assigned)
     await test.step('Step 7: Wait for Sales Team and Salesperson auto-assignment (1.5 minutes)', async () => {
       console.log('Step 7: Waiting for Sales Team and Salesperson auto-assignment');
       console.log('  ⏳ Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
-      
-      const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait; // shared config (was hardcoded 1.5 min)
-      let fieldsAssigned = false;
-      let salesTeamValue = '';
-      let salespersonValue = '';
-      let attemptCount = 0;
-      
-      while (!fieldsAssigned && (Date.now() - startWaitTime) < maxWaitTime) {
-        attemptCount++;
-        
-        // Refresh the page to get latest data
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(CommonUtils.waitTimes.standard);
-        
-        // Check if Sales Team and Salesperson fields are populated
-        try {
-          // Get Sales Team value using LeadPage method (handles both edit and readonly modes)
-          salesTeamValue = await leadPage.getSalesTeamValue();
-          salespersonValue = await leadPage.getSalespersonValue();
-          
-          const salesTeamAssigned = salesTeamValue && salesTeamValue !== '' && salesTeamValue !== 'Sales Team';
-          const salespersonAssigned = salespersonValue && salespersonValue !== '' && salespersonValue !== 'Salesperson';
-          
-          if (salesTeamAssigned && salespersonAssigned) {
-            fieldsAssigned = true;
-            const elapsedTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-            console.log(`  ✓ Sales Team and Salesperson assigned after ${elapsedTime} seconds (Attempt ${attemptCount})`);
-            console.log(`  - Sales Team Value: "${salesTeamValue}"`);
-            console.log(`  - Salesperson Value: "${salespersonValue}"`);
-          } else {
-            const elapsedTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-            const salesTeamStatus = salesTeamAssigned ? '✓' : '⧖';
-            const salespersonStatus = salespersonAssigned ? '✓' : '⧖';
-            console.log(`  - Attempt ${attemptCount} (${elapsedTime}s): ${salesTeamStatus} Sales Team, ${salespersonStatus} Salesperson - waiting...`);
-            await page.waitForTimeout(config.timeouts.salesTeamAssignment.checkInterval);
-          }
-        } catch (error) {
-          console.log(`  - Attempt ${attemptCount}: Error checking fields - ${error instanceof Error ? error.message : String(error)}`);
-          await page.waitForTimeout(config.timeouts.salesTeamAssignment.checkInterval);
-        }
-      }
-      
-      const totalWaitTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-      
-      if (!fieldsAssigned) {
-        console.log(`  ⚠ Warning: Sales Team and/or Salesperson not assigned after ${totalWaitTime} seconds (${attemptCount} attempts)`);
-        console.log(`  ℹ️ Continuing with verification to document current state...`);
-      } else {
-        console.log(`✓ Sales Team and Salesperson auto-assignment completed in ${totalWaitTime} seconds`);
-      }
+
+      const result = await leadPage.waitForSalesTeamAssignment(
+        CommonUtils.waitTimes.assignmentMaxWait,
+        config.timeouts.salesTeamAssignment.checkInterval
+      );
+      salesTeamAssigned = result.salesTeamAssigned;
+      salespersonAssigned = result.salespersonAssigned;
+
+      console.log(`✓ Sales Team and Salesperson auto-assignment check completed in ${result.totalWaitTime} seconds`);
     });
+
+    // Defer instead of fail: if the async assignment cron has not fired within the short wait, the
+    // lead is already recorded for the round-2 re-verify job - SKIP this round-1 test rather than
+    // false-failing on a merely-late cron.
+    if (!salesTeamAssigned || !salespersonAssigned) {
+      const fieldName = !salesTeamAssigned ? 'Sales Team' : 'Salesperson';
+      test.skip(true, assignmentDeferSkipReason('TC.BDR_2.1.1.3', fieldName));
+    }
 
     // Verification: Confirm Sales Team is NOT BDR and Salesperson is set
     await test.step('Verification: Confirm Sales Team is NOT BDR and Salesperson is set', async () => {

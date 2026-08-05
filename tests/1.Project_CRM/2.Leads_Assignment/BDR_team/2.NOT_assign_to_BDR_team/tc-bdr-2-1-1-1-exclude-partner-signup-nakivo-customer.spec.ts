@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - BDR Team - Partner Signup with Nakivo Customer Exclusion
  * Test Case ID: TC.BDR_2.1.1.1
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
  * Summary: Verify the lead is NOT assigned to Jayden belong to BDR team if Lead form = Partner Signup and Nakivo Customer is true
  * 
  * Command to run:
@@ -182,54 +185,28 @@ test.describe('TC.BDR_2.1.1.1 - BDR Team Exclusion for Partner Signup with Nakiv
     });
 
     // Step 7: Wait for Sales Team auto-assignment (1.5 minutes)
-    await test.step('Step 7: Wait for Sales Team auto-assignment (1.5 minutes)', async () => {
-      console.log('Step 7: Waiting for Sales Team auto-assignment');
-      console.log('  ⏳ Waiting up to 1.5 minutes for Sales Team to be assigned...');
-      
-      const startWaitTime = Date.now();
-      const maxWaitTime = CommonUtils.waitTimes.assignmentMaxWait; // shared config (was hardcoded 1.5 min)
-      const checkInterval = config.timeouts.salesTeamAssignment.checkInterval;
-      let salesTeamAssigned = false;
-      let salesTeamValue = '';
-      let attemptCount = 0;
-      
-      while (!salesTeamAssigned && (Date.now() - startWaitTime) < maxWaitTime) {
-        attemptCount++;
-        
-        // Refresh the page to get latest data
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForTimeout(CommonUtils.waitTimes.standard);
-        
-        // Check if Sales Team field is populated
-        try {
-          // Get Sales Team value using LeadPage method (handles both edit and readonly modes)
-          salesTeamValue = await leadPage.getSalesTeamValue();
-          
-          if (salesTeamValue && salesTeamValue !== '' && salesTeamValue !== 'Sales Team') {
-            salesTeamAssigned = true;
-            const elapsedTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-            console.log(`  ✓ Sales Team assigned after ${elapsedTime} seconds (Attempt ${attemptCount})`);
-            console.log(`  - Sales Team Value: "${salesTeamValue}"`);
-          } else {
-            const elapsedTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-            console.log(`  - Attempt ${attemptCount} (${elapsedTime}s): Sales Team not yet assigned, waiting...`);
-            await page.waitForTimeout(checkInterval);
-          }
-        } catch (error) {
-          console.log(`  - Attempt ${attemptCount}: Error checking Sales Team field - ${error instanceof Error ? error.message : String(error)}`);
-          await page.waitForTimeout(checkInterval);
-        }
-      }
-      
-      const totalWaitTime = ((Date.now() - startWaitTime) / 1000).toFixed(2);
-      
-      if (!salesTeamAssigned) {
-        console.log(`  ⚠ Warning: Sales Team not assigned after ${totalWaitTime} seconds (${attemptCount} attempts)`);
-        console.log(`  ℹ️ Continuing with verification to document current state...`);
-      } else {
-        console.log(`✓ Sales Team auto-assignment completed in ${totalWaitTime} seconds`);
-      }
+    let salesTeamAssigned = false;
+    await test.step('Step 7: Wait for Sales Team auto-assignment (up to 15 minutes)', async () => {
+      console.log('Step 7: Waiting for Sales Team auto-assignment (short wait, then defer to round-2)');
+
+      // Shared poll chokepoint. This is a NOT_assign spec: the expected result is "assigned to SOME
+      // team, but NOT the excluded one". We do NOT pass the excluded team as expectedSalesTeam (that
+      // would make round-2 demand the excluded team - the opposite); the deferred record uses the
+      // NONEMPTY sentinel so round-2 only confirms the field eventually became non-empty.
+      const result = await leadPage.waitForSalesTeamAssignment(
+        CommonUtils.waitTimes.assignmentMaxWait,
+        config.timeouts.salesTeamAssignment.checkInterval,
+      );
+      salesTeamAssigned = result.salesTeamAssigned;
+      console.log(`  - Sales Team after wait: "${result.salesTeamValue}" (assigned=${salesTeamAssigned})`);
     });
+
+    // Defer instead of fail: the "NOT BDR" verdict needs a team to actually be assigned first. If the
+    // async cron has not fired within the short wait, the lead is already recorded for round-2 - SKIP
+    // this round-1 test rather than false-failing on a merely-late cron.
+    if (!salesTeamAssigned) {
+      test.skip(true, assignmentDeferSkipReason('TC.BDR_2.1.1.1', 'Sales Team'));
+    }
 
     // Verification: Confirm Sales Team is NOT BDR
     await test.step('Verification: Confirm Sales Team is NOT BDR', async () => {

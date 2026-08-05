@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@/helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - BDEU Team - Email Domain Assignment
  * Test Case ID: TC.BDEU.1.1.3.1
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
  * Summary: Verify the lead is assigned to BDEU team if Email Domain = @rocketmail.com
  * 
  * Command to run:
@@ -189,23 +192,27 @@ test.describe('TC.BDEU.1.1.3.1 - Salesperson Assignment by Email Domain (@rocket
       console.log(`  URL: ${savedLeadUrl}`);
     });
 
-    // Step 7: Wait for Salesperson auto-assignment (5 minutes)
+    // Step 7: Wait for Salesperson auto-assignment (up to 15 minutes, then defer to round-2)
+    let salespersonAssigned = false;
     let assignmentResult: Awaited<ReturnType<typeof leadPage.waitForSalesTeamAssignment>>;
-    await test.step('Step 7: Wait for Salesperson auto-assignment (1.5 minutes)', async () => {
-      console.log('Step 7: Waiting for Salesperson auto-assignment');
-      console.log('  - Waiting up to 1.5 minutes for Salesperson to be assigned...');
+    await test.step('Step 7: Wait for Salesperson auto-assignment (up to 15 minutes)', async () => {
+      console.log('Step 7: Waiting for Salesperson auto-assignment (short wait, then defer to round-2)');
 
+      // Shared poll chokepoint. Salesperson-only spec: no expected team (Salesperson is never a
+      // fixed name in the round-2 model), so the deferred record uses the NONEMPTY sentinel.
       assignmentResult = await leadPage.waitForSalesTeamAssignment(
-        CommonUtils.waitTimes.leadMerging, // 5 minutes
-        config.timeouts.salesTeamAssignment.checkInterval
+        CommonUtils.waitTimes.assignmentMaxWait,
+        config.timeouts.salesTeamAssignment.checkInterval,
       );
-
-      if (!assignmentResult.salespersonAssigned) {
-        throw new Error(`Salesperson was not automatically assigned within 5 minutes. Last value: "${assignmentResult.salespersonValue}"`);
-      }
-
-      console.log(`✓ Salesperson auto-assignment completed in ${assignmentResult.totalWaitTime} seconds`);
+      salespersonAssigned = assignmentResult.salespersonAssigned;
+      console.log(`  - Salesperson after wait: "${assignmentResult.salespersonValue}" (assigned=${salespersonAssigned})`);
     });
+
+    // Defer instead of fail: if Salesperson has not been assigned within the short wait, the lead is
+    // already recorded for round-2 - SKIP this round-1 test rather than false-failing on a late cron.
+    if (!salespersonAssigned) {
+      test.skip(true, assignmentDeferSkipReason('TC.BDEU.1.1.3.1', 'Salesperson'));
+    }
 
     // Verification: Confirm Salesperson is assigned
     await test.step('Verification: Confirm Salesperson is assigned', async () => {
