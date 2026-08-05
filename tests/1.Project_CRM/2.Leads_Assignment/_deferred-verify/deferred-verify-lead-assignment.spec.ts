@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, existsSync } from 'fs';
-import { isAbsolute, resolve } from 'path';
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'fs';
+import { isAbsolute, resolve, dirname } from 'path';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, LeadPage, OpportunityPage } from '@pages';
@@ -39,6 +39,26 @@ interface DeferredRecord {
   runAtIso: string;
   recordType?: 'lead' | 'opportunity';
   specFile?: string;
+}
+
+/**
+ * One round-2 verdict per manifest record - the machine-readable output the WEEKLY Allure
+ * reclassifier (ci/allure-apply-round2-verdict.js) consumes. Unlike the console PASS/FAIL lines
+ * (which carry only the tcId and so cannot tell the Leads_Assignment and O12 twins apart), this
+ * carries specFile + leadUrl so the weekly report flips the RIGHT round-1 result.
+ */
+interface DeferredVerdict {
+  tcId: string;
+  specFile?: string;
+  leadUrl: string;
+  field: 'sales_team' | 'salesperson';
+  expected: string;
+  firstRunActual: string;
+  now: string;
+  ok: boolean;
+  dead?: boolean;
+  recordType?: 'lead' | 'opportunity';
+  runAtIso?: string;
 }
 
 function manifestPath(): string | null {
@@ -117,6 +137,7 @@ test.describe('Deferred re-verify - Lead Assignment (round 2)', () => {
     const stillWrong: string[] = [];
     const recovered: string[] = [];
     const deadLeads: string[] = [];
+    const verdicts: DeferredVerdict[] = [];
 
     for (const r of records) {
       await test.step(`${r.tcId} [${r.field}] expected="${r.expected}"`, async () => {
@@ -147,6 +168,9 @@ test.describe('Deferred re-verify - Lead Assignment (round 2)', () => {
           const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
           console.log(`  DEAD ${r.tcId} [${r.field}] - could not open/read lead (${msg}) - url: ${r.leadUrl}`);
           deadLeads.push(`${r.tcId} [${r.field}] unreachable (${msg}) - url: ${r.leadUrl}`);
+          // Dead (deleted/unreachable) lead - infra, not a verdict. Record ok:false + dead:true so
+          // the weekly reclassifier leaves the round-1 result untouched (neither recover nor defect).
+          verdicts.push({ tcId: r.tcId, specFile: r.specFile, leadUrl: r.leadUrl, field: r.field, expected: r.expected, firstRunActual: r.firstRunActual, now: '', ok: false, dead: true, recordType: r.recordType, runAtIso: r.runAtIso });
           return;
         }
 
@@ -167,7 +191,27 @@ test.describe('Deferred re-verify - Lead Assignment (round 2)', () => {
         const wasEmptyFirst = !r.firstRunActual || r.firstRunActual === '' || r.firstRunActual === 'Salesperson' || r.firstRunActual === 'Sales Team';
         if (ok && wasEmptyFirst) recovered.push(`${r.tcId} [${r.field}] now="${actual}"`);
         if (!ok) stillWrong.push(`${r.tcId} [${r.field}] expected="${expectedLabel}" now="${actual}" (url: ${r.leadUrl})`);
+        verdicts.push({ tcId: r.tcId, specFile: r.specFile, leadUrl: r.leadUrl, field: r.field, expected: r.expected, firstRunActual: r.firstRunActual, now: actual, ok, recordType: r.recordType, runAtIso: r.runAtIso });
       });
+    }
+
+    // Machine-readable per-record verdict for the WEEKLY Allure reclassifier
+    // (ci/allure-apply-round2-verdict.js). Written next to the manifest; the round-2 job stashes it
+    // to C:\deferred-verify\<day>\verdict-<JOB>-<BUILD>.json so the weekly report can flip each
+    // round-1 lead-assignment failure (recovered -> passed / still-wrong -> confirmed defect).
+    try {
+      const mpath = manifestPath();
+      const outDir = mpath ? dirname(mpath) : resolve(process.cwd(), 'deferred-verify');
+      mkdirSync(outDir, { recursive: true });
+      const vpath = resolve(outDir, 'verdicts.json');
+      writeFileSync(vpath, JSON.stringify(verdicts, null, 2), 'utf8');
+      console.log(`  [deferred-verify] wrote ${verdicts.length} verdict record(s) -> ${vpath}`);
+      await testInfo.attach('Deferred re-verify verdicts (JSON)', {
+        body: JSON.stringify(verdicts, null, 2),
+        contentType: 'application/json',
+      });
+    } catch (err) {
+      console.log(`  [deferred-verify] WARNING: could not write verdicts.json (${err instanceof Error ? err.message : String(err)})`);
     }
 
     const summary =

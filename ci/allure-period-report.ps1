@@ -167,6 +167,18 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXIT
 node (Join-Path $Workspace 'ci\allure-stabilize-history-id.js') $merged
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: history-id stabilise returned $LASTEXITCODE (continuing)." }
 
+# ---- Reclassify round-1 Lead-Assignment failures with the ROUND-2 authoritative verdict (WEEKLY) ----
+# Round-2 (CRM_Leads_Assignment_DeferredVerify) re-opened each lead ~1h later and stashed per-record
+# verdicts to C:\deferred-verify\<day>\verdict-*.json. Flip each round-1 async-empty failure that
+# round-2 CONFIRMED assigned (recovered) to PASSED (+ "round2-recovered" tag), and re-message the ones
+# STILL wrong into the "Confirmed assignment defect (round-2 authoritative)" category. Runs BEFORE the
+# all-runs capture + generate so BOTH the Overview success-rate and Categories/Suites reflect the
+# eventual-assignment truth. Days = $prefixes (the week's yyyy-MM-dd folders).
+if ($Scope -eq 'weekly') {
+    node (Join-Path $Workspace 'ci\allure-apply-round2-verdict.js') $merged 'C:\deferred-verify' ($prefixes -join ',')
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: round-2 verdict reclassify returned $LASTEXITCODE (continuing)." }
+}
+
 # ---- Capture the RAW all-runs statistic BEFORE dedupe collapses reruns ----
 # Section 1 (Overview summary) must count EVERY run this period (a test that failed 5x
 # and passed once = 6), while Section 2 (Suites) shows it as 1 unique test. `allure generate`

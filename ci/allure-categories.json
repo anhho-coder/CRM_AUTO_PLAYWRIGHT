@@ -35,6 +35,11 @@
     "messageRegex": "(?s).*Received(?: string)?:\\s*\"\".*"
   },
   {
+    "name": "Confirmed assignment defect (round-2 authoritative)",
+    "matchedStatuses": ["failed"],
+    "messageRegex": "(?s).*ROUND2 CONFIRMED DEFECT.*"
+  },
+  {
     "name": "Assertion fail - other (possible business rule) - VERIFY",
     "matchedStatuses": ["failed"],
     "messageRegex": "(?s).*Received(?: string)?:\\s*\"[^\"]+\".*"

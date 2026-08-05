@@ -200,6 +200,9 @@ echo ffmpeg OK
                       }
                       $src = "C:\\deferred-verify\\$day"
                       $out = 'deferred-verify/gathered.jsonl'
+                      # Persist the resolved day so post{} stashes the verdicts under the SAME date
+                      # bucket the leads were created in (the day the weekly report groups by).
+                      Set-Content -LiteralPath 'deferred-verify/day.txt' -Value $day -Encoding utf8 -NoNewline
                       Write-Host "Gathering deferred-verify manifests for day = $day from $src"
                       if (Test-Path -LiteralPath $src) {
                         $files = Get-ChildItem -LiteralPath $src -Filter *.jsonl -File
@@ -267,7 +270,26 @@ echo ffmpeg OK
                 reportName: 'Playwright Report'
             ])
             junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
-            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/gathered.jsonl', allowEmptyArchive: true
+            // Stash the round-2 verdicts into the SAME dated bucket as the round-1 manifests
+            // (C:\deferred-verify\<day>\verdict-<JOB>-<BUILD>.json), so the WEEKLY Allure report can
+            // reclassify each round-1 lead-assignment failure: recovered -> passed, still-wrong ->
+            // confirmed defect (ci/allure-apply-round2-verdict.js). <day> = the resolved gather day.
+            powershell '''
+              try {
+                if (Test-Path 'deferred-verify/verdicts.json') {
+                  $day = if (Test-Path 'deferred-verify/day.txt') { (Get-Content -LiteralPath 'deferred-verify/day.txt' -Raw).Trim() } else { '' }
+                  if (-not $day) { $day = (Get-Date).ToString('yyyy-MM-dd') }
+                  $dir = "C:\\deferred-verify\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "verdict-$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).json"
+                  Copy-Item -LiteralPath 'deferred-verify/verdicts.json' -Destination $dest -Force
+                  Write-Host "Stashed round-2 verdicts -> $dest"
+                } else { Write-Host 'No verdicts.json this build (round-2 skipped or empty manifest).' }
+              } catch {
+                Write-Host "WARNING: could not stash round-2 verdicts: $($_.Exception.Message)"
+              }
+            '''
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/gathered.jsonl, deferred-verify/verdicts.json', allowEmptyArchive: true
         }
         success { echo 'Deferred re-verify complete - every recorded lead was correctly assigned by now (the async cron caught up).' }
         failure { echo 'Deferred re-verify: some leads were STILL wrong ~1h after creation - these are real assignment defects, not cron lag. See the attached "Deferred re-verify summary" + Playwright Report.' }
