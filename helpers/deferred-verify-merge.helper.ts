@@ -85,10 +85,25 @@ function safeFile(): string {
   }
 }
 
-/** Pull the "CRM-xxxx_x.x.x" / "TC.xxx" id prefix out of the test title. */
-function extractTcId(title: string): string {
-  const m = title.match(/^([A-Za-z0-9._-]+?)(?=:|\s|\[)/);
-  return m ? m[1] : title.slice(0, 60);
+/**
+ * Pull the "CRM-xxxx_x.x.x" / "TC.xxx" id out of the test's FULL title path (describe + test). Merge
+ * specs put the id on the DESCRIBE block ("CRM-1664_1.1.1 - ...") while the test() name starts with
+ * "Verify ..." - so a plain test-title prefix match would wrongly yield "Verify". Falls back to the
+ * innermost-title prefix, then a slice.
+ */
+function extractTcId(): string {
+  let parts: string[] = [];
+  try {
+    parts = test.info().titlePath || [];
+  } catch {
+    parts = [];
+  }
+  const joined = (parts.length ? parts.join(' ') : safeTitle());
+  const idMatch = joined.match(/(CRM-\d+_\d+(?:\.\d+)*)/) || joined.match(/(TC\.[A-Za-z0-9_.-]+)/);
+  if (idMatch) return idMatch[1];
+  const t = safeTitle();
+  const p = t.match(/^([A-Za-z0-9._-]+?)(?=:|\s|\[)/);
+  return p ? p[1] : t.slice(0, 60);
 }
 
 /**
@@ -132,7 +147,7 @@ export function recordMergeForDeferredVerify(page: Page, opts: RecordMergeOption
 
   const title = safeTitle();
   const record: MergeDeferredRecord = {
-    tcId: extractTcId(title),
+    tcId: extractTcId(),
     title,
     specFile: safeFile(),
     leadUrl,
