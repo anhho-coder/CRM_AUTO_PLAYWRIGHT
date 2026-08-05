@@ -39,7 +39,6 @@ Today we run **Load testing**: increase the number of simultaneous users step by
 | 10 | light load |
 | 30 / 50 | medium load |
 | 100 | target peak |
-| 200 (read / login only) | find the limit / breaking point |
 
 Each level runs as a **burst** — that many users do the action at the same instant; levels run one after another with a short recovery gap.
 
