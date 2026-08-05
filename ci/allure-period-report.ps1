@@ -234,11 +234,6 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: all-runs apply returned $LASTEXI
 node (Join-Path $Workspace 'ci\allure-inject-suites-columns.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suites-columns injection returned $LASTEXITCODE (continuing)." }
 
-# ---- Add the "issue date & time" cell to every tree leaf (Categories/Suites/...) ----
-# (client-side DOM enhancement; must run after generate, before the freeze copy).
-node (Join-Path $Workspace 'ci\allure-inject-issue-time-column.js') $reportDir
-if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: issue-time-column injection returned $LASTEXITCODE (continuing)." }
-
 # ---- Label the two Overview sections: "Section 1" on the summary (total TCs run this
 # period) and "Section 2" on the Suites widget (latest result per suite). ----
 node (Join-Path $Workspace 'ci\allure-inject-section-labels.js') $reportDir $allRunsStash
