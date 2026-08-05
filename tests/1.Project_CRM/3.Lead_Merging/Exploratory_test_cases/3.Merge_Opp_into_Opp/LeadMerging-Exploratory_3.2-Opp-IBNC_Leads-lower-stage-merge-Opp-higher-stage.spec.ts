@@ -3,12 +3,13 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { mergeDeferSkipReason } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Opp Merging to Opp Test - IB Renewal Opp with Lower Stage
  * Test Case ID: LeadMerging-Exploratory_3.2
  * Automation-Type: refactored
- * Automation-Date: 2026-06-16
+ * Automation-Date: 2026-08-05
  *
  * Summary: Verify that the merging opp happens successfully when target has IB renewal lead form but lower stage
  * 
@@ -333,22 +334,30 @@ test.describe('LeadMerging-Exploratory_3.2 - Opp Merging to Opp: IB Renewal with
 
 
     // STEP 1: Wait for Lead Merging to happen
+    // Body-scoped so the defer-skip check runs AFTER the step (Playwright reports a body-level skip cleanest).
+    let mergeNotificationFound = false;
     await test.step('Step 1: Wait for Lead Merging happened', async () => {
       console.log('\n=== STEP 1: WAIT FOR LEAD MERGING ===');
       console.log('⏳ Waiting for lead merging to occur...');
-      
+
       // Wait for lead merging to happen (navigate to Target Opp page - Opp #1 with higher stage)
       // Navigate to Opp#1 first
       await page.goto(opp1Url, { waitUntil: 'domcontentloaded' });
       await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.pageLoad);
-      
+
       // Wait for merge notification using reusable method (polls on target lead for "[opp2Name], has been merged into this lead")
-      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen_OnTargetLead(opp2Name);
-      expect(mergeNotificationFound).toBeTruthy();
-      
-      console.log('✓ Wait complete - proceeding to verification\n');
+      mergeNotificationFound = await leadPage.waitForLeadMergingHappen_OnTargetLead(opp2Name);
+      console.log(`Merge observed within short wait: ${mergeNotificationFound}`);
     });
+
+    // DEFERRED RE-VERIFY: the merge runs on an async cron (~10 min). If it has NOT fired within this short
+    // wait, the lead is already recorded for the round-2 re-verify job - SKIP this round-1 test rather than
+    // false-failing on a merely-late merge cron.
+    if (!mergeNotificationFound) {
+      test.skip(true, mergeDeferSkipReason('LeadMerging-Exploratory_3.2'));
+    }
+    expect(mergeNotificationFound).toBeTruthy();
 
     // STEP 2: Open Opp #1 (Target)
     await test.step('Step 2: Open the Opp 1 using URL_Opp#1', async () => {

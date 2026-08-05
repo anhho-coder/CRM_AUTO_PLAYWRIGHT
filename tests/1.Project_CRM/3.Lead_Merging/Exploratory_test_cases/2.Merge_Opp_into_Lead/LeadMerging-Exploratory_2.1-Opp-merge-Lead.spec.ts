@@ -3,12 +3,15 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { mergeDeferSkipReason } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Opp Merging to Lead Test - Same Company Email with IB Renewal Lead
  * Test Case ID: LeadMerging-Exploratory_2.1
- * 
- * Summary: Verify that the merging opp into lead happens successfully when the lead from the same 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
+ *
+ * Summary: Verify that the merging opp into lead happens successfully when the lead from the same
  * company domain email but different priority if a lead of them is IB renewal lead
  * 
  * Command to run:
@@ -332,18 +335,25 @@ test.describe('LeadMerging-Exploratory_2.1 - Opp Merging to Lead: IB Renewal Lea
 
 
     // STEP 1: Wait for Lead Merging to happen
+    let mergeNotificationFound = false;
     await test.step('Step 1: Wait for 1 minute for Lead Merging happened', async () => {
       console.log('\n=== STEP 1: WAIT FOR LEAD MERGING ===');
       console.log('⏳ Waiting 60 seconds for lead merging to occur...');
-      
+
       // Wait for lead merging to happen (stays at Target Lead page - Lead #2)
-      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen_OnTargetLead(opp1Name, 6, 30000);
-      
-      // Assert that merge notification was found
-    expect(mergeNotificationFound).toBeTruthy();
-      
-      console.log('✓ Wait complete - proceeding to verification\n');
+      mergeNotificationFound = await leadPage.waitForLeadMergingHappen_OnTargetLead(opp1Name, 6, 30000);
+      console.log(`Merge observed within short wait: ${mergeNotificationFound}`);
     });
+
+    // DEFERRED RE-VERIFY: the merge runs on an async cron (~10 min). If it has NOT fired within this short
+    // wait, the lead is already recorded for the round-2 re-verify job by LeadPage.waitForLeadMergingHappen_OnTargetLead -
+    // SKIP this round-1 test rather than false-failing on a merely-late merge cron.
+    if (!mergeNotificationFound) {
+      test.skip(true, mergeDeferSkipReason('LeadMerging-Exploratory_2.1'));
+    }
+    expect(mergeNotificationFound).toBeTruthy();
+
+    console.log('✓ Wait complete - proceeding to verification\n');
 
     // STEP 2: Open Lead #2 (Target)
     await test.step('Step 2: Open the Lead#2 using URL_Lead#2', async () => {

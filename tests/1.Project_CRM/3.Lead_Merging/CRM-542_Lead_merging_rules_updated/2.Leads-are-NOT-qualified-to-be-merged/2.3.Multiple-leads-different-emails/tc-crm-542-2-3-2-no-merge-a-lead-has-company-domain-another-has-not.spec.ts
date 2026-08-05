@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, ContactPage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Merging Test - NO MERGE: One Lead Has Existing Company Domain, Another Has Not
  * Test Case ID: CRM-542_2.3.2
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
+ *
  * Summary: Verify that the merging leads do NOT happens when the leads from different emails and a lead belong to an existing domain, the other is not
  * 
  * Command to run:
@@ -458,10 +461,16 @@ test.describe('CRM-542_2.3.2 - NO MERGE: One Lead Has Existing Company Domain, A
     await test.step('Step 1: Wait to confirm NO merge happens', async () => {
       console.log('\n=== STEP 1: WAITING TO CONFIRM NO MERGE OCCURS ===');
       console.log(`BDEU team (Lead #1) and Marketing - BDR team (Lead #2) should NOT merge despite same email`);
-      
+
       // Wait for 90 seconds to allow merge time window to pass
       await leadPage.waitForNoMergeConfirmation();
-      
+
+      // DEFERRED RE-VERIFY (merging): the no-merge assertions below only span this 90s window; a
+      // wrongly-slow merge could still land AFTER it. Record BOTH leads so the round-2 job re-opens them
+      // ~1h later and confirms neither merged (Lead #1 = would-be TARGET, Lead #2 = would-be SOURCE).
+      recordNoMergeForDeferredVerify(page, lead1Url, 'target', lead2Name);
+      recordNoMergeForDeferredVerify(page, lead2Url, 'source', lead1Name);
+
       console.log('✓ Step 1 completed: Waited for merge time window\n');
     });
 

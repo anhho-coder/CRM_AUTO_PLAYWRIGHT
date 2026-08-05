@@ -3,11 +3,14 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { mergeDeferSkipReason } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Merging Test - Existing Merged Leads Verification
  * Test Case ID: CRM-542_3.1.1
- * 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
+ *
  * Summary: Verify that Leads with Active = False, Is won = Pending, One of the messages contains "This lead has been merged into"
  * 
  * Command to run:
@@ -326,18 +329,25 @@ test.describe('CRM-542_3.1.1 - Lead Merging: Existing Merged Leads Verification'
     // STEPS TO REPRODUCE:
 
     // Step 1: Wait for Lead Merging to happen by checking for merge notification
+    let mergeNotificationFound = false;
     await test.step('Step 1: Wait for Lead Merging to happen', async () => {
       console.log('\n=== STEP 1: WAITING FOR LEAD MERGING ===');
       console.log(`Checking Lead #2 (${lead2Id}) for merge notification...`);
       console.log(`Lead #2 should receive merge message: "This lead has been merged into ${lead1Name}"`);
-      
+
       // Wait for lead merging to happen (stays at Source Lead page - Lead #2)
-      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen(lead1Name, 6, 30000);
-      
-      // Assert that merge notification was found
-      expect(mergeNotificationFound).toBeTruthy();
-      console.log('✓ Step 1 completed: Lead merging confirmed\n');
+      mergeNotificationFound = await leadPage.waitForLeadMergingHappen(lead1Name, 6, 30000);
+      console.log(`Merge observed within short wait: ${mergeNotificationFound}`);
     });
+
+    // DEFERRED RE-VERIFY: the merge runs on an async cron (~10 min). If it has NOT fired within this short
+    // wait, the lead is already recorded for the round-2 re-verify job by LeadPage.waitForLeadMergingHappen -
+    // SKIP this round-1 test rather than false-failing on a merely-late merge cron.
+    if (!mergeNotificationFound) {
+      test.skip(true, mergeDeferSkipReason('CRM-542_3.1.1'));
+    }
+    expect(mergeNotificationFound).toBeTruthy();
+    console.log('✓ Step 1 completed: Lead merging confirmed\n');
 
     // Step 2: Open the Lead 1 using URL_Lead#1
     await test.step('Step 2: Open the Lead 1 using URL_Lead#1', async () => {
