@@ -64,6 +64,10 @@ pipeline {
         // cron. Every lead-assignment spec appends {leadUrl, field, expected} here; post-build
         // stashes a dated copy to C:\deferred-verify\<day>\ for the DeferredVerify job.
         DEFERRED_MANIFEST = 'deferred-verify/la.jsonl'
+        // Lead-MERGING DEFERRED RE-VERIFY manifest (see main Jenkinsfile). Merge specs append
+        // {leadUrl, role, expected, counterpartName} here; post-build stashes a dated copy to
+        // C:\deferred-verify-merge\<day>\ for the CRM_Lead_Merging_DeferredVerify job. No-op for non-merge specs.
+        DEFERRED_MERGE_MANIFEST = 'deferred-verify/lm.jsonl'
     }
 
     options {
@@ -368,6 +372,23 @@ echo ffmpeg OK
                 } else { Write-Host 'No deferred-verify manifest this build (no lead-assignment specs ran).' }
               } catch {
                 Write-Host "WARNING: could not stash deferred-verify manifest: $($_.Exception.Message)"
+              }
+            '''
+            // Lead-MERGING DEFERRED RE-VERIFY: stash this build's merge manifest into a SEPARATE dated,
+            // BUILD-keyed bucket so the CRM_Lead_Merging_DeferredVerify job unions the day's round-1 merge
+            // runs into one last round. Separate bucket so the two round-2 jobs never cross-read.
+            powershell '''
+              try {
+                if (Test-Path deferred-verify/lm.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify-merge\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl"
+                  Copy-Item -LiteralPath deferred-verify/lm.jsonl -Destination $dest -Force
+                  Write-Host "Stashed lead-merging deferred-verify manifest -> $dest"
+                } else { Write-Host 'No lead-merging deferred-verify manifest this build (no merge specs ran).' }
+              } catch {
+                Write-Host "WARNING: could not stash lead-merging deferred-verify manifest: $($_.Exception.Message)"
               }
             '''
             // Stash THIS job's Allure raw results into a shared per-job folder so the
