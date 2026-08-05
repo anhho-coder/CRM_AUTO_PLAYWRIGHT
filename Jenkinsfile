@@ -71,6 +71,12 @@ pipeline {
         // the CRM_Leads_Assignment_DeferredVerify job re-opens each URL ~1h later for the
         // authoritative verdict. Post-build stashes a dated copy to C:\deferred-verify\<day>\.
         DEFERRED_MANIFEST = 'deferred-verify/la.jsonl'
+        // Lead-MERGING DEFERRED RE-VERIFY: merge specs append {leadUrl, role, expected, counterpartName}
+        // to this JSONL manifest (helpers/deferred-verify-merge.helper.ts, fired from
+        // LeadPage.waitForLeadMergingHappen* for positives + the negative specs directly). Harmless no-op
+        // for every other spec. The CRM_Lead_Merging_DeferredVerify job re-opens each URL ~1h later for the
+        // authoritative merge verdict. Post-build stashes a dated copy to C:\deferred-verify-merge\<day>\.
+        DEFERRED_MERGE_MANIFEST = 'deferred-verify/lm.jsonl'
     }
 
     options {
@@ -405,6 +411,24 @@ echo ffmpeg OK
                 } else { Write-Host 'No deferred-verify manifest this build (no lead-assignment specs ran).' }
               } catch {
                 Write-Host "WARNING: could not stash deferred-verify manifest: $($_.Exception.Message)"
+              }
+            '''
+            // Lead-MERGING DEFERRED RE-VERIFY: stash this build's merge manifest into a SEPARATE dated,
+            // BUILD-keyed bucket so ALL round-1 builds of the day UNION into one cluster that the
+            // CRM_Lead_Merging_DeferredVerify job re-verifies. Separate from the assignment bucket so the
+            // two round-2 jobs never pick up each other's records.
+            powershell '''
+              try {
+                if (Test-Path deferred-verify/lm.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify-merge\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl"
+                  Copy-Item -LiteralPath deferred-verify/lm.jsonl -Destination $dest -Force
+                  Write-Host "Stashed lead-merging deferred-verify manifest -> $dest"
+                } else { Write-Host 'No lead-merging deferred-verify manifest this build (no merge specs ran).' }
+              } catch {
+                Write-Host "WARNING: could not stash lead-merging deferred-verify manifest: $($_.Exception.Message)"
               }
             '''
             // Stash THIS job's Allure raw results into a shared per-job folder so the

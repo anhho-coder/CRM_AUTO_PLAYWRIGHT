@@ -410,6 +410,9 @@ export class CommonUtils {
     contactRefreshTotalWait: 300000,
      /** Check on Chater Log wait - 30 seconds (for complex operations) */
     checkingChatterLog: 30000,
+    /** Per-record budget for the Lead-Merging round-2 deferred re-verify (goto + a 2-attempt chatter
+     *  re-check via waitForLeadMergingHappen*). 2.5 min covers the two chatter waits + reloads + form load. */
+    mergeReverifyBudget: 150000,
     /** Saving Deal Element long wait - 4 minutes (for complex operations) */
     savingDealElement: 240000,
     /** SE Support teardown budget - 6 minutes (single admin session: re-login + delete ticket + Opp) */

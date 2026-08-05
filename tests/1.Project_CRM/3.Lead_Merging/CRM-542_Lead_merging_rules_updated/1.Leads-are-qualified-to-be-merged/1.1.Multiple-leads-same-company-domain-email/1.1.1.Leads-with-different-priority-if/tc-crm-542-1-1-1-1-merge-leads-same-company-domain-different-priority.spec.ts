@@ -3,12 +3,13 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { mergeDeferSkipReason } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Merging Test - Same Company Domain Email with Different Priority
  * Test Case ID: CRM-542_1.1.1.1
  * Automation-Type: refactored
- * Automation-Date: 2026-07-16
+ * Automation-Date: 2026-08-05
  *
  * Summary: Verify that the merging lead happens successfully when the leads from the same company domain email 
  * but different priority if a lead of them is IB renewal lead
@@ -325,18 +326,29 @@ test.describe('CRM-542_1.1.1.1 - Lead Merging: Same Company Domain Email with Di
     // STEPS TO REPRODUCE:
 
     // Step 1: Wait for Lead Merging to happen by checking for merge notification
+    // Body-scoped so the defer-skip check runs AFTER the step (Playwright reports a body-level skip
+    // cleanest - the assignment specs skip the same way).
+    let mergeNotificationFound = false;
     await test.step('Step 1: Wait for Lead Merging to happen', async () => {
       console.log('\n=== STEP 1: WAITING FOR LEAD MERGING ===');
       console.log(`Checking Lead #2 (${lead2Id}) for merge notification...`);
       console.log(`Lead #2 should receive merge message: "This lead has been merged into ${lead1Name}"`);
-      
+
       // Wait for lead merging to happen (stays at Source Lead page - Lead #2)
-      const mergeNotificationFound = await leadPage.waitForLeadMergingHappen(lead1Name, 6, 30000);
-      
-      // Assert that merge notification was found
-      expect(mergeNotificationFound).toBeTruthy();
-      console.log('✓ Step 1 completed: Lead merging confirmed\n');
+      mergeNotificationFound = await leadPage.waitForLeadMergingHappen(lead1Name, 6, 30000);
+      console.log(`Merge observed within short wait: ${mergeNotificationFound}`);
     });
+
+    // DEFERRED RE-VERIFY: the merge runs on an async cron (~10 min). If it has NOT fired within the short
+    // wait, the SOURCE lead (Lead #2) is already recorded for the round-2 re-verify job by
+    // LeadPage.waitForLeadMergingHappen - SKIP this round-1 test rather than false-failing on a merely-late
+    // merge cron. The CRM_Lead_Merging_DeferredVerify job gives the authoritative verdict ~1h later.
+    if (!mergeNotificationFound) {
+      test.skip(true, mergeDeferSkipReason('CRM-542_1.1.1.1'));
+    }
+    // Assert that merge notification was found (only reached when the merge DID happen in round-1).
+    expect(mergeNotificationFound).toBeTruthy();
+    console.log('✓ Step 1 completed: Lead merging confirmed\n');
 
     // Step 2: Open the Lead 1 using URL_Lead#1
     await test.step('Step 2: Open the Lead 1 using URL_Lead#1', async () => {

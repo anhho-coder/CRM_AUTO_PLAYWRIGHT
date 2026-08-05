@@ -2,6 +2,7 @@ import { Page } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 import { recordAssignmentForDeferredVerify, recordAssignmentNonEmptyForDeferredVerify } from '@helpers/deferred-verify.helper';
+import { recordMergeDeferIfNotMerged } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Page Object
@@ -1963,6 +1964,11 @@ export class LeadPage extends BasePage {
       }
     }
     
+    // Deferred re-verify (merging): if the async merge cron has NOT fired within this short wait, record
+    // the SOURCE lead (the page we polled) for the round-2 re-verify job instead of letting the caller
+    // false-fail. No-op unless env DEFERRED_MERGE_MANIFEST is set. The caller should test.skip-defer when
+    // this returns false (see mergeDeferSkipReason).
+    recordMergeDeferIfNotMerged(this.page, 'source', targetLeadName, mergeNotificationFound);
     return mergeNotificationFound;
   }
 /**
@@ -2005,6 +2011,9 @@ export class LeadPage extends BasePage {
       }
     }
     
+    // Deferred re-verify (merging): mirror of waitForLeadMergingHappen but polled on the TARGET lead -
+    // record THIS (target) lead for round-2 when the merge has not appeared within the short wait.
+    recordMergeDeferIfNotMerged(this.page, 'target', sourceLeadName, mergeNotificationFound);
     return mergeNotificationFound;
   }
   /**

@@ -3,10 +3,13 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Lead Merging Test - NO MERGE: BDEU and Marketing - BDR Teams with New Email
  * Test Case ID: CRM-1664_1.1.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-05
  * 
  * Summary: Verify that the merging leads will NOT happen if one Lead is assigned to Marketing - BDR 
  * and adding a totally new contact email
@@ -327,7 +330,14 @@ test.describe('CRM-1664_1.1.1 - NO MERGE: BDEU and Marketing - BDR Teams with Ne
       
       // Wait for 90 seconds to allow merge time window to pass
       await leadPage.waitForNoMergeConfirmation();
-      
+
+      // DEFERRED RE-VERIFY (merging): the no-merge assertions below only span this 90s window; a
+      // wrongly-slow merge could still land AFTER it. Record BOTH leads so the round-2 job re-opens them
+      // ~1h later and confirms neither merged (Lead #1 = would-be TARGET, Lead #2 = would-be SOURCE).
+      // No-op unless env DEFERRED_MERGE_MANIFEST is set; round-1's own no-merge assertions are unchanged.
+      recordNoMergeForDeferredVerify(page, lead1Url, 'target', lead2Name);
+      recordNoMergeForDeferredVerify(page, lead2Url, 'source', lead1Name);
+
       console.log('✓ Step 1 completed: Waited for merge time window\n');
     });
 
