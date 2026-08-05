@@ -69,6 +69,8 @@ pipeline {
                 bat 'npx allure generate allure-merged --clean -o allure-report'
                 // Add "Total TC" + "Run Time" columns to the Overview Suites widget.
                 bat 'node ci/allure-inject-suites-columns.js allure-report'
+                // Add the "issue date & time" cell to every tree leaf (Categories/Suites/...).
+                bat 'node ci/allure-inject-issue-time-column.js allure-report'
                 // Add the "Skipped Test Cases by Suite" Overview card (data from sources).
                 bat 'node ci/allure-build-skip-index.js allure-report tests'
                 // Enrich bugs with live Jira status/assignee/updated (token via env JIRA_PAT
