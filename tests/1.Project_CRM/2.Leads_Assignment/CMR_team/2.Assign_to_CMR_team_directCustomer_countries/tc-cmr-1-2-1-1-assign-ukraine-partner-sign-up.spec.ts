@@ -3,12 +3,15 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - CMR Team - Ukraine with Partner (Direct Customer Countries)
  * Test Case ID: TC.CMR_1.2.1.1
- * 
- * Summary: Verify the lead is assigned to Sergey Karachin belong to CMR team if Country is Ukraine 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
+ * Summary: Verify the lead is assigned to Sergey Karachin belong to CMR team if Country is Ukraine
  * and Partner is set and Nakivo Customer is not set if Country Group = CMR_directCustomer_countries
  * 
  * Command to run:
@@ -247,18 +250,30 @@ test.describe('TC.CMR_1.2.1.1 - CMR Team Assignment for Ukraine with Partner (Di
       console.log(`📸 Screenshot captured after Step 7.3`);
     });
 
-    // Step 8: Wait for Sales Team and Salesperson auto-assignment (1.5 minutes)
-await test.step('Step 8: Wait for Sales Team and Salesperson auto-assignment (up to 1.5 minutes)', async () => {
-  console.log('Step 8: Waiting for Sales Team and Salesperson auto-assignment');
-  console.log('  - Waiting up to 1.5 minutes for Sales Team and Salesperson to be assigned...');
-  
-  const result = await leadPage.waitForSalesTeamAssignment(
-    CommonUtils.waitTimes.assignmentMaxWait,
-    config.timeouts.salesTeamAssignment.checkInterval
-  );
-  
-  console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
-});
+    // Step 8: Wait for Sales Team and Salesperson auto-assignment (15 minutes)
+    let salesTeamAssigned = false;
+    let salespersonAssigned = false;
+    await test.step('Step 8: Wait for Sales Team and Salesperson auto-assignment (up to 15 minutes)', async () => {
+      console.log('Step 8: Waiting for Sales Team and Salesperson auto-assignment');
+      console.log('  - Waiting up to 15 minutes for Sales Team and Salesperson to be assigned...');
+
+      const result = await leadPage.waitForSalesTeamAssignment(
+        CommonUtils.waitTimes.assignmentMaxWait,
+        config.timeouts.salesTeamAssignment.checkInterval,
+        'CMR',
+      );
+      salesTeamAssigned = result.salesTeamAssigned;
+      salespersonAssigned = result.salespersonAssigned;
+
+      console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
+    });
+
+    // Defer instead of fail: if the async assignment cron has not fired within the short wait, the
+    // lead is already recorded for the round-2 re-verify job - SKIP this round-1 test rather than
+    // false-failing on a merely-late cron.
+    if (!salesTeamAssigned || !salespersonAssigned) {
+      test.skip(true, assignmentDeferSkipReason('TC.CMR_1.2.1.1', !salesTeamAssigned ? 'Sales Team' : 'Salesperson'));
+    }
 
     // Verification: Confirm Sales Team is CMR and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is CMR and Salesperson is assigned', async () => {

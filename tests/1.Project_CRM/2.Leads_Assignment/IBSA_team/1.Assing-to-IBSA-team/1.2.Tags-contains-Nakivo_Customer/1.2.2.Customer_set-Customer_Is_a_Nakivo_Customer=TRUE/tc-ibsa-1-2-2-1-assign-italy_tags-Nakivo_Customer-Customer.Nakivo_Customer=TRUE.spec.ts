@@ -3,12 +3,15 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage, ContactPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { assignmentDeferSkipReason } from '@helpers/deferred-verify.helper';
 
 /**
  * Lead Assignment Test - IBSA Team - Italy with Customer Is a Nakivo Customer=TRUE and Lead Form=Nakivo Customer
  * Test Case ID: TC.IBSA_1.2.2.1
- * 
- * Summary: Verify the lead is assigned to Phoebe Nguyen belong to IBSA team if Customer is set 
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-04
+ *
+ * Summary: Verify the lead is assigned to Phoebe Nguyen belong to IBSA team if Customer is set
  * and Customer > Is a Nakivo Customer = TRUE and Country = Italy
  * 
  * Command to run:
@@ -301,24 +304,39 @@ test.describe('TC.IBSA_1.2.2.1 - IBSA Team Assignment for Italy with Customer Is
       console.log(`  URL: ${savedLeadUrl}`);
     });
 
+    // Declare flags before wait step
+    let salesTeamAssigned = false;
+    let salespersonAssigned = false;
+
     // Step 7: Wait for Sales Team and Salesperson auto-assignment
     await test.step('Step 7: Wait for Sales Team and Salesperson auto-assignment', async () => {
       console.log('Step 7: Waiting for Sales Team and Salesperson auto-assignment');
       console.log('  - Waiting for Sales Team and Salesperson to be assigned...');
-      
+
       const result = await leadPage.waitForSalesTeamAssignment(
         CommonUtils.waitTimes.assignmentMaxWait,
-        config.timeouts.salesTeamAssignment.checkInterval
+        config.timeouts.salesTeamAssignment.checkInterval,
+        'IBSA'
       );
-      
+      salesTeamAssigned = result.salesTeamAssigned;
+      salespersonAssigned = result.salespersonAssigned;
+
       console.log(`✓ Auto-assignment check completed in ${result.totalWaitTime} seconds`);
-      
+
       // Click CRM Developer tab and take screenshot
       await leadPage.clickCRMDeveloperTab();
       console.log('  - Clicked CRM Developer tab');
-      
+
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Lead ${leadId} - CRM Developer Tab After Assignment`);
     });
+
+    // Defer instead of fail: if the async assignment cron has not fired within the short wait, the
+    // lead is already recorded for the round-2 re-verify job - SKIP this round-1 test rather than
+    // false-failing on a merely-late cron.
+    if (!salesTeamAssigned || !salespersonAssigned) {
+      const fieldName = !salesTeamAssigned ? 'Sales Team' : 'Salesperson';
+      test.skip(true, assignmentDeferSkipReason('TC.IBSA_1.2.2.1', fieldName));
+    }
 
     // Verification: Confirm Sales Team is IBSA and Salesperson is assigned
     await test.step('Verification: Confirm Sales Team is IBSA and Salesperson is assigned', async () => {
