@@ -2233,12 +2233,17 @@ export class LeadPage extends BasePage {
     while ((!salesTeamAssigned || !salespersonAssigned) && (Date.now() - startWaitTime) < maxWaitTime) {
       attemptCount++;
       
-      // Refresh the page to get latest data
-      await this.page.reload({ waitUntil: 'domcontentloaded' });
-      await this.wait(2000);
-      
+      // Refresh the page to get latest data. BOUND the reload + the row wait: the ceiling
+      // (maxWaitTime) is only checked at the TOP of the loop, so a single iteration that blocks for
+      // minutes lets the loop OVERSHOOT the ceiling into the per-test timeout - the test then times
+      // out (hard fail) instead of exiting to the caller's skip-defer. A poll reloads every iteration
+      // anyway, so a slow reload/row is simply retried next pass rather than waited out here.
+      await this.page.reload({ waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.savingPage }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+
       // Quoc Anh: Feb 03, 26 : Wait for Sales Team select element to be visible (handles both edit and readonly modes)
-      await this.salesTeam_saved_row().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear }).catch(() => {});
+      // Short, poll-appropriate wait (was elementAppear=180s, the main overshoot source).
+      await this.salesTeam_saved_row().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
       // Check if Sales Team and Salesperson fields are populated
       try {
         // Get Sales Team value (handles both edit and readonly modes)

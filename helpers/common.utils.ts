@@ -358,10 +358,14 @@ export class CommonUtils {
      *  - it no longer false-fails, nor waits the old 35-min ceiling. The poll loop breaks early once
      *  assigned, so this only bounds the slow case. Pair with assignmentTestTimeout. */
     assignmentMaxWait: 900000,
-    /** Per-test timeout for the 2.Leads_Assignment specs - 20 minutes. Must exceed assignmentMaxWait
-     *  (15 min) plus the create/navigate steps and the defer/skip emit. (Folder-scoped; does NOT
-     *  change config.timeouts.test.) */
-    assignmentTestTimeout: 1200000,
+    /** Per-test timeout for the 2.Leads_Assignment specs - 25 minutes. Must exceed assignmentMaxWait
+     *  (15 min) plus the create/navigate steps, one bounded poll-iteration overshoot, and the
+     *  defer/skip emit. This is a CEILING (a healthy pass exits in ~1-9 min and never approaches it),
+     *  so the extra headroom over the 15-min wait costs nothing on healthy runs but guarantees a
+     *  near-ceiling wait still reaches the caller's skip-defer instead of timing out. Pilot build #1
+     *  showed a 20-min value could be overshot on a slow reload. (Folder-scoped; does NOT change
+     *  config.timeouts.test.) */
+    assignmentTestTimeout: 1500000,
     /** Wait time for lead merging NOT happen (90 seconds) */
     leadMergingNotHappen: 90000,
     /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */
