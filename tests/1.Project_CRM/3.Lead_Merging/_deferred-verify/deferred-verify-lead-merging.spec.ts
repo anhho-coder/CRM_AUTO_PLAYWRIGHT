@@ -91,10 +91,16 @@ function loadRecords(): MergeDeferredRecord[] {
 const records = loadRecords();
 
 test.describe('Deferred re-verify - Lead Merging (round 2)', () => {
+  // Deterministic re-verification of a fixed manifest: NEVER retry the whole record loop on a genuine
+  // "still wrong" FAIL. Playwright's CI retries:2 would re-run every record 3x (this is one mega-test),
+  // tripling the wall-clock and blowing the build timeout (an early run ABORTED at 120 min this way).
+  // One authoritative pass; verdicts.json is the record.
+  test.describe.configure({ retries: 0 });
+
   test.skip(records.length === 0, 'No merge deferred-verify manifest (set DEFERRED_MERGE_VERIFY_RUN=1 + DEFERRED_MERGE_MANIFEST).');
 
   test('Deferred re-verify: all recorded Lead Merging URLs match their expected merge state', async ({ page }, testInfo) => {
-    // Per-record budget: goto + a small bounded (2-attempt) chatter re-check.
+    // Per-record budget: goto + a single chatter re-check.
     test.setTimeout(Math.max(config.timeouts.test, records.length * CommonUtils.waitTimes.mergeReverifyBudget));
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -122,13 +128,13 @@ test.describe('Deferred re-verify - Lead Merging (round 2)', () => {
         try {
           await page.goto(r.leadUrl, { waitUntil: 'domcontentloaded' });
           await leadPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
-          // Small bounded re-check (2 attempts). The merge, if it happened, settled long ago (~1h),
-          // but the chatter can render slightly after a reload. Reuse the round-1 poll helper - whose
-          // emit is disabled here (DEFERRED_MERGE_VERIFY_RUN set) so it never re-appends to the manifest.
+          // Single re-check (1 reload + a chatter settle). This runs hours after creation, so a merge
+          // that happened is long settled and shows on the first reload; a 2nd attempt only tripled the
+          // cost. Reuse the round-1 poll helper - its emit is disabled here (DEFERRED_MERGE_VERIFY_RUN set).
           if (r.role === 'source') {
-            nowMerged = await leadPage.waitForLeadMergingHappen(r.counterpartName, 2, CommonUtils.waitTimes.checkingChatterLog);
+            nowMerged = await leadPage.waitForLeadMergingHappen(r.counterpartName, 1, CommonUtils.waitTimes.checkingChatterLog);
           } else {
-            nowMerged = await leadPage.waitForLeadMergingHappen_OnTargetLead(r.counterpartName, 2, CommonUtils.waitTimes.checkingChatterLog);
+            nowMerged = await leadPage.waitForLeadMergingHappen_OnTargetLead(r.counterpartName, 1, CommonUtils.waitTimes.checkingChatterLog);
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);

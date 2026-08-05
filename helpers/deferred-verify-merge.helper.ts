@@ -99,7 +99,7 @@ function extractTcId(): string {
     parts = [];
   }
   const joined = (parts.length ? parts.join(' ') : safeTitle());
-  const idMatch = joined.match(/(CRM-\d+_\d+(?:\.\d+)*)/) || joined.match(/(TC\.[A-Za-z0-9_.-]+)/);
+  const idMatch = joined.match(/(CRM-\d+_\d+(?:\.\d+)*)/) || joined.match(/(LeadMerging-Exploratory_\d+(?:\.\d+)*)/) || joined.match(/(TC\.[A-Za-z0-9_.-]+)/);
   if (idMatch) return idMatch[1];
   const t = safeTitle();
   const p = t.match(/^([A-Za-z0-9._-]+?)(?=:|\s|\[)/);
