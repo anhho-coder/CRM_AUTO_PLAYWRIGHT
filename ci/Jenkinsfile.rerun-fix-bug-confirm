@@ -1,0 +1,333 @@
+// Re-run the HAND-FIXED test case(s) N times IN A ROW to confirm a bug fix is fully stable.
+//
+//   Job name: CRM_FixBug_Confirm3x       Pipeline -> Script Path: ci/Jenkinsfile.rerun-fix-bug-confirm
+//   Branch built/tested: now_code_on_Cursor (the fix is already merged here).
+//
+// PURPOSE: after a fix branch (e.g. fix-bug-2026-08-03) is merged into now_code_on_Cursor,
+// prove the fix HOLDS by re-running the target spec(s) RUNS times back-to-back on
+// chrome-headless. The build is GREEN only when the GATE spec passes on EVERY run
+// (default RUNS=3 -> 3/3). This is a stability / flakiness gate, NOT the weekly
+// "Failed cases trend" pipeline - it publishes its own Playwright report + a plain-text
+// confirm summary and does NOT stash into the Allure period buckets.
+//
+// TWO SPEC LANES (both re-run each round):
+//   * GATE_GREP  - the genuinely code-fixed spec (default TC.-A.1.6). MUST pass on every
+//                  run or the build is FAILURE (the fix did not hold).
+//   * ASYNC_GREP - a spec whose "fix" is async / deferred (default TC.THD_3.2.1.5.2: the
+//                  THD Sales-Team assignment runs on a ~15-min CRON that can lag >25 min,
+//                  so a synchronous re-run usually goes red even though the rule is correct).
+//                  This lane is ASYNC-TOLERANT: a red result is reported as
+//                  "async-not-confirmed (not a defect)" and does NOT fail the build. Confirm
+//                  it separately via CRM_Leads_Assignment_DeferredVerify / the slow lane.
+//
+// Same agent guards as the section jobs / rerun-weekly-fails: probe-node pre-prod route
+// gate, long-path-safe checkout, Chrome + ffmpeg checks, mid-run VPN watchdog.
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'RUNS',
+            defaultValue: '3',
+            description: 'How many times to re-run the target spec(s) back-to-back. The GATE spec must pass on EVERY run for a GREEN build. Default 3 = confirm the fix holds 3/3.'
+        )
+        string(
+            name: 'GATE_GREP',
+            defaultValue: 'TC\\.-A\\.1\\.6:',
+            description: 'Playwright --grep title-regex for the code-fixed spec that MUST pass every run (build FAILURE if it fails any run). Default TC.-A.1.6 (Reseller views submitted registrations in My Opportunities).'
+        )
+        string(
+            name: 'ASYNC_GREP',
+            defaultValue: 'TC\\.THD_3\\.2\\.1\\.5\\.2:',
+            description: 'Playwright --grep title-regex for an ASYNC/deferred spec re-run each round but NOT gated (a red = async-not-confirmed, not a defect). Default TC.THD_3.2.1.5.2 (THD assignment - India, State blank). Leave BLANK to skip the async lane entirely.'
+        )
+        string(
+            name: 'PROJECT',
+            defaultValue: 'chrome-headless',
+            description: 'Playwright project to run under. chrome-headless = CI system-Chrome headless (same as the section / rerun jobs).'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '120',
+            description: 'Build timeout in minutes for the whole RUNS-times loop. Default 120 (2h): ~15 min/round (A.1.6 ~5 min + THD ~10 min incl the 8-min assignment wait) x 3 + setup, with headroom.'
+        )
+        choice(
+            name: 'ROUTE_GATE',
+            choices: ['auto', 'failfast', 'retry', 'off'],
+            description: 'Pre-prod VPN route pre-flight on the "probe" node (same as the section jobs). auto = retry when unattended else fail-fast.'
+        )
+        string(
+            name: 'ROUTE_GATE_MIN',
+            defaultValue: '15',
+            description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry).'
+        )
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        // Same pre-prod DNS workaround as the section jobs (see main Jenkinsfile).
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+    }
+
+    options {
+        timeout(time: 180, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Pre-prod route gate') {
+            agent { label 'probe' }
+            steps {
+                script {
+                    def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    if (mode == 'auto') {
+                        def unattended = false
+                        try {
+                            unattended = currentBuild.getBuildCauses().any {
+                                def c = (it._class ?: '')
+                                c.contains('TimerTrigger') || c.contains('SCMTrigger') || c.contains('UpstreamCause')
+                            }
+                        } catch (ignored) { unattended = false }
+                        mode = unattended ? 'retry' : 'failfast'
+                    }
+                    if (mode == 'off') {
+                        echo 'ROUTE_GATE=off -> skipping the pre-prod route pre-flight.'
+                    } else {
+                        def budget = 0
+                        if (mode == 'retry') {
+                            def m = (params.ROUTE_GATE_MIN ?: '15').trim()
+                            budget = m.isInteger() ? m.toInteger() : 15
+                        }
+                        echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
+                        def routeUp = {
+                            return bat(returnStatus: true,
+                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                        }
+                        def waited = 0
+                        def up = routeUp()
+                        while (!up && waited < budget) {
+                            echo "  route DOWN (waited ${waited}/${budget} min) - re-probing in 60s..."
+                            sleep(time: 60, unit: 'SECONDS')
+                            waited++
+                            up = routeUp()
+                        }
+                        if (!up) {
+                            error("ABORTED: pre-prod VPN route down (mode=${mode}, waited ${waited} min). Re-run when the route is back.")
+                        }
+                        echo "Pre-prod route UP" + (waited > 0 ? " after ${waited} min" : "") + " -> proceeding."
+                    }
+                }
+            }
+        }
+
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Confirm fix (RUNS x)') {
+            steps {
+                script {
+                    def runs = (params.RUNS ?: '3').isInteger() ? (params.RUNS).toInteger() : 3
+                    if (runs < 1) { runs = 1 }
+                    def gateGrep  = (params.GATE_GREP ?: '').trim()
+                    def asyncGrep = (params.ASYNC_GREP ?: '').trim()
+                    def proj      = (params.PROJECT ?: 'chrome-headless').trim()
+                    def runTimeout = (params.TIMEOUT_MIN ?: '120').isInteger() ? (params.TIMEOUT_MIN).toInteger() : 120
+                    if (!gateGrep) { error('GATE_GREP is empty - nothing to confirm. Set it to the fixed spec title-regex.') }
+
+                    // Start clean so the published report is ONLY this build.
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    bat 'if exist confirm-summary.txt del /q confirm-summary.txt'
+                    env.DID_RUN = 'true'
+
+                    // Bookkeeping across the RUNS rounds.
+                    def gatePass = 0, gateFail = 0, asyncPass = 0, asyncFail = 0
+
+                    def runLoop = {
+                        for (int r = 1; r <= runs; r++) {
+                            echo "================ CONFIRM RUN ${r}/${runs} ================"
+
+                            // --- GATE lane: MUST pass every run (build FAILURE otherwise) ---
+                            def gateRc = 1
+                            withEnv(["GP=${gateGrep}", "PROJ=${proj}"]) {
+                                gateRc = bat(returnStatus: true, script: 'call npx playwright test --grep "%GP%" --project=%PROJ%')
+                            }
+                            if (gateRc == 0) {
+                                gatePass++
+                                echo "GATE run ${r}/${runs}: PASS"
+                            } else {
+                                gateFail++
+                                echo "GATE run ${r}/${runs}: FAIL (exit ${gateRc}) - the fix did NOT hold on this run"
+                                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', message: "GATE spec failed on run ${r}") {
+                                    error("GATE spec failed on run ${r}/${runs}")
+                                }
+                            }
+
+                            // --- ASYNC lane: re-run but NOT gated (red = async-not-confirmed) ---
+                            if (asyncGrep) {
+                                def asyncRc = 1
+                                withEnv(["GP=${asyncGrep}", "PROJ=${proj}"]) {
+                                    asyncRc = bat(returnStatus: true, script: 'call npx playwright test --grep "%GP%" --project=%PROJ%')
+                                }
+                                if (asyncRc == 0) {
+                                    asyncPass++
+                                    echo "ASYNC run ${r}/${runs}: PASS (assignment CRON caught up synchronously)"
+                                } else {
+                                    asyncFail++
+                                    echo "ASYNC run ${r}/${runs}: not confirmed synchronously (exit ${asyncRc}) - async CRON not run yet - NOT counted as a defect"
+                                }
+                            }
+                        }
+                    }
+
+                    // --- Mid-run pre-prod VPN gate (see main Jenkinsfile / rerun-weekly-fails) ---
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            parallel(
+                                'playwright': {
+                                    try { runLoop() } finally { bat 'echo done> .pw_done' }
+                                },
+                                'vpn-watchdog': {
+                                    while (!fileExists('.pw_done')) {
+                                        sleep(time: 60, unit: 'SECONDS')
+                                        if (fileExists('.pw_done')) { break }
+                                        if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                            env.VPN_ABORT = 'true'
+                                            echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining runs will NOT execute.'
+                                            error('pre-prod VPN dropped mid-run')
+                                        }
+                                    }
+                                },
+                                failFast: true
+                            )
+                        }
+                    } catch (err) {
+                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (env.VPN_ABORT == 'true' || flagUp) {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining confirm runs were NOT executed.'
+                        } else {
+                            throw err
+                        }
+                    }
+
+                    // --- Verdict summary (console + archived text) ---
+                    def stable = (gateFail == 0)
+                    def lines = []
+                    lines << '================ 3x CONFIRM SUMMARY ================'
+                    lines << "Branch tested   : now_code_on_Cursor (via checkout scm)"
+                    lines << "Rounds          : ${runs}"
+                    lines << "GATE  ${gateGrep}"
+                    lines << "                : ${gatePass}/${runs} PASS, ${gateFail} FAIL   <- gates the build"
+                    if (asyncGrep) {
+                        lines << "ASYNC ${asyncGrep}"
+                        lines << "                : ${asyncPass}/${runs} sync-confirmed, ${asyncFail} async-not-confirmed (NOT a defect)"
+                    } else {
+                        lines << "ASYNC           : (skipped - ASYNC_GREP blank)"
+                    }
+                    lines << '---------------------------------------------------'
+                    if (stable) {
+                        lines << "RESULT: BUG FIX CONFIRMED STABLE - GATE spec passed ${gatePass}/${runs}."
+                        if (asyncGrep && asyncFail > 0) {
+                            lines << "NOTE : the async THD lane did not confirm synchronously (${asyncFail}/${runs}); verify via CRM_Leads_Assignment_DeferredVerify / the slow lane. This does NOT fail the build."
+                        }
+                    } else {
+                        lines << "RESULT: FIX NOT STABLE - GATE spec FAILED ${gateFail}/${runs}. Investigate; the fix did not hold every run."
+                    }
+                    lines << '==================================================='
+                    def summary = lines.join('\n')
+                    echo "\n${summary}\n"
+                    writeFile file: 'confirm-summary.txt', text: summary + '\n'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Flatten Playwright's latest timestamped run folder to a fixed 'pw-report' for a direct link.
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            archiveArtifacts artifacts: 'confirm-summary.txt, playwright-report/**, test-results/**', allowEmptyArchive: true
+        }
+        success { echo 'Confirm complete - GATE spec passed every run (fix verified stable).' }
+        failure { echo 'Confirm complete - GATE spec failed on at least one run. See confirm-summary.txt + the Playwright Report: the fix did not hold.' }
+    }
+}
