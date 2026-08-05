@@ -338,6 +338,21 @@ Write-Host "Frozen $Scope report for $periodKey -> $frozen"
 $prevFrozen = Join-Path (Join-Path $reportRoot $Scope) $prevKey
 $prevOut    = Join-Path $reportDir 'previous'
 $havePrev   = Test-Path -LiteralPath $prevFrozen
+# Treat an EMPTY frozen previous (0 test cases - e.g. a period where no section job ran, like
+# 2026-W30 Jul 20-26) as "no previous", so the switcher shows the current tab only instead of a
+# broken "0 test cases / ??? / no environment" Previous tab. Read the frozen summary statistic.
+if ($havePrev) {
+    $prevSummary = Join-Path $prevFrozen 'widgets\summary.json'
+    $prevTotal   = 0
+    if (Test-Path -LiteralPath $prevSummary) {
+        try { $prevTotal = [int]((Get-Content -LiteralPath $prevSummary -Raw | ConvertFrom-Json).statistic.total) }
+        catch { $prevTotal = 0 }
+    }
+    if ($prevTotal -le 0) {
+        Write-Host "Previous $Scope $prevKey has 0 test cases -> skipping empty previous tab (switcher shows current only)."
+        $havePrev = $false
+    }
+}
 if ($havePrev) {
     if (Test-Path -LiteralPath $prevOut) { Remove-Item -LiteralPath $prevOut -Recurse -Force }
     New-Item -ItemType Directory -Path $prevOut -Force | Out-Null
