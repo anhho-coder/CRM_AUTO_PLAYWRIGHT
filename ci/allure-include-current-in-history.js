@@ -12,7 +12,9 @@
  *
  * FIX: after `allure generate`, for every data/test-cases/<uid>.json, prepend the current
  * run (built from the test-case's own top-level status/time/message) as the newest history
- * item, then reconcile `statistic` so it equals the item list (X of Y stays consistent).
+ * item, collapse re-carried duplicate rows (the live refresh re-appends the same run to the
+ * rolling history every rebuild -> identical start/stop), then reconcile `statistic` so it
+ * equals the item list (X of Y stays consistent -> one row per DISTINCT run, latest first).
  * Idempotent: an already-injected current row (matched by uid) is replaced, not duplicated.
  *
  * This touches ONLY the rendered report (<reportDir>/data/test-cases). It does NOT write
@@ -58,6 +60,20 @@ for (const f of files) {
   // Idempotent: drop any previously-injected current row (same uid) before re-adding.
   items = items.filter((it) => !(it && it.uid === o.uid));
   items.unshift(cur);                                   // newest first (matches allure ordering)
+
+  // Collapse re-carried copies of the SAME execution. The live period reports regenerate
+  // many times during a period, and allure re-appends the current run to the rolling history
+  // on every rebuild - stacking identical rows (same status + EXACT start/stop) for one run.
+  // Keep the first (newest) occurrence of each execution identity so the tab shows one row per
+  // distinct run. A run's identity = its start|stop; items with no usable time fall back to uid.
+  const seen = new Set();
+  items = items.filter((it) => {
+    const t = (it && it.time) || {};
+    const k = (t.start != null || t.stop != null) ? `t:${t.start}|${t.stop}` : `u:${it && it.uid}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 
   // Reconcile the statistic so "X of Y" == the visible list (Y = items.length).
   const stat = newStat();
