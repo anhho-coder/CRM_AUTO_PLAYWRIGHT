@@ -222,6 +222,13 @@ finally {
     Pop-Location
 }
 
+# ---- Make each test's History tab include THIS run (the latest result) as its newest row ----
+# allure counts the current run in the History total (statistic.total) but omits it from the
+# listed items, so the tab shows "X of Y" with the latest run missing. Data-only fix; does NOT
+# touch <reportDir>\history (the carry-forward chain), so the rolling trend is unaffected.
+node (Join-Path $Workspace 'ci\allure-include-current-in-history.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: include-current-in-history returned $LASTEXITCODE (continuing)." }
+
 # ---- Put the period range in the report title (Overview header) ----
 # Allure renders the Overview title from widgets/summary.json -> reportName, so set it there.
 $summaryPath = Join-Path $reportDir 'widgets\summary.json'
