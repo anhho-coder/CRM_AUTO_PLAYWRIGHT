@@ -1,27 +1,30 @@
 /*
  * Build the data for the WEEKLY "Failed cases trend" sidebar tab.
  *
- * This is a STATEFUL builder. The weekly Allure job regenerates the report several
- * times across the week; this script tracks, for ONE week, the failed test cases
- * that existed at the BEGINNING of the week and how many of them are still failing
- * as they get fixed day by day (a burndown).
+ * The two Week-overview "Categories" boxes are the STATIC roll-up of what the week's
+ * CRM_Rerun_* FIX BRANCHES set out to fix (read from crm-fix-branches.json, produced
+ * by ci/allure-build-fix-branches.js just before this in the pipeline):
  *
- *   - Beginning-of-week snapshot: the FIRST time we see this weekly periodKey, we
- *     freeze the current failed set (count + list + category breakdown).
- *   - Daily burndown series: every run appends/updates one point for "today"
- *     (latest run of the day wins), recording how many of the initial set are still
- *     failing vs already fixed (confirmed passing on re-run).
- *   - Current snapshot: recomputed fresh every run (count + list + categories).
+ *   - "Categories - Failures this week"  = ALL target specs across every fix branch,
+ *     counted PER BRANCH (a spec targeted by two branches counts twice — the total
+ *     mirrors the "Verification branches" aggregate target-spec count).
+ *   - "Categories - Current status"      = the target specs still NOT resolved. A spec
+ *     is RESOLVED when its branch status is 'passed' OR 'async-ok' (the deferred
+ *     re-check confirmed the async CRON caught up = a pass).
+ *   - Burndown series: a carry-forward aggregate of each branch's own per-build series.
  *
- * State that must survive between the week's runs is kept OUTSIDE the report, in
- *   <stateDir>\<periodKey>.json   (e.g. C:\allure\periods\failed-trend\weekly\2026-W31.json)
- * exactly like the rolling history store. The report-facing file is written to
+ * (The Overview page's native Allure "Categories - list of failed cases" stays the
+ * LIVE current-failure list; THIS tab is the static fix-tracking view.)
+ *
+ * A per-week category cache (tcId -> category) is kept OUTSIDE the report, in
+ *   <stateDir>\<periodKey>.json   (e.g. C:\allure\periods\failed-trend\weekly\2026-W32.json)
+ * seeded from every case ever RED in the weekly report this week, so a fix-branch
+ * target that has since gone green still shows the category of the failure it fixed.
+ * The report-facing file is written to
  *   <reportDir>\crm-failed-trend.json
  * which the client tab (ci/allure-failed-trend-tab.js) fetches and renders.
  *
- * "Failed" = a red test: status in { failed, broken }. Cross-run identity is the
- * stabilised Allure historyId (see ci/allure-stabilize-history-id.js), so a test
- * that fails at the start of the week and passes later is matched and counted fixed.
+ * "Failed" = a red test: status in { failed, broken }. tcId is the greppable case id.
  *
  * Usage: node ci/allure-build-failed-trend.js <report-dir> <periodKey> <scope> <stateDir>
  * Best-effort: never fails the build (always exits 0).
@@ -80,37 +83,6 @@ function keyOf(rec) {
 function parseTcId(name) {
   const m = String(name || '').match(/(TC\.[-\w.]+|CRM-\d+[\w.]*)/);
   return m ? m[1].replace(/[:.]+$/, '') : '';
-}
-
-// Load fix-branch confirmations written by ci/allure-build-fix-branches.js (runs just
-// before this in the weekly pipeline). A start-of-week failure that a CRM_Rerun_* fix
-// branch has since re-run to green (status 'passed') or to an async-confirmed pass
-// ('async-ok', THD/lead-assignment CRON caught up per the round-2 deferred re-check) is
-// treated as RESOLVED here too, so the week Categories - Current status / Trend agree with
-// the "Verification branches" aggregate instead of still showing it as "1 left".
-// Returns key -> 'passed' | 'async-ok' (keyed by "<section>||<tcId>" and "tc||<tcId>").
-function loadBranchConfirmations() {
-  const map = {};
-  const RANK = { passed: 2, 'async-ok': 1 };
-  const fb = readJson(path.join(reportDir, 'crm-fix-branches.json'));
-  if (!fb || !Array.isArray(fb.branches)) return map;
-  fb.branches.forEach(function (b) {
-    (b.tests || []).forEach(function (t) {
-      const st = str(t.status).toLowerCase();
-      if (st !== 'passed' && st !== 'async-ok') return;
-      const tc = str(t.tcId);
-      if (!tc) return;
-      [str(t.section) + '||' + tc, 'tc||' + tc].forEach(function (k) {
-        if (!map[k] || RANK[st] > RANK[map[k]]) map[k] = st;
-      });
-    });
-  });
-  return map;
-}
-function branchConfirmOf(map, section, name) {
-  const tc = parseTcId(name);
-  if (!tc) return '';
-  return map[str(section) + '||' + tc] || map['tc||' + tc] || '';
 }
 
 function toCase(rec) {
@@ -189,130 +161,122 @@ function readCurrent() {
   const curFailedCases = cur.failed.map(toCase);
   const today = todayStr();
 
-  // ---- Load persisted week state (survives between the week's runs) ----
-  const statePath = stateDir ? path.join(stateDir, periodKey + '.json') : '';
-  let state = statePath ? readJson(statePath) : null;
-  if (!state || state.week !== periodKey || !state.beginning) {
-    state = { week: periodKey, beginning: { firstSeenAt: today, total: 0, categories: [], cases: [] }, series: [] };
-    log('initialised week-failures accumulator for ' + periodKey + '.');
+  // ---- Category classifier (mirrors the custom Allure categories in ci/allure-categories.json;
+  // first messageRegex match wins). Fallback label for a fix-branch target we have no live or
+  // cached category for, derived from whatever error text the branch carries. ----
+  const catRules = readJson(path.join(__dirname, 'allure-categories.json')) || [];
+  function classify(msg) {
+    const m = str(msg);
+    if (!m) return '';
+    for (let i = 0; i < catRules.length; i++) {
+      const rx = catRules[i] && catRules[i].messageRegex;
+      if (!rx) continue;
+      try { if (new RegExp(rx).test(m)) return catRules[i].name; } catch (e) {}
+    }
+    return '';
   }
 
-  // Fix-branch confirmations + targets (cross-reference by tcId; see loadBranchConfirmations).
-  const branchConfirm = loadBranchConfirmations();
-
-  // ---- Accumulate the WEEK-FAILURES union (was: a one-time "start of week" freeze) ----
-  // `beginning` is the running UNION of every distinct test that has been RED in ANY run this
-  // week — it only ever GROWS (a case that later turns green STAYS counted, because it DID fail
-  // this week), so the box reads as a true "total failures this week" tally rather than a
-  // first-run snapshot. Sources merged each run: (1) the persisted union so far, (2) this run's
-  // red cases (authoritative — real report key + Allure category). We deliberately do NOT pull in
-  // CRM_Rerun_* fix-branch targets: those can be PRIOR-week failures merely re-verified this week
-  // (e.g. a W31 case re-run on a Monday that falls in the new ISO week) and would over-count.
-  // "Failures this week" = red in THIS week's own weekly report. Dedup by a stable canonical id:
-  // the greppable tcId (TC.xxx / CRM-####) when the name has one, else the report key — so the
-  // same case seen across runs collapses to one row (no double count).
-  const beginning = state.beginning;
-  if (!Array.isArray(beginning.cases)) beginning.cases = [];
-  const canonOf = function (c) {
-    const tc = parseTcId(c.name);
-    return tc ? ('tc::' + tc) : (c.key || ('n::' + (c.section || '') + '::' + (c.name || '')));
-  };
-  const unionByCanon = {};
-  beginning.cases.forEach(function (c) { unionByCanon[canonOf(c)] = c; });
-  curFailedCases.forEach(function (c) {
-    const id = canonOf(c);
-    const prev = unionByCanon[id];
-    if (!prev) { unionByCanon[id] = c; return; }
-    // Same case seen again → keep the richer record: prefer a real report key (h:/n: from the
-    // run) and a known Allure category over placeholders; never reset first-seen identity.
-    if ((!prev.category || prev.category === 'Uncategorized') && c.category && c.category !== 'Uncategorized') prev.category = c.category;
-    if ((!prev.key || prev.key.indexOf('h:') !== 0) && c.key && c.key.indexOf('h:') === 0) prev.key = c.key;
-    if (!prev.error && c.error) prev.error = c.error;
-  });
-  beginning.cases = Object.keys(unionByCanon).map(function (k) { return unionByCanon[k]; });
-  beginning.total = beginning.cases.length;
-  beginning.categories = breakdown(beginning.cases);
-
-  const beginKeys = {};
-  beginning.cases.forEach(function (c) { beginKeys[c.key] = c; });
-
-  // ---- Match each beginning case to its CURRENT status ----
-  // A case is RESOLVED if the weekly report re-ran it green, OR a fix branch confirmed it
-  // ('passed' / 'async-ok'). The branch verdict wins when the weekly report itself hasn't
-  // re-run the spec (still red / absent), so a confirmed-fixed case stops counting as "left".
-  // Fallback index: current status by greppable tcId, so a union case still resolves to its real
-  // status even if its stored report key drifted between runs (e.g. a late-stabilised historyId).
-  // The union's identity is the tcId, so status resolution should match on it too.
+  // Current-report category by tcId (only red cases carry an Allure category).
   const curByTcId = {};
   Object.keys(cur.byKey).forEach(function (k) {
-    const r = cur.byKey[k]; const tc = parseTcId(r.name);
-    if (!tc) return;
+    const r = cur.byKey[k]; const tc = parseTcId(r.name); if (!tc) return;
     if (!curByTcId[tc] || (RED[r.status] && !RED[curByTcId[tc].status])) curByTcId[tc] = r;
   });
 
-  let fixed = 0, stillFailing = 0, notRerun = 0, confirmedByBranch = 0;
-  const initialCasesStatus = beginning.cases.map(function (c) {
-    const now2 = cur.byKey[c.key] || curByTcId[parseTcId(c.name)];
-    let cs = now2 ? now2.status : 'absent';
-    let byBranch = false;
-    if (cs !== 'passed') {
-      const bc = branchConfirmOf(branchConfirm, c.section, c.name);
-      if (bc) { cs = bc; byBranch = true; confirmedByBranch++; }
-    }
-    const isFixed = (cs === 'passed' || cs === 'async-ok');
-    if (isFixed) fixed++;
-    else if (RED[cs]) stillFailing++;
-    else notRerun++;   // skipped / absent / unknown — not confirmed fixed
-    return { key: c.key, section: c.section, name: c.name, initialStatus: c.status, currentStatus: cs, fixed: isFixed, confirmedByBranch: byBranch };
+  // ---- Persisted per-week category cache: tcId -> category, seeded from every case ever RED in
+  // the weekly report this week, so a fix-branch target that has since gone green still shows the
+  // category of the failure it fixed. (Migrates the earlier union-state's beginning.cases.) ----
+  const statePath = stateDir ? path.join(stateDir, periodKey + '.json') : '';
+  let state = statePath ? readJson(statePath) : null;
+  if (!state || state.week !== periodKey) state = { week: periodKey, catCache: {}, series: [] };
+  if (!state.catCache) state.catCache = {};
+  if (state.beginning && Array.isArray(state.beginning.cases)) {
+    state.beginning.cases.forEach(function (c) {
+      const tc = parseTcId(c.name);
+      if (tc && c.category && c.category !== 'Uncategorized' && !state.catCache[tc]) state.catCache[tc] = c.category;
+    });
+    delete state.beginning;
+  }
+  curFailedCases.forEach(function (c) {
+    const tc = parseTcId(c.name);
+    if (tc && c.category && c.category !== 'Uncategorized') state.catCache[tc] = c.category;
   });
 
-  const remaining = beginning.total - fixed;
+  function categoryFor(tcId, err) {
+    const live = curByTcId[tcId];
+    if (live && RED[live.status] && live.category && live.category !== 'Uncategorized') return live.category;
+    if (tcId && state.catCache[tcId]) return state.catCache[tcId];
+    return classify(err) || 'Uncategorized';
+  }
 
-  // A start-of-week failure still red in the weekly results but CONFIRMED fixed on a fix
-  // branch is no longer "failing now" — drop it from the current red set so the Trend KPIs
-  // ("Failing now", categories) agree with Categories - Current status.
-  const curFailedActive = curFailedCases.filter(function (c) {
-    return !((c.key in beginKeys) && branchConfirmOf(branchConfirm, c.section, c.name));
+  // ---- "Failures this week" = ALL target specs across the week's CRM_Rerun_* fix branches
+  // (crm-fix-branches.json), counted PER BRANCH. RESOLVED = branch status 'passed' or 'async-ok'
+  // (deferred re-check confirmed = a pass, per team rule). ----
+  const RESOLVED = { passed: 1, 'async-ok': 1 };
+  const fb = readJson(path.join(reportDir, 'crm-fix-branches.json'));
+  const branches = (fb && Array.isArray(fb.branches)) ? fb.branches : [];
+  const targets = [];
+  branches.forEach(function (b) {
+    (b.tests || []).forEach(function (t, ti) {
+      const tcId = str(t.tcId);
+      targets.push({
+        key: b.jobName + '::' + ti + '::' + (tcId || str(t.title)),
+        section: str(t.section) || 'Other',
+        name: (tcId ? tcId + ': ' : '') + str(t.title),
+        status: str(t.status).toLowerCase(),
+        category: categoryFor(tcId, t.error),
+        error: str(t.error),
+        branch: b.jobName,
+      });
+    });
   });
-  const newFailures = curFailedActive.filter(function (c) { return !(c.key in beginKeys); });
+
+  const beginning = { capturedAt: today, total: targets.length, categories: breakdown(targets), cases: targets };
+
+  // ---- Resolve each target spec's status (branch verdict is authoritative) ----
+  let fixed = 0, remaining = 0;
+  const initialCasesStatus = targets.map(function (c) {
+    const isFixed = !!RESOLVED[c.status];
+    if (isFixed) fixed++; else remaining++;
+    return { key: c.key, section: c.section, name: c.name, initialStatus: c.status, currentStatus: c.status, fixed: isFixed, confirmedByBranch: c.status === 'async-ok' };
+  });
+  const remainingCases = targets.filter(function (c) { return !RESOLVED[c.status]; });
 
   const current = {
     capturedAt: today,
-    total: curFailedActive.length,
+    total: remainingCases.length,
     fixedOfInitial: fixed,
     remainingOfInitial: remaining,
-    stillFailing: stillFailing,
-    notRerun: notRerun,
-    newFailures: newFailures.length,
-    confirmedByBranch: confirmedByBranch,
-    categories: breakdown(curFailedActive),
-    cases: curFailedActive.map(function (c) { return Object.assign({ inInitial: c.key in beginKeys }, c); }),
+    stillFailing: targets.filter(function (c) { return RED[c.status]; }).length,
+    notRerun: targets.filter(function (c) { return !RESOLVED[c.status] && !RED[c.status]; }).length,
+    newFailures: 0,
+    confirmedByBranch: targets.filter(function (c) { return c.status === 'async-ok'; }).length,
+    categories: breakdown(remainingCases),
+    cases: remainingCases.map(function (c) { return Object.assign({ inInitial: true }, c); }),
   };
 
-  // ---- Upsert today's burndown point (latest run of the day wins) ----
-  const point = {
-    date: today,
-    total: beginning.total,
-    remaining: remaining,
-    fixed: fixed,
-    stillFailing: stillFailing,
-    notRerun: notRerun,
-    currentTotalFailed: current.total,
-  };
-  const series = (state.series || []).filter(function (p) { return p.date !== today; });
-  series.push(point);
-  series.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+  // ---- Burndown series = carry-forward aggregate of each branch's own per-build series, so the
+  // Trend chart matches the "Verification branches" aggregate. ----
+  const dset = {};
+  branches.forEach(function (b) { (b.series || []).forEach(function (p) { dset[p.date] = 1; }); });
+  const series = Object.keys(dset).sort().map(function (d) {
+    const acc = { date: d, total: 0, remaining: 0, fixed: 0, stillFailing: 0, notRerun: 0, currentTotalFailed: 0 };
+    branches.forEach(function (b) {
+      let pt = null; (b.series || []).forEach(function (p) { if (p.date <= d) pt = p; });
+      if (pt) { acc.fixed += pt.fixed; acc.stillFailing += pt.stillFailing; acc.notRerun += pt.notRerun; acc.total += pt.total; acc.remaining += pt.remaining; }
+    });
+    acc.currentTotalFailed = acc.remaining;
+    return acc;
+  });
+
+  // ---- Persist state (category cache + latest series; best-effort) ----
   state.series = series;
-
-  // ---- Persist state (best-effort) ----
   if (statePath) {
     try {
       fs.mkdirSync(stateDir, { recursive: true });
       fs.writeFileSync(statePath, JSON.stringify(state, null, 2));
       log('saved week state -> ' + statePath);
     } catch (e) { log('WARNING: could not save state (' + e.message + ').'); }
-  } else {
-    log('WARNING: no stateDir given; burndown will not accumulate across runs.');
   }
 
   // ---- Write the report-facing data file ----
@@ -327,8 +291,8 @@ function readCurrent() {
   };
   try {
     fs.writeFileSync(path.join(reportDir, 'crm-failed-trend.json'), JSON.stringify(out, null, 2));
-    log('wrote crm-failed-trend.json — begin ' + beginning.total + ', fixed ' + fixed +
-        ', remaining ' + remaining + ', current red ' + current.total + ' (from ' + cur.files + ' test-cases).');
+    log('wrote crm-failed-trend.json — failures-this-week ' + beginning.total + ', fixed ' + fixed +
+        ', remaining ' + remaining + ' (from ' + branches.length + ' branch(es); ' + cur.files + ' test-cases scanned).');
   } catch (e) {
     log('WARNING: could not write crm-failed-trend.json (' + e.message + ').');
   }

@@ -9,12 +9,11 @@
  *
  * The panel shows four things (data from crm-failed-trend.json + crm-fix-failed.json,
  * both written at build time):
- *   0. Trend — a within-week burndown of the failed cases that existed at the START
- *      of the week: each day, how many of that initial set are Fixed / Still failing /
- *      Not re-run (stacked area, total height = the initial count).
- *   1. Categories — the failed cases at the BEGINNING of the week (count + breakdown +
- *      list, each with its current Fixed / Still-failing / Not-re-run state).
- *   2. Categories — the failed cases CURRENTLY (count + breakdown + list).
+ *   0. Trend — a within-week burndown of this week's fix-branch target specs: how many
+ *      are Fixed / Still failing / Not re-run (stacked area, total height = the count).
+ *   1. Categories — Failures this week: every CRM_Rerun_* fix-branch target spec (count +
+ *      breakdown + list, each with its current Fixed / Still-failing / Not-re-run state).
+ *   2. Categories — Current status: the target specs still NOT resolved (count + breakdown + list).
  *   3. Fix failed cases — the same table as the Overview "Fix failed cases" card.
  *
  * Idempotent; re-injects the nav item / panel via MutationObserver; theme-safe.
@@ -282,11 +281,12 @@
     if (cs === 'failed' || cs === 'broken') return '<span class="crm-badge b-fail">Still failing</span>';
     return '<span class="crm-badge b-nr">Not re-run</span>';
   }
-  // A start-of-week case counts as resolved when re-run green OR confirmed by a fix branch.
+  // A fix-branch target counts as resolved when it re-ran green ('passed') or the deferred
+  // re-check confirmed it ('async-ok', treated as a pass).
   function isResolved(cs) { return cs === 'passed' || cs === 'async-ok'; }
 
   // Collapsible case list with a Now (current-state) column. Used by both category
-  // boxes: the frozen start-of-week set and the still-failing remainder.
+  // boxes: this week's failures (all fix-branch targets) and the unresolved remainder.
   function caseList(cases, statusByKey, listId, toggleLabel, emptyMsg) {
     cases = cases || [];
     var rows = cases.map(function (c, i) {
@@ -359,7 +359,7 @@
     var branches = bundle.branches || [];
     var html = '';
     html += '<div class="crm-fct-title">' + TITLE + '</div>';
-    html += '<div class="crm-fct-lead">Tracks <b>all failed test cases seen during the week</b> and how they are fixed across the week &mdash; week ' +
+    html += '<div class="crm-fct-lead">Tracks the failures being fixed on this week\'s <b>verification branches</b> and how many are resolved &mdash; week ' +
             esc(t.week || '') + '.</div>';
 
     // Sub-tab bar: Week overview + one per verification branch (a CRM_Rerun_* job that
@@ -409,12 +409,13 @@
     var dset = {};
     branches.forEach(function (b) { (b.series || []).forEach(function (p) { dset[p.date] = 1; }); });
     return Object.keys(dset).sort().map(function (d) {
-      var acc = { date: d, fixed: 0, stillFailing: 0, notRerun: 0, total: 0, remaining: 0 };
+      var acc = { date: d, fixed: 0, stillFailing: 0, notRerun: 0, total: 0, remaining: 0, currentTotalFailed: 0 };
       branches.forEach(function (b) {
         var pt = null;
         (b.series || []).forEach(function (p) { if (p.date <= d) pt = p; });   // series is chronological
         if (pt) { acc.fixed += pt.fixed; acc.stillFailing += pt.stillFailing; acc.notRerun += pt.notRerun; acc.total += pt.total; acc.remaining += pt.remaining; }
       });
+      acc.currentTotalFailed = acc.remaining;
       return acc;
     });
   }
@@ -470,7 +471,7 @@
     html += '<div class="crm-fct-catrow">';
     html += catCardCompact('Categories - Failures this week', begin.total + ' failed', begin.categories,
               begin.cases, statusByKey, 'crm-fct-begin-list',
-              'Show the ' + begin.total + ' failed case(s) this week', 'No failed cases recorded this week.');
+              'Show the ' + begin.total + ' failed case(s) this week', 'No fix-branch targets this week.');
     html += catCardCompact('Categories - Current status', remainingCases.length + ' of ' + begin.total + ' left', breakdown(remainingCases),
               remainingCases, statusByKey, 'crm-fct-cur-list',
               'Show the ' + remainingCases.length + ' remaining case(s)', "All of this week's failures are fixed. 🎉");
@@ -482,15 +483,15 @@
     // 0. Trend (burndown)
     html += '<div class="widget island">';
     html += '<div class="crm-fct-h">Trend<span class="n">burndown of this week\'s failures</span></div>';
-    html += '<div class="crm-fct-sub"><b>' + begin.total + '</b> failed case(s) seen this week so far. ' +
-            'Each day the report re-runs, the fixed ones drop out and the chart shows how many remain.</div>';
+    html += '<div class="crm-fct-sub"><b>' + begin.total + '</b> failed case(s) targeted by fix branches this week. ' +
+            'As each branch re-runs, the fixed ones drop out and the chart shows how many remain.</div>';
     html += '<div class="crm-fct-kpis">' +
       '<div class="crm-fct-kpi"><div class="v">' + begin.total + '</div><div class="l">Failed this week</div></div>' +
       '<div class="crm-fct-kpi k-fixed"><div class="v">' + cur.fixedOfInitial + '</div><div class="l">Fixed so far (' + pct(cur.fixedOfInitial, begin.total) + '%)</div></div>' +
       '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining unfixed</div></div>' +
       '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Still failing now</div></div>' +
       '</div>';
-    html += buildChart(t.series || [], begin.total, { totalLabel: 'Total this week', emptyMsg: 'No failed cases were recorded this week — nothing to burn down.' });
+    html += buildChart(t.series || [], begin.total, { totalLabel: 'Total this week', emptyMsg: 'No fix-branch targets recorded this week — nothing to burn down.' });
     html += '</div>';
 
     // 3. Fix failed cases
