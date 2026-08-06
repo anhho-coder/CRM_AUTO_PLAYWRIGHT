@@ -11,8 +11,8 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *  UC-A-8  -  Reseller views invoice on portal
  * ===========================================================================
  *  Test Case ID    : TC.-A.8.5
- *  Automation-Type : new
- *  Automation-Date : 2026-06-24
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-08-05
  *
  *  Summary:
  *    As Thomas, create a validated Invoice on an Opportunity that is NOT assigned

@@ -92,7 +92,9 @@ import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.h
  *    8.4. Lost Reason = BLANK
  */
 
-test.describe.skip('CRM-671_2.1.8 - NO MERGE: IBSA and Website Teams - SKIPPED: No Website Sales Team', () => {
+// SKIPPED: The "Website" Sales Team is no longer used on pre-production, so this
+// IBSA-vs-Website no-merge scenario is not applicable anymore. Kept for traceability.
+test.describe.skip('CRM-671_2.1.8 - NO MERGE: IBSA and Website Teams - SKIPPED: Website team no more used on pre-production', () => {
   
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
