@@ -359,7 +359,7 @@
     var branches = bundle.branches || [];
     var html = '';
     html += '<div class="crm-fct-title">' + TITLE + '</div>';
-    html += '<div class="crm-fct-lead">Tracks the failed test cases that existed at the <b>start of the week</b> and how they are fixed across the week &mdash; week ' +
+    html += '<div class="crm-fct-lead">Tracks <b>all failed test cases seen during the week</b> and how they are fixed across the week &mdash; week ' +
             esc(t.week || '') + '.</div>';
 
     // Sub-tab bar: Week overview + one per verification branch (a CRM_Rerun_* job that
@@ -468,12 +468,12 @@
     // Categories - Start of week + Current status: compact (like the Allure Categories
     // widget) and side-by-side, at the very TOP of the page for quick grasp.
     html += '<div class="crm-fct-catrow">';
-    html += catCardCompact('Categories - Start of week', begin.total + ' failed', begin.categories,
+    html += catCardCompact('Categories - Failures this week', begin.total + ' failed', begin.categories,
               begin.cases, statusByKey, 'crm-fct-begin-list',
-              'Show the ' + begin.total + ' start-of-week case(s)', 'No failed cases at the start of this week.');
+              'Show the ' + begin.total + ' failed case(s) this week', 'No failed cases recorded this week.');
     html += catCardCompact('Categories - Current status', remainingCases.length + ' of ' + begin.total + ' left', breakdown(remainingCases),
               remainingCases, statusByKey, 'crm-fct-cur-list',
-              'Show the ' + remainingCases.length + ' remaining case(s)', 'All start-of-week failures are fixed. 🎉');
+              'Show the ' + remainingCases.length + ' remaining case(s)', "All of this week's failures are fixed. 🎉");
     html += '</div>';
 
     // Aggregate of the week's verification branches.
@@ -481,16 +481,16 @@
 
     // 0. Trend (burndown)
     html += '<div class="widget island">';
-    html += '<div class="crm-fct-h">Trend<span class="n">burndown of the initial failed set</span></div>';
-    html += '<div class="crm-fct-sub">Started the week with <b>' + begin.total + '</b> failed case(s). ' +
+    html += '<div class="crm-fct-h">Trend<span class="n">burndown of this week\'s failures</span></div>';
+    html += '<div class="crm-fct-sub"><b>' + begin.total + '</b> failed case(s) seen this week so far. ' +
             'Each day the report re-runs, the fixed ones drop out and the chart shows how many remain.</div>';
     html += '<div class="crm-fct-kpis">' +
-      '<div class="crm-fct-kpi"><div class="v">' + begin.total + '</div><div class="l">Failed at start of week</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + begin.total + '</div><div class="l">Failed this week</div></div>' +
       '<div class="crm-fct-kpi k-fixed"><div class="v">' + cur.fixedOfInitial + '</div><div class="l">Fixed so far (' + pct(cur.fixedOfInitial, begin.total) + '%)</div></div>' +
-      '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining of the initial set</div></div>' +
-      '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Failing now (incl. ' + cur.newFailures + ' new)</div></div>' +
+      '<div class="crm-fct-kpi k-remain"><div class="v">' + cur.remainingOfInitial + '</div><div class="l">Remaining unfixed</div></div>' +
+      '<div class="crm-fct-kpi"><div class="v">' + cur.total + '</div><div class="l">Still failing now</div></div>' +
       '</div>';
-    html += buildChart(t.series || [], begin.total, { emptyMsg: 'No failed cases were recorded at the beginning of this week — nothing to burn down.' });
+    html += buildChart(t.series || [], begin.total, { totalLabel: 'Total this week', emptyMsg: 'No failed cases were recorded this week — nothing to burn down.' });
     html += '</div>';
 
     // 3. Fix failed cases

@@ -193,33 +193,66 @@ function readCurrent() {
   const statePath = stateDir ? path.join(stateDir, periodKey + '.json') : '';
   let state = statePath ? readJson(statePath) : null;
   if (!state || state.week !== periodKey || !state.beginning) {
-    state = {
-      week: periodKey,
-      beginning: {
-        capturedAt: today,
-        total: curFailedCases.length,
-        categories: breakdown(curFailedCases),
-        cases: curFailedCases,
-      },
-      series: [],
-    };
-    log('initialised beginning-of-week snapshot: ' + curFailedCases.length + ' failed case(s).');
+    state = { week: periodKey, beginning: { firstSeenAt: today, total: 0, categories: [], cases: [] }, series: [] };
+    log('initialised week-failures accumulator for ' + periodKey + '.');
   }
 
+  // Fix-branch confirmations + targets (cross-reference by tcId; see loadBranchConfirmations).
+  const branchConfirm = loadBranchConfirmations();
+
+  // ---- Accumulate the WEEK-FAILURES union (was: a one-time "start of week" freeze) ----
+  // `beginning` is the running UNION of every distinct test that has been RED in ANY run this
+  // week — it only ever GROWS (a case that later turns green STAYS counted, because it DID fail
+  // this week), so the box reads as a true "total failures this week" tally rather than a
+  // first-run snapshot. Sources merged each run: (1) the persisted union so far, (2) this run's
+  // red cases (authoritative — real report key + Allure category). We deliberately do NOT pull in
+  // CRM_Rerun_* fix-branch targets: those can be PRIOR-week failures merely re-verified this week
+  // (e.g. a W31 case re-run on a Monday that falls in the new ISO week) and would over-count.
+  // "Failures this week" = red in THIS week's own weekly report. Dedup by a stable canonical id:
+  // the greppable tcId (TC.xxx / CRM-####) when the name has one, else the report key — so the
+  // same case seen across runs collapses to one row (no double count).
   const beginning = state.beginning;
+  if (!Array.isArray(beginning.cases)) beginning.cases = [];
+  const canonOf = function (c) {
+    const tc = parseTcId(c.name);
+    return tc ? ('tc::' + tc) : (c.key || ('n::' + (c.section || '') + '::' + (c.name || '')));
+  };
+  const unionByCanon = {};
+  beginning.cases.forEach(function (c) { unionByCanon[canonOf(c)] = c; });
+  curFailedCases.forEach(function (c) {
+    const id = canonOf(c);
+    const prev = unionByCanon[id];
+    if (!prev) { unionByCanon[id] = c; return; }
+    // Same case seen again → keep the richer record: prefer a real report key (h:/n: from the
+    // run) and a known Allure category over placeholders; never reset first-seen identity.
+    if ((!prev.category || prev.category === 'Uncategorized') && c.category && c.category !== 'Uncategorized') prev.category = c.category;
+    if ((!prev.key || prev.key.indexOf('h:') !== 0) && c.key && c.key.indexOf('h:') === 0) prev.key = c.key;
+    if (!prev.error && c.error) prev.error = c.error;
+  });
+  beginning.cases = Object.keys(unionByCanon).map(function (k) { return unionByCanon[k]; });
+  beginning.total = beginning.cases.length;
+  beginning.categories = breakdown(beginning.cases);
+
   const beginKeys = {};
   beginning.cases.forEach(function (c) { beginKeys[c.key] = c; });
-
-  // Fix-branch confirmations (cross-reference by tcId; see loadBranchConfirmations).
-  const branchConfirm = loadBranchConfirmations();
 
   // ---- Match each beginning case to its CURRENT status ----
   // A case is RESOLVED if the weekly report re-ran it green, OR a fix branch confirmed it
   // ('passed' / 'async-ok'). The branch verdict wins when the weekly report itself hasn't
   // re-run the spec (still red / absent), so a confirmed-fixed case stops counting as "left".
+  // Fallback index: current status by greppable tcId, so a union case still resolves to its real
+  // status even if its stored report key drifted between runs (e.g. a late-stabilised historyId).
+  // The union's identity is the tcId, so status resolution should match on it too.
+  const curByTcId = {};
+  Object.keys(cur.byKey).forEach(function (k) {
+    const r = cur.byKey[k]; const tc = parseTcId(r.name);
+    if (!tc) return;
+    if (!curByTcId[tc] || (RED[r.status] && !RED[curByTcId[tc].status])) curByTcId[tc] = r;
+  });
+
   let fixed = 0, stillFailing = 0, notRerun = 0, confirmedByBranch = 0;
   const initialCasesStatus = beginning.cases.map(function (c) {
-    const now2 = cur.byKey[c.key];
+    const now2 = cur.byKey[c.key] || curByTcId[parseTcId(c.name)];
     let cs = now2 ? now2.status : 'absent';
     let byBranch = false;
     if (cs !== 'passed') {
