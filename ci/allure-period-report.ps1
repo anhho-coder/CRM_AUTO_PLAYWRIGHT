@@ -280,6 +280,14 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs fetch returned $
 node (Join-Path $Workspace 'ci\allure-inject-automation-bugs-card.js') $reportDir
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: automation-bugs-card injection returned $LASTEXITCODE (continuing)." }
 
+# ---- Make the "Categories - list of failed cases" Overview card LIVE (ALL scopes) ----
+# The native Allure Categories widget reads widgets/categories.json once and browsers
+# cache that static file, so the Overview shows STALE category counts after a rebuild.
+# This injects a client-side card that re-fetches categories.json (no-store) on every
+# Overview entry and hides the native widget -> counts stay fresh with no build step.
+node (Join-Path $Workspace 'ci\allure-inject-categories-live-card.js') $reportDir
+if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: categories-live-card injection returned $LASTEXITCODE (continuing)." }
+
 # ---- Add the "Fix failed cases" Overview card (WEEKLY report only) ----
 # Full-width table of the failed cases the team is fixing / has fixed this week.
 # Data is the committed source ci\crm-fix-failed-cases.json (hand-maintained; NOT
