@@ -146,6 +146,7 @@
       W + ' .crm-fct-tbl td.branch .crm-fct-bmeta{opacity:.6;font-weight:400;font-variant-numeric:tabular-nums;}' +
       W + ' .crm-fct-tbl a{color:#4b6bfb;text-decoration:none;font-weight:600;white-space:nowrap;}' +
       W + ' .crm-fct-tbl a:hover{text-decoration:underline;}' +
+      W + ' .crm-fct-tbl td.sum a{white-space:normal;}' +   // test-case link: allow the long title to wrap
       W + ' .crm-fct-tbl td.err code{font-family:Menlo,Consolas,"Courier New",monospace;font-size:12px;color:#c0392b;' +
         'background:rgba(217,83,79,.08);padding:1px 4px;border-radius:4px;white-space:pre-wrap;word-break:break-word;}' +
       W + ' .crm-fct-tbl td.err{min-width:220px;max-width:420px;}' +
@@ -310,6 +311,17 @@
       ? '<a href="' + esc(c.buildUrl) + '" target="_blank" rel="noopener">open build ↗</a>'
       : '<span class="crm-ff-todo">—</span>';
   }
+  // Deep-link the test case into the native Allure Categories (or Suites) view for fast
+  // debugging. route is 'categories/<uid>' or 'suites/<uid>', resolved at build time to this
+  // same report's test uid. Clicking just changes the hash to an in-report route; our
+  // hashchange handler hands the view back to Allure, which renders that test's detail.
+  // Falls back to plain text when the target couldn't be matched to a native test.
+  function testCaseCell(c) {
+    var label = esc(c.name);
+    if (!c.route) return label;
+    var where = String(c.route).indexOf('categories/') === 0 ? 'Categories' : 'Suites';
+    return '<a class="crm-fct-tclink" href="#' + esc(c.route) + '" title="Open in ' + where + ' to debug">' + label + '</a>';
+  }
 
   // Collapsible case list with a Now (current-state) column + the fix branch / build it is
   // still failing on. Used by both category boxes: this week's failures (all fix-branch
@@ -321,7 +333,7 @@
       return '<tr>' +
         '<td class="num">' + (i + 1) + '</td>' +
         '<td><span class="crm-fct-sec">' + esc(c.section) + '</span></td>' +
-        '<td class="sum">' + esc(c.name) + '</td>' +
+        '<td class="sum">' + testCaseCell(c) + '</td>' +
         '<td class="cat">' + esc(c.category) + '</td>' +
         '<td>' + nowBadge(cs) + '</td>' +
         '<td class="branch">' + branchCell(c) + '</td>' +

@@ -209,6 +209,45 @@ function readCurrent() {
     return classify(err) || 'Uncategorized';
   }
 
+  // ---- Resolve a fix-branch target to the SAME weekly report's native test, so the tab can
+  // deep-link the "Test case" into Categories/Suites for fast debugging. The Allure route id
+  // is the test-case uid (== data/test-cases/<uid>.json == the suites/categories tree leaf
+  // uid == what "#categories/<uid>" / "#suites/<uid>" navigate to). Many targets carry no
+  // tcId, so match by tcId first then by exact test name / title. Prefer the Categories route
+  // when the test is in a category; else fall back to Suites (contains every test) so the link
+  // is never dead. Also surfaces the native category to fill our 'Uncategorized' gaps. ----
+  function stripTcPrefix(s) { return str(s).replace(/^\s*(TC\.[-\w.]+|CRM-\d+[\w.]*)\s*:\s*/, ''); }
+  const recByName = {}, recBySecName = {};
+  function upsertRec(map, key, r) {
+    if (!key) return;
+    if (!map[key] || (RED[r.status] && !RED[map[key].status])) map[key] = r;   // red-preferred
+  }
+  // Index each weekly record under BOTH its full name AND its tcId-stripped name (and the
+  // same section-scoped), so a target carrying only a stripped title (no tcId) still matches
+  // a "TC.x: title" weekly record, and vice-versa.
+  Object.keys(cur.byKey).forEach(function (k) {
+    const r = cur.byKey[k];
+    if (!r.name) return;
+    const bare = stripTcPrefix(r.name), sec = str(r.section);
+    upsertRec(recByName, r.name, r);
+    upsertRec(recByName, bare, r);
+    upsertRec(recBySecName, sec + '||' + r.name, r);
+    upsertRec(recBySecName, sec + '||' + bare, r);
+  });
+  // Match by tcId first; else by SECTION+name (guards against two suites sharing a title),
+  // then fall back to name-only. Both the target title and the index keys are tried raw and
+  // tcId-stripped. uid resolves the same-report Allure route.
+  function resolveNative(section, tcId, title) {
+    const t = str(title), sec = str(section), bt = stripTcPrefix(t);
+    const r = (tcId && curByTcId[tcId]) ||
+              recBySecName[sec + '||' + t] || recBySecName[sec + '||' + bt] ||
+              recByName[t] || recByName[bt] ||
+              recByName[(tcId ? tcId + ': ' : '') + t] || null;
+    if (!r || !r.uid) return { uid: '', route: '', nativeCategory: '' };
+    const inCat = r.category && r.category !== 'Uncategorized';
+    return { uid: r.uid, route: (inCat ? 'categories/' : 'suites/') + r.uid, nativeCategory: r.category || '' };
+  }
+
   // ---- "Failures this week" = ALL target specs across the week's CRM_Rerun_* fix branches
   // (crm-fix-branches.json), counted PER BRANCH. RESOLVED = branch status 'passed' or 'async-ok'
   // (deferred re-check confirmed = a pass, per team rule). ----
@@ -219,18 +258,24 @@ function readCurrent() {
   branches.forEach(function (b) {
     (b.tests || []).forEach(function (t, ti) {
       const tcId = str(t.tcId);
+      const title = str(t.title);
+      const nat = resolveNative(t.section, tcId, title);
+      let cat = categoryFor(tcId, t.error);
+      if ((!cat || cat === 'Uncategorized') && nat.nativeCategory && nat.nativeCategory !== 'Uncategorized') cat = nat.nativeCategory;
       targets.push({
-        key: b.jobName + '::' + ti + '::' + (tcId || str(t.title)),
+        key: b.jobName + '::' + ti + '::' + (tcId || title),
         section: str(t.section) || 'Other',
-        name: (tcId ? tcId + ': ' : '') + str(t.title),
+        name: (tcId ? tcId + ': ' : '') + title,
         status: str(t.status).toLowerCase(),
-        category: categoryFor(tcId, t.error),
+        category: cat,
         error: str(t.error),
         branch: b.jobName,
         branchRef: str(b.branch),
         build: b.build,
         buildUrl: str(b.buildUrl),
         runDate: str(b.date),
+        uid: nat.uid,
+        route: nat.route,
       });
     });
   });
