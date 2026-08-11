@@ -116,6 +116,10 @@
       W + ' .crm-fct-empty{opacity:.6;font-size:14px;padding:20px 0;}' +
       // category bars (mirror the Allure "Categories" widget: name + red count bar)
       W + ' .crm-fct-bars{margin:2px 0 14px;}' +
+      W + ' .crm-fct-bars-click{cursor:pointer;border-radius:7px;margin:2px -8px 12px;padding:4px 8px;transition:background .1s;}' +
+      W + ' .crm-fct-bars-click:hover{background:rgba(75,107,251,.08);}' +
+      W + ' .crm-fct-bars-click .crm-fct-bbar{transition:filter .1s;}' +
+      W + ' .crm-fct-bars-click:hover .crm-fct-bbar{filter:brightness(1.07);}' +
       W + ' .crm-fct-brow{display:flex;align-items:center;gap:12px;margin:7px 0;}' +
       W + ' .crm-fct-bname{flex:0 0 40%;max-width:40%;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}' +
       W + ' .crm-fct-btrack{flex:1;min-width:60px;background:rgba(127,127,127,.14);border-radius:5px;height:24px;overflow:hidden;}' +
@@ -263,11 +267,15 @@
       .map(function (k) { return { name: k, count: by[k] }; });
   }
   // Render a category breakdown as the Allure "Categories" widget does: name + a red
-  // count bar (width proportional to the largest count).
-  function catBars(cats) {
+  // count bar (width proportional to the largest count). When listId is given, the whole
+  // bars block becomes a click target that opens the matching case list (wired in wire()),
+  // so a user can click the bug/bar itself — not only the "Show the N case(s)" text.
+  function catBars(cats, listId) {
     if (!cats || !cats.length) return '<div class="crm-fct-empty">No categories.</div>';
     var max = cats.reduce(function (m, c) { return Math.max(m, c.count); }, 0) || 1;
-    return '<div class="crm-fct-bars">' + cats.map(function (c) {
+    var cls = 'crm-fct-bars' + (listId ? ' crm-fct-bars-click' : '');
+    var attr = listId ? ' data-target="' + listId + '" title="Click to show/hide the case(s)"' : '';
+    return '<div class="' + cls + '"' + attr + '>' + cats.map(function (c) {
       var w = Math.max(8, Math.round((c.count / max) * 100));
       return '<div class="crm-fct-brow">' +
         '<div class="crm-fct-bname" title="' + esc(c.name) + '">' + esc(c.name) + '</div>' +
@@ -333,7 +341,7 @@
   function catCardCompact(title, countLabel, cats, cases, statusByKey, listId, toggleLabel, emptyMsg) {
     return '<div class="widget island crm-fct-catcard">' +
       '<div class="crm-fct-h">' + esc(title) + '<span class="n">' + esc(countLabel) + '</span></div>' +
-      catBars(cats) +
+      catBars(cats, listId) +
       caseList(cases, statusByKey, listId, toggleLabel, emptyMsg) +
     '</div>';
   }
@@ -585,6 +593,21 @@
         if (!w) return;
         tg.classList.toggle('open');
         w.classList.toggle('open');
+      });
+    });
+    // Clicking a category bar (the "bug") opens/closes its case list too, kept in sync
+    // with the text toggle's caret, and scrolls the list into view when opening.
+    Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-bars-click'), function (bars) {
+      bars.addEventListener('click', function () {
+        var id = bars.getAttribute('data-target');
+        if (!id) return;
+        var w = panel.querySelector('#' + id);
+        if (!w) return;
+        var open = !w.classList.contains('open');
+        w.classList.toggle('open', open);
+        var tg = panel.querySelector('.crm-fct-toggle[data-target="' + id + '"]');
+        if (tg) tg.classList.toggle('open', open);
+        if (open && w.scrollIntoView) { try { w.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (e) {} }
       });
     });
     Array.prototype.forEach.call(panel.querySelectorAll('.crm-fct-slot'), function (slot) {
