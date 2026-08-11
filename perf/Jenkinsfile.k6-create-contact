@@ -1,0 +1,104 @@
+// Jenkins pipeline: k6 CREATE-CONTACT scaling load test (Odoo JSON-RPC).
+// Concurrent res.partner create(); every record bulk-deleted in teardown by admin.
+// Runs as admin (CREATE_AS=admin) since a sales user may lack res.partner create rights.
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.k6-create-contact.
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'LEVELS',   defaultValue: '10,30,50,100', description: 'Comma list of concurrency levels (simultaneous users), in order.')
+        string(name: 'LOOPS',    defaultValue: '1',    description: 'Contacts created per user per level.')
+        string(name: 'GAP_S',    defaultValue: '30',   description: 'Seconds between bursts (server recovery).')
+        string(name: 'BASE_URL', defaultValue: 'https://pre-production.nakivo.site', description: 'Pre-prod base URL (HTTPS).')
+        string(name: 'MAP_IP',   defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to. Blank to disable.')
+        string(name: 'P95_MS',   defaultValue: '20000', description: 'Per-level create() p95 gate in ms.')
+        string(name: 'INFLUX_URL', defaultValue: 'http://10.8.81.44:8086/k6', description: 'InfluxDB v1 URL for the Grafana report. Tagged testid=create-contact-scale + build. Blank = do not stream.')
+    }
+
+    environment { K6_DIR = 'C:\\tools\\k6'; REPORT_DIR = 'perf\\k6\\report' }
+    options { timestamps(); timeout(time: 45, unit: 'MINUTES') }
+
+    stages {
+        stage('Checkout') { steps { bat 'git config --global core.longpaths true'; checkout scm } }
+
+        stage('Resolve config') {
+            steps {
+                script {
+                    env.EFF_LEVELS   = (params.LEVELS?.trim()) ?: '10,30,50,100'
+                    env.EFF_LOOPS    = (params.LOOPS?.trim()) ?: '1'
+                    env.EFF_GAP_S    = (params.GAP_S?.trim()) ?: '30'
+                    env.EFF_BASE_URL = (params.BASE_URL?.trim()) ?: 'https://pre-production.nakivo.site'
+                    env.EFF_MAP_IP   = (params.MAP_IP != null) ? params.MAP_IP.trim() : '10.220.222.100'
+                    env.EFF_P95_MS   = (params.P95_MS?.trim()) ?: '20000'
+                    env.EFF_RUN_ID   = 'j' + env.BUILD_NUMBER
+                    echo "Effective -> LEVELS=${env.EFF_LEVELS} | GAP_S=${env.EFF_GAP_S} | RUN_ID=${env.EFF_RUN_ID} | P95_MS=${env.EFF_P95_MS}"
+
+                    env.INFLUX_ARGS = ''
+                    def influx = (params.INFLUX_URL?.trim()) ?: ''
+                    if (influx) {
+                        def hostport = influx.replaceFirst(/^https?:\/\//, '').split('/')[0]
+                        def parts = hostport.split(':'); def h = parts[0]; def p = (parts.length > 1 && parts[1]) ? parts[1] : '8086'
+                        def rc = powershell(returnStatus: true, script: "if (Test-NetConnection -ComputerName '${h}' -Port ${p} -InformationLevel Quiet -WarningAction SilentlyContinue) { exit 0 } else { exit 1 }")
+                        if (rc == 0) { env.INFLUX_ARGS = "-o influxdb=${influx}"; echo "InfluxDB reachable -> streaming (testid=create-contact-scale, build=${env.BUILD_NUMBER})." }
+                        else { echo "WARNING: InfluxDB ${influx} unreachable; skipping InfluxDB output. HTML report still produced." }
+                    }
+                }
+            }
+        }
+
+        stage('Route pre-check (VPN to pre-prod)') {
+            steps {
+                powershell '''
+                    $ip = $env:EFF_MAP_IP
+                    if (-not $ip) { try { $ip = ([uri]$env:EFF_BASE_URL).Host } catch { $ip = "" } }
+                    if (-not $ip) { $ip = "10.220.222.100" }
+                    Write-Host "Probing pre-prod route to ${ip}:443 ..."
+                    $ok = Test-NetConnection -ComputerName $ip -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
+                    if (-not $ok) { Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:443). Is the VPN up on the agent?"; exit 1 }
+                    Write-Host "Route OK (${ip}:443 reachable)."
+                '''
+            }
+        }
+
+        stage('Ensure k6') { steps { bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\k6\\ensure-k6.ps1' } }
+
+        stage('Run k6 create-contact scaling test') {
+            steps {
+                bat 'if not exist %REPORT_DIR% mkdir %REPORT_DIR%'
+                withCredentials([usernamePassword(credentialsId: 'crm-admin-preprod', usernameVariable: 'ADMIN_USER', passwordVariable: 'ADMIN_PASS')]) {
+                    bat '''
+                        set "PATH=%K6_DIR%;%PATH%"
+                        k6 run ^
+                            %INFLUX_ARGS% ^
+                            --tag testid=create-contact-scale ^
+                            --tag build=%BUILD_NUMBER% ^
+                            -e BASE_URL=%EFF_BASE_URL% ^
+                            -e MAP_IP=%EFF_MAP_IP% ^
+                            -e LEVELS=%EFF_LEVELS% ^
+                            -e LOOPS=%EFF_LOOPS% ^
+                            -e GAP_S=%EFF_GAP_S% ^
+                            -e P95_MS=%EFF_P95_MS% ^
+                            -e RUN_ID=%EFF_RUN_ID% ^
+                            -e MODEL=res.partner ^
+                            -e VALS_FILE=vals-contact.json ^
+                            -e LABEL=create-contact ^
+                            -e CREATE_AS=admin ^
+                            -e ADMIN_USER=%ADMIN_USER% ^
+                            -e ADMIN_PASS=%ADMIN_PASS% ^
+                            --summary-export=%REPORT_DIR%\\summary-export.json ^
+                            --out json=%REPORT_DIR%\\raw-metrics.json ^
+                            perf\\k6\\create-record-scale.js
+                    '''
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([allowMissing: true, alwaysLinkToLastBuild: true, keepAll: true,
+                reportDir: 'perf/k6/report', reportFiles: 'index.html', reportName: 'k6-CreateContact-Scale'])
+            archiveArtifacts artifacts: 'perf/k6/report/**', allowEmptyArchive: true
+        }
+    }
+}
