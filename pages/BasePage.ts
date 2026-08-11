@@ -342,6 +342,50 @@ await newPage.close();
   }
 
   /**
+   * A generic "blocking popup" locator: a modal dialog (UserError / ValidationError - e.g. the
+   * "Please fill in all necessary fields in 'Qualification info'..." message) OR a sticky
+   * notification / toast. Broader than errorDialog() (which only matches client/server-error text).
+   */
+  private blockingPopupNodes() {
+    return this.page.locator('.modal.show, .modal.in, .o_dialog, .o_dialog_warning, .o_error_dialog, .o_technical_modal, .o_notification');
+  }
+
+  /**
+   * Return the trimmed visible text of the first blocking popup (validation modal or notification),
+   * or '' if none appears within `timeout`. Use to DETECT - or to assert the ABSENCE of - the
+   * Qualification-info validation on opportunity stage changes / contact merges (CRM-12059).
+   * @param timeout - how long to wait for a popup to appear (default: waitTimes.extraLong)
+   */
+  async getBlockingPopupText(timeout: number = CommonUtils.waitTimes.extraLong): Promise<string> {
+    const nodes = this.blockingPopupNodes();
+    const appeared = await nodes.first().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!appeared) return '';
+    const count = await nodes.count();
+    for (let i = 0; i < count; i++) {
+      const el = nodes.nth(i);
+      if (!(await el.isVisible().catch(() => false))) continue;
+      const txt = ((await el.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (txt) return txt;
+    }
+    return '';
+  }
+
+  /**
+   * Dismiss a visible blocking popup by clicking its Ok / Close / Discard / Cancel button
+   * (best-effort; no-op if none is present).
+   */
+  async dismissBlockingPopup(): Promise<void> {
+    const btn = this.page
+      .locator('.modal.show .modal-footer button, .o_dialog .modal-footer button, .o_error_dialog button, .o_dialog_warning button')
+      .filter({ hasText: /Ok|OK|Close|Discard|Cancel/i })
+      .first();
+    if (await btn.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+      await btn.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+  }
+
+  /**
    * Dismiss the "record has been modified" discard-changes dialog if it appears.
    * Handles: "The record has been modified, your changes will be discarded. Do you want to proceed?"
    * @param timeout - Maximum time to wait for the dialog to appear (default: 3000ms)

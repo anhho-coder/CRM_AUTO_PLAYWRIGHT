@@ -1491,6 +1491,24 @@ export class ContactPage extends BasePage {
   }
 
   /**
+   * Read the "Opportunities" smart-button count on the currently-open Contact (res.partner) form.
+   * Returns 0 if the stat button is absent. Used by CRM-12059_1.4 to require a destination contact
+   * that has MULTIPLE (high-stage) opportunities.
+   */
+  async getOpportunityStatCount(): Promise<number> {
+    const btn = this.page
+      .locator("xpath=//button[contains(@class,'oe_stat_button')][.//*[contains(normalize-space(),'Opportunit')]]")
+      .first();
+    const visible = await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    if (!visible) return 0;
+    const txt = ((await btn.innerText().catch(() => '')) || '').replace(/\s+/g, ' ');
+    const m = txt.match(/(\d[\d,]*)/);
+    const count = m ? parseInt(m[1].replace(/,/g, ''), 10) : 0;
+    console.log(`  - Contact "Opportunities" stat-button count: ${count}`);
+    return count;
+  }
+
+  /**
    * Cancel / close the merge wizard WITHOUT merging.
    */
   async cancelMergeWizard(): Promise<void> {
@@ -1520,6 +1538,30 @@ export class ContactPage extends BasePage {
     }
     console.log(`  - Rows with exact Name "${name}": ${matches} of ${total}`);
     return matches;
+  }
+
+  /**
+   * Poll (re-search + exact-name count) until the number of contacts whose Name equals `name`
+   * reaches `expected`, or attempts run out. Returns the last observed count. Absorbs the small
+   * post-merge lag where the source contact's unlink hasn't propagated to the search index yet
+   * (the merge wizard closes slightly before the source disappears from search results).
+   */
+  async waitForExactNameCount(
+    name: string,
+    expected: number,
+    attempts: number = 6,
+    interval: number = CommonUtils.waitTimes.searchOppWait
+  ): Promise<number> {
+    let count = -1;
+    for (let a = 1; a <= attempts; a++) {
+      await this.openContactsList();
+      await this.searchContactsByName(name);
+      count = await this.countRowsWithExactName(name);
+      if (count === expected) return count;
+      console.log(`  - waitForExactNameCount("${name}") = ${count}, want ${expected} (attempt ${a}/${attempts})`);
+      if (a < attempts) await this.wait(interval);
+    }
+    return count;
   }
 
   /**
