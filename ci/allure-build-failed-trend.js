@@ -227,6 +227,10 @@ function readCurrent() {
         category: categoryFor(tcId, t.error),
         error: str(t.error),
         branch: b.jobName,
+        branchRef: str(b.branch),
+        build: b.build,
+        buildUrl: str(b.buildUrl),
+        runDate: str(b.date),
       });
     });
   });

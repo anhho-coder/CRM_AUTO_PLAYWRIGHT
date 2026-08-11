@@ -138,6 +138,10 @@
         'background:rgba(47,126,216,.12);color:#2f6fb0;border:1px solid rgba(47,126,216,.28);white-space:nowrap;}' +
       W + ' .crm-fct-tbl td.sum{min-width:250px;max-width:420px;font-weight:600;}' +
       W + ' .crm-fct-tbl td.cat{white-space:nowrap;font-size:12.5px;opacity:.9;}' +
+      W + ' .crm-fct-tbl td.branch{font-size:12.5px;min-width:150px;}' +
+      W + ' .crm-fct-tbl td.branch .crm-fct-bmeta{opacity:.6;font-weight:400;font-variant-numeric:tabular-nums;}' +
+      W + ' .crm-fct-tbl a{color:#4b6bfb;text-decoration:none;font-weight:600;white-space:nowrap;}' +
+      W + ' .crm-fct-tbl a:hover{text-decoration:underline;}' +
       W + ' .crm-fct-tbl td.err code{font-family:Menlo,Consolas,"Courier New",monospace;font-size:12px;color:#c0392b;' +
         'background:rgba(217,83,79,.08);padding:1px 4px;border-radius:4px;white-space:pre-wrap;word-break:break-word;}' +
       W + ' .crm-fct-tbl td.err{min-width:220px;max-width:420px;}' +
@@ -285,8 +289,23 @@
   // re-check confirmed it ('async-ok', treated as a pass).
   function isResolved(cs) { return cs === 'passed' || cs === 'async-ok'; }
 
-  // Collapsible case list with a Now (current-state) column. Used by both category
-  // boxes: this week's failures (all fix-branch targets) and the unresolved remainder.
+  // The verification branch (CRM_Rerun_* job) a target came from, and a link to the exact
+  // build — so an unfixed case in "Current status" says WHICH branch it's still failing on.
+  function branchCell(c) {
+    if (!c.branch) return '<span class="crm-ff-todo">—</span>';
+    var sub = (c.build != null && c.build !== '') ? '<br><span class="crm-fct-bmeta">build #' + esc(c.build) +
+      (c.runDate ? ' &middot; ' + esc(c.runDate) : '') + '</span>' : '';
+    return esc(c.branch) + sub;
+  }
+  function buildLinkCell(c) {
+    return c.buildUrl
+      ? '<a href="' + esc(c.buildUrl) + '" target="_blank" rel="noopener">open build ↗</a>'
+      : '<span class="crm-ff-todo">—</span>';
+  }
+
+  // Collapsible case list with a Now (current-state) column + the fix branch / build it is
+  // still failing on. Used by both category boxes: this week's failures (all fix-branch
+  // targets) and the unresolved remainder ("Current status").
   function caseList(cases, statusByKey, listId, toggleLabel, emptyMsg) {
     cases = cases || [];
     var rows = cases.map(function (c, i) {
@@ -297,13 +316,15 @@
         '<td class="sum">' + esc(c.name) + '</td>' +
         '<td class="cat">' + esc(c.category) + '</td>' +
         '<td>' + nowBadge(cs) + '</td>' +
+        '<td class="branch">' + branchCell(c) + '</td>' +
+        '<td>' + buildLinkCell(c) + '</td>' +
         '<td class="err">' + errCell(c.error) + '</td>' +
       '</tr>';
     }).join('');
-    if (!cases.length) rows = '<tr><td colspan="6" class="crm-fct-empty">' + esc(emptyMsg || 'None.') + '</td></tr>';
+    if (!cases.length) rows = '<tr><td colspan="8" class="crm-fct-empty">' + esc(emptyMsg || 'None.') + '</td></tr>';
     return '<div class="crm-fct-toggle" data-target="' + listId + '"><span class="caret">▶</span>' + esc(toggleLabel) + '</div>' +
            '<div class="crm-fct-listwrap" id="' + listId + '"><table class="crm-fct-tbl"><thead><tr>' +
-             '<th class="num">#</th><th>Section</th><th>Test case</th><th>Category</th><th>Now</th><th>Error</th>' +
+             '<th class="num">#</th><th>Section</th><th>Test case</th><th>Category</th><th>Now</th><th>Branch</th><th>Build</th><th>Error</th>' +
            '</tr></thead><tbody>' + rows + '</tbody></table></div>';
   }
 
