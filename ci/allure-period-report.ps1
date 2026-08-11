@@ -296,11 +296,13 @@ node (Join-Path $Workspace 'ci\allure-inject-categories-live-card.js') $reportDi
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: categories-live-card injection returned $LASTEXITCODE (continuing)." }
 
 # ---- Add the "Fix failed cases" Overview card (WEEKLY report only) ----
-# Full-width table of the failed cases the team is fixing / has fixed this week.
-# Data is the committed source ci\crm-fix-failed-cases.json (hand-maintained; NOT
-# derived from the run) -> copied/normalized into <reportDir>\crm-fix-failed.json.
+# Full-width table of the failed cases the team fixed in THIS report's week. Data is the
+# committed PER-WEEK source ci\crm-fix-failed-cases.<periodKey>.json (hand-maintained; NOT
+# derived from the run), so each week's report shows only its own fixes (no cross-week
+# leak) -> normalized into <reportDir>\crm-fix-failed.json. Pass $periodKey so the builder
+# picks the matching week's file.
 if ($Scope -eq 'weekly') {
-    node (Join-Path $Workspace 'ci\allure-build-fix-failed.js') $reportDir $Scope
+    node (Join-Path $Workspace 'ci\allure-build-fix-failed.js') $reportDir "$periodKey" $Scope
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed build returned $LASTEXITCODE (continuing)." }
     node (Join-Path $Workspace 'ci\allure-inject-fix-failed-card.js') $reportDir
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: fix-failed-card injection returned $LASTEXITCODE (continuing)." }

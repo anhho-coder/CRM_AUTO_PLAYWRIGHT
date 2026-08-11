@@ -1,7 +1,7 @@
 {
-  "_readme": "Data source for the WEEKLY Allure Overview card 'Fix failed cases'. Each object is one failed test case from the weekly run that is being fixed / already fixed. Fields: section (suite, e.g. O12_CE_to_O12_CC), summary (full test title 'TC-ID: title'), error (the failing assertion/message), foundDate + fixDate (ISO yyyy-mm-dd; leave fixDate empty '' while still in progress), solution (what fixed it). Add/edit rows here; the weekly job copies this into the report as crm-fix-failed.json. Errors/solutions left '' render as a 'to fill' placeholder.",
+  "_readme": "PER-WEEK data source for the WEEKLY Allure 'Fix failed cases' card. Filename MUST be crm-fix-failed-cases.<periodKey>.json (this one = 2026-W32); the weekly job reads ONLY the file matching the report's ISO week, so each week shows just its own fixes. To record a new week's fixes, COPY this file to the new periodKey name and edit its cases. Each object is one failed test case fixed that week. Fields: section (suite, e.g. O12_CE_to_O12_CC), summary (full test title 'TC-ID: title'), error (the failing assertion/message), foundDate + fixDate (ISO yyyy-mm-dd; leave fixDate empty '' while still in progress), solution (what fixed it). Errors/solutions left '' render as a 'to fill' placeholder.",
   "period": "weekly",
-  "week": "2026-W31",
+  "week": "2026-W32",
   "cases": [
     {
       "section": "O12_CE_to_O12_CC",
