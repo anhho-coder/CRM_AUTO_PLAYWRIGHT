@@ -42,6 +42,23 @@ export class QuotationPage extends BasePage {
     this.page.locator("xpath=//div[@name='partner_id']//input").or(this.page.locator("div[name='partner_id'] input")).first();
   private readonly m2oAutocompleteOptions = () =>
     this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+  // End User (partner_end_user_id) many2one on a NEW Quotation form (CRM-4383 guard test).
+  private readonly endUserInput = () =>
+    this.page.locator("xpath=//div[@name='partner_end_user_id']//input").first();
+
+  // --- CRM-4383: Quotations LIST view toolbar - CREATE / IMPORT buttons ---
+  // Scoped to the list control panel and excluding any modal (mirrors the LeadPage pattern), so the
+  // check is not fooled by a "Create" button that lives inside a dialog elsewhere on the page.
+  private readonly listCreateButton = () =>
+    this.page.locator(
+      'xpath=//div[contains(@class,"o_control_panel")]//button[contains(@class,"o_list_button_add")] | //div[contains(@class,"o_control_panel")]//button[(normalize-space()="CREATE" or normalize-space()="Create") and not(ancestor::div[contains(@class,"modal")])]'
+    ).first();
+  private readonly listImportButton = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_control_panel")]//button[normalize-space()="IMPORT" or normalize-space()="Import"]').first();
+  // A rendered Quotations list screen shows either the list table (with/without rows) or Odoo's
+  // "no content" helper (an Opportunity with zero quotations) - both count as "the list opened".
+  private readonly listViewRoot = () => this.page.locator('.o_list_view, .o_list_table, .o_view_nocontent').first();
+  private readonly listDataRows = () => this.page.locator('.o_list_view tbody tr.o_data_row, .o_list_table tbody tr.o_data_row');
 
   constructor(page: Page) {
     super(page);
@@ -1005,5 +1022,139 @@ export class QuotationPage extends BasePage {
       .filter(Boolean);
     console.log(`  - Customer options for "${searchText}" (${opts.length}): ${JSON.stringify(opts)}`);
     return opts;
+  }
+
+  // ─── CRM-4383: Quotations LIST view (Create-button visibility) ───────────────────────────────
+  /**
+   * Deep-link to a Quotations (sale.order) LIST view and wait until the list screen is ready.
+   * Hash-route + reload pattern (this Odoo web client is hash-routed). Defaults to
+   * Sales ▸ Orders ▸ Quotations (action 344 / menu 202). Pass another action to reach a different
+   * Quotations screen - 345 = CRM ▸ Sales ▸ My Quotations, 364 = an Opportunity's Quotations
+   * (that action's domain is scoped by active_id, so pass the Opportunity id as activeId).
+   * @returns whether the list view rendered (control panel + list table visible).
+   */
+  async openQuotationsList(opts: { action?: number; menuId?: number; activeId?: number | string } = {}): Promise<boolean> {
+    const action = opts.action ?? 344;
+    const menuId = opts.menuId ?? 202;
+    const origin = new URL(this.page.url()).origin;
+    const activePart = opts.activeId !== undefined ? `&active_id=${opts.activeId}` : '';
+    const url = `${origin}/web#action=${action}&model=sale.order&view_type=list&menu_id=${menuId}${activePart}`;
+    console.log(`  - Opening Quotations list: ${url}`);
+    await this.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    return this.waitForQuotationsListReady();
+  }
+
+  /** Wait for the Quotations list screen (control panel + list table) to settle; returns list visibility. */
+  async waitForQuotationsListReady(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<boolean> {
+    await this.page.locator('.o_control_panel').first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await CommonUtils.waitForSpinnersToHide(this.page).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    const ready = await this.listViewRoot().isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false);
+    console.log(`  - Quotations list ready = ${ready}`);
+    return ready;
+  }
+
+  /**
+   * Is the list-view CREATE button visible? (the CRM-4383 assertion target). Call AFTER
+   * waitForQuotationsListReady() so the control panel/toolbar is fully rendered; this then waits only
+   * a short `timeout` for the button, so a `false` (the fix in effect) is returned promptly rather
+   * than blocking for minutes, while a genuinely-present button still appears within the window.
+   */
+  async isListCreateButtonVisible(timeout: number = CommonUtils.waitTimes.extraLong): Promise<boolean> {
+    const visible = await this.listCreateButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - list CREATE button visible = ${visible}`);
+    return visible;
+  }
+
+  /** Is the list-view IMPORT button visible? (Import is hidden together with Create by the same fix.) */
+  async isListImportButtonVisible(timeout: number = CommonUtils.waitTimes.extraLong): Promise<boolean> {
+    const visible = await this.listImportButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - list IMPORT button visible = ${visible}`);
+    return visible;
+  }
+
+  /** Number of data rows in the Quotations list (0 when empty / "no content" helper). */
+  async getQuotationsListRowCount(): Promise<number> {
+    const n = await this.listDataRows().count().catch(() => 0);
+    console.log(`  - Quotations list row count = ${n}`);
+    return n;
+  }
+
+  /**
+   * On a NEW Quotation form, set the Customer (partner_id) to the first REAL autocomplete match for
+   * `searchText` (skipping the "Create ..."/"Create and Edit" entries). Setting a Customer satisfies
+   * the client-side required-field check so a subsequent SAVE actually reaches the server-side guard
+   * that blocks quotations not started from an Opportunity (CRM-4383). Returns the chosen name.
+   */
+  async selectCustomerOnNewQuotation(searchText: string): Promise<string> {
+    const input = this.customerInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+    const options = this.m2oAutocompleteOptions();
+    await options.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const count = await options.count();
+    const entries: Array<{ i: number; txt: string }> = [];
+    for (let i = 0; i < count; i++) {
+      const txt = ((await options.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (!txt || /^create\b/i.test(txt)) continue; // skip "Create ..." / "Create and Edit"
+      entries.push({ i, txt });
+    }
+    // Prefer a COMPANY (an option with no email in its label): selecting a company auto-fills the
+    // End User / Invoice / Delivery addresses on this form, so only Payment Terms is left to set before
+    // the SAVE can reach the server-side Opportunity guard. Fall back to the first real option.
+    const pick = entries.find((e) => !/@/.test(e.txt)) ?? entries[0];
+    let chosen = '';
+    if (pick) {
+      chosen = pick.txt;
+      await options.nth(pick.i).click();
+    }
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log(`  - Selected Customer "${chosen}" for the new (non-Opp) quotation`);
+    return chosen;
+  }
+
+  /**
+   * Set the End User (partner_end_user_id) on a NEW Quotation form to the first REAL match for
+   * `searchText`. Some customers do not auto-fill the End User, which stays required - setting it
+   * explicitly lets the SAVE pass client validation and reach the server-side Opportunity guard.
+   * Returns the chosen name, or '' if the field is not present.
+   */
+  async setEndUserOnNewQuotation(searchText: string): Promise<string> {
+    const input = this.endUserInput();
+    const present = await input.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    if (!present) {
+      console.log('  - End User field not present on this form');
+      return '';
+    }
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+    const options = this.m2oAutocompleteOptions();
+    await options.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const count = await options.count();
+    let chosen = '';
+    for (let i = 0; i < count; i++) {
+      const txt = ((await options.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (!txt || /^create\b/i.test(txt)) continue;
+      chosen = txt;
+      await options.nth(i).click();
+      break;
+    }
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log(`  - Selected End User "${chosen}"`);
+    return chosen;
+  }
+
+  /** Click SAVE on the current Quotation form. Does NOT assert success - used to trigger the guard. */
+  async clickSaveButton(): Promise<void> {
+    await this.saveButton().click();
   }
 }
