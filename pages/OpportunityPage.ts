@@ -1064,6 +1064,24 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Return the name of the currently-active (highlighted) Stage on the Opp status bar, e.g. "New".
+   * Used to assert an Opp did NOT advance when a stage change is blocked (CRM-12059 regression).
+   */
+  async getActiveStageName(): Promise<string> {
+    const active = this.page.locator('.o_statusbar_status .btn-primary, .o_statusbar_status .o_arrow_button_current').first();
+    return ((await active.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Return the full status-bar text (all stage labels, incl. the MORE dropdown toggle), e.g.
+   * "MORE LOST ACTIVATED ... NEW". Used to check whether a pipeline includes a given stage
+   * (CRM-12059 - the "Activated" stage only exists in the reseller/partner funnel).
+   */
+  async getStatusBarText(): Promise<string> {
+    return ((await this.page.locator('.o_statusbar_status').first().innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Get tags text
    * @returns The tags text content as a string
    */
@@ -2348,6 +2366,51 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Open the record at 0-based `index` in the current list (click its first data cell) and wait for
+   * the form view. Used to scan list records - e.g. iterate Activated Opps looking for a suitable
+   * customer (CRM-12059 historical-merge discovery).
+   */
+  async openListRowByIndex(index: number): Promise<void> {
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    const cell = this.page
+      .locator(`xpath=(//tr[contains(@class,'o_data_row')])[${index + 1}]//td[contains(@class,'o_data_cell')][1]`)
+      .first();
+    await cell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await cell.click();
+    await this.waitForURL('**view_type=form**', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Opened list record at index ${index}`);
+  }
+
+  /**
+   * Open the LEAD/OPP (crm.lead) at 0-based `index` in the current list, robustly. The Archive>All
+   * list often renders the first cell as a PARTNER m2o link, so clicking it navigates to the
+   * res.partner instead of the lead. This clicks the first PLAIN (non-link) data cell of the row so
+   * the crm.lead form opens. Returns true only if a crm.lead form loaded (url model=crm.lead).
+   */
+  async openListLeadByIndex(index: number): Promise<boolean> {
+    await CommonUtils.waitForSpinnersToHide(this.page, CommonUtils.waitTimes.medium, CommonUtils.waitTimes.savingPage).catch(() => {});
+    const row = this.page.locator(`xpath=(//tr[contains(@class,'o_data_row')])[${index + 1}]`).first();
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const cells = row.locator('td.o_data_cell');
+    const n = await cells.count();
+    let clicked = false;
+    for (let j = 0; j < n; j++) {
+      const cell = cells.nth(j);
+      const hasLink = (await cell.locator('a').count()) > 0;
+      if (!hasLink) { await cell.click(); clicked = true; break; }
+    }
+    if (!clicked && n > 0) await cells.first().click();
+    await this.waitForURL('**view_type=form**', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const isLead = /model=crm\.lead/.test(this.page.url());
+    console.log(`  ✓ Opened list row ${index} (crm.lead=${isLead})`);
+    return isLead;
+  }
+
+  /**
    * Open the "Action" dropdown on a record FORM (detail/control-panel) so its options can be read.
    */
   async clickFormActionMenu(): Promise<void> {
@@ -2700,6 +2763,32 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   async fillQualInfoRequirement(value: string)    { await this.fillInfoTextField(this.qualInfoRequirementInput, value); }
   async fillQualInfoCurrentSolution(value: string){ await this.fillMany2OneField(this.qualInfoCurrentSolutionInput, value); }
   async fillQualInfoCompetitor(value: string)     { await this.fillMany2OneField(this.qualInfoCompetitorInput, value); }
+
+  /**
+   * Whether the Qualification info tab is EMPTY (key fields blank). Call with the Qualification
+   * info tab OPEN in EDIT mode. Reads Use case(s), Requirement(s), Current solution, Competitor,
+   * Number of socket and Licensing Model; returns true when all are blank. Used by CRM-12059 to
+   * pre-verify a historical Opp has NO qualification data (so an attempted move to Stage>=Activated
+   * is safely BLOCKED and never persists).
+   */
+  async isQualificationInfoEmpty(): Promise<boolean> {
+    const readVal = async (loc: () => import('@playwright/test').Locator): Promise<string> => {
+      try { return ((await loc().inputValue({ timeout: CommonUtils.waitTimes.abnormalWait })) || '').trim(); }
+      catch { return ''; }
+    };
+    const useCase = await readVal(this.qualInfoUseCaseInput);
+    const requirement = await readVal(this.qualInfoRequirementInput);
+    const currentSol = await readVal(this.qualInfoCurrentSolutionInput);
+    const competitor = await readVal(this.qualInfoCompetitorInput);
+    const socket = await readVal(this.qualEnvSocketInput);
+    let licensing = '';
+    try { licensing = ((await this.qualInfoLicensingSelect().inputValue()) || '').trim(); } catch { /* select may be absent */ }
+    console.log(`  - Qual empty check: useCase="${useCase}" requirement="${requirement}" currentSol="${currentSol}" competitor="${competitor}" socket="${socket}" licensing="${licensing}"`);
+    const textBlank = [useCase, requirement, currentSol, competitor].every((v) => v === '');
+    const socketBlank = socket === '' || socket === '0';
+    const licBlank = licensing === '' || /^(false|0)?$/i.test(licensing);
+    return textBlank && socketBlank && licBlank;
+  }
 
   /**
    * Fill the Expected Closing date field
@@ -3163,6 +3252,89 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const count = m ? parseInt(m[1], 10) : 0;
     console.log(`  - Opportunity "Tickets" smart button: "${txt}" -> ${count}`);
     return count;
+  }
+
+  // --- CRM-12060: Customer (partner_id) many2one on the Opp form + autocomplete options ---
+  // The VISIBLE Customer partner_id widget (the opp form also carries a hidden duplicate marked
+  // o_invisible_modifier - exclude it so we type into the real Customer field).
+  private readonly oppCustomerInput = () =>
+    this.page.locator("xpath=//div[@name='partner_id' and not(contains(@class,'o_invisible_modifier'))]//input")
+      .or(this.page.locator("div[name='partner_id']:not(.o_invisible_modifier) input")).first();
+  private readonly oppM2oAutocompleteOptions = () =>
+    this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+  // Kanban quick-create card (opened by CREATE on a partner-scoped crm.lead kanban).
+  private readonly kanbanQuickCreateNameInput = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_kanban_quick_create')]//input[@name='name']").or(this.page.locator('.o_kanban_quick_create input')).first();
+  private readonly kanbanQuickCreateAddButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_kanban_quick_create')]//button[contains(@class,'o_kanban_add') or normalize-space()='Add']").or(this.page.locator('.o_kanban_quick_create button.o_kanban_add')).first();
+  private readonly kanbanRecordByText = (text: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'o_kanban_record')][contains(normalize-space(.),"${text}")]`).first();
+
+  /**
+   * Deep-link to a NEW Opportunity (crm.lead) form and wait for the Opportunity Name input.
+   * Hash-safe (works from any module, unlike navigateToCRM which needs the CRM app link visible).
+   * Action/menu ids are the pre-prod CRM pipeline (action=152, menu_id=111).
+   */
+  async openNewOpportunityFormHashSafe(): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.goto(`${origin}/web#action=152&model=crm.lead&view_type=form&menu_id=111`, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.opportunityNameInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ New Opportunity form opened (Customer field ready)');
+  }
+
+  /**
+   * Quick-create an Opportunity from a kanban: click CREATE (opens the quick-create card), fill the
+   * name, click "Add". When run from a PARTNER-scoped view (contact "Opportunities" smart button),
+   * the new Opp is auto-linked to that partner via the context.
+   */
+  async quickCreateOpportunity(name: string): Promise<void> {
+    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.createButton().click();
+    const input = this.kanbanQuickCreateNameInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(name);
+    await this.wait(CommonUtils.waitTimes.medium);
+    await this.kanbanQuickCreateAddButton().click();
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Quick-created Opportunity "${name}"`);
+  }
+
+  /**
+   * Open a kanban card by its visible text (e.g. the quick-created Opp) and return the record URL.
+   */
+  async openKanbanCardByText(text: string): Promise<string> {
+    const card = this.kanbanRecordByText(text);
+    await card.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await card.click();
+    await this.page.waitForFunction(() => /[#?&]id=\d+/.test(window.location.href), { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const url = this.page.url();
+    console.log(`  - Opened Opportunity card "${text}" -> ${url}`);
+    return url;
+  }
+
+  /**
+   * Type into the Opportunity "Customer" (partner_id) field and return the autocomplete option
+   * texts. Does NOT save the record. Used by CRM-12060_2.3 to confirm partner names OUTSIDE the
+   * merge wizard have no "(#ID)" suffix.
+   * @param searchText - text to type into the Customer field
+   */
+  async getCustomerDropdownOptions(searchText: string): Promise<string[]> {
+    const input = this.oppCustomerInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+    const opts = (await this.oppM2oAutocompleteOptions().allTextContents())
+      .map((o) => o.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    console.log(`  - Opp Customer options for "${searchText}" (${opts.length}): ${JSON.stringify(opts)}`);
+    return opts;
   }
 }
 

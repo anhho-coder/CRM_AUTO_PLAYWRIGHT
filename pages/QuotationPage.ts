@@ -37,6 +37,12 @@ export class QuotationPage extends BasePage {
     this.page.locator('xpath=//button[@name="action_open_subscriptions"]')
       .or(this.page.locator('button[name="action_open_subscriptions"]')).first();
 
+  // --- CRM-12060: Customer (partner_id) many2one on a NEW Quotation + autocomplete options ---
+  private readonly customerInput = () =>
+    this.page.locator("xpath=//div[@name='partner_id']//input").or(this.page.locator("div[name='partner_id'] input")).first();
+  private readonly m2oAutocompleteOptions = () =>
+    this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+
   constructor(page: Page) {
     super(page);
   }
@@ -959,5 +965,45 @@ export class QuotationPage extends BasePage {
   /** Whether the "Subscriptions" smart button is present (confirmed SO with a linked subscription). */
   async hasSubscriptionsSmartButton(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
     return this.subscriptionsSmartButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRM-12060: Customer (partner_id) selector on a NEW Quotation - regression check
+  // that partner names OUTSIDE the merge wizard are shown WITHOUT the "(#ID)" suffix.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Deep-link to a NEW Quotation (sale.order) form and wait for the Customer field.
+   * Hash-route + reload pattern (this Odoo web client is hash-routed); the Customer input's
+   * visibility is the "form ready" signal. Action/menu ids are the pre-prod Quotation action.
+   */
+  async openNewQuotationForm(): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.goto(`${origin}/web#action=344&model=sale.order&view_type=form&menu_id=202`, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.customerInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ New Quotation form opened (Customer field ready)');
+  }
+
+  /**
+   * Type into the Customer (partner_id) field and return the autocomplete option texts.
+   * Does NOT save the quotation.
+   * @param searchText - text to type into the Customer field
+   */
+  async getCustomerDropdownOptions(searchText: string): Promise<string[]> {
+    const input = this.customerInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+    const opts = (await this.m2oAutocompleteOptions().allTextContents())
+      .map((o) => o.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    console.log(`  - Customer options for "${searchText}" (${opts.length}): ${JSON.stringify(opts)}`);
+    return opts;
   }
 }

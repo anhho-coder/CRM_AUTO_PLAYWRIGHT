@@ -144,6 +144,32 @@ export class ContactPage extends BasePage {
   private readonly pricelistInput = () =>
     this.page.locator("xpath=//div[@name='property_product_pricelist']//input").first();
 
+  // --- CRM-12060: manual "Merge Contacts" wizard (base.partner.merge.automatic.wizard) ---
+  // "Merge Contacts" entry inside an OPEN list Action dropdown.
+  private readonly mergeContactsActionOption = () =>
+    this.page.locator("xpath=//div[contains(@class,'dropdown-menu') and contains(@class,'show')]//a[normalize-space()='Merge Contacts']")
+      .or(this.page.locator("xpath=//a[contains(@class,'dropdown-item') and normalize-space()='Merge Contacts']")).first();
+  // The merge wizard modal (identified by its heading text; CSS fallback to the generic modal).
+  private readonly mergeWizardModal = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and .//*[contains(normalize-space(),'Merge the following contacts')]]")
+      .or(this.page.locator('.modal-dialog')).first();
+  // "Destination Contact" many2one input inside the merge wizard.
+  private readonly destinationContactInput = () =>
+    this.page.locator("xpath=//div[@name='dst_partner_id']//input").or(this.page.locator("div[name='dst_partner_id'] input")).first();
+  // Wizard footer "Merge Contacts" confirm button (name=action_merge).
+  private readonly mergeConfirmButton = () =>
+    this.page.locator("xpath=//button[@name='action_merge']").or(this.page.locator("button[name='action_merge']")).first();
+  // Wizard footer visible "Cancel" button (the invisible duplicate carries o_invisible_modifier).
+  private readonly mergeWizardCancelButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal-footer')]//button[normalize-space()='Cancel' and not(contains(@class,'o_invisible_modifier'))]")
+      .or(this.page.locator("xpath=//footer//button[normalize-space()='Cancel']")).first();
+  // jQuery-UI / Odoo many2one autocomplete option list (collection).
+  private readonly m2oAutocompleteOptions = () =>
+    this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
+  // Contacts control-panel search input (reused by name search).
+  private readonly searchViewInputCP = () =>
+    this.page.locator('xpath=//input[contains(@class,"o_searchview_input")]').or(this.page.locator('input.o_searchview_input')).first();
+
   constructor(page: Page) {
     super(page);
   }
@@ -1321,5 +1347,268 @@ export class ContactPage extends BasePage {
       .trim();
     console.log(`  - Program Discount % (discount_id): "${value}"`);
     return value;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CRM-12060: manual Merge Contacts wizard (Destination Contact shows "Name (#ID)")
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Deep-link to the Contacts LIST view and wait until it renders. Uses the hash-route +
+   * reload pattern (this Odoo web client is hash-routed, so a URL-glob wait is unreliable);
+   * `waitForListReady` gates on the CREATE button, the definitive "list rendered" signal.
+   */
+  async openContactsList(): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.goto(`${origin}/web#action=118&model=res.partner&view_type=list&menu_id=94`, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.waitForListReady();
+    console.log('  ✓ Contacts list opened');
+  }
+
+  /**
+   * Click CREATE on the Contacts list and wait for the NEW contact form to be ready.
+   * Hash-safe variant of `clickCreate()` - waits for the Name input (not a `web?...` URL glob,
+   * which never matches this hash-routed app's `web#...view_type=form` URLs).
+   */
+  async openNewContactForm(): Promise<void> {
+    await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
+    await this.createButton().click();
+    await this.contactNameInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log('  ✓ New contact form opened');
+  }
+
+  /**
+   * Type a name into the Contacts search box, apply it as a "Search Name for: X" filter,
+   * and return the number of matching data rows in the list.
+   * @param name - the contact name to search for
+   */
+  async searchContactsByName(name: string): Promise<number> {
+    const search = this.searchViewInputCP();
+    await search.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await search.click();
+    // Clear any prior text, then type - Odoo's searchview needs real key events to build the filter.
+    await this.page.keyboard.press('Control+A').catch(() => {});
+    await this.page.keyboard.press('Backspace').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+    await this.page.keyboard.type(name, { delay: 30 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Enter');
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    const count = await this.dataRowsLocator().count();
+    console.log(`  - Contacts matching "${name}": ${count} row(s)`);
+    return count;
+  }
+
+  /**
+   * Open the list Action menu and click "Merge Contacts"; wait for the wizard modal.
+   * Requires rows to be already selected (the Action menu is selection-dependent).
+   */
+  async openMergeContactsWizard(): Promise<void> {
+    await this.clickListActionMenu();
+    const opt = this.mergeContactsActionOption();
+    await opt.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await opt.click();
+    await this.mergeWizardModal().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Merge Contacts wizard opened');
+  }
+
+  /**
+   * Whether "Merge Contacts" is present in the currently-open list Action dropdown.
+   * (Call after `clickListActionMenu()`.)
+   */
+  async isMergeContactsActionAvailable(): Promise<boolean> {
+    return this.mergeContactsActionOption().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+  }
+
+  /**
+   * Open the "Destination Contact" dropdown in the merge wizard and return each option's
+   * visible text (e.g. "Loxodonta AB (#470683)"). The "Create and Edit..." entry is included.
+   */
+  async getDestinationContactOptions(): Promise<string[]> {
+    const input = this.destinationContactInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    const opts = (await this.m2oAutocompleteOptions().allTextContents())
+      .map((o) => o.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    console.log(`  - Destination Contact options (${opts.length}): ${JSON.stringify(opts)}`);
+    return opts;
+  }
+
+  /**
+   * Select the Destination Contact whose dropdown option text contains "(#<id>)".
+   * @param id - the res.partner ID to pick as the merge destination
+   * @returns the chosen option's text
+   */
+  async selectDestinationContactById(id: string): Promise<string> {
+    const input = this.destinationContactInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const option = this.m2oAutocompleteOptions().filter({ hasText: `(#${id})` }).first();
+    // Open the m2o autocomplete: the jQuery-UI menu is only VISIBLE while the input is focused/open,
+    // and a prior open (e.g. reading options) can leave it toggled shut - so retry the toggle until
+    // the target option renders visibly.
+    let opened = false;
+    for (let attempt = 1; attempt <= 4 && !opened; attempt++) {
+      await input.click();
+      await this.wait(CommonUtils.waitTimes.standard);
+      opened = await option.isVisible().catch(() => false);
+      if (!opened) {
+        await this.page.keyboard.press('ArrowDown').catch(() => {});
+        await this.wait(CommonUtils.waitTimes.short);
+        opened = await option.isVisible().catch(() => false);
+      }
+    }
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const text = ((await option.textContent()) || '').replace(/\s+/g, ' ').trim();
+    await option.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  ✓ Destination Contact set to "${text}"`);
+    return text;
+  }
+
+  /**
+   * Click the wizard's "Merge Contacts" (action_merge) confirm button and wait for the wizard
+   * to close. Tolerates a secondary "Ok/Confirm" dialog if one appears.
+   */
+  async confirmMergeContacts(): Promise<void> {
+    const btn = this.mergeConfirmButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    // Some Odoo builds pop a confirm dialog before performing the merge.
+    const okBtn = this.confirmDeleteButton(); // reuse the generic "Ok/OK" locator
+    if (await okBtn.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+      await okBtn.click().catch(() => {});
+    }
+    await this.mergeWizardModal().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Merge confirmed (action_merge)');
+  }
+
+  /**
+   * Cancel / close the merge wizard WITHOUT merging.
+   */
+  async cancelMergeWizard(): Promise<void> {
+    const btn = this.mergeWizardCancelButton();
+    if (await btn.count()) {
+      await btn.click().catch(() => {});
+      await this.mergeWizardModal().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    }
+    console.log('  ✓ Merge wizard cancelled');
+  }
+
+  /**
+   * Count the list rows whose NAME cell text EXACTLY equals `name` (trimmed). Used by the
+   * CRM-12059 historical-merge flow to confirm a historical company name resolves to exactly ONE
+   * pre-existing contact (so a same-named throwaway makes the select-set exactly two). Child
+   * contacts render as "Company, child" and are correctly excluded by the exact match.
+   */
+  async countRowsWithExactName(name: string): Promise<number> {
+    const rows = this.dataRowsLocator();
+    const total = await rows.count();
+    const target = name.trim();
+    let matches = 0;
+    for (let i = 0; i < total; i++) {
+      const cell = rows.nth(i).locator('td.o_data_cell').first();
+      const txt = ((await cell.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (txt === target) matches++;
+    }
+    console.log(`  - Rows with exact Name "${name}": ${matches} of ${total}`);
+    return matches;
+  }
+
+  /**
+   * Tick the row checkboxes of EVERY list row whose NAME cell text EXACTLY equals `name` (trimmed),
+   * then confirm the selection registered (the selection-dependent "Action" toolbar appears).
+   * Returns the number of rows selected. The hidden Bootstrap custom-control checkbox needs a JS
+   * checked+dispatch (a normal click / .check() does not register selection in this Odoo list).
+   */
+  async selectContactRowsByExactName(name: string): Promise<number> {
+    const rows = this.dataRowsLocator();
+    const total = await rows.count();
+    const target = name.trim();
+    let selected = 0;
+    for (let i = 0; i < total; i++) {
+      const row = rows.nth(i);
+      const cell = row.locator('td.o_data_cell').first();
+      const txt = ((await cell.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (txt !== target) continue;
+      const cb = row.locator("td.o_list_record_selector input[type='checkbox']").first();
+      await cb.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait });
+      await cb.evaluate((el: HTMLInputElement) => {
+        el.checked = true;
+        el.dispatchEvent(new Event('click', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      selected++;
+      await this.wait(CommonUtils.waitTimes.short);
+    }
+    if (selected > 0) {
+      await this.listSelectionActionToggle()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .catch(() => { throw new Error('Row selection did not register (the "Action" toolbar never appeared).'); });
+    }
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log(`  ✓ Selected ${selected} contact row(s) with exact Name "${name}"`);
+    return selected;
+  }
+
+  /**
+   * Extract the res.partner ID from the current form URL (e.g. ".../web#id=669585&...").
+   * @returns the numeric ID string, or '' if not present.
+   */
+  getCurrentRecordId(): string {
+    const m = this.page.url().match(/[#?&]id=(\d+)/);
+    return m ? m[1] : '';
+  }
+
+  /**
+   * Return the visible Name-column text of every data row currently shown in the Contacts list.
+   * (First data cell of each row - the selector checkbox cell is a separate o_list_record_selector.)
+   */
+  async getListRowNames(): Promise<string[]> {
+    const cells = this.page.locator("xpath=//tr[contains(@class,'o_data_row')]//td[contains(@class,'o_data_cell')][1]");
+    await cells.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const names = (await cells.allTextContents()).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    console.log(`  - List row Name cells (${names.length}): ${JSON.stringify(names)}`);
+    return names;
+  }
+
+  // --- CRM-12060 3.2: contact "Opportunities" stat button (action_view_opportunities) ---
+  // The VISIBLE opportunities stat button (a hidden duplicate carries o_invisible_modifier).
+  private readonly opportunitiesSmartButton = () =>
+    this.page.locator("xpath=//button[@name='action_view_opportunities' and not(contains(@class,'o_invisible_modifier'))]")
+      .or(this.page.locator("button[name='action_view_opportunities']")).first();
+
+  /**
+   * Read the integer count on the contact's "Opportunities" stat button (e.g. "1 Opportunities" -> 1).
+   * @returns the count, or 0 if the button/label is absent.
+   */
+  async getOpportunitiesCount(): Promise<number> {
+    const btn = this.opportunitiesSmartButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const txt = ((await btn.textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    const m = txt.match(/(\d+)/);
+    const count = m ? parseInt(m[1], 10) : 0;
+    console.log(`  - Contact "Opportunities" stat button: "${txt}" -> ${count}`);
+    return count;
+  }
+
+  /**
+   * Click the contact's "Opportunities" stat button and wait for the partner-scoped crm.lead view
+   * (its CREATE button pre-fills the new Opportunity's Customer with this contact via the context).
+   */
+  async clickOpportunitiesSmartButton(): Promise<void> {
+    const btn = this.opportunitiesSmartButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.page.waitForURL('**model=crm.lead**', { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  ✓ Opened the contact\'s Opportunities (partner-scoped crm.lead view)');
   }
 }
