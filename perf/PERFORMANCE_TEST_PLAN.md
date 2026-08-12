@@ -55,13 +55,15 @@ Priority P1 (highest) → P3. Status: Done / In progress / Planned. (p95 = 95% o
 | 1 | Log in | time to log in | Read | ⚠️ Caution | 3 s | P1 | Done |
 | 2 | Create a lead (save) | from Save until the lead is saved | Write | ❌ No | 20 s | P1 | Done |
 | 3 | Open the new-lead form | open + prepare a blank form (nothing saved) | Read | ✅ Yes | 4 s | P2 | In progress |
-| 4 | View the leads list / pipeline | time to load the list | Read | ✅ Yes | 3 s | P1 | Planned |
-| 5 | Sales report | time to produce the report | Read | ⚠️ Caution | TBD | P2 | Planned |
-| 6 | Create an opportunity | from Save until saved | Write | ❌ No | TBD | P2 | Planned |
-| 7 | Create a contact | from Save until saved | Write | ❌ No | TBD | P3 | Planned |
-| 8 | Create a deal element | from Save until saved (needs setup data) | Write | ❌ No | TBD | P3 | Planned |
-| 9 | Approve a quotation | from click until the status changes | Write | ❌ No | TBD | P3 | Planned |
-| 10 | Register a payment | from click until confirmed | Write | ❌ No | TBD | P3 | Planned |
+| 4 | View the leads list / pipeline | time to load the list | Read | ✅ Yes | 3 s | P1 | **Done** |
+| 5 | Sales report | time to produce the report | Read | ⚠️ Caution | 8 s | P2 | **Done** |
+| 6 | Create an opportunity | from Save until saved | Write | ❌ No | 20 s | P2 | **Done** |
+| 7 | Create a contact | from Save until saved | Write | ❌ No | 20 s | P3 | **Done** |
+| 8 | Create a deal element | from Save until saved (needs setup data) | Write | ❌ No | TBD | P3 | Deferred (UI-flow) |
+| 9 | Approve a quotation | from click until the status changes | Write | ❌ No | TBD | P3 | Deferred (UI-flow) |
+| 10 | Register a payment | from click until confirmed | Write | ❌ No | TBD | P3 | Deferred (UI-flow) |
+
+> **#8/#9/#10 — Deferred (UI-flow-bound):** a Nakivo server guard blocks creating/approving/paying these directly via JSON-RPC (the action must go through the Odoo "from an Opportunity / wizard" UI flow), and each mutates real sales / financial data. They are **not suitable for k6 RPC load testing** — they would need a browser-based (Playwright) harness at low concurrency. Features 1-7 (every RPC-friendly action) are covered.
 
 **Prod-safe? = can this test safely run on the live Production system?**
 - ✅ **Yes** — creates / changes no data. Could run on Production as a careful check (keep the user count low, run off-peak).
@@ -77,10 +79,16 @@ Priority P1 (highest) → P3. Status: Done / In progress / Planned. (p95 = 95% o
 |---|---|---|---|---|---|
 | Log in | 0.44 s | 0.54 s | 0.59 s | 0.91 s | 100 % |
 | Create a lead | 2.7 s | 6.1 s | 8.7 s | 14–15 s | 100 % |
+| Leads list (read) | 0.43 s | 0.57 s | 0.83 s | — | 100 % |
+| Sales report (read) | 2.5 s | 4.7 s | — | — | 100 % |
+| Create opportunity | 2.9 s (5u) | — | — | — | 100 % |
+| Create contact | 1.5 s (5u) | — | — | — | 100 % |
 
-Log in / read actions scale well (under 1 s). Creating records is heavier and slows down under load (accepted target 20 s), because by design the system processes new leads one at a time in the background.
+Log in / read actions scale well (under 1 s except the heavy Sales-report aggregate). Creating records is heavier and slows down under load (accepted target 20 s), because by design the system processes new records one at a time in a background cron.
+
+*Note: Leads-list, Sales-report, Create-opportunity and Create-contact figures above are single-host local validations. Full Jenkins scaling runs (10/30/50/100) streaming to Grafana are pending the agent VPN being restored.*
 
 ### Roadmap
-- **Done:** Log in + Create-a-lead measured; results database + dashboards set up.
-- **Next:** add the "open form" + "view list" tests (P1); show all results in Grafana.
-- **Later:** opportunity + sales report; then deal element, approve quotation, register payment.
+- **Done (7 features):** Login, Create-lead, Open-form (no-save), Leads-list, Sales-report, Create-opportunity, Create-contact — k6 tests + Jenkins jobs; results DB + Grafana dashboards set up (dashboard auto-adds each feature by its `testid`).
+- **Deferred (UI-flow-bound):** Deal element, Approve quotation, Register payment — blocked from direct RPC by a server guard + mutate real data; browser-based measurement only.
+- **Next:** full Jenkins scaling runs (10/30/50/100) + Grafana trends once the agent VPN is restored.
