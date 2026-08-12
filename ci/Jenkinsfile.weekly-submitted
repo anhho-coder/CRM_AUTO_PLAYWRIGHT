@@ -95,7 +95,11 @@ pipeline {
     }
 
     options {
-        timeout(time: 360, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        // Absolute "truly stuck" backstop, above the param-driven timeout(TIMEOUT_MIN) that wraps
+        // the run loop. 540 (not the weekly-fails job's 360) because a week's submissions can
+        // include the slow async lanes - Lead_Merging polls the ~10-min merge cron per spec and
+        // Leads_Assignment/THD polls up to 43 min - so TIMEOUT_MIN=480 must remain usable.
+        timeout(time: 540, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '15'))
         disableConcurrentBuilds()
         skipDefaultCheckout(true)
