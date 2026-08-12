@@ -1,0 +1,423 @@
+// Run the test cases SUBMITTED THIS WEEK - the automation added / changed on the branch during the
+// current ISO week - as one gated build.
+//
+//   Job name: CRM-Run-Weekly-Submitted     Pipeline -> Script Path: ci/Jenkinsfile.weekly-submitted
+//
+// WHY: new specs are usually proven green on the author's machine, one at a time. This job re-runs
+// the WHOLE week's submissions unattended on the CI agent (headless Chrome, pre-prod, CI retries)
+// so a spec that only passed locally - or that a later commit broke - is caught before it lands in
+// the nightly section jobs. Sibling of CRM-Rerun-Weekly-Fails (ci/Jenkinsfile.rerun-weekly-fails),
+// which re-runs the week's RED cells; this one runs the week's NEW/UPDATED cells.
+//
+// WHAT COUNTS AS "SUBMITTED" (resolver: ci/weekly-submitted-to-spec.js, SOURCE param):
+//   git  - the spec was added/modified by a commit whose date falls in the week window, on the
+//          checked-out ref. tag - the spec header carries `Automation-Date:` inside that window
+//          (the automation-metrics tag). Default SOURCE=both takes the UNION, so neither a missing
+//          tag nor a merge that carried older commit dates can hide a spec submitted this week.
+//
+// Specs are run GROUPED BY SECTION (Contact, Lead_Merging, Sales_Module, ...), one Playwright
+// invocation per group, all appended into a single allure-results and published as one report.
+// A failing group is recorded (build FAILURE) but does NOT stop the remaining groups (catchError).
+//
+// Same agent guards as the section jobs (Jenkinsfile): probe-node pre-prod route gate,
+// long-path-safe checkout, Chrome + ffmpeg checks, mid-run VPN watchdog.
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'WEEK',
+            defaultValue: 'current',
+            description: 'Which week to collect submissions from. current (default) = the in-progress ISO week, Mon 00:00 -> next Mon 00:00 local; previous = the week before; last7 = a rolling 7-day window ending now; or an exact ISO week e.g. 2026-W33.'
+        )
+        choice(
+            name: 'SOURCE',
+            choices: ['both', 'git', 'tag'],
+            description: 'How a spec is judged "submitted this week". git = touched by a commit in the week window on the checked-out branch. tag = its header Automation-Date falls in the week. both (default) = the union - use it unless you are deliberately auditing one signal.'
+        )
+        choice(
+            name: 'TYPE',
+            choices: ['all', 'new', 'refactored'],
+            description: 'Filter on the spec header Automation-Type tag. all (default) = every submission; new = only just-created TCs; refactored = only code changes to already-running TCs.'
+        )
+        string(
+            name: 'AUTHOR',
+            defaultValue: '',
+            description: 'Optional git author substring (e.g. anh.ho) to run only ONE QA\'s submissions. Empty = everyone. Applies to the git source only.'
+        )
+        string(
+            name: 'GROUP',
+            defaultValue: 'all',
+            description: 'Run only this section group, or "all". Group names are printed by the resolver (Contact, Lead_Merging, Sales_Module, CRM_Module, Leads_Assignment, Investments, SalesReport_Performance, O12, Other).'
+        )
+        string(
+            name: 'REF',
+            defaultValue: 'HEAD',
+            description: 'Git ref the resolver scans for commits (default HEAD = the branch this job checked out). Set to e.g. origin/QuocAnh_branch to gate a side branch\'s submissions before it is merged.'
+        )
+        booleanParam(
+            name: 'DRY_RUN',
+            defaultValue: false,
+            description: 'Resolve and print the plan (which specs were submitted this week) WITHOUT launching any test.'
+        )
+        choice(
+            name: 'ROUTE_GATE',
+            choices: ['auto', 'failfast', 'retry', 'off'],
+            description: 'Pre-prod VPN route pre-flight on the "probe" node (same as the section jobs). auto = retry when unattended else fail-fast.'
+        )
+        string(
+            name: 'ROUTE_GATE_MIN',
+            defaultValue: '15',
+            description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry).'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '300',
+            description: 'Build timeout in minutes for the whole run. Default 300 (5h) suits a normal week (~20-40 specs). Raise for a heavy week, or when the week\'s submissions include the slow async Leads_Assignment / O12 specs.'
+        )
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        // Same pre-prod DNS workaround as the section jobs (see main Jenkinsfile).
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+        // The week's submissions can include lead-assignment / lead-merging specs, whose async
+        // verdict often lands after the run. Emit the same deferred-verify manifests the section
+        // jobs do, so the round-2 jobs (CRM_Leads_Assignment_DeferredVerify /
+        // CRM_Lead_Merging_DeferredVerify) re-check them ~1h later. No-op for every other spec.
+        DEFERRED_MANIFEST = 'deferred-verify/la.jsonl'
+        DEFERRED_MERGE_MANIFEST = 'deferred-verify/lm.jsonl'
+    }
+
+    options {
+        timeout(time: 360, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '15'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    // Scheduled: Friday ~18:00 - end of the working week, so the week's submissions are gated
+    // before the weekend. WEEK=current is exactly right at that moment. 'H' hashes the minute so
+    // many jobs don't fire on the same tick. NOTE: this triggers directive is authoritative for a
+    // declarative pipeline - it (re)registers on the first build after this change is on the
+    // branch, so fire one build after pushing to arm the schedule.
+    triggers {
+        cron('H 18 * * 5')
+    }
+
+    stages {
+        stage('Pre-prod route gate') {
+            agent { label 'probe' }
+            steps {
+                script {
+                    def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    if (mode == 'auto') {
+                        def unattended = false
+                        try {
+                            unattended = currentBuild.getBuildCauses().any {
+                                def c = (it._class ?: '')
+                                c.contains('TimerTrigger') || c.contains('SCMTrigger') || c.contains('UpstreamCause')
+                            }
+                        } catch (ignored) { unattended = false }
+                        mode = unattended ? 'retry' : 'failfast'
+                    }
+                    if (mode == 'off') {
+                        echo 'ROUTE_GATE=off -> skipping the pre-prod route pre-flight.'
+                    } else {
+                        def budget = 0
+                        if (mode == 'retry') {
+                            def m = (params.ROUTE_GATE_MIN ?: '15').trim()
+                            budget = m.isInteger() ? m.toInteger() : 15
+                        }
+                        echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
+                        def routeUp = {
+                            return bat(returnStatus: true,
+                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                        }
+                        def waited = 0
+                        def up = routeUp()
+                        while (!up && waited < budget) {
+                            echo "  route DOWN (waited ${waited}/${budget} min) - re-probing in 60s..."
+                            sleep(time: 60, unit: 'SECONDS')
+                            waited++
+                            up = routeUp()
+                        }
+                        if (!up) {
+                            error("ABORTED: pre-prod VPN route down (mode=${mode}, waited ${waited} min). Re-run when the route is back.")
+                        }
+                        echo "Pre-prod route UP" + (waited > 0 ? " after ${waited} min" : "") + " -> proceeding."
+                    }
+                }
+            }
+        }
+
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+                // The git source needs real history: a SHALLOW clone would make `git log --since`
+                // see almost nothing and silently degrade the plan to tag-only. Deepen if needed.
+                bat '''@echo off
+git rev-parse --is-shallow-repository > shallow.txt 2>nul
+set /p SHALLOW=<shallow.txt
+del /q shallow.txt
+if "%SHALLOW%"=="true" (
+  echo Shallow clone detected - fetching full history so --since can see this week's commits
+  git fetch --unshallow --quiet || git fetch --depth=1000 --quiet
+) else (
+  echo Full history present - OK
+)
+exit /b 0
+'''
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Resolve this week\'s submissions') {
+            steps {
+                script {
+                    // Clean stale report/results from a prior build in this persistent workspace
+                    // BEFORE resolving, so a DRY_RUN / nothing-submitted build neither records nor
+                    // stashes the previous build's artifacts (which would mark it UNSTABLE).
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    bat 'if exist deferred-verify rmdir /s /q deferred-verify'
+                    echo "Resolve: WEEK=${params.WEEK}  SOURCE=${params.SOURCE}  TYPE=${params.TYPE}" +
+                         (params.AUTHOR?.trim() ? "  AUTHOR~${params.AUTHOR.trim()}" : '') + "  REF=${params.REF}"
+                    withEnv([
+                        "WEEK=${params.WEEK?.trim() ?: 'current'}",
+                        "SOURCE=${params.SOURCE ?: 'both'}",
+                        "TYPE=${params.TYPE ?: 'all'}",
+                        "AUTHOR=${params.AUTHOR?.trim() ?: ''}",
+                        "REF=${params.REF?.trim() ?: 'HEAD'}"
+                    ]) {
+                        // Writes submitted/_groups.txt + submitted/<Group>.txt and echoes the plan.
+                        bat 'node ci\\weekly-submitted-to-spec.js'
+                    }
+                }
+            }
+        }
+
+        stage('Run submitted specs') {
+            when { expression { return !params.DRY_RUN } }
+            steps {
+                script {
+                    def selected = (params.GROUP ?: 'all').trim()
+                    def groupsTxt = ''
+                    if (fileExists('submitted/_groups.txt')) { groupsTxt = readFile('submitted/_groups.txt').trim() }
+                    if (!groupsTxt) {
+                        echo 'No test cases were submitted in this window - nothing to run.'
+                        return
+                    }
+                    def entries = groupsTxt.split('\\r?\\n').collect { it.trim() }.findAll { it }
+
+                    def runTimeout = (params.TIMEOUT_MIN ?: '300').toInteger()
+                    // The per-group run loop, wrapped as a closure so it can run under the
+                    // mid-run VPN watchdog below.
+                    def runLoop = {
+                        def ran = 0
+                        for (e in entries) {
+                            def parts = e.split(' ')
+                            def group = parts[0]
+                            def count = (parts.size() > 1) ? parts[-1] : '?'
+                            if (selected != 'all' && selected != group) {
+                                echo "Skipping ${group} (GROUP=${selected})."
+                                continue
+                            }
+                            def filters = ''
+                            if (fileExists("submitted/${group}.txt")) { filters = readFile("submitted/${group}.txt").trim() }
+                            if (!filters) { echo "No filters for ${group} - skipping."; continue }
+                            ran++
+                            env.DID_RUN = 'true'   // at least one group actually ran -> record junit in post
+                            echo "=== Running ${group}: ${count} spec(s) submitted this week | timeout ${runTimeout}m ==="
+                            // Record a group's failures (build -> FAILURE) but keep going so every
+                            // group is run in this one build.
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', message: "${group} had failures") {
+                                // Filters (double-quoted spec basenames) are passed via an env var and
+                                // read with DELAYED expansion (!FILTERS!) so a '%' in a filename is NOT
+                                // re-parsed by cmd. Each quoted basename becomes a positional Playwright
+                                // filter, matched as a regex against the whole test-file path - so the
+                                // non-ASCII O12 folder arrow never reaches the command line.
+                                withEnv(["FILTERS=${filters}"]) {
+                                    bat '''@echo off
+setlocal enabledelayedexpansion
+echo Filters: !FILTERS!
+call npx playwright test !FILTERS! --project=chrome-headless
+'''
+                                }
+                            }
+                        }
+                        if (ran == 0) { echo "GROUP=${selected} matched none of this week's groups." }
+                    }
+                    // --- Mid-run pre-prod VPN gate (see main Jenkinsfile) --------------------
+                    // Abort (NOT_BUILT) if CRM-Connectivity-Check raises the VPN-down flag mid-run
+                    // so the remaining groups are not executed / not marked failed.
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            parallel(
+                                'playwright': {
+                                    try { runLoop() } finally { bat 'echo done> .pw_done' }
+                                },
+                                'vpn-watchdog': {
+                                    while (!fileExists('.pw_done')) {
+                                        sleep(time: 60, unit: 'SECONDS')
+                                        if (fileExists('.pw_done')) { break }
+                                        if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                            env.VPN_ABORT = 'true'
+                                            echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining groups will NOT run (not failed).'
+                                            error('pre-prod VPN dropped mid-run')
+                                        }
+                                    }
+                                },
+                                failFast: true
+                            )
+                        }
+                    } catch (err) {
+                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (env.VPN_ABORT == 'true' || flagUp) {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining groups were NOT executed (not failed).'
+                        } else {
+                            throw err
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Flatten Playwright's timestamped run folder(s) to a fixed 'pw-report' for a direct link.
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            script {
+                // Only record test results when specs actually ran. On a DRY_RUN or a
+                // nothing-submitted build the junit step would record ZERO results and mark the
+                // build UNSTABLE (yellow) even with allowEmptyResults - so skip it and keep SUCCESS.
+                if (env.DID_RUN == 'true') {
+                    junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+                } else {
+                    echo 'No specs were run (DRY_RUN, or nothing submitted this week) - skipping junit so the build stays SUCCESS, not UNSTABLE.'
+                }
+            }
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, submitted/**, deferred-verify/**', allowEmptyArchive: true
+            // Lead-Assignment / Lead-MERGING deferred re-verify: stash this build's manifests into the
+            // same dated, BUILD-keyed buckets the section jobs use, so the round-2 jobs re-check any
+            // async assignment/merge verdict this run could not confirm in time.
+            powershell '''
+              try {
+                if (Test-Path deferred-verify/la.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  Copy-Item -LiteralPath deferred-verify/la.jsonl -Destination (Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl") -Force
+                  Write-Host 'Stashed lead-assignment deferred-verify manifest.'
+                } else { Write-Host 'No lead-assignment deferred-verify manifest this build.' }
+                if (Test-Path deferred-verify/lm.jsonl) {
+                  $day  = (Get-Date).ToString('yyyy-MM-dd')
+                  $dir  = "C:\\deferred-verify-merge\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  Copy-Item -LiteralPath deferred-verify/lm.jsonl -Destination (Join-Path $dir "$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).jsonl") -Force
+                  Write-Host 'Stashed lead-merging deferred-verify manifest.'
+                } else { Write-Host 'No lead-merging deferred-verify manifest this build.' }
+              } catch {
+                Write-Host "WARNING: could not stash deferred-verify manifests: $($_.Exception.Message)"
+              }
+            '''
+            // Drop a DATE-stamped copy into the period bucket so the CURRENT week's Allure report
+            // unions these results (latest-per-test; the period pipeline relabels chrome-headless
+            // back to the real section by file path). We deliberately do NOT stash into
+            // C:\\allure\\results\\<JOB> (the Total combined report's source) to avoid adding a
+            // stray "CRM-Run-Weekly-Submitted" suite there.
+            powershell '''
+              try {
+                $day  = (Get-Date).ToString('yyyy-MM-dd')
+                $dest = "C:\\allure\\periods\\results\\$day\\$env:JOB_BASE_NAME\\$env:BUILD_NUMBER"
+                if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+                New-Item -ItemType Directory -Path $dest -Force | Out-Null
+                if (Test-Path allure-results) {
+                  Get-ChildItem -LiteralPath allure-results -Force | ForEach-Object {
+                    Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+                  }
+                  Write-Host "Stashed dated Allure results -> $dest"
+                } else { Write-Host 'No allure-results to stash (dated bucket).' }
+              } catch {
+                Write-Host "WARNING: could not stash dated Allure results: $($_.Exception.Message)"
+              }
+            '''
+        }
+        success { echo 'All test cases submitted this week passed on the agent.' }
+        failure { echo 'Some of this week\'s submissions failed on the agent. Check the Playwright Report + archived test-results/ (submitted/_summary.txt lists exactly what was selected and why).' }
+    }
+}
