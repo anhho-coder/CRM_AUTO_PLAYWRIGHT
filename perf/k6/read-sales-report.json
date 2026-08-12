@@ -1,0 +1,1 @@
+{"model":"sale.report","method":"read_group","args":[[],["price_total:sum","product_uom_qty:sum"],["date:month"]],"kwargs":{"lazy":false},"label":"sales-report"}
