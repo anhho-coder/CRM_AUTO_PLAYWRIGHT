@@ -16,12 +16,14 @@
  * connection patterns the Categories widget uses (see ci/allure-categories.json),
  * plus ERR_CONNECTION_TIMED_OUT / route-down (the pre-prod outage signature).
  *
- * Usage: node ci/allure-dedupe-latest.js <results-dir>   (default: allure-merged)
+ * Usage: node ci/allure-dedupe-latest.js <results-dir> [repoRoot]   (default: allure-merged, ci/..)
  */
 const fs = require('fs');
 const path = require('path');
+const { createResolver, legacyKey } = require('./allure-test-identity');
 
 const dir = process.argv[2] || 'allure-merged';
+const repoRoot = process.argv[3] || path.join(__dirname, '..');
 const ENV_RE = /(net::ERR_|ERR_NAME_NOT_RESOLVED|ERR_CERT_AUTHORITY_INVALID|ERR_EMPTY_RESPONSE|ERR_CONNECTION|ERR_NETWORK|ERR_TIMED_OUT|ERR_ADDRESS_UNREACHABLE|VPN route down|pre-prod VPN route)/i;
 
 function isEnvFail(o) {
@@ -40,14 +42,16 @@ try { files = fs.readdirSync(dir); } catch (e) {
 // (Allure's historyId does NOT: it bakes in the project-relative fullName + the Project
 // param, so the same test run as --project=<Section> vs a SPEC chunk on chrome-headless,
 // or after a line-number-shifting edit, gets DIFFERENT historyIds and is counted twice).
-// Key = <section-relative spec path, line:col stripped> :: <test title>.
-function testKey(o) {
-  let full = String(o.fullName || '').replace(/\\/g, '/');
-  full = full.replace(/:\d+(:\d+)?$/, '');              // drop trailing :line[:col]
-  full = full.replace(/^.*?1\.Project_CRM\/[^/]+\//, ''); // strip ".../1.Project_CRM/<section>/" (chunk runs carry it, section runs don't)
-  full = full.replace(/^tests\//, '');
-  return full + '::' + String(o.name || '');
-}
+// Key = <spec path relative to tests/, resolved against the repo> :: <test title>, from
+// ci/allure-test-identity.js. The recorded fullName is relative to Playwright's rootDir, which
+// differs per launch (chunk run vs --project=<Section> vs a sub-tree project like
+// BusinessProcess/PreSales), so it MUST be resolved back to the real file first - otherwise one
+// file gets 2-3 identities and a PASS never supersedes the FAIL recorded under the other one.
+// Two DIFFERENT spec files holding the same TC stay separate on purpose. Falls back to the old
+// key when the tests/ tree is not next to ci/ (e.g. a report-only workspace).
+const identity = createResolver(repoRoot);
+const testKey = identity.ready ? (o) => identity.testKey(o) : legacyKey;
+if (!identity.ready) console.log(`dedupe-latest: no tests/ tree under ${repoRoot} - using the legacy path key`);
 
 // group result files by project-independent test identity
 const groups = new Map();          // key -> [{file, time, env}]
@@ -82,3 +86,4 @@ for (const [, recs] of groups) {
   }
 }
 console.log(`dedupe-latest: ${resultCount} result(s) -> ${kept} unique test(s) kept (latest non-env), ${deleted} redundant removed, ${envOnly} test(s) env-only (no clean run in period)`);
+if (identity.ready) console.log('dedupe-latest: ' + identity.summary());

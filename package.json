@@ -20,6 +20,7 @@
     "report": "playwright show-report",
     "clean": "rimraf test-results playwright-report",
     "inventory": "node ci/build-test-inventory.js",
+    "check:identity": "node ci/check-test-identity.js",
     "metrics:anchor": "node scripts/metrics/anchor.js",
     "metrics:report": "node scripts/metrics/aggregate.js && node scripts/metrics/build-report.js",
     "metrics:daily": "node scripts/metrics/run-daily.js",
