@@ -33,81 +33,24 @@
  */
 const fs = require('fs');
 const path = require('path');
-const { createResolver } = require('./allure-test-identity');
+const { createStore } = require('./deferred-verdict-store');
 
 const dir = process.argv[2] || 'allure-merged';
 const dvRoot = process.argv[3] || 'C:\\deferred-verify';
 const days = String(process.argv[4] || '').split(',').map((s) => s.trim()).filter(Boolean);
 const repoRoot = process.argv[5] || path.join(__dirname, '..');
-const identity = createResolver(repoRoot);
+const store = createStore({ dvRoot, days, repoRoot });
 
 // Same signature as ci/allure-categories.json's "async/data not loaded (empty value)" category.
 const ASYNC_EMPTY = /Received(?: string)?:\s*""/;
 
-// Absolute/relative spec path -> ONE canonical key per spec file, so the round-1 result and the
-// round-2 verdict record meet even though they spell the path differently: the verdict carries the
-// runner's own (often absolute) path, while `fullName` is relative to Playwright's rootDir - and
-// that rootDir has no "1.Project_CRM/" in it for a --project=<Section> or sub-tree
-// (BusinessProcess / PreSales) run, which used to leave the tails unmatchable and silently drop the
-// round-2 recovery. ci/allure-test-identity.js resolves either spelling to the real repo file, and
-// still keeps the Leads_Assignment / O12 twins apart (different files => different keys).
-// Falls back to the old tail when the tests/ tree is not available.
-function specTail(s) {
-  if (!s) return null;
-  if (identity.ready) {
-    const canon = identity.canonicalPath({ fullName: String(s) });
-    if (canon) return canon.toLowerCase();
-  }
-  const n = String(s).replace(/\\/g, '/').replace(/:\d+(?::\d+)?$/, '');
-  const k = n.indexOf('1.Project_CRM/');
-  if (k >= 0) return n.slice(k).toLowerCase();
-  const t = n.toLowerCase().lastIndexOf('/tests/');
-  if (t >= 0) return n.slice(t + '/tests/'.length).toLowerCase();
-  return n.toLowerCase();
-}
-
-function stripBom(s) { return s.charCodeAt(0) === 0xfeff ? s.slice(1) : s; }
-
-// ---- Build the per-spec verdict from the week's dated verdict buckets ----
-// bySpec: specTail -> { fields: Map(field -> {ok, now, runAtIso, dead}), leadUrl }
-const bySpec = new Map();
-let verdictFiles = 0, verdictRecords = 0;
-for (const day of days) {
-  const d = path.join(dvRoot, day);
-  let files = [];
-  try { files = fs.readdirSync(d); } catch (e) { continue; }
-  for (const f of files) {
-    if (!/^verdict-.*\.json$/i.test(f)) continue;
-    let arr;
-    try { arr = JSON.parse(stripBom(fs.readFileSync(path.join(d, f), 'utf8'))); } catch (e) { continue; }
-    if (!Array.isArray(arr)) continue;
-    verdictFiles++;
-    for (const rec of arr) {
-      if (!rec || !rec.specFile || !rec.field) continue;
-      const key = specTail(rec.specFile);
-      if (!key) continue;
-      verdictRecords++;
-      let e = bySpec.get(key);
-      if (!e) { e = { fields: new Map(), leadUrl: rec.leadUrl || '' }; bySpec.set(key, e); }
-      const prev = e.fields.get(rec.field);
-      // keep the LATEST record per field (matches dedupe-latest keeping the latest round-1 run)
-      if (!prev || String(rec.runAtIso || '') >= String(prev.runAtIso || '')) {
-        e.fields.set(rec.field, { ok: !!rec.ok, now: rec.now || '', runAtIso: rec.runAtIso || '', dead: !!rec.dead });
-        if (rec.leadUrl) e.leadUrl = rec.leadUrl;
-      }
-    }
-  }
-}
-
-// specTail -> 'recovered' | 'stillwrong' | 'skip'
-function decide(e) {
-  const fields = [...e.fields.values()];
-  if (!fields.length) return 'skip';
-  if (fields.some((f) => f.dead)) return 'skip';        // unreachable lead -> can't judge
-  return fields.some((f) => !f.ok) ? 'stillwrong' : 'recovered';
-}
-const decisions = new Map();
-for (const [k, e] of bySpec) decisions.set(k, decide(e));
+// One canonical key per SPEC FILE, from ci/deferred-verdict-store.js (which resolves the path
+// through ci/allure-test-identity.js). The verdict record carries the runner's own - often
+// absolute - path while `fullName` is relative to Playwright's rootDir, and that rootDir has no
+// "1.Project_CRM/" in it for a --project=<Section> or sub-tree (BusinessProcess / PreSales) run,
+// which used to leave the two spellings unmatchable and silently dropped the round-2 recovery.
+// The Leads_Assignment / O12 twins still get different keys (different files).
+const specTail = (s) => store.keyOf(s);
 
 function nowOf(e, name) { const f = e.fields.get(name); return f ? f.now : ''; }
 function addTag(o, val) {
@@ -126,7 +69,7 @@ let files = [];
 try { files = fs.readdirSync(dir); } catch (e) {
   console.log(`apply-round2-verdict: results dir not found: ${dir}`); process.exit(0);
 }
-if (!bySpec.size) {
+if (!store.size) {
   console.log(`apply-round2-verdict: no round-2 verdicts for days [${days.join(', ') || 'none'}] under ${dvRoot} - nothing to reclassify.`);
   process.exit(0);
 }
@@ -141,9 +84,10 @@ for (const f of files) {
   if (!ASYNC_EMPTY.test(msg)) continue;                                  // never touch non-async failures
   const key = specTail(o.fullName);
   if (!key) continue;
-  const verdict = decisions.get(key);
-  if (!verdict || verdict === 'skip') continue;
-  const e = bySpec.get(key);
+  const verdict = store.decide(key);
+  if (verdict === 'skip') continue;
+  const e = store.entry(key);
+  if (!e) continue;
 
   if (verdict === 'recovered') {
     const parts = [];
@@ -169,6 +113,6 @@ for (const f of files) {
   fs.writeFileSync(p, JSON.stringify(o));
 }
 console.log(
-  `apply-round2-verdict: ${verdictRecords} verdict record(s) from ${verdictFiles} file(s) over ${days.length} day(s); ` +
+  `apply-round2-verdict: ${store.summary()} over ${days.length} day(s); ` +
   `scanned ${scanned} result(s) -> ${recovered} recovered->passed, ${defect} confirmed-defect.`
 );
