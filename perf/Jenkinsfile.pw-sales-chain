@@ -1,0 +1,82 @@
+// Jenkins pipeline: Track B - Playwright single-user perf timing for the guarded sales chain.
+// Runs the 1.SalesReport_Performance perf specs (each self-seeds Opp -> Deal Element -> Quotation
+// -> ... and times ONE action), with perf/ci/perf-influx-reporter.js streaming each (MEASURED)
+// timing to InfluxDB (pw_perf) -> the "Track B" Grafana row. Windows agent, needs pre-prod VPN.
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.pw-sales-chain.
+pipeline {
+    agent any
+    tools { nodejs 'NodeJS-20' }
+
+    parameters {
+        string(name: 'SPECS', defaultValue: 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-4-1-create-deal-element.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-1-create-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-4-approve-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-3-send-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-6-1-create-invoice.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-7-1-create-license.spec.ts',
+            description: 'Space-separated perf spec paths to run (each self-seeds + times one action). Default = the sales chain. Each spec is ~7 min. Note: these specs do NOT clean up (leave data on pre-prod).')
+        string(name: 'PROJECT', defaultValue: 'chrome-headless', description: 'Playwright project.')
+        string(name: 'INFLUX_URL', defaultValue: 'http://10.8.81.44:8086/write?db=k6', description: 'InfluxDB v1 write URL for the reporter (measurement pw_perf, tag build=<build#>). Blank = do not stream (HTML report still produced).')
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        HOST_RESOLVER_MAP = 'MAP pre-production.nakivo.site 10.220.222.100'
+    }
+
+    options {
+        timestamps()
+        timeout(time: 120, unit: 'MINUTES')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Route pre-check (VPN to pre-prod)') {
+            steps {
+                powershell '''
+                    $ip = "10.220.222.100"
+                    Write-Host "Probing pre-prod route to ${ip}:443 ..."
+                    $ok = Test-NetConnection -ComputerName $ip -Port 443 -InformationLevel Quiet -WarningAction SilentlyContinue
+                    if (-not $ok) { Write-Error "ABORTED: pre-prod route down (cannot reach ${ip}:443). Is the VPN up on the agent?"; exit 1 }
+                    Write-Host "Route OK (${ip}:443 reachable)."
+                '''
+            }
+        }
+
+        stage('npm ci') { steps { bat 'npm ci' } }
+
+        stage('Run Playwright sales-chain perf specs') {
+            steps {
+                script {
+                    // First build of a parameterized pipeline has NO params yet -> fall back to defaults.
+                    def DEF_SPECS = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-4-1-create-deal-element.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-1-create-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-4-approve-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-3-send-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-6-1-create-invoice.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-7-1-create-license.spec.ts'
+                    env.EFF_SPECS = (params.SPECS?.trim()) ?: DEF_SPECS
+                    env.EFF_PROJECT = (params.PROJECT?.trim()) ?: 'chrome-headless'
+                    // reporter streams to InfluxDB only when a URL is set
+                    env.EFF_INFLUX = (params.INFLUX_URL != null && params.INFLUX_URL.trim()) ? params.INFLUX_URL.trim() : 'http://10.8.81.44:8086/write?db=k6'
+                    env.RPT = env.EFF_INFLUX ? 'line,perf/ci/perf-influx-reporter.js' : 'line'
+                    echo "PROJECT=${env.EFF_PROJECT} | Reporter=${env.RPT} | INFLUX_WRITE_URL=${env.EFF_INFLUX ?: '(none)'} | build tag=${env.BUILD_NUMBER}"
+                    echo "SPECS=${env.EFF_SPECS}"
+                }
+                withEnv(["PW_BUILD=${env.BUILD_NUMBER}", "INFLUX_WRITE_URL=${env.EFF_INFLUX}"]) {
+                    bat 'npx playwright test %EFF_SPECS% --project=%EFF_PROJECT% --reporter=%RPT%'
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'playwright-report',
+                reportFiles: 'index.html',
+                reportName: 'PW-SalesChain-Perf'
+            ])
+        }
+    }
+}

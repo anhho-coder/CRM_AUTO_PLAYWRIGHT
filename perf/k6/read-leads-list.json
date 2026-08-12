@@ -1,0 +1,1 @@
+{"model":"crm.lead","method":"search_read","args":[[],["name","contact_name","email_from","stage_id","team_id","user_id"]],"kwargs":{"limit":80},"label":"leads-list"}
