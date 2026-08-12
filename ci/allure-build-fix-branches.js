@@ -14,11 +14,13 @@
  * THD / lead-assignment async: a spec that FAILED inline only because the Sales-Team CRON
  * had not assigned yet is NOT a real fail — the run drops a deferred-verify manifest
  * (<deferredRoot>\<day>\<JOB>-<build>.jsonl) that the CRM_Leads_Assignment_DeferredVerify
- * job re-checks ~1h later. Such a failed spec (its tcId present in a manifest for that job,
- * on a day in the window) is reported as status "async" (pending re-check), not "failed".
+ * job re-checks ~1h later. Such a failed spec (its SPEC FILE present in a manifest for that job,
+ * on a day in the window) is reported as status "async" (pending re-check), not "failed". Keyed by
+ * spec file, never by tcId: the repo has 13 duplicated specs that share a TC id, and a tcId key
+ * would let one copy's round-2 recovery silence the other copy's real failure.
  *
  * Usage:
- *   node ci/allure-build-fix-branches.js <reportDir> <periodsResultsRoot> <deferredRoot> <jenkinsBase> <jobPrefix> <daysCsv>
+ *   node ci/allure-build-fix-branches.js <reportDir> <periodsResultsRoot> <deferredRoot> <jenkinsBase> <jobPrefix> <daysCsv> [jenkinsHome] [repoRoot]
  * Defaults: periodsResultsRoot=C:\allure\periods\results, deferredRoot=C:\deferred-verify,
  *           jenkinsBase=http://10.8.81.44:8080, jobPrefix=CRM_Rerun_, daysCsv='' (=> no branches).
  * Best-effort: never fails the build (always exits 0).
@@ -26,6 +28,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createResolver, legacyKey } = require('./allure-test-identity');
+const { createStore } = require('./deferred-verdict-store');
 
 const reportDir         = process.argv[2] || 'allure-report';
 const periodsResultsRoot = process.argv[3] || 'C:\\allure\\periods\\results';
@@ -43,6 +46,11 @@ function identityKey(j) { return identity.ready ? identity.testKey(j) : legacyKe
 
 const RED = { failed: 1, broken: 1 };
 const days = daysCsv.split(',').map(function (d) { return d.trim(); }).filter(function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); });
+
+// Round-1 manifests + round-2 verdicts, keyed by SPEC FILE (not by tcId): the 13 duplicated specs
+// share a TC id, so a tcId key would let one copy's round-2 recovery silence the other copy's
+// failure - or mark a copy "async" when it never deferred. See ci/deferred-verdict-store.js.
+const dvStore = createStore({ dvRoot: deferredRoot, days: days, resolver: identity });
 
 function log(m) { console.log('fix-branches: ' + m); }
 function readJson(p) { try { return JSON.parse(fs.readFileSync(p, 'utf8')); } catch (e) { return null; } }
@@ -74,25 +82,21 @@ function sectionOf(fullName, labels) {
   return '';
 }
 
-// tcIds (for a job) that have a deferred-verify manifest on any day of the window.
-function deferredTcIdsForJob(jobName) {
-  const ids = {};
-  days.forEach(function (day) {
-    const dir = path.join(deferredRoot, day);
-    readdir(dir).filter(function (f) { return f.indexOf(jobName + '-') === 0 && f.endsWith('.jsonl'); })
-      .forEach(function (f) {
-        (function () { try { return fs.readFileSync(path.join(dir, f), 'utf8'); } catch (e) { return ''; } })()
-          .split('\n').map(function (l) { return l.trim(); }).filter(Boolean).forEach(function (l) {
-            const rec = (function () { try { return JSON.parse(l); } catch (e) { return null; } })();
-            if (rec && rec.tcId) ids[str(rec.tcId)] = true;
-          });
-      });
-  });
-  return ids;
+// What a job DEFERRED in the window, read from its round-1 manifests: SPEC keys (authoritative),
+// plus the tcIds as a back-compat net for manifest records written before `specFile` was emitted.
+function deferredForJob(jobName) {
+  return { specs: dvStore.manifestKeys(jobName), tcIds: dvStore.manifestTcIds(jobName) };
 }
 
 // Per-tcId verdict from the CRM_Leads_Assignment_DeferredVerify job's build console logs
-// (round-2 authoritative re-check). Each build logs one line per checkpoint:
+// (round-2 authoritative re-check).
+//
+// FALLBACK ONLY since the spec-keyed verdict files exist: a console line carries no spec path, so
+// two twins sharing a tcId cannot be told apart here. The authoritative source is
+// verdict-*.json via dvStore (keyed by spec file); this scrape only covers a spec whose verdict
+// file is missing (older build, or the verdict stash failed).
+//
+// Each build logs one line per checkpoint:
 //   "  PASS TC.THD_3.2.1.5.2 [sales_team] expected=... now=..."   (or FAIL / DEAD)
 // A tcId is 'confirmed' when its LATEST deferred build had all its fields PASS (the async
 // CRON caught up); 'stillwrong' when the latest still had a FAIL. Read straight off the
@@ -135,14 +139,24 @@ function allBuildsInWindow(jobName) {
 }
 
 // Refine a test list with the async/deferred logic (in place): a red lead-assignment
-// spec whose tcId has a deferred manifest becomes async-ok (round-2 confirmed) / failed
-// (still wrong after re-check) / async (pending, not re-checked yet).
+// spec whose SPEC FILE has a deferred manifest becomes async-ok (round-2 confirmed) / failed
+// (still wrong after re-check) / async (pending, not re-checked yet). A red spec that never
+// deferred is left red, even when its twin (same tcId, other folder) did defer and recovered.
 function applyAsync(tests, deferred, dv) {
   tests.forEach(function (t) {
-    if (RED[t.status] && t.tcId && deferred[t.tcId]) {
-      const v = dv[t.tcId];
-      t.status = v === 'confirmed' ? 'async-ok' : v === 'stillwrong' ? 'failed' : 'async';
+    if (!RED[t.status]) return;
+    // Did THIS spec defer? spec key first; tcId only for pre-specFile manifest records.
+    const deferredBySpec = !!(t.specKey && deferred.specs.has(t.specKey));
+    const deferredByTcId = !deferred.specs.size && !!(t.tcId && deferred.tcIds.has(t.tcId));
+    if (!deferredBySpec && !deferredByTcId) return;
+    // Round-2 verdict: spec-keyed verdict file wins; the tcId console scrape is the fallback.
+    let v = null;
+    if (t.specKey && dvStore.has(t.specKey)) {
+      const d = dvStore.decide(t.specKey);
+      v = d === 'recovered' ? 'confirmed' : d === 'stillwrong' ? 'stillwrong' : null;
     }
+    if (!v && t.tcId) v = dv[t.tcId];
+    t.status = v === 'confirmed' ? 'async-ok' : v === 'stillwrong' ? 'failed' : 'async';
   });
   return tests;
 }
@@ -176,6 +190,7 @@ function readResultsDir(dir) {
     const tcId = parseTcId(j.name);
     return {
       tcId: tcId,
+      specKey: dvStore.keyOf(j.fullName),      // canonical spec path - the twins' only distinguisher
       title: titleOf(j.name, tcId),
       section: sectionOf(j.fullName, j.labels),
       status: str(j.status).toLowerCase(),
@@ -206,7 +221,7 @@ function readResultsDir(dir) {
   Object.keys(jobsSet).forEach(function (jobName) {
     const allB = allBuildsInWindow(jobName);
     if (!allB.length) return;
-    const deferred = deferredTcIdsForJob(jobName);
+    const deferred = deferredForJob(jobName);
 
     // Burndown series: one point per build in the window (chronological) so the branch
     // sub-tab can show a trend of its target specs being fixed across re-runs.
