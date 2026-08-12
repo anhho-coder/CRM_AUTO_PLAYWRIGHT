@@ -78,6 +78,7 @@ pipeline {
                         -e MODEL=crm.lead ^
                         -e METHOD=search_read ^
                         -e LABEL=leads-list ^
+                        -e READ_CONFIG=read-leads-list.json ^
                         --summary-export=%REPORT_DIR%\\summary-export.json ^
                         --out json=%REPORT_DIR%\\raw-metrics.json ^
                         perf\\k6\\read-scale.js

@@ -30,11 +30,16 @@ const LOOPS = parseInt(__ENV.LOOPS || '1', 10);
 const GAP_S = parseInt(__ENV.GAP_S || '20', 10);
 const P95_MS = parseInt(__ENV.P95_MS || '3000', 10);
 
-const MODEL = __ENV.MODEL || 'crm.lead';
-const METHOD = __ENV.METHOD || 'search_read';
-const ARGS = JSON.parse(__ENV.ARGS_JSON || '[[]]');
-const KWARGS = JSON.parse(__ENV.KWARGS_JSON || '{"limit":80}');
-const LABEL = __ENV.LABEL || MODEL + '.' + METHOD;
+// Read config: prefer a committed JSON file (READ_CONFIG = {model, method, args, kwargs, label}) so
+// the field list never has to pass through a Windows bat command line. Else use individual env vars.
+// NOTE: always pass an explicit field list in args - a fields-less search_read reads ALL fields,
+// which is slow and can raise an Odoo ValueError on a broken computed field.
+const RCFG = __ENV.READ_CONFIG ? JSON.parse(open('./' + __ENV.READ_CONFIG)) : {};
+const MODEL = __ENV.MODEL || RCFG.model || 'crm.lead';
+const METHOD = __ENV.METHOD || RCFG.method || 'search_read';
+const ARGS = __ENV.ARGS_JSON ? JSON.parse(__ENV.ARGS_JSON) : RCFG.args || [[]];
+const KWARGS = __ENV.KWARGS_JSON ? JSON.parse(__ENV.KWARGS_JSON) : RCFG.kwargs || { limit: 80 };
+const LABEL = __ENV.LABEL || RCFG.label || MODEL + '.' + METHOD;
 
 const hostFor = (u) => u.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
 const hostsMap = {};
