@@ -25,6 +25,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { createResolver, legacyKey } = require('./allure-test-identity');
 
 const reportDir         = process.argv[2] || 'allure-report';
 const periodsResultsRoot = process.argv[3] || 'C:\\allure\\periods\\results';
@@ -33,7 +34,12 @@ const jenkinsBase       = (process.argv[5] || 'http://10.8.81.44:8080').replace(
 const jobPrefix         = process.argv[6] || 'CRM_Rerun_';
 const daysCsv           = process.argv[7] || '';
 const jenkinsHome       = process.argv[8] || 'C:\\ProgramData\\Jenkins\\.jenkins';
+const repoRoot          = process.argv[9] || path.join(__dirname, '..');
 const DV_JOB            = 'CRM_Leads_Assignment_DeferredVerify';
+
+// One identity per spec FILE, twins kept apart - see ci/allure-test-identity.js.
+const identity = createResolver(repoRoot);
+function identityKey(j) { return identity.ready ? identity.testKey(j) : legacyKey(j); }
 
 const RED = { failed: 1, broken: 1 };
 const days = daysCsv.split(',').map(function (d) { return d.trim(); }).filter(function (d) { return /^\d{4}-\d{2}-\d{2}$/.test(d); });
@@ -156,7 +162,12 @@ function readResultsDir(dir) {
   readdir(dir).filter(function (f) { return f.endsWith('-result.json'); }).forEach(function (f) {
     const j = readJson(path.join(dir, f));
     if (!j || !j.name || j.stage === 'scheduled') return;
-    const key = str(j.historyId) || ('n:' + str(j.name));
+    // These are RAW per-build results, so allure-playwright's own historyId is normally present.
+    // When it is missing, fall back to the SPEC-QUALIFIED identity, never to the bare title: the
+    // repo keeps 13 duplicated specs (same TC title under 2.Leads_Assignment and under
+    // O12_CE_to_O12_CC), and a title-only key would fuse the two copies into one row - one copy's
+    // pass would then hide the other copy's fail in the Fix-branches table.
+    const key = str(j.historyId) || ('k:' + identityKey(j));
     const stop = +j.stop || 0;
     if (!byKey[key] || stop >= (byKey[key]._stop || 0)) byKey[key] = { r: j, _stop: stop };
   });

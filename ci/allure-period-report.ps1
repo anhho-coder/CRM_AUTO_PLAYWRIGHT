@@ -164,7 +164,13 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: suite relabel returned $LASTEXIT
 # changes on any code edit or project switch and the carried-forward history never matches
 # (every test = "No history information available"). Rewrite it to a stable, project- and
 # line-independent id (same key the dedupe uses). History then accumulates from next period.
-node (Join-Path $Workspace 'ci\allure-stabilize-history-id.js') $merged
+# The id is derived from the spec's CANONICAL path (resolved against $Workspace\tests by
+# ci\allure-test-identity.js): allure records fullName relative to Playwright's rootDir, which
+# differs between a chunk run, a --project=<Section> run and a sub-tree project (BusinessProcess,
+# PreSales), so one file used to get 2-3 ids - splitting its History tab and letting a red and a
+# green copy of the SAME test sit side by side in one period. Two different spec files that hold
+# the same TC still keep separate ids on purpose.
+node (Join-Path $Workspace 'ci\allure-stabilize-history-id.js') $merged $Workspace
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: history-id stabilise returned $LASTEXITCODE (continuing)." }
 
 # ---- Reclassify round-1 Lead-Assignment failures with the ROUND-2 authoritative verdict (WEEKLY) ----
@@ -175,7 +181,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: history-id stabilise returned $L
 # all-runs capture + generate so BOTH the Overview success-rate and Categories/Suites reflect the
 # eventual-assignment truth. Days = $prefixes (the week's yyyy-MM-dd folders).
 if ($Scope -eq 'weekly') {
-    node (Join-Path $Workspace 'ci\allure-apply-round2-verdict.js') $merged 'C:\deferred-verify' ($prefixes -join ',')
+    node (Join-Path $Workspace 'ci\allure-apply-round2-verdict.js') $merged 'C:\deferred-verify' ($prefixes -join ',') $Workspace
     if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: round-2 verdict reclassify returned $LASTEXITCODE (continuing)." }
 }
 
@@ -193,7 +199,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: all-runs capture returned $LASTE
 # A period bucket holds many runs of the same test; per historyId we keep the latest
 # NON-env result (VPN/DNS/connection drops demoted), falling back to an env result only if
 # the test never ran cleanly in the window. Redundant result files are deleted pre-generate.
-node (Join-Path $Workspace 'ci\allure-dedupe-latest.js') $merged
+node (Join-Path $Workspace 'ci\allure-dedupe-latest.js') $merged $Workspace
 if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: latest-per-test dedupe returned $LASTEXITCODE (continuing)." }
 
 # ---- Carry the scope's rolling history forward so the trend accumulates ----
@@ -201,6 +207,14 @@ $scopeHist = Join-Path $histRoot $Scope
 if (Test-Path -LiteralPath $scopeHist) {
     Copy-Item -LiteralPath $scopeHist -Destination (Join-Path $merged 'history') -Recurse -Force
     Write-Host "Restored rolling history for trend ($Scope)."
+
+    # Re-key the carried history from the OLD regex-only identity to the canonical one, so the
+    # switch does not blank every History tab - and so the chains the old key had SPLIT for one
+    # spec (chunk vs section vs sub-tree run) merge into a single chain. Idempotent; unknown ids
+    # are left alone. The generated report's history is copied back to $scopeHist at the end, so
+    # migrating this copy is what persists.
+    node (Join-Path $Workspace 'ci\allure-migrate-history-ids.js') (Join-Path $merged 'history') $Workspace
+    if ($LASTEXITCODE -ne 0) { Write-Host "WARNING: history-id migration returned $LASTEXITCODE (continuing)." }
 }
 
 # ---- Inject spec descriptions + failure categories, then generate ----

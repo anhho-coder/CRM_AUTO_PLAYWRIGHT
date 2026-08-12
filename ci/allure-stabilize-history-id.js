@@ -22,23 +22,26 @@
  * Must run BEFORE `allure generate`. Order vs relabel/dedupe does not matter: the key is
  * derived from fullName+name, not from the Project param or historyId.
  *
- * Usage: node ci/allure-stabilize-history-id.js <results-dir>   (default: allure-merged)
+ * Usage: node ci/allure-stabilize-history-id.js <results-dir> [repoRoot]  (default: allure-merged, ci/..)
  */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { createResolver, legacyKey } = require('./allure-test-identity');
 
 const dir = process.argv[2] || 'allure-merged';
+const repoRoot = process.argv[3] || path.join(__dirname, '..');
 
-// Project/line-independent identity of a test - identical to allure-dedupe-latest.js's
-// testKey(), so exactly one stable historyId maps to each unique test the dedupe keeps.
-function testKey(o) {
-  let full = String(o.fullName || '').replace(/\\/g, '/');
-  full = full.replace(/:\d+(:\d+)?$/, '');                // drop trailing :line[:col]
-  full = full.replace(/^.*?1\.Project_CRM\/[^/]+\//, ''); // strip ".../1.Project_CRM/<section>/"
-  full = full.replace(/^tests\//, '');
-  return full + '::' + String(o.name || '');
-}
+// Project/line-independent identity of a test - the SAME key allure-dedupe-latest.js uses (both
+// call ci/allure-test-identity.js), so exactly one stable historyId maps to each unique test the
+// dedupe keeps. The key is the spec's path relative to tests/ RESOLVED against the repo, because
+// the recorded fullName is relative to Playwright's rootDir and therefore differs between a
+// chunk run, a --project=<Section> run and a sub-tree project (BusinessProcess/PreSales) - the
+// old regex-only key gave one file up to 3 ids, splitting its History tab and letting a red and
+// a green copy of the same test coexist in one period.
+const identity = createResolver(repoRoot);
+const testKey = identity.ready ? (o) => identity.testKey(o) : legacyKey;
+if (!identity.ready) console.log(`stabilize-history-id: no tests/ tree under ${repoRoot} - using the legacy path key`);
 
 function md5(s) { return crypto.createHash('md5').update(s, 'utf8').digest('hex'); }
 
@@ -64,3 +67,4 @@ for (const f of files) {
   changed++;
 }
 console.log(`stabilize-history-id: scanned ${scanned} result(s), rewrote historyId/testCaseId on ${changed} -> stable, period-independent ids`);
+if (identity.ready) console.log('stabilize-history-id: ' + identity.summary());

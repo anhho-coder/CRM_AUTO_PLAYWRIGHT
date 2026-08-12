@@ -25,25 +25,39 @@
  * Only `status:"failed"` results whose message matches the async-empty signature are eligible, so a
  * genuine (non-async) assertion failure on the same spec is never silently flipped.
  *
- * Usage: node ci/allure-apply-round2-verdict.js <results-dir> <deferred-verify-root> <days-csv>
+ * Usage: node ci/allure-apply-round2-verdict.js <results-dir> <deferred-verify-root> <days-csv> [repoRoot]
  *   results-dir          default 'allure-merged'
  *   deferred-verify-root default 'C:\deferred-verify'
  *   days-csv             comma-separated yyyy-MM-dd (the report period's days); empty -> no-op
+ *   repoRoot             default ci\.. - the checkout whose tests/ tree resolves spec paths
  */
 const fs = require('fs');
 const path = require('path');
+const { createResolver } = require('./allure-test-identity');
 
 const dir = process.argv[2] || 'allure-merged';
 const dvRoot = process.argv[3] || 'C:\\deferred-verify';
 const days = String(process.argv[4] || '').split(',').map((s) => s.trim()).filter(Boolean);
+const repoRoot = process.argv[5] || path.join(__dirname, '..');
+const identity = createResolver(repoRoot);
 
 // Same signature as ci/allure-categories.json's "async/data not loaded (empty value)" category.
 const ASYNC_EMPTY = /Received(?: string)?:\s*""/;
 
-// Absolute/relative spec path -> stable lowercase tail starting at "1.Project_CRM/", with any
-// ":line:col" suffix stripped. Distinguishes twins by their differing section path.
+// Absolute/relative spec path -> ONE canonical key per spec file, so the round-1 result and the
+// round-2 verdict record meet even though they spell the path differently: the verdict carries the
+// runner's own (often absolute) path, while `fullName` is relative to Playwright's rootDir - and
+// that rootDir has no "1.Project_CRM/" in it for a --project=<Section> or sub-tree
+// (BusinessProcess / PreSales) run, which used to leave the tails unmatchable and silently drop the
+// round-2 recovery. ci/allure-test-identity.js resolves either spelling to the real repo file, and
+// still keeps the Leads_Assignment / O12 twins apart (different files => different keys).
+// Falls back to the old tail when the tests/ tree is not available.
 function specTail(s) {
   if (!s) return null;
+  if (identity.ready) {
+    const canon = identity.canonicalPath({ fullName: String(s) });
+    if (canon) return canon.toLowerCase();
+  }
   const n = String(s).replace(/\\/g, '/').replace(/:\d+(?::\d+)?$/, '');
   const k = n.indexOf('1.Project_CRM/');
   if (k >= 0) return n.slice(k).toLowerCase();
