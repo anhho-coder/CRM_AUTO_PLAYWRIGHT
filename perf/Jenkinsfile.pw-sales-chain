@@ -50,13 +50,18 @@ pipeline {
         stage('Run Playwright sales-chain perf specs') {
             steps {
                 script {
-                    // reporter streams to InfluxDB only when a URL is set + reachable
-                    env.EFF_INFLUX = (params.INFLUX_URL?.trim()) ?: ''
+                    // First build of a parameterized pipeline has NO params yet -> fall back to defaults.
+                    def DEF_SPECS = 'tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-4-1-create-deal-element.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-1-create-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-4-approve-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-5-3-send-quotation.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-6-1-create-invoice.spec.ts tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-7-1-create-license.spec.ts'
+                    env.EFF_SPECS = (params.SPECS?.trim()) ?: DEF_SPECS
+                    env.EFF_PROJECT = (params.PROJECT?.trim()) ?: 'chrome-headless'
+                    // reporter streams to InfluxDB only when a URL is set
+                    env.EFF_INFLUX = (params.INFLUX_URL != null && params.INFLUX_URL.trim()) ? params.INFLUX_URL.trim() : 'http://10.8.81.44:8086/write?db=k6'
                     env.RPT = env.EFF_INFLUX ? 'line,perf/ci/perf-influx-reporter.js' : 'line'
-                    echo "Reporter=${env.RPT} | INFLUX_WRITE_URL=${env.EFF_INFLUX ?: '(none)'} | build tag=${env.BUILD_NUMBER}"
+                    echo "PROJECT=${env.EFF_PROJECT} | Reporter=${env.RPT} | INFLUX_WRITE_URL=${env.EFF_INFLUX ?: '(none)'} | build tag=${env.BUILD_NUMBER}"
+                    echo "SPECS=${env.EFF_SPECS}"
                 }
                 withEnv(["PW_BUILD=${env.BUILD_NUMBER}", "INFLUX_WRITE_URL=${env.EFF_INFLUX}"]) {
-                    bat 'npx playwright test %SPECS% --project=%PROJECT% --reporter=%RPT%'
+                    bat 'npx playwright test %EFF_SPECS% --project=%EFF_PROJECT% --reporter=%RPT%'
                 }
             }
         }
