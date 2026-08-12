@@ -637,7 +637,7 @@ test.describe('LeadMerging-Exploratory_3.1 - Opp Merging to Opp: IB Renewal Opp 
       console.log(`   - Created Manually: FALSE`);
       console.log(`   - Lead Form: IB NC Leads`);
       console.log(`   Opp #1 (${opp1Id}): Active=FALSE, Is Won=Lost, Lost Reason=Duplicate`);
-      console.log(`   - Created Manually: TRUE`);
+      console.log(`   - Created Manually: FALSE`);
       console.log(`   - Lead Form: Download Free Trial`);
       console.log(`   Email: ${sharedEmail}`);
       console.log(`   All verification points passed`);
@@ -687,13 +687,13 @@ test.describe('LeadMerging-Exploratory_3.1 - Opp Merging to Opp: IB Renewal Opp 
       </div>
       
       <div class="step-group">
-        <div class="step-group-title">Condition #1: Creating Opp #1 (Created Manually = TRUE, Lead Form = Download Free Trial)</div>
+        <div class="step-group-title">Condition #1: Creating Opp #1 (Created Manually = FALSE, Lead Form = Download Free Trial)</div>
         <div class="step-item">Opp #1 saved with ID: ${opp1Id}</div>
         <div class="step-item">Opp Name: ${opp1Name}</div>
         <div class="step-item">Email: ${sharedEmail} (saved as Email_Opp#1)</div>
         <div class="step-item">Company Name: Company Name Opp 1</div>
         <div class="step-item">Location: Belgium, Flanders</div>
-        <div class="step-item">Created Manually: TRUE</div>
+        <div class="step-item">Created Manually: FALSE</div>
         <div class="step-item">Lead Form: Download Free Trial</div>
       </div>
       
@@ -795,7 +795,7 @@ test.describe('LeadMerging-Exploratory_3.1 - Opp Merging to Opp: IB Renewal Opp 
       <div class="info-row"><span class="label">Tags:</span> Trial download</div>
       <div class="info-row"><span class="label">Company Name:</span> Company Name Opp 1 (auto-set)</div>
       <div class="info-row"><span class="label">Location:</span> Belgium, Flanders (BE)</div>
-      <div class="info-row"><span class="label">Created Manually:</span> TRUE</div>
+      <div class="info-row"><span class="label">Created Manually:</span> FALSE</div>
       <div class="info-row"><span class="label">Lead Form:</span> Download Free Trial</div>
       <div class="info-row"><span class="label">Active:</span> FALSE</div>
       <div class="info-row"><span class="label">Is Won:</span> Lost</div>

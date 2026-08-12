@@ -186,7 +186,7 @@ test.describe('CRM-2178_1.1.2.2 - Lead Merging: Same Company Email with Same Pri
       console.log('✓ Navigated to Leads page\n');
     });
 
-    // CONDITION #1: Create Lead #1 (Created Manually = TRUE, Download Free Trial)
+    // CONDITION #1: Create Lead #1 (Created Manually = TRUE, License)
     await test.step('Condition #1: Create Lead #1 (Created Manually = TRUE)', async () => {
       console.log('=== CONDITION #1: CREATING LEAD #1 (Created Manually = TRUE) ===');
       
@@ -597,7 +597,7 @@ test.describe('CRM-2178_1.1.2.2 - Lead Merging: Same Company Email with Same Pri
       console.log('\n✅ TEST PASSED: Lead merging verified successfully');
       console.log(`   Lead #1 (${lead1Id}): Active=TRUE, Is Won=Pending, Tags: Can_Merge, Trial download`);
       console.log(`   - Created Manually: TRUE`);
-      console.log(`   - Lead Form: Download Free Trial`);
+      console.log(`   - Lead Form: License`);
       console.log(`   Lead #2 (${lead2Id}): Active=FALSE, Is Won=Lost, Lost Reason=Duplicate`);
       console.log(`   - Created Manually: FALSE`);
       console.log(`   - Lead Form: BLANK`);
@@ -641,7 +641,7 @@ test.describe('CRM-2178_1.1.2.2 - Lead Merging: Same Company Email with Same Pri
       <div class="info-row"><span class="label">Company Name:</span> Company Name Lead 1</div>
       <div class="info-row"><span class="label">Location:</span> Belgium, Flanders</div>
       <div class="info-row"><span class="label">Created Manually:</span> TRUE</div>
-      <div class="info-row"><span class="label">Lead Form:</span> Download Free Trial</div>
+      <div class="info-row"><span class="label">Lead Form:</span> License</div>
       <div class="info-row"><span class="label">Active:</span> TRUE</div>
       <div class="info-row"><span class="label">Is Won:</span> Pending</div>
       <div class="info-row"><span class="label">URL:</span> ${lead1Url}</div>

@@ -9,7 +9,7 @@ import { mergeDeferSkipReason } from '@helpers/deferred-verify-merge.helper';
  * Lead Merging to Opp Test - Two Leads Merging with Same Company Email
  * Test Case ID: LeadMerging-Exploratory_1.2
  * Automation-Type: refactored
- * Automation-Date: 2026-08-05
+ * Automation-Date: 2026-08-06
  *
  * Summary: Verify that the merging 2 lead to opp happens successfully when the lead from the same
  * company domain email but different priority if an opp is IB renewal lead
@@ -225,9 +225,9 @@ test.describe('LeadMerging-Exploratory_1.2 - Two Leads Merging to Opp: IB Renewa
       console.log('✓ Opp list view opened');
     });
 
-    // CONDITION #1: Create Opp#1 (Created Manually = TRUE, IB NC Leads)
-    await test.step('Condition #1: Create Opp#1 (Created Manually = TRUE, Lead Form = IB NC Leads)', async () => {
-      console.log('\n=== CONDITION #1: CREATING OPP #1 (Created Manually = TRUE, Lead Form = IB NC Leads) ===');
+    // CONDITION #1: Create Opp#1 (Created Manually = FALSE, IB NC Leads)
+    await test.step('Condition #1: Create Opp#1 (Created Manually = FALSE, Lead Form = IB NC Leads)', async () => {
+      console.log('\n=== CONDITION #1: CREATING OPP #1 (Created Manually = FALSE, Lead Form = IB NC Leads) ===');
       
       // Click CREATE button
       await opportunityPage.clickCreate();
@@ -870,7 +870,7 @@ test.describe('LeadMerging-Exploratory_1.2 - Two Leads Merging to Opp: IB Renewa
     await test.step('Final Summary', async () => {
       console.log('\n✅ TEST PASSED: Two leads merging to Opp verified successfully');
       console.log(`   Opp #1 (${opp1Id}): Active=TRUE, Is Won=Pending, Tags: Renewal, Trial download`);
-      console.log(`   - Created Manually: TRUE`);
+      console.log(`   - Created Manually: FALSE`);
       console.log(`   - Lead Form: IB NC Leads`);
       console.log(`   Lead #2 (${lead2Id}): Active=FALSE, Is Won=Lost, Lost Reason=Duplicate`);
       console.log(`   - Created Manually: FALSE`);
@@ -917,7 +917,7 @@ test.describe('LeadMerging-Exploratory_1.2 - Two Leads Merging to Opp: IB Renewa
       <div class="info-row"><span class="label">Tags:</span> Renewal, Trial download</div>
       <div class="info-row"><span class="label">Company Name:</span> Company Name Opp 1</div>
       <div class="info-row"><span class="label">Location:</span> Belgium, Flanders (BE)</div>
-      <div class="info-row"><span class="label">Created Manually:</span> TRUE</div>
+      <div class="info-row"><span class="label">Created Manually:</span> FALSE</div>
       <div class="info-row"><span class="label">Lead Form:</span> IB NC Leads</div>
       <div class="info-row"><span class="label">Active:</span> TRUE</div>
       <div class="info-row"><span class="label">Is Won:</span> Pending</div>

@@ -669,14 +669,14 @@ test.describe('CRM-2178_1.1.2.1 - Lead Merging: Same Company Email with Same Pri
 
     // Final Summary
     await test.step('Final Summary', async () => {
-      console.log('\n✅ TEST PASSED: Lead merging with Deal Registration (Subscribe Form) verified successfully');
+      console.log('\n✅ TEST PASSED: Lead merging with Deal Registration (License) verified successfully');
       console.log(`   Lead #1 (${lead1Id}): Active=TRUE, Is Won=Pending, Tags: Can_Merge (1 value)`);
       console.log(`   - Created Manually: TRUE`);
       console.log(`   - Lead Form: BLANK`);
       console.log(`   - Deal Registration: TRUE (cloned from Lead#2)`);
       console.log(`   Lead #2 (${lead2Id}): Active=FALSE, Is Won=Lost, Lost Reason=Duplicate, Tags: Empty`);
       console.log(`   - Created Manually: FALSE`);
-      console.log(`   - Lead Form: Subscribe Form`);
+      console.log(`   - Lead Form: License`);
       console.log(`   - Deal Registration: TRUE (configured on Lead#2)`);
       console.log(`   Email: ${sharedEmail}`);
       console.log(`   All verification points passed`);
@@ -706,7 +706,7 @@ test.describe('CRM-2178_1.1.2.1 - Lead Merging: Same Company Email with Same Pri
 <body>
   <div class="container">
     <div class="header">
-      <h2><span class="icon">\u2705</span>LEAD MERGING TEST - PASSED (Subscribe Form)</h2>
+      <h2><span class="icon">\u2705</span>LEAD MERGING TEST - PASSED (License)</h2>
     </div>
     
     <div class="lead-section">
@@ -734,7 +734,7 @@ test.describe('CRM-2178_1.1.2.1 - Lead Merging: Same Company Email with Same Pri
       <div class="info-row"><span class="label">Company Name:</span> Company Name Lead 1 (auto-set)</div>
       <div class="info-row"><span class="label">Location:</span> United States, Texas (US)</div>
       <div class="info-row"><span class="label">Created Manually:</span> FALSE</div>
-      <div class="info-row"><span class="label">Lead Form:</span> Subscribe Form</div>
+      <div class="info-row"><span class="label">Lead Form:</span> License</div>
       <div class="info-row"><span class="label">Active:</span> FALSE</div>
       <div class="info-row"><span class="label">Is Won:</span> Lost</div>
       <div class="info-row"><span class="label">Lost Reason:</span> Duplicate</div>
@@ -745,8 +745,8 @@ test.describe('CRM-2178_1.1.2.1 - Lead Merging: Same Company Email with Same Pri
     <div class="summary">
       <div class="summary-title">\u2705 TEST PASSED</div>
       <div class="summary-text">
-        Lead merging with Deal Registration (Subscribe Form) verified successfully<br>
-        Lead #2 (Subscribe Form) merged into Lead #1 (Tag: Can_Merge)<br>
+        Lead merging with Deal Registration (License) verified successfully<br>
+        Lead #2 (License) merged into Lead #1 (Tag: Can_Merge)<br>
         Email: ${sharedEmail}<br>
         <br>
         <strong>All verification points passed</strong>
@@ -757,7 +757,7 @@ test.describe('CRM-2178_1.1.2.1 - Lead Merging: Same Company Email with Same Pri
 </html>
 `;
       
-      await testInfo.attach('\ud83d\udccb Lead Merging (Subscribe Form) - Test Summary', {
+      await testInfo.attach('\ud83d\udccb Lead Merging (License) - Test Summary', {
         body: verificationSummaryHtml,
         contentType: 'text/html'
       });
