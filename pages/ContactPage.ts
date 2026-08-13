@@ -1491,13 +1491,38 @@ export class ContactPage extends BasePage {
    * @returns the number of matching data rows in the list.
    */
   async searchContactsByEmailDomain(domain: string): Promise<number> {
-    const term = domain.startsWith('@') ? domain : `@${domain}`;
+    return this.searchContactsByEmailTerm(domain.startsWith('@') ? domain : `@${domain}`, 'email domain');
+  }
+
+  /**
+   * Search the Contacts list by a FULL email address. The address is unique per contact, so this is
+   * the precise way to ask "does this exact record still exist?" - unlike an exact-NAME count it does
+   * not depend on how many other contacts happen to share the name. Used to verify that a merge
+   * consumed the source contact: the source's own address must return 0 rows.
+   *
+   * @param email - the full address, e.g. "crm12059-1-2-src-1786596763422695@koobra.de"
+   * @returns the number of matching data rows in the list.
+   */
+  async searchContactsByEmail(email: string): Promise<number> {
+    return this.searchContactsByEmailTerm(email.trim(), 'email');
+  }
+
+  /**
+   * Shared engine of the two email searches above.
+   * Primary path: the searchview (this Odoo's res.partner search matches `email ilike self`).
+   * Fallback when the primary returns nothing: Filters > Add Custom Filter > Email contains <term>.
+   * The value widget of a char field is a plain text input (no m2o autocomplete), so the value is
+   * filled directly rather than through `selectCustomFilterValue`, which expects a dropdown.
+   */
+  private async searchContactsByEmailTerm(term: string, label: string): Promise<number> {
     const viaSearchView = await this.searchContactsByName(term);
     if (viaSearchView > 0) {
-      console.log(`  - Contacts in email domain "${term}" (searchview): ${viaSearchView} row(s)`);
+      console.log(`  - Contacts by ${label} "${term}" (searchview): ${viaSearchView} row(s)`);
       return viaSearchView;
     }
-    console.log(`  ! Searchview returned 0 rows for "${term}" - retrying with an Email custom filter`);
+    // 0 rows can be the TRUE answer (e.g. a source contact the merge consumed) or a searchview that
+    // does not match on email at all - so confirm with an explicit Email-contains filter.
+    console.log(`  ! Searchview returned 0 rows for "${term}" - confirming with an Email custom filter`);
     await this.openContactsList();
     await this.clickFilterButton();
     await this.clickAddCustomFilter();
@@ -1510,17 +1535,17 @@ export class ContactPage extends BasePage {
     await this.clickApplyFilter();
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
     const count = await this.dataRowsLocator().count();
-    console.log(`  - Contacts in email domain "${term}" (Email custom filter): ${count} row(s)`);
+    console.log(`  - Contacts by ${label} "${term}" (Email custom filter): ${count} row(s)`);
     return count;
   }
 
   /**
-   * Poll (re-search the email domain) until the number of contacts in `domain` reaches `expected`,
-   * or attempts run out; returns the last observed count. Absorbs the post-merge lag where the
-   * consumed source contact has not yet dropped out of the search index.
+   * Poll (re-search an email term - a full address or an "@domain") until the row count reaches
+   * `expected`, or attempts run out; returns the last observed count. Absorbs the post-merge lag
+   * where the consumed source contact has not yet dropped out of the search index.
    */
-  async waitForEmailDomainRowCount(
-    domain: string,
+  async waitForEmailRowCount(
+    term: string,
     expected: number,
     attempts: number = 6,
     interval: number = CommonUtils.waitTimes.searchOppWait
@@ -1528,9 +1553,9 @@ export class ContactPage extends BasePage {
     let count = -1;
     for (let a = 1; a <= attempts; a++) {
       await this.openContactsList();
-      count = await this.searchContactsByEmailDomain(domain);
+      count = await this.searchContactsByEmailTerm(term, 'email');
       if (count === expected) return count;
-      console.log(`  - waitForEmailDomainRowCount("${domain}") = ${count}, want ${expected} (attempt ${a}/${attempts})`);
+      console.log(`  - waitForEmailRowCount("${term}") = ${count}, want ${expected} (attempt ${a}/${attempts})`);
       if (a < attempts) await this.wait(interval);
     }
     return count;

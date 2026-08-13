@@ -63,8 +63,9 @@ import {
  *      3. Select Destination Contact = the historical Contact (#ID) and confirm the merge.
  *    Verification / Expected Result:
  *      The merge completes with NO "Please fill in all necessary fields in \"Qualification info\""
- *      error (the fix); the wizard closes; the historical destination Contact survives and the
- *      fresh source is consumed.
+ *      error (the fix); the wizard closes. Each record is then checked by ITS OWN EMAIL, which is
+ *      unique per contact: searching the fresh source's address returns NO contact (it was consumed)
+ *      and searching the historical destination's address still returns it (it survives).
  * =============================================================================================
  */
 
@@ -231,12 +232,16 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       const popupText = await contactPage.getBlockingPopupText(CommonUtils.waitTimes.long);
       const noQualError = !QUAL_ERROR_RE.test(popupText);
 
-      // Both records share the name, so completion reads as "the pair collapsed to one": exactly the
-      // historical destination remains and the fresh source has been consumed. Polled, because the
-      // source drops out of the search index slightly after the wizard closes.
-      const remainingExact = await contactPage.waitForExactNameCount(historical.name, 1);
-      const mergedToOne = remainingExact === 1;
-      const overall = noQualError && mergedToOne;
+      // Completion is read off each record's OWN EMAIL, not an exact-name count: the address is
+      // unique per contact, so "was the source consumed?" no longer depends on how many contacts
+      // share the name. Polled, because the source drops out of the search index slightly after the
+      // wizard closes. This runs BEFORE teardown - afterEach deletes a leftover source, so an
+      // email search taken after the run would read 0 whether or not the merge did anything.
+      const remainingSource = await contactPage.waitForEmailRowCount(sourceEmail, 0);
+      const sourceConsumed = remainingSource === 0;
+      const remainingDestination = await contactPage.searchContactsByEmail(historical.email);
+      const destinationSurvives = remainingDestination >= 1;
+      const overall = noQualError && sourceConsumed && destinationSurvives;
 
       console.log('==================== VERIFY ====================');
       console.log(`  Merge keys : shared email domain "@${historical.domain}" + shared Name "${historical.name}"`);
@@ -246,16 +251,21 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       console.log('     Expected : no popup text matching /necessary fields|Qualification info/i');
       console.log(`     Actual   : ${popupText ? `popup="${popupText.slice(0, 180)}"` : 'no blocking popup'}`);
       console.log(`     Result   : ${noQualError ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #2 - the merge completed (one exact-name contact remains = the destination):');
-      console.log('     Expected : exact-name matches = 1');
-      console.log(`     Actual   : ${remainingExact}`);
-      console.log(`     Result   : ${mergedToOne ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #2 - the merge consumed the fresh source contact (searched by ITS OWN email):');
+      console.log(`     Expected : contacts with email "${sourceEmail}" = 0`);
+      console.log(`     Actual   : ${remainingSource}`);
+      console.log(`     Result   : ${sourceConsumed ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #3 - the historical destination contact survives (searched by ITS OWN email):');
+      console.log(`     Expected : contacts with email "${historical.email}" >= 1`);
+      console.log(`     Actual   : ${remainingDestination}`);
+      console.log(`     Result   : ${destinationSurvives ? 'PASS' : 'FAIL'}`);
       console.log(`  Destination kept : ${destinationText}`);
       console.log('===============================================');
       console.log(`OVERALL: ${overall ? 'PASS' : 'FAIL'} - merging into a contact with a Stage>=Activated Opp ${overall ? 'is no longer blocked by the qualification rule (fix verified)' : 'was blocked / did not complete'}`);
 
       expect(noQualError, `No Qualification-info error must appear. Popup was: "${popupText}"`).toBe(true);
-      expect(mergedToOne, `Merge must leave exactly one exact-name contact (the destination); found ${remainingExact}`).toBe(true);
+      expect(sourceConsumed, `Merge must consume the fresh source contact - searching its email "${sourceEmail}" must return 0 contacts; found ${remainingSource}`).toBe(true);
+      expect(destinationSurvives, `The historical destination "${historical.name}" must survive - searching its email "${historical.email}" returned ${remainingDestination}`).toBe(true);
 
       // The fresh source has been consumed by the merge.
       source = undefined;
