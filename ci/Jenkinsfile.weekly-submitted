@@ -116,7 +116,13 @@ pipeline {
 
     stages {
         stage('Pre-prod route gate') {
-            agent { label 'probe' }
+            // NB: unlike the other jobs, this stage does NOT pin itself to the probe node with
+            // `agent { label 'probe' }`. probe has ONE exclusive executor, so a stage-level agent
+            // would hold it for the WHOLE retry budget - starving CRM-Connectivity-Check (which
+            // ticks every ~3 min on probe and then ABORTs with "Waiting for next available
+            // executor on 'probe'", the wedged-executor signature that looks exactly like a route
+            // outage). Instead the loop runs on this build's own executor and grabs probe only for
+            // the ~10s of each individual ping, releasing it while it waits.
             steps {
                 script {
                     def mode = (params.ROUTE_GATE ?: 'auto').trim()
@@ -140,8 +146,12 @@ pipeline {
                         }
                         echo "Pre-prod route gate: mode=${mode}, budget=${budget} min - probing 10.220.222.100 on node 'probe'..."
                         def routeUp = {
-                            return bat(returnStatus: true,
-                                script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                            def up = false
+                            node('probe') {
+                                up = bat(returnStatus: true,
+                                    script: 'ping -n 2 10.220.222.100 | findstr /C:"Reply from 10.220.222.100" >nul') == 0
+                            }
+                            return up
                         }
                         def waited = 0
                         def up = routeUp()
