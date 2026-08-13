@@ -18,6 +18,14 @@
       "foundDate": "2026-08-12",
       "fixDate": "2026-08-13",
       "solution": "Same root cause and same navigateToCRM fix as CRM-12059_1.2 (URL glob '?' is literal since Playwright 1.45 -> CRM_KANBAN_URL RegExp matching both '/web?#...' and '/web#...'). Pre-condition 1 additionally pinned to the historical Won contact Environmental Design International (#204921, @envdesigni.com) instead of scanning for a Won Opp, with the fresh source created inside that email domain and the merge outcome verified per record by its own email address."
+    },
+    {
+      "section": "Contact",
+      "summary": "CRM-12059_1.4: Verify merging a fresh contact into a historical contact with MULTIPLE Stage>=Activated Opps completes with no Qualification-info error",
+      "error": "Error: Merge must leave exactly one exact-name contact (the destination); found 2 - expect(received).toBe(expected), Expected: true, Received: false",
+      "foundDate": "2026-08-13",
+      "fixDate": "2026-08-13",
+      "solution": "The merge silently did nothing because the scenario keyed the two contacts on Company Name alone, and the outcome was verified by counting exact-name rows - a count that is meaningless when pre-prod holds several contacts with the same name. Reworked like 1.2/1.3: destination PINNED to KooBra Software Enticklungs GmbH (#348461, @koobra.de, 3 high-stage Opps), the fresh source created inside that email domain with buildEmailInDomain(), and the outcome verified per record by its OWN email (source rows -> 0, destination email still listed) instead of by exact-name count. Includes the shared navigateToCRM CRM_KANBAN_URL RegExp fix."
     }
   ]
 }
