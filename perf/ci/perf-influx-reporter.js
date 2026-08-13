@@ -48,7 +48,8 @@ class PerfInfluxReporter {
   constructor() {
     this.url = process.env.INFLUX_WRITE_URL || 'http://10.8.81.44:8086/write?db=k6';
     this.build = (process.env.PW_BUILD || 'local').replace(/[^A-Za-z0-9_.-]/g, '');
-    this.lines = [];
+    this.pending = [];
+    this.count = 0;
   }
   onTestEnd(test, result) {
     const file = test.location && test.location.file;
@@ -59,13 +60,20 @@ class PerfInfluxReporter {
     const testid = testidFromFile(file);
     const status = result.status || 'unknown';
     // line protocol: measurement,tags fields  (tag values must escape spaces/commas; ours are safe)
-    this.lines.push(`pw_perf,testid=${testid},build=${this.build},result=${status} duration_s=${sec},duration_ms=${Math.round(sec * 1000)}`);
-    console.log(`  [perf-influx] ${testid}: ${sec}s -> queued for InfluxDB`);
+    const line = `pw_perf,testid=${testid},build=${this.build},result=${status} duration_s=${sec},duration_ms=${Math.round(sec * 1000)}`;
+    // POST immediately (not batched): a long chain run can lose its agent mid-way -> incremental
+    // writes keep every measurement taken so far. onTestEnd isn't awaited by Playwright, so we
+    // dispatch the request now and await the in-flight promises in onEnd for a clean finish.
+    this.count++;
+    const p = post(this.url, line + '\n').then((ok) => {
+      console.log(`  [perf-influx] ${testid}: ${sec}s (${status}) -> ${ok ? 'written to InfluxDB' : 'FAILED (best-effort, ignored)'}`);
+    });
+    this.pending.push(p);
   }
   async onEnd() {
-    if (!this.lines.length) { console.log('[perf-influx] no perf metrics to stream.'); return; }
-    const ok = await post(this.url, this.lines.join('\n') + '\n');
-    console.log(`[perf-influx] streamed ${this.lines.length} metric(s) to ${this.url} -> ${ok ? 'OK' : 'FAILED (best-effort, ignored)'}`);
+    if (!this.count) { console.log('[perf-influx] no perf metrics to stream.'); return; }
+    await Promise.all(this.pending);
+    console.log(`[perf-influx] streamed ${this.count} metric(s) to ${this.url} (incremental, build=${this.build}).`);
   }
 }
 

@@ -61,7 +61,10 @@ pipeline {
                     echo "SPECS=${env.EFF_SPECS}"
                 }
                 withEnv(["PW_BUILD=${env.BUILD_NUMBER}", "INFLUX_WRITE_URL=${env.EFF_INFLUX}"]) {
-                    bat 'npx playwright test %EFF_SPECS% --project=%EFF_PROJECT% --reporter=%RPT%'
+                    // --retries=0: a perf measurement must not be silently retried (a retry doubles a
+                    // ~10-min seed-heavy chain and lengthens the run, raising the odds the agent channel
+                    // times out mid-build). Each metric is streamed incrementally by the reporter.
+                    bat 'npx playwright test %EFF_SPECS% --project=%EFF_PROJECT% --retries=0 --reporter=%RPT%'
                 }
             }
         }
