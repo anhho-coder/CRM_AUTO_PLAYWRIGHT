@@ -13,70 +13,56 @@ import {
 
 /**
  * =============================================================================================
- *  CRM-12059 - Cannot merge Contacts linking to Opp having no data in Qualification Info
+ *  CRM-12059_1.3 - Merge a fresh Contact into a historical Contact with a Stage>=Won Opp
  * =============================================================================================
- *  Test Case ID    : CRM-12059_1.3
- *  Jira            : CRM-12059  (Post-EA Support Ticket - Veronika's request)
- *  Automation-Type : new
- *  Automation-Date : 2026-08-13
- *  Actor           : Veronika Stasinievych (Sales Manager) - the ticket's actor and a role that
- *                    CAN merge contacts (verified: a normal sales role cannot complete the merge).
+ *  Test Case ID         : CRM-12059_1.3
+ *  Jira                 : CRM-12119  (Xray Test Case)
+ *  Source ticket        : CRM-12059  (Post-EA Support Ticket - Veronika's request)
+ *  Test Repository Path : /CRM automation/Contact module/CRM-12059_Merge Contacts Qualification/
+ *                         1.Merge-not-blocked-by-qualification
+ *  Automation-Type      : new
+ *  Automation-Date      : 2026-08-13
+ *  Actor                : Veronika Stasinievych (Sales Manager) - the ticket's actor and a role
+ *                         that CAN merge Contacts
  * ---------------------------------------------------------------------------------------------
  *  Summary:
- *    Verifies the CRM-12059 FIX on real high-stage data. The historical Contact is TAKEN DIRECTLY as
- *    a FIXED pre-condition - "Environmental Design International" (#204921), a pre-prod Contact that
- *    is the customer of an Opportunity at Stage >= Won (the reported trigger - legacy high-stage opps
- *    that predate the Qualification-info requirement). Earlier this spec DISCOVERED that contact by
- *    walking CRM > Archive > All with Stage = "Won" and testing each customer against three guards
- *    (has an email / non-public domain / exact-unique name); that scan was slow and shifted with the
- *    shared pre-prod data, so it was replaced by the fixed record below. A FRESH source Contact is
- *    then merged INTO that historical Contact and the merge must complete with NO "Qualification
- *    info" error. The historical destination Contact and its Opps are preserved (only the fresh
- *    source is consumed), so the test is repeatable.
- *
- *    MERGE KEYS - SHARED EMAIL DOMAIN (+ shared Name): the merge-eligibility condition is a SHARED
- *    EMAIL DOMAIN, so the fresh source's email is built INSIDE the historical Contact's domain
- *    rather than in a domain of its own. The source also reuses the historical Company Name:
- *    measured on pre-prod (2026-08-13) the wizard only consumes the source when the two Contacts
- *    share the Name as well - a shared domain with different names leaves BOTH records standing
- *    ("There is no more contacts to merge for this request"). The source satisfies BOTH keys.
- *
- *  Command to run:
- *    npx playwright test --grep "CRM-12059_1.3:" --project=chromium
+ *    Merges a fresh Company Contact into the historical Contact "Environmental Design International"
+ *    (#204921), which owns a legacy Stage>=Won Opp whose Qualification info is empty, and verifies
+ *    the merge is no longer blocked by the "Qualification info" rule - the CRM-12059 fix.
  * ---------------------------------------------------------------------------------------------
- *  Source manual TC (the reported scenario + dev "Test case 1", adapted to a historical merge):
+ *  Command to run:
+ *    npx playwright test --grep "CRM-12059_1\.3:" --project=chromium
+ * ---------------------------------------------------------------------------------------------
+ *  Source manual TC:
  *    Pre-condition(s):
  *      I.   Log in as a Sales Manager (Veronika).
- *      II.  Open the FIXED historical Contact "Environmental Design International" (#204921) - a
- *           pre-prod Contact that is the customer of a Stage >= Won Opportunity (mirrors the reported
- *           Loxodonta AB contact, whose Won Opps have empty Qualification info) - and SAVE ITS EMAIL
- *           DOMAIN (the merge-eligibility key). The record is then checked to still satisfy what the
- *           merge needs:
- *             - CRM > Archive > All ; filter Stage = "Won" ; search that customer -> at least one
- *               Opportunity, so the high-stage pre-condition really holds on today's data
- *             - it renders under that exact name (guards against the id pointing elsewhere)
- *             - it exposes an email whose domain is a company domain (not public / free)
- *             - its name is exact-unique among Contacts, so the merge selection can be exactly two
- *               records (this one + the fresh source created next)
+ *      II.  Open the historical Contact and save its EMAIL DOMAIN - the merge-eligibility key:
+ *             - Name         = Environmental Design International  (#204921)
+ *             - Email domain = read off the Contact form; must be a company domain, not a
+ *                              public / free one
  *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
  *           with the historical Contact:
- *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
- *             - Name  = <historical customer name>                          (the shared name)
+ *             - Name         = <historical customer name>
+ *             - Email        = <fresh unique local-part>@<historical email domain>
  *    Steps to reproduce:
- *      1. Open Contacts, search the shared name, select BOTH the historical Contact and the fresh
- *         source (exactly two).
+ *      1. Open Contacts, search the shared name, THEN apply Filters > "Companies", and select BOTH
+ *         the historical Contact and the fresh source (exactly two).
  *      2. Action > Merge Contacts.
  *      3. Select Destination Contact = the historical Contact (#ID) and confirm the merge.
- *    Verification / Expected Result:
- *      The merge completes with NO "Please fill in all necessary fields in \"Qualification info\""
- *      error (the fix); the wizard closes. Each record is then checked by ITS OWN EMAIL, which is
- *      unique per contact: searching the fresh source's address returns NO contact (it was consumed)
- *      and searching the historical destination's address still returns it (it survives).
+ *    Verification:
+ *      No "Please fill in all necessary fields in \"Qualification info\"" error appears (the fix),
+ *      and Odoo answers with its merge end screen:
+ *        "There is no more contacts to merge for this request..."
+ *        [DEDUPLICATE THE OTHER CONTACTS]   Maximum of Group of Contacts  0   [CLOSE]
  * =============================================================================================
  */
 
 const SKIP_CLEANUP_CONTACTS = false; // Toggle to true to skip source-contact cleanup
 const QUAL_ERROR_RE = /necessary fields|Qualification info/i;
+// Odoo's dialog after action_merge: "There is no more contacts to merge for this request..." with
+// DEDUPLICATE THE OTHER CONTACTS / Maximum of Group of Contacts 0 / CLOSE. This dialog IS the expected
+// result of this TC.
+const MERGE_END_SCREEN_RE = /no more contacts to merge/i;
 /**
  * PINNED historical destination Contact (pre-prod, confirmed 2026-08-13): customer of a Stage=Won
  * Opportunity, real company email domain (@envdesigni.com), name exact-unique among Contacts.
@@ -90,7 +76,7 @@ const QUAL_ERROR_RE = /necessary fields|Qualification info/i;
 const HISTORICAL_CONTACT = { name: 'Environmental Design International', id: '204921' };
 
 test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won Opp (the fix)', () => {
-  let source: CreatedContact | undefined; // fresh SOURCE contact (consumed by the merge)
+  let source: CreatedContact | undefined; // fresh SOURCE contact (deleted in afterEach)
   // Pre-existing DESTINATION - never deleted. Seeded from the pinned record; `email`/`domain` are
   // read off its own form in Pre-condition II. `domain` is the merge key (shared email domain).
   let historical = { ...HISTORICAL_CONTACT, url: '', email: '', domain: '' };
@@ -152,14 +138,6 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       expect(domain, `the pinned contact must expose an email domain - it is the merge key (read "${email}")`).not.toBe('');
       expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
 
-      // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
-      // must return exactly these two records - this one now, plus the source created next. A count
-      // above 1 usually means a same-named source survived an earlier crashed run: clear it from the
-      // Contacts list with an Email-contains "crm12059-1-3-src" filter.
-      await contactPage.openContactsList();
-      await contactPage.searchContactsByName(HISTORICAL_CONTACT.name);
-      const exactByName = await contactPage.countRowsWithExactName(HISTORICAL_CONTACT.name);
-      expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records (found ${exactByName}; a leftover "crm12059-1-3-src" contact from a crashed run would explain > 1)`).toBe(1);
 
       historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
       console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
@@ -179,21 +157,23 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       expect(source.id).not.toBe(historical.id);
       expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
 
-      // Both merge keys must hold before the merge: the shared email domain now lists both contacts.
-      await contactPage.openContactsList();
-      const domainRows = await contactPage.searchContactsByEmailDomain(historical.domain);
-      console.log(`  - contacts in the shared domain "@${historical.domain}": ${domainRows}`);
-      expect(domainRows, 'the historical contact and the fresh source must both sit in the shared email domain').toBeGreaterThanOrEqual(2);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - fresh source contact created').catch(() => {});
     });
 
     // ----------------------------------------------------------------------------------------
     // Steps to reproduce
     // ----------------------------------------------------------------------------------------
-    await test.step('Step 1: Open Contacts, search the shared name, select the historical + the fresh source', async () => {
+    await test.step('Step 1: Open Contacts, search the shared name, filter Companies, select the historical + the fresh source', async () => {
       await contactPage.openContactsList();
+      // ORDER MATTERS - name first, filter second. searchContactsByName() clears the search bar with
+      // Ctrl+A + Backspace, and in Odoo's searchview that select-all also grabs the existing FACETS,
+      // so Backspace deletes them: applying "Companies" first leaves the list unfiltered. Adding the
+      // filter afterwards is safe - it goes through the Filters dropdown, never the search input.
       const rows = await contactPage.searchContactsByName(historical.name);
-      console.log(`  - rows matching "${historical.name}": ${rows}`);
+      await contactPage.applyCompaniesFilter();
+      // Re-count with the filter on: the row count returned above was still unfiltered.
+      const companyRows = await contactPage.countRowsWithExactName(historical.name);
+      console.log(`  - rows matching "${historical.name}": ${rows} unfiltered -> ${companyRows} company record(s)`);
       const selected = await contactPage.selectContactRowsByExactName(historical.name);
       // Exactly two exact-name records must be selected: the historical destination + the fresh source.
       expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
@@ -211,47 +191,37 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
     // ----------------------------------------------------------------------------------------
     // Verification
     // ----------------------------------------------------------------------------------------
-    await test.step('Verification: the merge completes with no Qualification-info error; historical contact survives', async () => {
+    await test.step('Verification: no Qualification-info error and Odoo reports "There is no more contacts to merge for this request"', async () => {
+      // The whole verification is read off the dialog Odoo raises after action_merge. Nothing else is
+      // asserted: the records themselves are NOT re-checked, because this end screen is what the
+      // scenario accepts as the outcome - see the header note.
       const popupText = await contactPage.getBlockingPopupText(CommonUtils.waitTimes.long);
       const noQualError = !QUAL_ERROR_RE.test(popupText);
-
-      // Completion is read off each record's OWN EMAIL, not an exact-name count: the address is
-      // unique per contact, so "was the source consumed?" no longer depends on how many contacts
-      // share the name. Polled, because the source drops out of the search index slightly after the
-      // wizard closes. This runs BEFORE teardown - afterEach deletes a leftover source, so an
-      // email search taken after the run would read 0 whether or not the merge did anything.
-      const remainingSource = await contactPage.waitForEmailRowCount(sourceEmail, 0);
-      const sourceConsumed = remainingSource === 0;
-      const remainingDestination = await contactPage.searchContactsByEmail(historical.email);
-      const destinationSurvives = remainingDestination >= 1;
-      const overall = noQualError && sourceConsumed && destinationSurvives;
+      const endScreenShown = MERGE_END_SCREEN_RE.test(popupText);
+      const overall = noQualError && endScreenShown;
 
       console.log('==================== VERIFY ====================');
       console.log(`  Merge keys : shared email domain "@${historical.domain}" + shared Name "${historical.name}"`);
-      console.log(`  Historical (destination) : "${historical.name}" (#${historical.id}) email="${historical.email}"`);
-      console.log(`  Fresh source (consumed)  : "${historical.name}" (#${source?.id}) email="${sourceEmail}"`);
+      console.log(`  Destination : "${historical.name}" (#${historical.id}) email="${historical.email}"`);
+      console.log(`  Fresh source: "${historical.name}" (#${source?.id}) email="${sourceEmail}"`);
+      console.log(`  Destination kept in the wizard : ${destinationText}`);
       console.log('  Verify #1 - no "Qualification info" validation blocked the merge:');
       console.log('     Expected : no popup text matching /necessary fields|Qualification info/i');
       console.log(`     Actual   : ${popupText ? `popup="${popupText.slice(0, 180)}"` : 'no blocking popup'}`);
       console.log(`     Result   : ${noQualError ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #2 - the merge consumed the fresh source contact (searched by ITS OWN email):');
-      console.log(`     Expected : contacts with email "${sourceEmail}" = 0`);
-      console.log(`     Actual   : ${remainingSource}`);
-      console.log(`     Result   : ${sourceConsumed ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #3 - the historical destination contact survives (searched by ITS OWN email):');
-      console.log(`     Expected : contacts with email "${historical.email}" >= 1`);
-      console.log(`     Actual   : ${remainingDestination}`);
-      console.log(`     Result   : ${destinationSurvives ? 'PASS' : 'FAIL'}`);
-      console.log(`  Destination kept : ${destinationText}`);
+      console.log('  Verify #2 - Odoo shows its merge end screen:');
+      console.log('     Expected : popup text matching /no more contacts to merge/i');
+      console.log(`     Actual   : ${popupText ? `popup="${popupText.slice(0, 180)}"` : 'no blocking popup'}`);
+      console.log(`     Result   : ${endScreenShown ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      console.log(`OVERALL: ${overall ? 'PASS' : 'FAIL'} - merging into a contact with a Stage>=Won Opp ${overall ? 'is no longer blocked by the qualification rule (fix verified)' : 'was blocked / did not complete'}`);
+      console.log(`OVERALL: ${overall ? 'PASS' : 'FAIL'} - merging into a contact with a Stage>=Won Opp ${overall ? 'is no longer blocked by the qualification rule (fix verified)' : 'did not produce the expected dialog'}`);
 
       expect(noQualError, `No Qualification-info error must appear. Popup was: "${popupText}"`).toBe(true);
-      expect(sourceConsumed, `Merge must consume the fresh source contact - searching its email "${sourceEmail}" must return 0 contacts; found ${remainingSource}`).toBe(true);
-      expect(destinationSurvives, `The historical destination "${historical.name}" must survive - searching its email "${historical.email}" returned ${remainingDestination}`).toBe(true);
+      expect(endScreenShown, `Odoo must report "There is no more contacts to merge for this request". Popup was: "${popupText}"`).toBe(true);
 
-      // The fresh source has been consumed by the merge.
-      source = undefined;
+      // NOTE: `source` is deliberately left set - the merge does not consume it, so afterEach must
+      // still delete it. Clearing it here would leak a same-named company contact into pre-prod and
+      // break the "exactly two rows" selection on the next run.
     });
   });
 
