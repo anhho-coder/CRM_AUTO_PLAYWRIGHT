@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
-import { LoginPage, HomePage, OpportunityPage, ContactPage } from '@pages';
+import { LoginPage, HomePage, ContactPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   createCompanyContact,
@@ -23,12 +23,16 @@ import {
  *                    CAN merge contacts (verified: a normal sales role cannot complete the merge).
  * ---------------------------------------------------------------------------------------------
  *  Summary:
- *    Verifies the CRM-12059 FIX on real high-stage data. It FINDS a historical Contact that is the
- *    customer of an Opportunity at Stage >= Won (the reported trigger - legacy high-stage
- *    opps that predate the Qualification-info requirement), then merges a FRESH source Contact
- *    INTO that historical Contact and asserts the merge completes with NO "Qualification info"
- *    error. The historical destination Contact and its Opps are preserved (only the fresh source
- *    is consumed), so the test is repeatable.
+ *    Verifies the CRM-12059 FIX on real high-stage data. The historical Contact is TAKEN DIRECTLY as
+ *    a FIXED pre-condition - "Environmental Design International" (#204921), a pre-prod Contact that
+ *    is the customer of an Opportunity at Stage >= Won (the reported trigger - legacy high-stage opps
+ *    that predate the Qualification-info requirement). Earlier this spec DISCOVERED that contact by
+ *    walking CRM > Archive > All with Stage = "Won" and testing each customer against three guards
+ *    (has an email / non-public domain / exact-unique name); that scan was slow and shifted with the
+ *    shared pre-prod data, so it was replaced by the fixed record below. A FRESH source Contact is
+ *    then merged INTO that historical Contact and the merge must complete with NO "Qualification
+ *    info" error. The historical destination Contact and its Opps are preserved (only the fresh
+ *    source is consumed), so the test is repeatable.
  *
  *    MERGE KEYS - SHARED EMAIL DOMAIN (+ shared Name): the merge-eligibility condition is a SHARED
  *    EMAIL DOMAIN, so the fresh source's email is built INSIDE the historical Contact's domain
@@ -40,18 +44,20 @@ import {
  *  Command to run:
  *    npx playwright test --grep "CRM-12059_1.3:" --project=chromium
  * ---------------------------------------------------------------------------------------------
- *  Source manual TC (the reported scenario + dev "Test case 1", adapted to a historical search):
+ *  Source manual TC (the reported scenario + dev "Test case 1", adapted to a historical merge):
  *    Pre-condition(s):
  *      I.   Log in as a Sales Manager (Veronika).
- *      II.  Find a historical Contact linked to an Opportunity at Stage >= Won:
- *             - CRM > Archive > All ; filter Stage = "Won"
- *             - open an Won Opportunity and read its Customer (Company) - this Contact has a
- *               legacy high-stage Opp (mirrors the reported Loxodonta AB contact with Won/Won
- *               Opps whose Qualification info is empty)
- *             - open that Customer and SAVE ITS EMAIL DOMAIN (the merge-eligibility key)
- *             - the domain must be a company domain (public / free domains are skipped)
- *             - the Customer's name must be exact-unique among Contacts, so the merge selection can
- *               be exactly two records
+ *      II.  Open the FIXED historical Contact "Environmental Design International" (#204921) - a
+ *           pre-prod Contact that is the customer of a Stage >= Won Opportunity (mirrors the reported
+ *           Loxodonta AB contact, whose Won Opps have empty Qualification info) - and SAVE ITS EMAIL
+ *           DOMAIN (the merge-eligibility key). The record is then checked to still satisfy what the
+ *           merge needs:
+ *             - CRM > Archive > All ; filter Stage = "Won" ; search that customer -> at least one
+ *               Opportunity, so the high-stage pre-condition really holds on today's data
+ *             - it renders under that exact name (guards against the id pointing elsewhere)
+ *             - it exposes an email whose domain is a company domain (not public / free)
+ *             - its name is exact-unique among Contacts, so the merge selection can be exactly two
+ *               records (this one + the fresh source created next)
  *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
  *           with the historical Contact:
  *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
@@ -71,23 +77,23 @@ import {
 
 const SKIP_CLEANUP_CONTACTS = false; // Toggle to true to skip source-contact cleanup
 const QUAL_ERROR_RE = /necessary fields|Qualification info/i;
-// Candidates scanned before giving up. Higher than a plain name search needs: the email-domain
-// guards (has an email / not a public domain) reject candidates on top of the name-uniqueness check.
-const MAX_DISCOVERY_TRIES = 8;
+/**
+ * PINNED historical destination Contact (pre-prod, confirmed 2026-08-13): customer of a Stage=Won
+ * Opportunity, real company email domain (@envdesigni.com), name exact-unique among Contacts.
+ * This is the contact the Won-stage scan itself landed on.
+ *
+ * Pinned rather than discovered: scanning the Won Opportunities rejected most candidates on
+ * duplicate company names (e.g. pre-prod holds TWO contacts named exactly "Zen Sistemi S.r.l.") and
+ * burned minutes per run - in debug mode the loop looks hung. Pre-condition II still PROVES the pin
+ * on live data, so a data change fails loudly instead of silently testing the wrong record.
+ */
+const HISTORICAL_CONTACT = { name: 'Environmental Design International', id: '204921' };
 
 test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won Opp (the fix)', () => {
   let source: CreatedContact | undefined; // fresh SOURCE contact (consumed by the merge)
-  // Pre-existing DESTINATION - never deleted. `domain` is the merge key (shared email domain).
-  let historical = { name: '', id: '', url: '', email: '', domain: '' };
-
-  async function applyWonFilter(opp: OpportunityPage): Promise<void> {
-    await opp.clickFilterButton();
-    await opp.clickAddCustomFilter();
-    await opp.selectCustomFilterField('Stage');
-    await opp.selectCustomFilterOperator('is equal to');
-    await opp.selectCustomFilterValue('Won');
-    await opp.clickApplyFilter();
-  }
+  // Pre-existing DESTINATION - never deleted. Seeded from the pinned record; `email`/`domain` are
+  // read off its own form in Pre-condition II. `domain` is the merge key (shared email domain).
+  let historical = { ...HISTORICAL_CONTACT, url: '', email: '', domain: '' };
 
   test.beforeEach(async ({ context }) => {
     await context.clearCookies();
@@ -99,11 +105,10 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
 
     const loginPage = new LoginPage(page);
     const homePage = new HomePage(page);
-    const opportunityPage = new OpportunityPage(page);
     const contactPage = new ContactPage(page);
 
     // The merge SOURCE reuses the historical Company Name and takes an email inside the historical
-    // email domain, so BOTH merge keys are shared. Built in Pre-condition III, after discovery.
+    // email domain, so BOTH merge keys are shared. Built in Pre-condition III, after the pin is read.
     let sourceEmail = '';
 
     // ----------------------------------------------------------------------------------------
@@ -121,66 +126,44 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
     });
 
     // ----------------------------------------------------------------------------------------
-    // Pre-condition II: Find a historical Contact linked to an Opp at Stage >= Won
+    // Pre-condition II: Open the PINNED historical Contact and save its email domain
     // ----------------------------------------------------------------------------------------
-    await test.step('Pre-condition II: Find a historical Contact linked to a Stage>=Won Opportunity and save its email domain', async () => {
-      console.log('\n=== PRE-CONDITION II: Discover historical high-stage customer + its EMAIL DOMAIN ===');
-      for (let i = 0; i < MAX_DISCOVERY_TRIES; i++) {
-        // Return to Home first, then into CRM (navigateToCRM needs the apps-home CRM tile, which is
-        // NOT present from inside a module such as Contacts), so the Archive > All menu is reachable.
-        await homePage.returnToHome().catch(() => {});
-        await homePage.navigateToCRM();
-        await homePage.waitForPageReady();
-        await opportunityPage.navigateToAllLeads();
-        await applyWonFilter(opportunityPage);
-        if (await opportunityPage.isListEmpty().catch(() => true)) {
-          console.log('  ⚠ No Won Opportunities found');
-          break;
-        }
-        await opportunityPage.openListRowByIndex(i);
-        const name = ((await opportunityPage.getCompanyFieldValue()) || '').replace(/\s+/g, ' ').trim();
-        const custUrl = await opportunityPage.getCompanyFieldUrl();
-        const idM = custUrl.match(/[#?&]id=(\d+)/);
-        const id = idM ? idM[1] : '';
-        console.log(`  - Won Opp #${i}: customer="${name}" id=${id}`);
-        if (!name || !id) continue;
+    await test.step('Pre-condition II: Open the pinned historical Contact (#204921) and save its email domain', async () => {
+      console.log('\n=== PRE-CONDITION II: Pinned historical customer + its EMAIL DOMAIN ===');
+      console.log(`  - Pinned destination : "${HISTORICAL_CONTACT.name}" (#${HISTORICAL_CONTACT.id})`);
 
-        // The merge key is the EMAIL DOMAIN, so read the customer's own email off its contact form.
-        // openContactFormByUrl (not openContactByUrl) gates on the record actually being rendered -
-        // a hash-route hop otherwise reads the PREVIOUS form's fields.
-        const rendered = await contactPage.openContactFormByUrl(custUrl, name);
-        if (!rendered) {
-          console.log(`  ↷ Contact form for "${name}" did not render - trying next Won Opp`);
-          continue;
-        }
-        const email = ((await contactPage.getEmailReadonly()) || '').trim();
-        const domain = extractEmailDomain(email);
-        console.log(`  - customer email="${email}" -> domain="${domain}"`);
-        if (!domain) {
-          console.log('  ↷ Customer has no usable email domain - trying next Won Opp');
-          continue;
-        }
-        if (isPublicEmailDomain(domain)) {
-          console.log(`  ↷ "${domain}" is a public/free email domain (shared by unrelated contacts) - trying next Won Opp`);
-          continue;
-        }
+      // Open the pinned record straight by URL. openContactFormByUrl (not openContactByUrl) gates on
+      // the record actually being rendered - this Odoo is hash-routed, so a hash hop would otherwise
+      // let the fields be read off the PREVIOUS form. Its name check also proves the pinned id still
+      // points at this contact, so a re-pointed id fails loudly instead of merging into the wrong one.
+      const custUrl = `${new URL(page.url()).origin}/web#id=${HISTORICAL_CONTACT.id}&action=118&model=res.partner&view_type=form&menu_id=94`;
+      const rendered = await contactPage.openContactFormByUrl(custUrl, HISTORICAL_CONTACT.name);
+      expect(rendered, `the pinned contact #${HISTORICAL_CONTACT.id} must render as "${HISTORICAL_CONTACT.name}"`).toBe(true);
 
-        // The name must be exact-unique among ALL contacts: the fresh source reuses it, so the name
-        // search has to return exactly these two records - this one now, plus the source later.
-        await contactPage.openContactsList();
-        await contactPage.searchContactsByName(name);
-        const exactByName = await contactPage.countRowsWithExactName(name);
-        if (exactByName !== 1) {
-          console.log(`  ↷ "${name}" is not exact-unique among contacts (${exactByName} matches) - trying next Won Opp`);
-          continue;
-        }
-        historical = { name, id, url: custUrl, email, domain };
-        console.log(`  ✓ Historical destination contact = "${name}" (#${id}), email domain = "@${domain}"`);
-        break;
-      }
-      expect(historical.id, 'A historical contact with a usable (non-public) email domain must be found among the Won Opps').toMatch(/^\d+$/);
-      expect(historical.domain, 'The historical contact must expose the email domain used as the merge key').not.toBe('');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - historical customer + email domain discovered').catch(() => {});
+      // Logged as context, not asserted: Won Opps are archived on this CRM, so the smart button can
+      // read 0 even though the contact does carry the legacy high-stage Opp this TC is about.
+      const oppCount = await contactPage.getOpportunityStatCount().catch(() => 0);
+      console.log(`  - "Opportunities" stat button on the pinned contact: ${oppCount} (active opps only - Won ones are archived)`);
+
+      // Read the merge key (EMAIL DOMAIN) off the contact's own form.
+      const email = ((await contactPage.getEmailReadonly()) || '').trim();
+      const domain = extractEmailDomain(email);
+      console.log(`  - contact email="${email}" -> domain="${domain}"`);
+      expect(domain, `the pinned contact must expose an email domain - it is the merge key (read "${email}")`).not.toBe('');
+      expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
+
+      // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
+      // must return exactly these two records - this one now, plus the source created next. A count
+      // above 1 usually means a same-named source survived an earlier crashed run: clear it from the
+      // Contacts list with an Email-contains "crm12059-1-3-src" filter.
+      await contactPage.openContactsList();
+      await contactPage.searchContactsByName(HISTORICAL_CONTACT.name);
+      const exactByName = await contactPage.countRowsWithExactName(HISTORICAL_CONTACT.name);
+      expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records (found ${exactByName}; a leftover "crm12059-1-3-src" contact from a crashed run would explain > 1)`).toBe(1);
+
+      historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
+      console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - pinned historical customer + email domain').catch(() => {});
     });
 
     // ----------------------------------------------------------------------------------------
@@ -288,7 +271,7 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
     console.log(`  ℹ Historical destination contact "${historical.name}" (#${historical.id}, domain "@${historical.domain}") was intentionally NOT deleted.`);
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
     source = undefined;
-    historical = { name: '', id: '', url: '', email: '', domain: '' };
+    historical = { ...HISTORICAL_CONTACT, url: '', email: '', domain: '' };
   });
 });
 

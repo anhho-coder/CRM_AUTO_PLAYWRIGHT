@@ -1954,6 +1954,18 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Count the data rows currently shown in the Opportunities list. Used to assert a pre-condition
+   * holds on live data, e.g. "this customer IS the customer of at least one Stage=Activated
+   * Opportunity" after applying the Stage filter plus a customer-name search.
+   */
+  async countListRows(): Promise<number> {
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    const count = await this.dataRowsLocator().count();
+    console.log(`  - Opportunities list rows: ${count}`);
+    return count;
+  }
+
+  /**
    * Check if the list view has no data rows (works for any list page, not just Leads)
    * @returns true if no data rows are found
    */
