@@ -33,7 +33,17 @@ export class ContactPage extends BasePage {
 
   // Readonly view locators
   private readonly contactNameReadonly = () => this.page.locator('h1, .o_field_widget[name="name"]').first();
-  private readonly emailReadonly = () => this.page.locator('a[href*="mailto:"]').first();
+  // Readonly Email field of the contact currently on screen.
+  // Must be keyed on the FIELD (@name='email'), not on any 'mailto:' anchor: an Odoo contact form
+  // also carries HIDDEN duplicate mail widgets that render as href="mailto:false" / text "false",
+  // and they come FIRST in the DOM - so a plain `a[href*="mailto:"]`.first() read back "false" on
+  // every contact that has one. The child contacts in "Contacts & Addresses" are also @name='email'
+  // anchors but come later, so .first() is the record's own address.
+  private readonly emailReadonly = () =>
+    this.page.locator("xpath=//a[@name='email' and not(contains(@class,'o_invisible_modifier'))]")
+      .or(this.page.locator('a[name="email"]'));
+  // Fallback only (see getEmailReadonly): every mail anchor on the page, hidden ones included.
+  private readonly mailtoAnchors = () => this.page.locator('a[href*="mailto:"]');
   private readonly addressReadonly = () => this.page.locator('td:has-text("Address")').locator('..');
   private readonly formEditable = () => this.page.locator('.o_form_editable, input:not([readonly])').first();
 
@@ -445,11 +455,32 @@ export class ContactPage extends BasePage {
    * Get email in readonly mode
    */
   async getEmailReadonly(): Promise<string> {
+    // Odoo renders an EMPTY email widget as the literal string "false" - that is an empty value, not
+    // an address, so it must never be handed back to a caller as if it were one.
+    const clean = (t: string) => (/^false$/i.test(t.trim()) ? '' : t.trim());
     try {
-      return await this.emailReadonly().textContent({ timeout: 3000 }) || '';
+      const field = this.emailReadonly();
+      if (await field.count()) {
+        return clean(((await field.first().textContent({ timeout: CommonUtils.waitTimes.extraLong })) || ''));
+      }
     } catch {
-      return '';
+      // fall through to the anchor scan
     }
+    try {
+      // Fallback for forms that do not tag the field: first VISIBLE mail anchor. Must skip hidden
+      // ones - Odoo's hidden duplicate widgets sit FIRST in the DOM and render "mailto:false".
+      const anchors = this.mailtoAnchors();
+      const total = await anchors.count();
+      for (let i = 0; i < total; i++) {
+        const anchor = anchors.nth(i);
+        if (!(await anchor.isVisible().catch(() => false))) continue;
+        const text = clean(((await anchor.textContent().catch(() => '')) || ''));
+        if (text) return text;
+      }
+    } catch {
+      // ignore - treated as "no email"
+    }
+    return '';
   }
 
   /**
@@ -1231,6 +1262,47 @@ export class ContactPage extends BasePage {
   }
 
   /**
+   * Open a contact form by URL and WAIT UNTIL THAT RECORD IS ACTUALLY RENDERED.
+   *
+   * Why this exists next to `openContactByUrl`: this Odoo web client is hash-routed, so navigating
+   * from another record's form to "...#id=<n>&model=res.partner" is a SAME-DOCUMENT navigation -
+   * `goto()` resolves instantly and `waitForFormView()` is satisfied by the PREVIOUS record's form,
+   * which is still on screen while the SPA fetches the new one. Any field read in that window comes
+   * off the stale record (observed: a crm.lead form's empty email read back as the string "false").
+   * So this uses the hash-route + reload pattern of `openContactsList`, then gates on the contact's
+   * own Name matching `expectedName` before returning.
+   *
+   * @param url - the contact's backend form URL
+   * @param expectedName - display name to wait for; when omitted only the form view is awaited
+   */
+  async openContactFormByUrl(url: string, expectedName?: string): Promise<boolean> {
+    await this.goto(url, { waitUntil: 'domcontentloaded' });
+    // A hash-only change does not reload; force a real load of the hash route.
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    if (!expectedName) {
+      await this.wait(CommonUtils.waitTimes.long);
+      return true;
+    }
+    const target = expectedName.replace(/\s+/g, ' ').trim();
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const shown = ((await this.getContactNameReadonly()) || '').replace(/\s+/g, ' ').trim();
+      // A child contact is referenced elsewhere by its DISPLAY name ("Company, Child") but its own
+      // form shows just "Child", so the trailing segment counts as a match too.
+      if (shown && (shown === target || target.endsWith(`, ${shown}`))) {
+        console.log(`  ✓ Contact form rendered for "${target}"`);
+        return true;
+      }
+      console.log(`  - Waiting for contact form "${target}" (showing "${shown}") - attempt ${attempt}/6`);
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    console.log(`  ⚠ Contact form for "${target}" did not render in time`);
+    return false;
+  }
+
+  /**
    * Search the Contacts list for a name and open the first matching record (list row or kanban card).
    * Returns the opened record's backend form URL. Used to capture the reseller's contact URL.
    * @param name - the contact name to search (e.g. "TEST-Reseller#Automation-Jun10")
@@ -1400,6 +1472,92 @@ export class ContactPage extends BasePage {
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
     const count = await this.dataRowsLocator().count();
     console.log(`  - Contacts matching "${name}": ${count} row(s)`);
+    return count;
+  }
+
+  /**
+   * Search the Contacts list by EMAIL DOMAIN - the merge-eligibility key for a manual
+   * "Merge Contacts": the selected contacts must share ONE email domain (NOT one Company Name).
+   *
+   * Primary path: type the domain into the searchview and apply the default facet. This Odoo's
+   * res.partner search view matches `email ilike self` as well as the display name, so
+   * "@acme.com" returns every contact whose email sits in that domain.
+   * Fallback (primary returned nothing): Filters > Add Custom Filter > Email contains <domain>.
+   * The value widget of a char field is a plain text input (no m2o autocomplete), so the value is
+   * filled directly here rather than through `selectCustomFilterValue` (which expects a dropdown).
+   *
+   * @param domain - bare domain ("acme.com") or the "@acme.com" form; always matched WITH the '@'
+   *                 so "acme.com" cannot also match a display name.
+   * @returns the number of matching data rows in the list.
+   */
+  async searchContactsByEmailDomain(domain: string): Promise<number> {
+    return this.searchContactsByEmailTerm(domain.startsWith('@') ? domain : `@${domain}`, 'email domain');
+  }
+
+  /**
+   * Search the Contacts list by a FULL email address. The address is unique per contact, so this is
+   * the precise way to ask "does this exact record still exist?" - unlike an exact-NAME count it does
+   * not depend on how many other contacts happen to share the name. Used to verify that a merge
+   * consumed the source contact: the source's own address must return 0 rows.
+   *
+   * @param email - the full address, e.g. "crm12059-1-2-src-1786596763422695@koobra.de"
+   * @returns the number of matching data rows in the list.
+   */
+  async searchContactsByEmail(email: string): Promise<number> {
+    return this.searchContactsByEmailTerm(email.trim(), 'email');
+  }
+
+  /**
+   * Shared engine of the two email searches above.
+   * Primary path: the searchview (this Odoo's res.partner search matches `email ilike self`).
+   * Fallback when the primary returns nothing: Filters > Add Custom Filter > Email contains <term>.
+   * The value widget of a char field is a plain text input (no m2o autocomplete), so the value is
+   * filled directly rather than through `selectCustomFilterValue`, which expects a dropdown.
+   */
+  private async searchContactsByEmailTerm(term: string, label: string): Promise<number> {
+    const viaSearchView = await this.searchContactsByName(term);
+    if (viaSearchView > 0) {
+      console.log(`  - Contacts by ${label} "${term}" (searchview): ${viaSearchView} row(s)`);
+      return viaSearchView;
+    }
+    // 0 rows can be the TRUE answer (e.g. a source contact the merge consumed) or a searchview that
+    // does not match on email at all - so confirm with an explicit Email-contains filter.
+    console.log(`  ! Searchview returned 0 rows for "${term}" - confirming with an Email custom filter`);
+    await this.openContactsList();
+    await this.clickFilterButton();
+    await this.clickAddCustomFilter();
+    await this.selectCustomFilterField('Email');
+    await this.selectCustomFilterOperator('contains');
+    const valueInput = this.customFilterValueInput();
+    await valueInput.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await valueInput.fill(term);
+    await this.wait(CommonUtils.waitTimes.medium);
+    await this.clickApplyFilter();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    const count = await this.dataRowsLocator().count();
+    console.log(`  - Contacts by ${label} "${term}" (Email custom filter): ${count} row(s)`);
+    return count;
+  }
+
+  /**
+   * Poll (re-search an email term - a full address or an "@domain") until the row count reaches
+   * `expected`, or attempts run out; returns the last observed count. Absorbs the post-merge lag
+   * where the consumed source contact has not yet dropped out of the search index.
+   */
+  async waitForEmailRowCount(
+    term: string,
+    expected: number,
+    attempts: number = 6,
+    interval: number = CommonUtils.waitTimes.searchOppWait
+  ): Promise<number> {
+    let count = -1;
+    for (let a = 1; a <= attempts; a++) {
+      await this.openContactsList();
+      count = await this.searchContactsByEmailTerm(term, 'email');
+      if (count === expected) return count;
+      console.log(`  - waitForEmailRowCount("${term}") = ${count}, want ${expected} (attempt ${a}/${attempts})`);
+      if (a < attempts) await this.wait(interval);
+    }
     return count;
   }
 

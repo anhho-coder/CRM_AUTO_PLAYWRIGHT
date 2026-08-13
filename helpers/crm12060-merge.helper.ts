@@ -44,6 +44,42 @@ export async function createContactOfType(
   return created;
 }
 
+/**
+ * Public / free email domains. A manual "Merge Contacts" is keyed on a SHARED EMAIL DOMAIN, so a
+ * historical contact sitting on a public domain is unusable as a merge destination for these tests:
+ * the domain is shared by hundreds of unrelated contacts, which makes the merge selection ambiguous.
+ * Discovery skips any candidate whose email is on one of these domains.
+ */
+export const PUBLIC_EMAIL_DOMAINS: readonly string[] = [
+  'gmail.com', 'googlemail.com', 'yahoo.com', 'yahoo.co.uk', 'hotmail.com', 'outlook.com',
+  'live.com', 'msn.com', 'aol.com', 'icloud.com', 'me.com', 'mail.com', 'gmx.com', 'gmx.de',
+  'yandex.ru', 'mail.ru', 'protonmail.com', 'proton.me', 'qq.com', '163.com', 'web.de',
+];
+
+/** Whether `domain` is a public / free email domain (case-insensitive). */
+export function isPublicEmailDomain(domain: string): boolean {
+  return PUBLIC_EMAIL_DOMAINS.includes(domain.trim().toLowerCase());
+}
+
+/**
+ * Pull the domain out of an email address ("info@acme.com" -> "acme.com"). Tolerates the raw text
+ * of a readonly Odoo email cell (surrounding whitespace, a trailing comma). Returns '' when the
+ * value holds no usable domain.
+ */
+export function extractEmailDomain(email: string): string {
+  const m = (email || '').replace(/\s+/g, ' ').trim().match(/@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/);
+  return m ? m[1].toLowerCase().replace(/[.,;]+$/, '') : '';
+}
+
+/**
+ * Build a fresh, unique email address INSIDE an existing domain - the merge-eligibility key
+ * ("only the domain must match"). e.g. buildEmailInDomain('crm12059-src', 'acme.com')
+ * -> "crm12059-src-1754...@acme.com".
+ */
+export function buildEmailInDomain(prefix: string, domain: string): string {
+  return `${prefix}-${Date.now()}${Math.floor(Math.random() * 1000)}@${domain.replace(/^@/, '')}`;
+}
+
 /** Convenience wrapper: create a Company-type contact (Company Name = `name`). */
 export async function createCompanyContact(
   page: Page,
