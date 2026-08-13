@@ -1,0 +1,23 @@
+{
+  "_readme": "PER-WEEK data source for the WEEKLY Allure 'Fix failed cases' card. Filename MUST be crm-fix-failed-cases.<periodKey>.json (this one = 2026-W33); the weekly job reads ONLY the file matching the report's ISO week, so each week shows just its own fixes. To record a new week's fixes, COPY this file to the new periodKey name and edit its cases. Each object is one failed test case fixed that week. Fields: section (suite, e.g. O12_CE_to_O12_CC), summary (full test title 'TC-ID: title'), error (the failing assertion/message), foundDate + fixDate (ISO yyyy-mm-dd; leave fixDate empty '' while still in progress), solution (what fixed it). Errors/solutions left '' render as a 'to fill' placeholder.",
+  "period": "weekly",
+  "week": "2026-W33",
+  "cases": [
+    {
+      "section": "Contact",
+      "summary": "CRM-12059_1.2: Verify merging a fresh contact into a historical contact with a Stage>=Activated Opp completes with no Qualification-info error",
+      "error": "TimeoutError: page.waitForURL: Timeout 240000ms exceeded - navigateToCRM never reached the CRM kanban view (HomePage.ts:123); run took 5m 21s before aborting",
+      "foundDate": "2026-08-12",
+      "fixDate": "",
+      "solution": ""
+    },
+    {
+      "section": "Contact",
+      "summary": "CRM-12059_1.3: Verify merging a fresh contact into a historical contact with a Stage>=Won Opp completes with no Qualification-info error",
+      "error": "TimeoutError: page.waitForURL: Timeout 240000ms exceeded - navigateToCRM never reached the CRM kanban view (HomePage.ts:123); run took 5m 59s before aborting",
+      "foundDate": "2026-08-12",
+      "fixDate": "",
+      "solution": ""
+    }
+  ]
+}
