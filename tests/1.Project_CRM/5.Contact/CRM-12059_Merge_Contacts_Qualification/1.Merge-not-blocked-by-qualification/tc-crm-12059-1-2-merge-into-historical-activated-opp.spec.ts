@@ -54,15 +54,17 @@ import {
  *               -> at least one Opportunity, so the high-stage pre-condition really holds
  *             - open the Contact and SAVE ITS EMAIL DOMAIN (the merge-eligibility key); the domain
  *               must be a company domain, not a public / free one
- *             - the Contact's name must be exact-unique among Contacts, so the merge selection can
- *               be exactly two records
+ *             - Contacts > Filters > "Companies" + search that name -> exactly ONE company record,
+ *               so once the fresh source exists the same list holds exactly the two records the merge
+ *               needs (the Companies filter drops child contacts, which show their parent's company
+ *               name in the Name cell)
  *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
  *           with the historical Contact:
  *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
  *             - Name  = <historical customer name>                          (the shared name)
  *    Steps to reproduce:
- *      1. Open Contacts, search the shared name, select BOTH the historical Contact and the fresh
- *         source (exactly two).
+ *      1. Open Contacts, apply Filters > "Companies", search the shared name, select BOTH the
+ *         historical Contact and the fresh source (exactly two).
  *      2. Action > Merge Contacts.
  *      3. Select Destination Contact = the historical Contact (#ID) and confirm the merge.
  *    Verification / Expected Result:
@@ -77,7 +79,8 @@ const SKIP_CLEANUP_CONTACTS = false; // Toggle to true to skip source-contact cl
 const QUAL_ERROR_RE = /necessary fields|Qualification info/i;
 /**
  * PINNED historical destination Contact (pre-prod, confirmed 2026-08-13): customer of Stage=Activated
- * Opportunities, real company email domain (@koobra.de), name exact-unique among Contacts.
+ * Opportunities, real company email domain (@koobra.de), and the only COMPANY contact under that name
+ * (Contacts > Filters > "Companies" + the name returns exactly this record).
  *
  * Pinned rather than discovered: scanning the Activated Opportunities rejected most candidates on
  * duplicate company names (e.g. pre-prod holds TWO contacts named exactly "Zen Sistemi S.r.l.") and
@@ -161,12 +164,15 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       expect(domain, 'the pinned contact must expose an email domain - it is the merge key').not.toBe('');
       expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
 
-      // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
-      // must return exactly these two records - this one now, plus the source created next.
+      // Among COMPANIES the name must resolve to exactly this one record, so that after the fresh
+      // source is created the same list holds exactly the two records the merge needs. The Companies
+      // filter is what makes that work: child contacts render their parent's company name in the Name
+      // cell, so without it one company can surface as several exact-name rows.
       await contactPage.openContactsList();
+      await contactPage.applyCompaniesFilter();
       await contactPage.searchContactsByName(HISTORICAL_CONTACT.name);
-      const exactByName = await contactPage.countRowsWithExactName(HISTORICAL_CONTACT.name);
-      expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records`).toBe(1);
+      const companyRows = await contactPage.countRowsWithExactName(HISTORICAL_CONTACT.name);
+      expect(companyRows, `"${HISTORICAL_CONTACT.name}" must resolve to exactly one COMPANY contact so the merge selection is exactly two records`).toBe(1);
 
       historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
       console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
@@ -197,10 +203,13 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
     // ----------------------------------------------------------------------------------------
     // Steps to reproduce
     // ----------------------------------------------------------------------------------------
-    await test.step('Step 1: Open Contacts, search the shared name, select the historical + the fresh source', async () => {
+    await test.step('Step 1: Open Contacts, filter Companies, search the shared name, select the historical + the fresh source', async () => {
       await contactPage.openContactsList();
+      // Same Companies + name view as the pre-condition, so the rows are the two company records and
+      // no child contact (which shows its parent's company name) can be selected by mistake.
+      await contactPage.applyCompaniesFilter();
       const rows = await contactPage.searchContactsByName(historical.name);
-      console.log(`  - rows matching "${historical.name}": ${rows}`);
+      console.log(`  - company rows matching "${historical.name}": ${rows}`);
       const selected = await contactPage.selectContactRowsByExactName(historical.name);
       // Exactly two exact-name records must be selected: the historical destination + the fresh source.
       expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);

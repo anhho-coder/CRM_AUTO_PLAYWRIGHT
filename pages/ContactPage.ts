@@ -101,6 +101,17 @@ export class ContactPage extends BasePage {
     this.page.locator("xpath=//div[contains(@class,'o_search_options')]//button[normalize-space()='Filters']").first();
   private readonly addCustomFilterLink = () =>
     this.page.locator("xpath=//button[contains(normalize-space(),'Add Custom Filter') or contains(normalize-space(),'Add Customer Filter')]").first();
+  // A named option inside the OPEN Filters dropdown (e.g. "Companies", "Individuals", "Resellers").
+  private readonly filterMenuOption = (label: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'dropdown-menu') and contains(@class,'show')]//a[normalize-space()='${label}']`)
+      .or(this.page.locator(`xpath=//ul[contains(@class,'o_filters_menu')]//a[normalize-space()='${label}']`))
+      .or(this.page.locator(`a[role='menuitem']:text-is('${label}')`))
+      .first();
+  // An applied search facet chip in the search bar (e.g. the "Companies" chip).
+  private readonly searchFacet = (label: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'o_searchview_facet')][.//*[normalize-space()='${label}']]`)
+      .or(this.page.locator(`xpath=//div[contains(@class,'o_facet_values')][normalize-space()='${label}']`))
+      .first();
   private readonly customFilterFieldSelect = () =>
     this.page.locator("xpath=//select[contains(@class,'o_input o_searchview_extended_prop_field')]").first();
   private readonly customFilterOperatorSelect = () =>
@@ -1492,6 +1503,30 @@ export class ContactPage extends BasePage {
    */
   async searchContactsByEmailDomain(domain: string): Promise<number> {
     return this.searchContactsByEmailTerm(domain.startsWith('@') ? domain : `@${domain}`, 'email domain');
+  }
+
+  /**
+   * Apply the Contacts "Companies" filter (Filters > Companies), so the list holds ONLY company-type
+   * contacts.
+   *
+   * Why the merge flow needs it: a CHILD contact renders its parent's company name in the list's Name
+   * cell, so an exact-name search alone can return several rows for one company and the selection is
+   * no longer "exactly the destination + the source". Restricting the list to Companies removes those
+   * child/individual rows instead of demanding that the company name be unique across all Contacts.
+   */
+  async applyCompaniesFilter(): Promise<void> {
+    await this.clickFilterButton();
+    const option = this.filterMenuOption('Companies');
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click();
+    await this.wait(CommonUtils.waitTimes.standard);
+    // Odoo keeps this multi-select menu open; toggle it shut so it cannot swallow the next click.
+    await this.filterDropdownButton().click().catch(() => {});
+    await this.searchFacet('Companies')
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => { throw new Error('The "Companies" filter facet never appeared in the search bar.'); });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    console.log('  ✓ "Companies" filter applied (list holds company-type contacts only)');
   }
 
   /**
