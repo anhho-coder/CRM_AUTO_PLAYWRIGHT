@@ -13,65 +13,47 @@ import {
 
 /**
  * =============================================================================================
- *  CRM-12059 - Cannot merge Contacts linking to Opp having no data in Qualification Info
+ *  CRM-12059_1.2 - Merge a fresh Contact into a historical Contact with a Stage>=Activated Opp
  * =============================================================================================
- *  Test Case ID    : CRM-12059_1.2
- *  Jira            : CRM-12059  (Post-EA Support Ticket - Veronika's request)
- *  Automation-Type : new
- *  Automation-Date : 2026-08-13
- *  Actor           : Veronika Stasinievych (Sales Manager) - the ticket's actor and a role that
- *                    CAN merge contacts (verified: a normal sales role cannot complete the merge).
+ *  Test Case ID         : CRM-12059_1.2
+ *  Jira                 : CRM-12118  (Xray Test Case)
+ *  Source ticket        : CRM-12059  (Post-EA Support Ticket - Veronika's request)
+ *  Test Repository Path : /CRM automation/Contact module/CRM-12059_Merge Contacts Qualification/
+ *                         1.Merge-not-blocked-by-qualification
+ *  Automation-Type      : new
+ *  Automation-Date      : 2026-08-13
+ *  Actor                : Veronika Stasinievych (Sales Manager) - the ticket's actor and a role
+ *                         that CAN merge Contacts
  * ---------------------------------------------------------------------------------------------
  *  Summary:
- *    Verifies the CRM-12059 FIX on real high-stage data. The historical Contact is TAKEN DIRECTLY as
- *    a FIXED pre-condition - "KooBra Software Enticklungs GmbH" (#348461), a pre-prod Contact that is
- *    the customer of Opportunities at Stage >= Activated (the reported trigger - legacy high-stage
- *    opps that predate the Qualification-info requirement). Earlier this spec DISCOVERED that contact
- *    by walking CRM > Archive > All with Stage = "Activated" and testing each customer against three
- *    guards (has an email / non-public domain / exact-unique name); that scan was slow and shifted
- *    with the shared pre-prod data, so it was replaced by the fixed record below. A FRESH source
- *    Contact is then merged INTO that historical Contact and the merge must complete with NO
- *    "Qualification info" error, answering with Odoo's merge end screen. The historical destination
- *    Contact and its Opps are untouched and the fresh source is deleted in teardown, so the test is
- *    repeatable.
- *
- *    MERGE KEYS - SHARED EMAIL DOMAIN (+ shared Name): the merge-eligibility condition is a SHARED
- *    EMAIL DOMAIN, so the fresh source's email is built INSIDE the historical Contact's domain
- *    rather than in a domain of its own. The source also reuses the historical Company Name:
- *    measured on pre-prod (2026-08-13) the wizard only consumes the source when the two Contacts
- *    share the Name as well - a shared domain with different names leaves BOTH records standing
- *    ("There is no more contacts to merge for this request"). The source satisfies BOTH keys.
- *
- *  Command to run:
- *    npx playwright test --grep "CRM-12059_1.2:" --project=chromium
+ *    Merges a fresh Company Contact into the historical Contact "KooBra Software Enticklungs GmbH"
+ *    (#348461), which owns legacy Stage>=Activated Opps whose Qualification info is empty, and
+ *    verifies the merge is no longer blocked by the "Qualification info" rule - the CRM-12059 fix.
  * ---------------------------------------------------------------------------------------------
- *  Source manual TC (the reported scenario + dev "Test case 1", adapted to a historical search):
+ *  Command to run:
+ *    npx playwright test --grep "CRM-12059_1\.2:" --project=chromium
+ * ---------------------------------------------------------------------------------------------
+ *  Source manual TC:
  *    Pre-condition(s):
  *      I.   Log in as a Sales Manager (Veronika).
- *      II.  Open the historical Contact "KooBra Software Enticklungs GmbH" (#348461) - a legacy
- *           high-stage customer, mirroring the reported Loxodonta AB contact whose Won/Activated
- *           Opps have an empty Qualification info - and SAVE ITS EMAIL DOMAIN (the merge-eligibility
- *           key). The form must render under that exact name and the domain must be a company
- *           domain, not a public / free one.
+ *      II.  Open the historical Contact and save its EMAIL DOMAIN - the merge-eligibility key:
+ *             - Name         = KooBra Software Enticklungs GmbH  (#348461)
+ *             - Email domain = read off the Contact form; must be a company domain, not a
+ *                              public / free one
  *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
  *           with the historical Contact:
- *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
- *             - Name  = <historical customer name>                          (the shared name)
+ *             - Name         = <historical customer name>
+ *             - Email        = <fresh unique local-part>@<historical email domain>
  *    Steps to reproduce:
- *      1. Open Contacts, search the shared name, THEN apply Filters > "Companies" (that order - the
- *         search box is cleared with Ctrl+A + Backspace, which also deletes an already-applied facet),
- *         and select BOTH the historical Contact and the fresh source (exactly two).
+ *      1. Open Contacts, search the shared name, THEN apply Filters > "Companies", and select BOTH
+ *         the historical Contact and the fresh source (exactly two).
  *      2. Action > Merge Contacts.
  *      3. Select Destination Contact = the historical Contact (#ID) and confirm the merge.
- *    Verification / Expected Result:
- *      Confirming the merge raises NO "Please fill in all necessary fields in \"Qualification info\""
- *      error (that is the CRM-12059 fix) and Odoo answers with its merge end screen:
+ *    Verification:
+ *      No "Please fill in all necessary fields in \"Qualification info\"" error appears (the fix),
+ *      and Odoo answers with its merge end screen:
  *        "There is no more contacts to merge for this request..."
- *        [DEDUPLICATE THE OTHER CONTACTS]  Maximum of Group of Contacts  0  [CLOSE]
- *      That dialog is the whole expected result - the records themselves are NOT re-checked. Note it
- *      also means the source contact is NOT consumed on this historical-destination path (measured
- *      2026-08-13 across both destinations, Veronika and admin, exact-email and same-domain), so the
- *      fresh source is removed by afterEach rather than by the merge.
+ *        [DEDUPLICATE THE OTHER CONTACTS]   Maximum of Group of Contacts  0   [CLOSE]
  * =============================================================================================
  */
 
