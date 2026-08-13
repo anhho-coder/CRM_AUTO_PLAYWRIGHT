@@ -3,7 +3,13 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, OpportunityPage, ContactPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
-import { createCompanyContact, CreatedContact } from '@helpers/crm12060-merge.helper';
+import {
+  createCompanyContact,
+  CreatedContact,
+  extractEmailDomain,
+  isPublicEmailDomain,
+  buildEmailInDomain,
+} from '@helpers/crm12060-merge.helper';
 
 /**
  * =============================================================================================
@@ -12,17 +18,24 @@ import { createCompanyContact, CreatedContact } from '@helpers/crm12060-merge.he
  *  Test Case ID    : CRM-12059_1.2
  *  Jira            : CRM-12059  (Post-EA Support Ticket - Veronika's request)
  *  Automation-Type : new
- *  Automation-Date : 2026-08-10
+ *  Automation-Date : 2026-08-13
  *  Actor           : Veronika Stasinievych (Sales Manager) - the ticket's actor and a role that
  *                    CAN merge contacts (verified: a normal sales role cannot complete the merge).
  * ---------------------------------------------------------------------------------------------
  *  Summary:
  *    Verifies the CRM-12059 FIX on real high-stage data. It FINDS a historical Contact that is the
  *    customer of an Opportunity at Stage >= Activated (the reported trigger - legacy high-stage
- *    opps that predate the Qualification-info requirement), then merges a FRESH same-named source
- *    Contact INTO that historical Contact and asserts the merge completes with NO "Qualification
- *    info" error. The historical destination Contact and its Opps are preserved (only the fresh
- *    source is consumed), so the test is repeatable.
+ *    opps that predate the Qualification-info requirement), then merges a FRESH source Contact
+ *    INTO that historical Contact and asserts the merge completes with NO "Qualification info"
+ *    error. The historical destination Contact and its Opps are preserved (only the fresh source
+ *    is consumed), so the test is repeatable.
+ *
+ *    MERGE KEYS - SHARED EMAIL DOMAIN (+ shared Name): the merge-eligibility condition is a SHARED
+ *    EMAIL DOMAIN, so the fresh source's email is built INSIDE the historical Contact's domain
+ *    rather than in a domain of its own. The source also reuses the historical Company Name:
+ *    measured on pre-prod (2026-08-13) the wizard only consumes the source when the two Contacts
+ *    share the Name as well - a shared domain with different names leaves BOTH records standing
+ *    ("There is no more contacts to merge for this request"). The source satisfies BOTH keys.
  *
  *  Command to run:
  *    npx playwright test --grep "CRM-12059_1.2:" --project=chromium
@@ -35,12 +48,14 @@ import { createCompanyContact, CreatedContact } from '@helpers/crm12060-merge.he
  *             - open an Activated Opportunity and read its Customer (Company) - this Contact has a
  *               legacy high-stage Opp (mirrors the reported Loxodonta AB contact with Won/Activated
  *               Opps whose Qualification info is empty)
- *             - use the FIRST such Customer whose name is exact-unique among Contacts (so it can be
- *               selected safely alongside the fresh source)
- *      III. Create a FRESH source Company Contact (the merge SOURCE) with the SAME name (distinct
- *           email) so both co-list under one name search:
- *             - Name  = <historical customer name>
- *             - Email = <fresh unique email>
+ *             - open that Customer and SAVE ITS EMAIL DOMAIN (the merge-eligibility key)
+ *             - the domain must be a company domain (public / free domains are skipped)
+ *             - the Customer's name must be exact-unique among Contacts, so the merge selection can
+ *               be exactly two records
+ *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
+ *           with the historical Contact:
+ *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
+ *             - Name  = <historical customer name>                          (the shared name)
  *    Steps to reproduce:
  *      1. Open Contacts, search the shared name, select BOTH the historical Contact and the fresh
  *         source (exactly two).
@@ -55,11 +70,14 @@ import { createCompanyContact, CreatedContact } from '@helpers/crm12060-merge.he
 
 const SKIP_CLEANUP_CONTACTS = false; // Toggle to true to skip source-contact cleanup
 const QUAL_ERROR_RE = /necessary fields|Qualification info/i;
-const MAX_DISCOVERY_TRIES = 5;
+// Candidates scanned before giving up. Higher than a plain name search needs: the email-domain
+// guards (has an email / not a public domain) reject candidates on top of the name-uniqueness check.
+const MAX_DISCOVERY_TRIES = 8;
 
 test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Activated Opp (the fix)', () => {
   let source: CreatedContact | undefined; // fresh SOURCE contact (consumed by the merge)
-  let historical = { name: '', id: '', url: '' }; // pre-existing DESTINATION - never deleted
+  // Pre-existing DESTINATION - never deleted. `domain` is the merge key (shared email domain).
+  let historical = { name: '', id: '', url: '', email: '', domain: '' };
 
   async function applyActivatedFilter(opp: OpportunityPage): Promise<void> {
     await opp.clickFilterButton();
@@ -83,7 +101,9 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
     const opportunityPage = new OpportunityPage(page);
     const contactPage = new ContactPage(page);
 
-    const sourceEmail = CommonUtils.generateContactEmail('crm12059-c3', 'merge-src');
+    // The merge SOURCE reuses the historical Company Name and takes an email inside the historical
+    // email domain, so BOTH merge keys are shared. Built in Pre-condition III, after discovery.
+    let sourceEmail = '';
 
     // ----------------------------------------------------------------------------------------
     // Pre-condition I: Login as Veronika (Sales Manager - contact merge requires manager rights)
@@ -102,8 +122,8 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
     // ----------------------------------------------------------------------------------------
     // Pre-condition II: Find a historical Contact linked to an Opp at Stage >= Activated
     // ----------------------------------------------------------------------------------------
-    await test.step('Pre-condition II: Find a historical Contact linked to a Stage>=Activated Opportunity', async () => {
-      console.log('\n=== PRE-CONDITION II: Discover historical high-stage customer ===');
+    await test.step('Pre-condition II: Find a historical Contact linked to a Stage>=Activated Opportunity and save its email domain', async () => {
+      console.log('\n=== PRE-CONDITION II: Discover historical high-stage customer + its EMAIL DOMAIN ===');
       for (let i = 0; i < MAX_DISCOVERY_TRIES; i++) {
         // Return to Home first, then into CRM (navigateToCRM needs the apps-home CRM tile, which is
         // NOT present from inside a module such as Contacts), so the Archive > All menu is reachable.
@@ -123,30 +143,63 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
         const id = idM ? idM[1] : '';
         console.log(`  - Activated Opp #${i}: customer="${name}" id=${id}`);
         if (!name || !id) continue;
+
+        // The merge key is the EMAIL DOMAIN, so read the customer's own email off its contact form.
+        // openContactFormByUrl (not openContactByUrl) gates on the record actually being rendered -
+        // a hash-route hop otherwise reads the PREVIOUS form's fields.
+        const rendered = await contactPage.openContactFormByUrl(custUrl, name);
+        if (!rendered) {
+          console.log(`  ↷ Contact form for "${name}" did not render - trying next Activated Opp`);
+          continue;
+        }
+        const email = ((await contactPage.getEmailReadonly()) || '').trim();
+        const domain = extractEmailDomain(email);
+        console.log(`  - customer email="${email}" -> domain="${domain}"`);
+        if (!domain) {
+          console.log('  ↷ Customer has no usable email domain - trying next Activated Opp');
+          continue;
+        }
+        if (isPublicEmailDomain(domain)) {
+          console.log(`  ↷ "${domain}" is a public/free email domain (shared by unrelated contacts) - trying next Activated Opp`);
+          continue;
+        }
+
+        // The name must be exact-unique among ALL contacts: the fresh source reuses it, so the name
+        // search has to return exactly these two records - this one now, plus the source later.
         await contactPage.openContactsList();
         await contactPage.searchContactsByName(name);
-        const exact = await contactPage.countRowsWithExactName(name);
-        if (exact === 1) {
-          historical = { name, id, url: custUrl };
-          console.log(`  ✓ Historical destination contact = "${name}" (#${id}) - exact-unique among contacts`);
-          break;
+        const exactByName = await contactPage.countRowsWithExactName(name);
+        if (exactByName !== 1) {
+          console.log(`  ↷ "${name}" is not exact-unique among contacts (${exactByName} matches) - trying next Activated Opp`);
+          continue;
         }
-        console.log(`  ↷ "${name}" is not exact-unique among contacts (${exact} matches) - trying next Activated Opp`);
+        historical = { name, id, url: custUrl, email, domain };
+        console.log(`  ✓ Historical destination contact = "${name}" (#${id}), email domain = "@${domain}"`);
+        break;
       }
-      expect(historical.id, 'A historical contact whose name is exact-unique among contacts must be found among the first Activated Opps').toMatch(/^\d+$/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - historical customer discovered').catch(() => {});
+      expect(historical.id, 'A historical contact with a usable (non-public) email domain must be found among the Activated Opps').toMatch(/^\d+$/);
+      expect(historical.domain, 'The historical contact must expose the email domain used as the merge key').not.toBe('');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - historical customer + email domain discovered').catch(() => {});
     });
 
     // ----------------------------------------------------------------------------------------
-    // Pre-condition III: Create a FRESH source Company Contact with the SAME name
+    // Pre-condition III: Create a FRESH source Company Contact in the SAME EMAIL DOMAIN
     // ----------------------------------------------------------------------------------------
-    await test.step('Pre-condition III: Create a fresh source Company Contact with the same name', async () => {
-      console.log('\n=== PRE-CONDITION III: Create fresh merge SOURCE ===');
-      console.log(`  - Name  : ${historical.name}`);
-      console.log(`  - Email : ${sourceEmail}`);
+    await test.step('Pre-condition III: Create a fresh source Company Contact whose email is in the same email domain', async () => {
+      console.log('\n=== PRE-CONDITION III: Create fresh merge SOURCE (same email domain + same name) ===');
+      sourceEmail = buildEmailInDomain('crm12059-1-2-src', historical.domain);
+      console.log(`  - Name  : ${historical.name}   (shared with the historical contact)`);
+      console.log(`  - Email : ${sourceEmail}   (inside the shared domain "@${historical.domain}")`);
       source = await createCompanyContact(page, contactPage, historical.name, sourceEmail);
       expect(source.id, 'source contact must have an ID').toMatch(/^\d+$/);
       expect(source.id).not.toBe(historical.id);
+      expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
+
+      // Both merge keys must hold before the merge: the shared email domain now lists both contacts.
+      await contactPage.openContactsList();
+      const domainRows = await contactPage.searchContactsByEmailDomain(historical.domain);
+      console.log(`  - contacts in the shared domain "@${historical.domain}": ${domainRows}`);
+      expect(domainRows, 'the historical contact and the fresh source must both sit in the shared email domain').toBeGreaterThanOrEqual(2);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - fresh source contact created').catch(() => {});
     });
 
@@ -178,16 +231,17 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       const popupText = await contactPage.getBlockingPopupText(CommonUtils.waitTimes.long);
       const noQualError = !QUAL_ERROR_RE.test(popupText);
 
-      // After a successful merge, exactly ONE exact-name contact remains (the historical destination).
-      await contactPage.openContactsList();
-      await contactPage.searchContactsByName(historical.name);
-      const remainingExact = await contactPage.countRowsWithExactName(historical.name);
+      // Both records share the name, so completion reads as "the pair collapsed to one": exactly the
+      // historical destination remains and the fresh source has been consumed. Polled, because the
+      // source drops out of the search index slightly after the wizard closes.
+      const remainingExact = await contactPage.waitForExactNameCount(historical.name, 1);
       const mergedToOne = remainingExact === 1;
       const overall = noQualError && mergedToOne;
 
       console.log('==================== VERIFY ====================');
-      console.log(`  Historical (destination) : "${historical.name}" (#${historical.id})`);
-      console.log(`  Fresh source (consumed)  : "${source?.name}" (#${source?.id})`);
+      console.log(`  Merge keys : shared email domain "@${historical.domain}" + shared Name "${historical.name}"`);
+      console.log(`  Historical (destination) : "${historical.name}" (#${historical.id}) email="${historical.email}"`);
+      console.log(`  Fresh source (consumed)  : "${historical.name}" (#${source?.id}) email="${sourceEmail}"`);
       console.log('  Verify #1 - no "Qualification info" validation blocked the merge:');
       console.log('     Expected : no popup text matching /necessary fields|Qualification info/i');
       console.log(`     Actual   : ${popupText ? `popup="${popupText.slice(0, 180)}"` : 'no blocking popup'}`);
@@ -221,10 +275,10 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
         console.log(`  ⚠ Cleanup skipped/failed for source ${source?.id}: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
-    console.log(`  ℹ Historical destination contact "${historical.name}" (#${historical.id}) was intentionally NOT deleted.`);
+    console.log(`  ℹ Historical destination contact "${historical.name}" (#${historical.id}, domain "@${historical.domain}") was intentionally NOT deleted.`);
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
     source = undefined;
-    historical = { name: '', id: '', url: '' };
+    historical = { name: '', id: '', url: '', email: '', domain: '' };
   });
 });
 

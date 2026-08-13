@@ -3,6 +3,17 @@ import { BasePage } from './BasePage';
 import { CommonUtils } from '@/helpers/common.utils';
 
 /**
+ * CRM kanban landing URL.
+ *
+ * Must stay a RegExp, NOT the `'**\/web?*view_type=kanban*'` glob: since Playwright 1.45 `?` is a
+ * LITERAL character in URL globs (see node_modules/playwright-core/.../urlMatch.js -> globToRegexPattern),
+ * so that glob only ever matched the post-login URL "/web?#action=..." and never the hash-only URL
+ * "/web#action=..." this Odoo produces when CRM is re-entered from inside the SPA (Applications >
+ * CRM). That mismatch was a silent 240s waitForURL timeout on every in-session re-entry to CRM.
+ */
+const CRM_KANBAN_URL = /\/web[?#].*view_type=kanban/;
+
+/**
  * Home Page Object
  * Handles navigation from the home page to different modules
  */
@@ -50,7 +61,7 @@ export class HomePage extends BasePage {
       await this.dismissErrorDialog();
       await this.crmLink().click();
     }
-    await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForURL(CRM_KANBAN_URL, CommonUtils.waitTimes.pageLoad);
 
    // Quoc Anh: (Feb 24, 26) Handle error dialog if it appears
     await this.dismissErrorDialog();
@@ -196,7 +207,7 @@ export class HomePage extends BasePage {
    */
   async navigateToOpportunities() {
     await this.navigateToCRM();
-    await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForURL(CRM_KANBAN_URL, CommonUtils.waitTimes.pageLoad);
   }
 
 }
