@@ -236,7 +236,9 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       // share the name. Polled, because the source drops out of the search index slightly after the
       // wizard closes. This runs BEFORE teardown - afterEach deletes a leftover source, so an
       // email search taken after the run would read 0 whether or not the merge did anything.
-      const remainingSource = await contactPage.waitForEmailRowCount(sourceEmail, 0);
+      // 3 attempts, not the default 6: each attempt re-opens the Contacts list, and the post-merge
+      // index lag is seconds - 6 rounds only made a failing run 60s longer to read.
+      const remainingSource = await contactPage.waitForEmailRowCount(sourceEmail, 0, 3);
       const sourceConsumed = remainingSource === 0;
       const remainingDestination = await contactPage.searchContactsByEmail(historical.email);
       const destinationSurvives = remainingDestination >= 1;

@@ -1678,9 +1678,19 @@ export class ContactPage extends BasePage {
     if (await okBtn.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
       await okBtn.click().catch(() => {});
     }
-    await this.mergeWizardModal().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    // After action_merge the wizard either CLOSES (records were merged) or ADVANCES to its benign end
+    // screen ("There is no more contacts to merge for this request"), where the confirm button is gone
+    // but the modal stays on screen. Waiting only for the modal to hide therefore burned the whole
+    // pageLoad budget (240s) on the end-screen case, silently. Gate on the confirm button
+    // disappearing - true in both outcomes - and report which one happened.
+    // NOTE: do NOT re-click action_merge here; treating the end screen as "still open" and clicking
+    // again was tried before and misfired.
+    await this.mergeConfirmButton()
+      .waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => console.log('  ⚠ The wizard\'s "Merge Contacts" button is still on screen after action_merge'));
+    const wizardStillUp = await this.mergeWizardModal().isVisible().catch(() => false);
     await this.wait(CommonUtils.waitTimes.long);
-    console.log('  ✓ Merge confirmed (action_merge)');
+    console.log(`  ✓ Merge confirmed (action_merge) - ${wizardStillUp ? 'wizard still on screen (end screen - nothing was merged)' : 'wizard closed'}`);
   }
 
   /**
