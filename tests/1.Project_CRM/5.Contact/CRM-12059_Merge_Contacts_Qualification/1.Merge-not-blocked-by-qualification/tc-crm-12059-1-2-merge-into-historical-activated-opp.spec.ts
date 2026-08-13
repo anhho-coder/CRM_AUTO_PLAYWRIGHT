@@ -62,6 +62,10 @@ import {
  *           with the historical Contact:
  *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
  *             - Name  = <historical customer name>                          (the shared name)
+ *           then confirm both keys hold: Contacts > Filters > "Companies" + search the shared email
+ *           domain -> exactly TWO same-named company records (the destination + this source). The
+ *           domain alone also lists that company's individual / child contacts, so the Companies
+ *           filter is what makes the pair exact.
  *    Steps to reproduce:
  *      1. Open Contacts, apply Filters > "Companies", search the shared name, select BOTH the
  *         historical Contact and the fresh source (exactly two).
@@ -192,11 +196,17 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
       expect(source.id).not.toBe(historical.id);
       expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
 
-      // Both merge keys must hold before the merge: the shared email domain now lists both contacts.
+      // Both merge keys must hold before the merge. With the Companies filter on, the shared domain
+      // must list exactly the TWO same-named company records (the destination + this fresh source).
+      // The domain on its own also pulls in individual/child contacts of that company (@koobra.de
+      // returns 4 rows), so the count is taken on the exact NAME inside the Companies view - which
+      // also survives the Email-contains fallback path, where the Companies facet is rebuilt away.
       await contactPage.openContactsList();
+      await contactPage.applyCompaniesFilter();
       const domainRows = await contactPage.searchContactsByEmailDomain(historical.domain);
-      console.log(`  - contacts in the shared domain "@${historical.domain}": ${domainRows}`);
-      expect(domainRows, 'the historical contact and the fresh source must both sit in the shared email domain').toBeGreaterThanOrEqual(2);
+      const companyPair = await contactPage.countRowsWithExactName(historical.name);
+      console.log(`  - company records named "${historical.name}" in domain "@${historical.domain}": ${companyPair} of ${domainRows} row(s)`);
+      expect(companyPair, `the shared domain "@${historical.domain}" must hold exactly the two same-named COMPANY records - the historical destination and the fresh source`).toBe(2);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - fresh source contact created').catch(() => {});
     });
 
