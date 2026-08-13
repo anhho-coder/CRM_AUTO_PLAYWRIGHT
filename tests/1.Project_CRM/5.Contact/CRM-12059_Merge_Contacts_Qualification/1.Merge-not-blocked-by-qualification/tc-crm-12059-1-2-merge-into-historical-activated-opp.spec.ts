@@ -57,8 +57,9 @@ import {
  *             - Email = <fresh unique local-part>@<historical email domain>  (the shared domain)
  *             - Name  = <historical customer name>                          (the shared name)
  *    Steps to reproduce:
- *      1. Open Contacts, apply Filters > "Companies", search the shared name, select BOTH the
- *         historical Contact and the fresh source (exactly two).
+ *      1. Open Contacts, search the shared name, THEN apply Filters > "Companies" (that order - the
+ *         search box is cleared with Ctrl+A + Backspace, which also deletes an already-applied facet),
+ *         and select BOTH the historical Contact and the fresh source (exactly two).
  *      2. Action > Merge Contacts.
  *      3. Select Destination Contact = the historical Contact (#ID) and confirm the merge.
  *    Verification / Expected Result:
@@ -166,13 +167,18 @@ test.describe('CRM-12059_1.2 - Merge into a historical contact with a Stage>=Act
     // ----------------------------------------------------------------------------------------
     // Steps to reproduce
     // ----------------------------------------------------------------------------------------
-    await test.step('Step 1: Open Contacts, filter Companies, search the shared name, select the historical + the fresh source', async () => {
+    await test.step('Step 1: Open Contacts, search the shared name, filter Companies, select the historical + the fresh source', async () => {
       await contactPage.openContactsList();
-      // Same Companies + name view as the pre-condition, so the rows are the two company records and
-      // no child contact (which shows its parent's company name) can be selected by mistake.
-      await contactPage.applyCompaniesFilter();
+      // ORDER MATTERS - name first, filter second. searchContactsByName() clears the search bar with
+      // Ctrl+A + Backspace, and in Odoo's searchview that select-all also grabs the existing FACETS,
+      // so Backspace deletes them: applying "Companies" first left the list unfiltered (the run showed
+      // only a "Name" facet and individual contacts back in the rows). Adding the filter afterwards is
+      // safe - it goes through the Filters dropdown and never touches the search input.
       const rows = await contactPage.searchContactsByName(historical.name);
-      console.log(`  - company rows matching "${historical.name}": ${rows}`);
+      await contactPage.applyCompaniesFilter();
+      // Re-count with the filter on: the row count returned above was still unfiltered.
+      const companyRows = await contactPage.countRowsWithExactName(historical.name);
+      console.log(`  - rows matching "${historical.name}": ${rows} unfiltered -> ${companyRows} company record(s)`);
       const selected = await contactPage.selectContactRowsByExactName(historical.name);
       // Exactly two exact-name records must be selected: the historical destination + the fresh source.
       expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
