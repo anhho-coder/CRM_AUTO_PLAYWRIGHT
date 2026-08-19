@@ -1,0 +1,145 @@
+{
+  "_comment": [
+    "Full-regression runs shown in the portal's 'Regression automation test' section.",
+    "Newest run FIRST - the portal renders runs[0] by default and offers the rest in a picker.",
+    "Column meaning (see the team reporting standard):",
+    "  passed   = green on the first attempt, PLUS any deferred skip that the round-2",
+    "             DeferredVerify job later confirmed CORRECT (e.g. TC.THD_3.2.2.5.2).",
+    "  failed   = still red after all 3 Playwright attempts (retries: 2).",
+    "  flaky    = red then green on a retry.",
+    "  skipBug  = test.skip carrying a [CRM-####] tag, i.e. blocked by a known open bug.",
+    "             Never executed - this is debt, not a result.",
+    "  skipOther= skipped with NO [CRM-####] tag - reason not yet established. Kept as its own",
+    "             column so every row still sums to specs instead of silently losing rows.",
+    "  deferFail= deferred skip that round-2 found STILL WRONG. Always list the specs",
+    "             under deferFails so the reader sees WHAT was wrong, not just a count.",
+    "To add a run: prepend an object to 'runs'. No HTML editing required."
+  ],
+  "runs": [
+    {
+      "id": "2026-08-17",
+      "label": "2026-08-17 → 08-19",
+      "scope": "tests/1.Project_CRM (full regression)",
+      "jobs": "CRM-WR-00-Weekend-Regression #2 + CRM-WR-00b-Resume #1",
+      "modules": [
+        {
+          "name": "2.Leads_Assignment",
+          "specs": 92,
+          "passed": 77,
+          "failed": 0,
+          "flaky": 13,
+          "skipBug": 0,
+          "deferFail": 2,
+          "skipOther": 0
+        },
+        {
+          "name": "O12_CE_to_O12_CC",
+          "specs": 179,
+          "passed": 160,
+          "failed": 0,
+          "flaky": 11,
+          "skipBug": 7,
+          "deferFail": 0,
+          "skipOther": 1
+        },
+        {
+          "name": "1.SalesReport_Performance",
+          "specs": 18,
+          "passed": 16,
+          "failed": 0,
+          "flaky": 2,
+          "skipBug": 0,
+          "deferFail": 0,
+          "skipOther": 0
+        },
+        {
+          "name": "9.CRM_Module",
+          "specs": 223,
+          "passed": 215,
+          "failed": 2,
+          "flaky": 5,
+          "skipBug": 1,
+          "deferFail": 0,
+          "skipOther": 0
+        },
+        {
+          "name": "5.Contact",
+          "specs": 20,
+          "passed": 15,
+          "failed": 2,
+          "flaky": 3,
+          "skipBug": 0,
+          "deferFail": 0,
+          "skipOther": 0
+        },
+        {
+          "name": "4.Investments",
+          "specs": 156,
+          "passed": 147,
+          "failed": 5,
+          "flaky": 4,
+          "skipBug": 0,
+          "deferFail": 0,
+          "skipOther": 0
+        },
+        {
+          "name": "10.Sales_Module",
+          "specs": 40,
+          "passed": 31,
+          "failed": 7,
+          "flaky": 2,
+          "skipBug": 0,
+          "deferFail": 0,
+          "skipOther": 0
+        },
+        {
+          "name": "3.Lead_Merging",
+          "specs": 110,
+          "passed": 68,
+          "failed": 16,
+          "flaky": 7,
+          "skipBug": 17,
+          "deferFail": 0,
+          "skipOther": 2
+        }
+      ],
+      "deferFails": [
+        {
+          "spec": "TC.CMR_1.5.1.1",
+          "detail": "Country=Ukraine, Nakivo Customer=FALSE, Lead Form=Partner Sign up — expected Sales Team \"CMR\", got \"CMD\"; Salesperson still empty after 1h."
+        },
+        {
+          "spec": "TC.CMR_1.5.1.2",
+          "detail": "Country=Ukraine, Nakivo Customer=FALSE, Lead Form=Partner Signup — expected Sales Team \"CMR\", got \"CMD\"; Salesperson still empty after 1h."
+        }
+      ],
+      "skipBugTags": [
+        {
+          "tag": "CRM-11289",
+          "count": 11
+        },
+        {
+          "tag": "CRM-9059",
+          "count": 7
+        },
+        {
+          "tag": "CRM-11410",
+          "count": 7
+        },
+        {
+          "tag": "CRM-8930",
+          "count": 2
+        },
+        {
+          "tag": "CRM-10787",
+          "count": 1
+        }
+      ],
+      "notes": [
+        "TC.THD_3.2.2.5.2 was a deferred skip that round-2 confirmed correct, so it is counted in 2.Leads_Assignment Passed.",
+        "3 further skips carry no [CRM-####] tag and are excluded from Skip-by-bug: CRM-2178_2.3.1.1, CRM-671_2.1.8, pre-sale-7.2.3.1.",
+        "Some specs carry two bug tags, so the tag tally sums above the Skip-by-bug total."
+      ]
+    }
+  ]
+}

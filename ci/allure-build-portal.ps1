@@ -168,6 +168,128 @@ if (Test-Path -LiteralPath $perfJson) {
     }
 }
 
+# --- "Regression automation test" section --------------------------------------------
+# Data-driven from ci\crm-regression-runs.json, same model as the period cards above and
+# the perf section below: the whole run list is embedded and the table is rendered
+# client-side, so a viewer can switch between full-regression runs.
+# To add a run: prepend an object to "runs" in the JSON. No HTML editing required.
+$regSection = ''
+$regLatest  = '(no run yet)'
+$regJson = Join-Path $PSScriptRoot 'crm-regression-runs.json'
+if (Test-Path -LiteralPath $regJson) {
+    try {
+        $regRaw  = Get-Content -LiteralPath $regJson -Raw -Encoding UTF8
+        $regData = $regRaw | ConvertFrom-Json
+        if ($regData.runs -and $regData.runs.Count -gt 0) { $regLatest = $regData.runs[0].label }
+        $regHead = @"
+  <section class="reg" id="regression">
+    <h2>Regression automation test</h2>
+    <p class="regsub">Full-regression results for <code>tests/1.Project_CRM</code>. <b>Passed</b> includes deferred skips that the round-2 re-verify later confirmed correct. <b>Skip by bug</b> never executed (blocked by an open ticket) &mdash; debt, not a result. <b>Defer-fail</b> = deferred skip that was still wrong an hour later; those are listed under the table.</p>
+    <div class="regctrl">
+      <label>RUN<select id="regRun"></select></label>
+    </div>
+    <div class="regmeta" id="regMeta"></div>
+    <div class="regwrap"><table class="regtbl" id="regTbl"></table></div>
+    <div class="regextra" id="regExtra"></div>
+  </section>
+"@
+        $regJs = @'
+  <script>
+  (function(){
+    var DATA = __REGDATA__;
+    var runs = DATA.runs || [];
+    var sel = document.getElementById('regRun');
+    var tbl = document.getElementById('regTbl');
+    var meta = document.getElementById('regMeta');
+    var extra = document.getElementById('regExtra');
+    if (!runs.length) { return; }
+    for (var i=0;i<runs.length;i++){
+      var o=document.createElement('option'); o.value=String(i); o.textContent=runs[i].label; sel.appendChild(o);
+    }
+    function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    var COLS = [
+      {k:'specs',     t:'Specs'},
+      {k:'passed',    t:'Passed',      c:'good'},
+      {k:'failed',    t:'Failed',      c:'bad'},
+      {k:'flaky',     t:'Flaky',       c:'warn'},
+      {k:'skipBug',   t:'Skip by bug', c:'muted'},
+      {k:'deferFail', t:'Defer-fail',  c:'bad'},
+      {k:'skipOther', t:'Skip (no tag)', c:'muted'}
+    ];
+    function render(){
+      var r = runs[sel.value|0];
+      var mods = (r.modules||[]).slice().sort(function(a,b){ return (b.failed+b.deferFail)-(a.failed+a.deferFail) || b.specs-a.specs; });
+      var tot = {}; COLS.forEach(function(c){ tot[c.k]=0; });
+      mods.forEach(function(m){ COLS.forEach(function(c){ tot[c.k]+=(m[c.k]||0); }); });
+
+      var h = '<thead><tr><th class="mod">Module</th>';
+      COLS.forEach(function(c){ h += '<th>'+c.t+'</th>'; });
+      h += '</tr></thead><tbody>';
+      mods.forEach(function(m){
+        h += '<tr><td class="mod">'+esc(m.name)+'</td>';
+        COLS.forEach(function(c){
+          var v = m[c.k]||0;
+          var cls = (c.k==='specs') ? '' : (v>0 && c.c ? c.c : 'zero');
+          h += '<td class="'+cls+'">'+v+'</td>';
+        });
+        h += '</tr>';
+      });
+      h += '</tbody><tfoot><tr><td class="mod">Total</td>';
+      COLS.forEach(function(c){
+        var cls = (c.k==='specs') ? '' : (tot[c.k]>0 && c.c ? c.c : 'zero');
+        h += '<td class="'+cls+'">'+tot[c.k]+'</td>';
+      });
+      h += '</tr></tfoot>';
+      tbl.innerHTML = h;
+
+      var pct  = tot.specs ? Math.round(tot.passed*1000/tot.specs)/10 : 0;
+      var pct2 = tot.specs ? Math.round((tot.passed+tot.flaky)*1000/tot.specs)/10 : 0;
+      meta.innerHTML = '<span><b>'+esc(r.scope||'')+'</b></span>' +
+        '<span>Pass rate <b>'+pct+'%</b> &middot; incl. flaky <b>'+pct2+'%</b></span>' +
+        (r.jobs ? '<span>Jobs: <code>'+esc(r.jobs)+'</code></span>' : '');
+
+      var e = '';
+      if (r.deferFails && r.deferFails.length){
+        e += '<h3>Defer-fail &mdash; still wrong after the round-2 re-verify</h3><ul class="reglist bad">';
+        r.deferFails.forEach(function(d){ e += '<li><code>'+esc(d.spec)+'</code> &mdash; '+esc(d.detail)+'</li>'; });
+        e += '</ul>';
+      }
+      if (r.skipBugTags && r.skipBugTags.length){
+        e += '<h3>Skip by bug &mdash; blocked, never executed</h3><p class="regtags">';
+        r.skipBugTags.forEach(function(t){ e += '<span class="tag">'+esc(t.tag)+' <b>'+t.count+'</b></span>'; });
+        e += '</p>';
+      }
+      if (r.notes && r.notes.length){
+        e += '<ul class="regnotes">';
+        r.notes.forEach(function(n){ e += '<li>'+esc(n)+'</li>'; });
+        e += '</ul>';
+      }
+      extra.innerHTML = e;
+    }
+    sel.addEventListener('change', render);
+    render();
+  })();
+  </script>
+'@
+        $regJs = $regJs.Replace('__REGDATA__', $regRaw)
+        $regSection = $regHead + "`n" + $regJs
+    } catch {
+        $regSection = "  <section class=""reg""><h2>Regression automation test</h2><p class=""regsub"">(regression data unavailable: $($_.Exception.Message))</p></section>"
+    }
+}
+
+
+# A 6th card in the same grid, modelled on the period cards. It has no Allure job of its
+# own, so it links to the 'Regression automation test' section further down this page.
+$regCard = @"
+    <a class="card" href="#regression" style="--accent:#7c3aed">
+      <div class="title">Regression</div>
+      <div class="sub">REGRESSION AUTOMATION TEST</div>
+      <div class="period">Latest run: <b>$regLatest</b></div>
+      <div class="open">View results &rarr;</div>
+    </a>
+"@
+
 $now = (Get-Date).ToString('yyyy-MM-dd HH:mm')
 $html = @"
 <!doctype html>
@@ -197,6 +319,39 @@ $html = @"
   .foot { max-width:1100px; margin-top:28px; padding-top:14px; border-top:1px solid #334155;
           color:#94a3b8; font-size:13px; }
   .foot a { color:#60a5fa; }
+  .reg { max-width:1100px; margin-top:28px; padding-top:20px; border-top:1px solid #334155; scroll-margin-top:20px; }
+  .reg h2 { margin:0 0 4px; font-size:19px; }
+  .reg h3 { margin:18px 0 6px; font-size:14px; color:#f1f5f9; }
+  .regsub { margin:0 0 14px; color:#94a3b8; font-size:12.5px; max-width:900px; line-height:1.55; }
+  .regsub b { color:#cbd5e1; }
+  .regctrl { display:flex; flex-wrap:wrap; gap:18px; margin:0 0 12px; }
+  .regctrl label { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em;
+                   display:flex; flex-direction:column; gap:5px; }
+  .regctrl select { font-size:13px; color:#e2e8f0; background:#1e293b; border:1px solid #475569;
+                    border-radius:8px; padding:7px 10px; min-width:230px; text-transform:none; letter-spacing:normal; }
+  .regmeta { display:flex; flex-wrap:wrap; gap:18px; margin:0 0 12px; font-size:12.5px; color:#94a3b8; }
+  .regmeta b { color:#f1f5f9; }
+  .regmeta code { color:#93b4e6; }
+  .regwrap { overflow-x:auto; }
+  .regtbl { border-collapse:collapse; font-size:13px; min-width:640px; }
+  .regtbl th, .regtbl td { padding:8px 14px; text-align:right; border-bottom:1px solid #334155; white-space:nowrap; }
+  .regtbl thead th { background:#1e293b; color:#f1f5f9; font-weight:700; border-bottom:1px solid #475569; }
+  .regtbl th.mod, .regtbl td.mod { text-align:left; }
+  .regtbl td.mod { color:#e2e8f0; }
+  .regtbl tbody tr:hover { background:#1e293b; }
+  .regtbl tfoot td { background:#182234; font-weight:700; color:#f1f5f9; border-top:2px solid #475569; }
+  .regtbl td.good { color:#4ade80; font-weight:600; }
+  .regtbl td.bad { color:#f87171; font-weight:700; }
+  .regtbl td.warn { color:#fbbf24; font-weight:600; }
+  .regtbl td.muted { color:#a78bfa; font-weight:600; }
+  .regtbl td.zero { color:#64748b; }
+  .reglist { margin:0; padding-left:20px; font-size:12.5px; color:#cbd5e1; line-height:1.7; }
+  .reglist code { color:#f87171; font-weight:700; }
+  .regtags { margin:0; display:flex; flex-wrap:wrap; gap:8px; }
+  .regtags .tag { background:#1e293b; border:1px solid #475569; border-radius:999px;
+                  padding:4px 11px; font-size:12px; color:#a78bfa; }
+  .regtags .tag b { color:#f1f5f9; }
+  .regnotes { margin:14px 0 0; padding-left:20px; font-size:12px; color:#94a3b8; line-height:1.7; }
   .perf { max-width:1100px; margin-top:28px; padding-top:20px; border-top:1px solid #334155; }
   .perf h2 { margin:0 0 4px; font-size:19px; }
   .perfsub { margin:0 0 14px; color:#94a3b8; font-size:12.5px; max-width:900px; }
@@ -229,9 +384,11 @@ $html = @"
   <p class="lead">Click a period to open its LATEST report. To see an older period, open an older build of that job.</p>
   <div class="grid">
 $($cards -join "`n")
+$regCard
   </div>
   <p class="foot">Updated: $now &nbsp;&middot;&nbsp;
      <a href="/job/CRM-Total_Allure_Report/Allure_20Report/">Total report (latest snapshot)</a></p>
+$regSection
 $perfSection
 </body>
 </html>
