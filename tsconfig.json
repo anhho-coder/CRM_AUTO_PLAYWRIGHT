@@ -17,6 +17,7 @@
       "@/*": ["./*"],
       "@config/*": ["./config/*"],
       "@pages": ["./pages/index.ts"],
+      "@pages/mig": ["./pages/mig/index.ts"],
       "@pages/*": ["./pages/*"],
       "@helpers/*": ["./helpers/*"]
     }

@@ -80,9 +80,22 @@ export const users = {
     displayName: 'Anh Ho',
     createdByName: 'Ho Quoc Anh',
   },
+  // O12 Migration server (crm-mig.nakivo.site) - fresh Odoo 12 CE base (CRM-12124). Same username
+  // as admin_crm but a DIFFERENT password on that instance, so it is a separate entry.
+  admin_crm_mig: {
+    username: 'anh.ho@nakivo.com',
+    password: 'AHUaT@098765',
+    displayName: 'Anh Ho',
+    createdByName: 'Ho Quoc Anh',
+  },
 } as const;
 // Base URL of the CRM Pre-production environment
 // IMPORTANT: Need to connect to VPN before accessing this URL http://10.220.222.100/
 //export const baseUrl = 'http://pre-production.nakivo.site/';
 //export const baseUrl = 'http://10.220.222.100/'
 export const baseUrl = 'http://pre-production.nakivo.site/';
+
+// O12 Migration server - fresh Odoo 12 Community base (CRM-12124). Different UI (CE theme + custom
+// screens re-created under new naming). Pass this explicitly to loginPage.navigateTo(...) in Mig
+// specs; the default baseUrl (pre-prod) above is unchanged, so existing specs are unaffected.
+export const baseUrl_mig = 'https://crm-mig.nakivo.site/';
