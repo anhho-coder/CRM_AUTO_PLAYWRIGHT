@@ -30,7 +30,11 @@ export class OpportunityPage extends BasePage {
   private readonly salesTeamSelect = () => this.page.locator('select[name="team_id"]').or(this.page.locator('combobox:has-text("Sales Team")').locator('select')).or(this.page.getByLabel('Sales Team')).first();
   private readonly salespersonInput = () => this.page.getByRole('textbox', { name: 'Salesperson' }).first();
   private readonly crmDeveloperTab = () => this.page.getByRole('tab', { name: 'CRM Developer' }).first();
-  private readonly leadFormInput = () => this.page.locator('xpath=(//input[@name="x_studio_lead_sorce"])[2]');
+  // "Lead Form": pre-prod = Studio field x_studio_lead_sorce (rendered twice, the 2nd is the Opp form),
+  // O12 CE Migration server = module field `lead_form` (char). Accept both so one method fits both hosts.
+  private readonly leadFormInput = () => this.page.locator('xpath=(//input[@name="x_studio_lead_sorce"])[2]')
+    .or(this.page.locator('xpath=(//input[@name="lead_form"])[last()]'))
+    .first();
   // "IP" (x_studio_ip_lead_source) char field on the Opp form. XPath primary, CSS fallback.
   private readonly ipInputXPath = () => this.page.locator("xpath=//input[@name='x_studio_ip_lead_source']").first();
   private readonly ipInputCss = () => this.page.locator("input[name='x_studio_ip_lead_source']").first();
@@ -90,7 +94,9 @@ private readonly stageMoreButton = () => this.page.locator("xpath=//div[contains
 private readonly stageOptionByName = (stageName: string) => this.page.locator(`xpath=//div[contains(@class,'o_statusbar_status')]//button[normalize-space()='${stageName}'] | //ul[contains(@class,'dropdown-menu')]//a[normalize-space()='${stageName}'] | //div[contains(@class,'dropdown-menu')]//button[normalize-space()='${stageName}']`);
 
 
-private readonly leadFormField = () => this.page.locator('xpath=(//span[@name="x_studio_lead_sorce"])[2]');
+private readonly leadFormField = () => this.page.locator('xpath=(//span[@name="x_studio_lead_sorce"])[2]')
+    .or(this.page.locator('xpath=(//span[@name="lead_form"])[last()]'))
+    .first();
 private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains(text(), "Tags")] or td[contains(text(), "Tags")]]').first();
   private readonly tagsList = () => this.page.locator('xpath=(//div[@name="tag_ids"])[1]').first();
   private readonly companyNameRow = () => this.page.locator("xpath=(//td/span[contains(@name,'partner_name')])[3]").first();
@@ -1333,7 +1339,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     try {
       const leadForm_saved_row = this.page.locator('xpath=//tr[td[contains(text(), "Lead Form")] or td/label[contains(text(), "Lead Form")]]').first();
       const leadFormCell = leadForm_saved_row.locator('xpath=./td[2]').first();
-      const leadFormInputElement = leadFormCell.locator('input[name="x_studio_lead_sorce"]');
+      const leadFormInputElement = leadFormCell.locator('input[name="x_studio_lead_sorce"], input[name="x_lead_form"], input[name="lead_form"]');
       
       const hasInput = await leadFormInputElement.count() > 0;
       

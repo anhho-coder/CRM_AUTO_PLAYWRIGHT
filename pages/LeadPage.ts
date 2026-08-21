@@ -39,7 +39,12 @@ export class LeadPage extends BasePage {
   private readonly dealRegistrationEndDateInput = () => this.page.locator('xpath=//input[@name="deal_registration_end_date"]');
   private readonly dealRegistrationStartDate_OnlyMode = () => this.page.locator('xpath=(//span[@name="deal_registration_start_date"])[1]');
   private readonly dealRegistrationEndDate_OnlyMode = () => this.page.locator('xpath=(//span[@name="deal_registration_end_date"])[1]');
-  private readonly leadFormInput = () => this.page.getByRole('textbox', { name: /Lead Form/i }).or(this.page.locator('input[name="x_lead_form"]')).first();
+  // "Lead Form": pre-prod carries it as the Studio fields x_lead_form / x_studio_lead_sorce, the O12 CE
+  // Migration server as the module field `lead_form` (char) - accept all three so one method fits both.
+  private readonly leadFormInput = () => this.page.getByRole('textbox', { name: /Lead Form/i })
+    .or(this.page.locator('input[name="x_lead_form"]'))
+    .or(this.page.locator('xpath=(//input[@name="lead_form"])[last()]'))
+    .first();
   private readonly activeCheckbox = () => this.page.locator('xpath=(//div[@name="active"]/input)[2]');
   private readonly isWonSelect = () => this.page.locator('xpath=//span[@name="won_status"]');
   private readonly lostReasonInput = () => this.page.locator('xpath=(//a[contains(@name,"lost_reason")])[2]');
@@ -85,7 +90,7 @@ export class LeadPage extends BasePage {
   private readonly salesTeamSelectElement = () => this.salesTeamCell().locator('xpath=.//select | .//*[@role="combobox"]');
   private readonly salesTeamSelectedOption = () => this.salesTeamSelectElement().locator('option:checked').first();
   private readonly salespersonInputElement = () => this.salespersonCell().locator('xpath=.//input[@type="text"] | .//input[@role="textbox"]');
-  private readonly leadFormInputElement = () => this.leadFormCell().locator('input[name="x_studio_lead_sorce"]');
+  private readonly leadFormInputElement = () => this.leadFormCell().locator('input[name="x_studio_lead_sorce"], input[name="x_lead_form"], input[name="lead_form"]');
   private readonly actionMenuButton = () =>
     this.page.locator('xpath=//button[normalize-space()="Action" or normalize-space()="ACTION"] | //span[normalize-space()="Action" or normalize-space()="ACTION"]/parent::button | //div[contains(@class,"o_cp_action_menus")]//button').first();
   private readonly actionMenuDeleteOption = () =>
@@ -2184,24 +2189,40 @@ export class LeadPage extends BasePage {
       address: false
     };
     
-    // Verify Contact Name
+    // Verify Contact Name - label-row read first (pre-prod), then the field-name read (works on the
+    // O12 Migration server too, whose sidebar theme renders a different label/row structure).
     if (expectedData.contactName) {
-      const contactNameText = await this.contactNameRow().textContent({ timeout: 3000 }).catch(() => '') || '';
+      const contactNameText = await this.contactNameRow().textContent({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => '') || '';
       results.contactName = contactNameText.includes(expectedData.contactName);
+      if (!results.contactName) {
+        const byFieldName = await this.readFieldTextByName('contact_name');
+        results.contactName = byFieldName.includes(expectedData.contactName);
+      }
     }
-    
+
     // Verify Email
     if (expectedData.email) {
-      const emailLinkText = await this.emailLink().first().textContent({ timeout: 3000 }).catch(() => '') || '';
+      const emailLinkText = await this.emailLink().first().textContent({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => '') || '';
       results.email = emailLinkText.includes(expectedData.email.split('@')[0]) && emailLinkText.includes('.com');
+      if (!results.email) {
+        const byFieldName = await this.readFieldTextByName('email_from');
+        results.email = byFieldName.includes(expectedData.email.split('@')[0]);
+      }
     }
-    
+
     // Verify Country/State
     if (expectedData.country || expectedData.state) {
-      const addressText = await this.addressRow().textContent({ timeout: 3000 }).catch(() => '') || '';
-      const hasCountry = expectedData.country ? addressText.includes(expectedData.country) : true;
-      const hasState = expectedData.state ? addressText.includes(expectedData.state) : true;
-      results.address = hasCountry && hasState;
+      let addressText = await this.readAddressText();
+      const matches = (text: string) => {
+        const hasCountry = expectedData.country ? text.includes(expectedData.country) : true;
+        const hasState = expectedData.state ? text.includes(expectedData.state) : true;
+        return hasCountry && hasState;
+      };
+      results.address = matches(addressText);
+      if (!results.address) {
+        addressText = await this.readAddressByFieldNames();
+        results.address = matches(addressText);
+      }
     }
     
     return results;
@@ -2641,14 +2662,7 @@ export class LeadPage extends BasePage {
    * @returns Promise<string> - The full address text content
    */
   async getAddressReadonly(): Promise<string> {
-    try {
-      const addressRow = this.addressRow().first();
-      const addressText = await addressRow.textContent() || '';
-      return addressText.trim();
-    } catch (error) {
-      console.error(`Error getting Address (readonly): ${error instanceof Error ? error.message : String(error)}`);
-      return '';
-    }
+    return await this.readAddressText();
   }
 
   /**

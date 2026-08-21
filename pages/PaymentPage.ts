@@ -33,7 +33,7 @@ export class PaymentPage extends BasePage {
   private readonly createButton          = () => this.page.locator("xpath=//button[contains(@class,'o_list_button_add')]").or(this.page.getByRole('button', { name: /^Create$/i })).first();
   private readonly saveButton            = () => this.page.locator("xpath=//button[contains(@class,'o_form_button_save')]").or(this.page.getByRole('button', { name: /^Save$/i })).first();
   private readonly confirmButton         = () => this.page.locator('xpath=//button[@name="post"]').or(this.page.getByRole('button', { name: /^Confirm$/i })).first();
-  private readonly editButton            = () => this.page.locator("xpath=//button[contains(@class,'o_form_button_edit')]").or(this.page.getByRole('button', { name: /^Edit$/i })).first();
+  private readonly editButton            = () => this.page.locator("xpath=//button[contains(@class,'o_form_button_edit')]").or(this.page.getByRole('button', { name: /^\s*Edit\s*$/i })).first();
 
   // payment_type radio uses a per-render name (e.g. "radio1245"); anchor on its stable data-value.
   private readonly paymentTypeLabel      = (dataValue: string) =>

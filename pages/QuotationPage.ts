@@ -8,7 +8,7 @@ import { CommonUtils } from '@/helpers/common.utils';
  */
 export class QuotationPage extends BasePage {
   // Locators
-  private readonly editButtonLoc = () => this.page.getByRole('button', { name: /^Edit$/i }).first();
+  private readonly editButtonLoc = () => this.page.getByRole('button', { name: /^\s*Edit\s*$/i }).first();
   private readonly actionButton = () => this.page.getByRole('button', { name: /^Action$/i });
   private readonly saveButton = () => this.page.getByRole('button', { name: /^SAVE$/i }).or(this.page.getByRole('button', { name: /^Save$/i })).first();
   private readonly sendByEmailButton = () => this.page.getByRole('button', { name: /SEND BY EMAIL/i }).or(this.page.getByRole('button', { name: /Send by Email/i })).first();
@@ -1156,5 +1156,52 @@ export class QuotationPage extends BasePage {
   /** Click SAVE on the current Quotation form. Does NOT assert success - used to trigger the guard. */
   async clickSaveButton(): Promise<void> {
     await this.saveButton().click();
+  }
+
+  // ==========================================================================================
+  //  Added for the CRM-11806 Subscription Management (Recurring Billing) suite.
+  //  The suite creates quotations straight from Sales > Orders > Quotations > CREATE, so it
+  //  needs an order-line writer and a numeric read of the "Subscriptions" smart button.
+  //  (openQuotationsList / openNewQuotationForm / selectCustomerOnNewQuotation already exist.)
+  // ==========================================================================================
+
+  private readonly qOrderLinesContainer = () =>
+    this.page.locator('div[name="order_line"]').first();
+  private readonly qOrderLinesAddRow = () =>
+    this.qOrderLinesContainer().locator('.o_field_x2many_list_row_add a').first();
+  private readonly qSubscriptionsSmartButton = () =>
+    this.page.locator('button[name="action_open_subscriptions"]').first();
+
+  /** Add one Order Line: pick the product by SKU / search term and set the Ordered Qty. */
+  async addOrderLineBySku(productTerm: string, quantity: number): Promise<void> {
+    await this.page.locator('a.nav-link').filter({ hasText: 'Order Lines' }).first().click().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.qOrderLinesAddRow().click();
+    await this.wait(CommonUtils.waitTimes.long);
+    const productInput = this.qOrderLinesContainer().locator('div[name="product_id"] input').first();
+    await productInput.click();
+    await productInput.pressSequentially(productTerm, { delay: 40 });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    await this.page.locator('.ui-autocomplete li.ui-menu-item a').first().click();
+    await this.wait(CommonUtils.waitTimes.long);
+    const qtyInput = this.qOrderLinesContainer().locator('input[name="product_uom_qty"]').first();
+    await qtyInput.click();
+    await qtyInput.fill(String(quantity));
+    await this.page.keyboard.press('Tab');
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Order Line added: "' + productTerm + '" x ' + quantity);
+  }
+
+  /** Number shown on the "Subscriptions" smart button (0 when the button is absent). */
+  async getSubscriptionsSmartButtonCount(): Promise<number> {
+    if (!(await this.qSubscriptionsSmartButton().count().catch(() => 0))) {
+      console.log('  - "Subscriptions" smart button: absent (0)');
+      return 0;
+    }
+    const raw = await this.qSubscriptionsSmartButton().innerText().catch(() => '');
+    const m = (raw || '').match(/\d+/);
+    const value = m ? parseInt(m[0], 10) : 0;
+    console.log('  - "Subscriptions" smart button: ' + value);
+    return value;
   }
 }

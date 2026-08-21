@@ -13,7 +13,7 @@ import { CommonUtils } from '@/helpers/common.utils';
 export class InvoicePage extends BasePage {
 
   // ─── Action buttons ───────────────────────────────────────────────────────
-  private readonly editButtonLoc               = () => this.page.getByRole('button', { name: /^Edit$/i }).first();
+  private readonly editButtonLoc               = () => this.page.getByRole('button', { name: /^\s*Edit\s*$/i }).first();
   private readonly editButtonXPath             = () => this.page.locator("xpath=//button[contains(@class,'button_edit')]");
   private readonly saveButton                  = () => this.page.getByRole('button', { name: 'Save' }).or(this.page.getByRole('button', { name: 'SAVE' })).first();
   private readonly createInvoiceButton         = () => this.page.locator("//button[@class='btn btn-primary']//span[contains(text(),'Create Invoice')]");
@@ -42,6 +42,9 @@ export class InvoicePage extends BasePage {
 
   // ─── Form inputs ──────────────────────────────────────────────────────────
   private readonly paymentTermsInput           = () => this.page.getByRole('textbox', { name: /Payment Terms/i }).first();
+  /** "Payment Terms" form row - used to read the SAVED (readonly) value. XPath primary, CSS fallback. */
+  private readonly paymentTermsRowXPath        = () => this.page.locator('xpath=//tr[td[contains(normalize-space(.),"Payment Terms")] or td/label[contains(normalize-space(.),"Payment Terms")]]').first();
+  private readonly paymentTermsRowCss          = () => this.page.locator('tr').filter({ hasText: /Payment Terms/i }).first();
   /** Input field in the Register Payment dialog */
   private readonly paymentAmountInput          = () => this.page.locator('xpath=(//div[@name="amount"]//input)[1]');
   /** "Actually Received($)" input in the Register Payment dialog (robust: anchored on the field name,
@@ -100,7 +103,15 @@ export class InvoicePage extends BasePage {
   // "Payer" on the NAKIVO invoice = the Customer/billing partner (partner_id). Rendered readonly as a
   // link (like End User / Reseller). XPath primary (anchor), with a field-container fallback.
   private readonly payerLoc                    = () => this.page.locator('xpath=//a[@name="partner_id"]').or(this.page.locator('xpath=//div[@name="partner_id"]//a')).or(this.page.locator('xpath=//div[@name="partner_id"]')).first();
-  private readonly sourceDocumentLoc           = () => this.page.locator('xpath=//span[@name="origin"]').first();
+  // The invoice-LINE tree also carries a field named "origin", declared invisible="1" and rendered
+  // BEFORE the "Other Info" tab in the DOM - so a bare //span[@name="origin"] resolves to a span
+  // that can never become visible. Exclude anything inside the invoice-lines container.
+  // NO CSS fallback here on purpose. The invoice-LINE tree also carries a field named "origin",
+  // declared invisible="1" and rendered BEFORE the "Other Info" tab in the DOM. A bare
+  // span[name="origin"] therefore resolves to a span that can never become visible - and because
+  // Playwright's .or() is a UNION, adding it as a fallback puts that same span back in the running
+  // and .first() picks it by document order. Keep the scoped XPath alone.
+  private readonly sourceDocumentLoc           = () => this.page.locator('xpath=//span[@name="origin"][not(ancestor::div[@name="invoice_line_ids"])]').first();
   //Quoc Anh: Invoice date located in the center of page. 
   private readonly invoiceDateLoc              = () => this.page.locator('xpath=//span[@name="date_invoice"]').first();
   private readonly dueDateLoc                  = () => this.page.locator('xpath=//span[@name="date_due"]').first();
@@ -247,6 +258,32 @@ export class InvoicePage extends BasePage {
     } catch (error) {
       console.log(`  - Payment Terms error: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Read the "Payment Terms" value currently shown on the invoice form.
+   * Works in readonly mode (the row renders the value as text) and falls back to the edit-mode input.
+   * XPath primary, CSS fallback.
+   * @returns the Payment Terms text, or '' when the field cannot be read
+   */
+  async getPaymentTermsValue(): Promise<string> {
+    // Readonly form: the value is the last cell of the "Payment Terms" row.
+    for (const row of [this.paymentTermsRowXPath(), this.paymentTermsRowCss()]) {
+      const exists = await row.count() > 0;
+      if (!exists) continue;
+      const valueCell = row.locator('td').last();
+      const text = ((await valueCell.textContent().catch(() => '')) || '').trim();
+      if (text.replace(/^payment\s*terms?/i, '').trim()) return text;
+    }
+    // Edit mode: read the many2one input value.
+    const input = this.paymentTermsInput();
+    const inputExists = await input.count() > 0;
+    if (inputExists) {
+      const value = ((await input.inputValue().catch(() => '')) || '').trim();
+      if (value) return value;
+    }
+    // Last resort: the rendered field span (theme-independent).
+    return await this.readFieldTextByName('payment_term_id');
   }
 
   /**
@@ -1603,6 +1640,201 @@ export class InvoicePage extends BasePage {
     const subtotal = ((await this.page.locator(`xpath=(${rowXp})[1]/td[10]`).first().innerText().catch(() => '')) || '').trim();
     console.log(`  ✓ First invoice line Subtotal (gross): "${subtotal}"`);
     return subtotal;
+  }
+
+  /**
+   * Read the billing PERIOD of the first invoice line (the "Start" and "End" columns that
+   * sale_subscription puts on a subscription invoice line). Column map is documented on
+   * getInvoiceLineData: 3 = Start, 4 = End.
+   *
+   * Needed by the recurrence cases (CRM-11806_1.2.x), which must prove the generated line
+   * really covers one month / one quarter / one year and not some other span.
+   *
+   * @returns { start, end } trimmed date strings; empty strings when the line/columns are absent
+   */
+  async getFirstInvoiceLinePeriod(
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<{ start: string; end: string }> {
+    const rowXp = '//div[@name="invoice_line_ids"]//tr[contains(@class,"o_data_row")]';
+    const row = this.page.locator(`xpath=${rowXp}`)
+      .or(this.page.locator('div[name="invoice_line_ids"] tr.o_data_row')).first();
+    await row.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const start = ((await this.page.locator(`xpath=(${rowXp})[1]/td[3]`).first()
+      .innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    const end = ((await this.page.locator(`xpath=(${rowXp})[1]/td[4]`).first()
+      .innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    console.log(`  ✓ First invoice line period: Start="${start}" End="${end}"`);
+    return { start, end };
+  }
+
+  /**
+   * Read the invoice CURRENCY. On the Odoo 12 customer-invoice form `currency_id` lives on the
+   * "Other Info" tab, so open that tab first. Falls back to the currency symbol carried by the
+   * "Total" monetary span when the field itself is not rendered for this user.
+   *
+   * @returns the currency as shown, e.g. "USD" (or the symbol, e.g. "$", via the fallback)
+   */
+  async getInvoiceCurrency(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    // `currency_id` sits in the TOP group of the invoice form (not on the "Other Info" tab), inside
+    // a group="base.group_multi_currency" block - so it is simply absent for users without that
+    // group. The Total-symbol fallback below covers that case.
+    const field = this.page.locator('xpath=//span[@name="currency_id"] | //a[@name="currency_id"] | //div[@name="currency_id"]//span')
+      .or(this.page.locator('span[name="currency_id"], a[name="currency_id"]')).first();
+
+    if (await field.count().catch(() => 0)) {
+      const value = ((await field.innerText({ timeout }).catch(() => '')) || '').trim();
+      if (value) {
+        console.log(`  ✓ Invoice currency: "${value}"`);
+        return value;
+      }
+    }
+
+    // Fallback - derive it from the symbol Odoo renders in front of the Total amount.
+    const total = ((await this.invoiceTotalLoc().innerText({ timeout }).catch(() => '')) || '').trim();
+    const symbol = (total.match(/^[^\d\s.,-]+/) || [''])[0].trim();
+    console.log(`  ✓ Invoice currency read from the Total symbol: "${symbol}" (Total "${total}")`);
+    return symbol;
+  }
+
+  /**
+   * Read the full chatter / message-history text of the open invoice.
+   *
+   * The "invoice only, nothing sent" cases (e.g. CRM-11806_1.2.6) assert on the ABSENCE of an
+   * outgoing invoice email, and the message history is the only end-user-visible signal for that.
+   * Mirrors DealElementPage.getChatterText.
+   *
+   * @returns the concatenated chatter text, or "" when no chatter is rendered
+   */
+  /**
+   * Is the chatter region rendered at all?
+   *
+   * PRESENCE PROBE - pair this with getChatterText() before asserting that the history contains no
+   * outgoing email. getChatterText() returns "" both when the history is empty AND when the region
+   * could not be read, so an assertion on its content alone would pass for the wrong reason. The
+   * invoice form always carries `<div class="oe_chatter">`, so a false here is a real failure.
+   */
+  async hasChatter(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const chatter = this.page
+      .locator("xpath=//*[contains(@class,'o_mail_thread') or contains(@class,'o-mail-Thread')]")
+      .or(this.page.locator('.o_mail_thread, .o-mail-Thread'));
+    await chatter.first().waitFor({ state: 'attached', timeout }).catch(() => {});
+    const present = (await chatter.count().catch(() => 0)) > 0;
+    console.log(`  ✓ Chatter region present: ${present}`);
+    return present;
+  }
+
+  /**
+   * Is the "Payments" notebook tab rendered?
+   *
+   * PRESENCE PROBE - pair this with getPaymentRowCount() before asserting "no payment recorded".
+   * getPaymentRowCount() returns 0 both when there are no payment rows AND when the tab could not
+   * be found, so the count alone cannot tell the two apart. On account.invoice the tab is declared
+   * unconditionally (`<page string="Payments"><field name="payment_ids"/></page>` - no attrs), so
+   * it is present even on a draft invoice and a false here means the read genuinely failed.
+   */
+  /**
+   * Open the "Other Info" notebook tab.
+   *
+   * Odoo renders every notebook page into the DOM but keeps the inactive ones HIDDEN, so a reader
+   * for a field that lives on this tab (Source Document / `origin`, Journal, Reference, ...) will
+   * resolve its span and then time out waiting for it to become visible. Call this first.
+   */
+  async openOtherInfoTab(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    await this.openNotebookTab('Other Info', timeout);
+  }
+
+
+  /**
+   * Activate a notebook tab by its visible label and PROVE it became the active page.
+   *
+   * Two traps this closes:
+   *   - a bare //a[contains(.,"<label>")] can match a tab belonging to a form still parked in the
+   *     breadcrumb stack, so filter to the VISIBLE one;
+   *   - clicking and logging success without checking leaves every later reader waiting on a span
+   *     that is in the DOM but hidden, which surfaces as an unexplained 15s timeout somewhere else
+   *     entirely. Verify the `active` class and throw here instead.
+   */
+  async openNotebookTab(label: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const tab = this.page
+      .locator('xpath=//div[contains(@class,"o_notebook")]//a[contains(@class,"nav-link")]')
+      .or(this.page.locator('.o_notebook .nav-link'))
+      .filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i') })
+      .filter({ visible: true })
+      .first();
+
+    const isActive = async (): Promise<boolean> => {
+      const cls = ((await tab.getAttribute('class').catch(() => '')) || '');
+      const sel = ((await tab.getAttribute('aria-selected').catch(() => '')) || '');
+      return /\bactive\b/.test(cls) || sel === 'true';
+    };
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await tab.waitFor({ state: 'visible', timeout }).catch(() => {});
+
+      // Escalate: a normal click, then a forced one (an overlay from the view we drilled in from
+      // can still be swallowing pointer events), then a direct DOM click that bypasses hit-testing
+      // entirely and lets Bootstrap's tab handler run.
+      await tab.click({ timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      if (await isActive()) { console.log(`  - "${label}" tab is now the active page (attempt ${attempt}, plain click)`); return; }
+
+      await tab.click({ force: true, timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      if (await isActive()) { console.log(`  - "${label}" tab is now the active page (attempt ${attempt}, forced click)`); return; }
+
+      await tab.evaluate((el) => (el as HTMLElement).click()).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      if (await isActive()) { console.log(`  - "${label}" tab is now the active page (attempt ${attempt}, DOM click)`); return; }
+    }
+
+    // Diagnose rather than just fail - report every tab anchor on the page with its state, so the
+    // next run says WHY instead of leaving another round of guessing.
+    const all = this.page.locator('.o_notebook .nav-link, a[data-toggle="tab"]');
+    const total = await all.count().catch(() => 0);
+    const seen: string[] = [];
+    for (let i = 0; i < total; i++) {
+      const text = ((await all.nth(i).innerText({ timeout: CommonUtils.waitTimes.medium }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      const cls = ((await all.nth(i).getAttribute('class').catch(() => '')) || '');
+      const vis = await all.nth(i).isVisible().catch(() => false);
+      seen.push(`"${text}" [class="${cls}", visible=${vis}]`);
+    }
+    throw new Error(
+      `openNotebookTab: could not activate the "${label}" tab after 3 attempts (plain / forced / DOM click). ` +
+      'Every field on that page stays in the DOM but hidden, so any reader called next would time out ' +
+      `instead of reporting a value. Tab anchors found on the page (${total}): ${seen.join(' | ') || '(none)'}`,
+    );
+  }
+
+  /**
+   * Is the invoice NUMBER rendered?
+   *
+   * On account.invoice the number carries `attrs="{'invisible': [('state','in',('draft',))]}"`, so
+   * a draft invoice shows the literal label "Draft Invoice" and NO number. Use this instead of
+   * getInvoiceNumber() when the expected result is that no number exists yet - getInvoiceNumber()
+   * waits for a span that is hidden by design and would fail with a timeout rather than a verdict.
+   */
+  async isInvoiceNumberVisible(timeout: number = CommonUtils.waitTimes.long): Promise<boolean> {
+    const visible = await this.invoiceNumberField().isVisible({ timeout }).catch(() => false);
+    console.log(`  ✓ Invoice number field visible: ${visible}`);
+    return visible;
+  }
+
+  async hasPaymentsTab(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    await this.paymentsTabLoc().waitFor({ state: 'attached', timeout }).catch(() => {});
+    const present = (await this.paymentsTabLoc().count().catch(() => 0)) > 0;
+    console.log(`  ✓ Payments tab present: ${present}`);
+    return present;
+  }
+
+  async getChatterText(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const chatter = this.page
+      .locator("xpath=//*[contains(@class,'o_mail_thread') or contains(@class,'o-mail-Thread') or contains(@class,'o_thread_message_content')]")
+      .or(this.page.locator('.o_mail_thread, .o-mail-Thread, .o_thread_message_content'));
+    await chatter.first().waitFor({ state: 'attached', timeout }).catch(() => {});
+    const texts = await chatter.allTextContents().catch(() => [] as string[]);
+    const joined = texts.join('\n').replace(/\s+\n/g, '\n').trim();
+    console.log(`  ✓ Chatter text read (${joined.length} chars)`);
+    return joined;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════

@@ -25,6 +25,13 @@ export class MigPlatformPage extends BasePage {
   static readonly HASH = {
     crm:                '#action=185&model=crm.lead&view_type=kanban&menu_id=125',
     contacts:           '#menu_id=110&action_id=159',
+    // Business screens used by the section-II main-business smoke (discovered on crm-mig):
+    // CRM > Leads > Leads = menu 138 / action 182 (crm.lead, domain type=lead, tree first);
+    // the Pipeline action (185) opened straight into its LIST view = the pre-prod
+    // "click at view list" step, without depending on the theme's view-switcher buttons.
+    leads:              '#menu_id=138&action_id=182',
+    opportunitiesList:  '#action=185&model=crm.lead&view_type=list&menu_id=125',
+    contactsList:       '#action=159&model=res.partner&view_type=list&menu_id=110',
     sales:              '#menu_id=199&action_id=341',
     settings:           '#menu_id=4&action_id=77',
     apps:               '#menu_id=5&action_id=32',
@@ -102,8 +109,22 @@ export class MigPlatformPage extends BasePage {
     await this.wait(CommonUtils.waitTimes.medium);
   }
 
+  /**
+   * Build a Mig web-client URL for an app hash.
+   *
+   * The `?` before the `#` is REQUIRED, not cosmetic: Odoo's hash writer merges into whatever URL is
+   * already loaded, so a page opened as `/web#...` keeps that shape for every later action - and the
+   * shared page objects wait on the glob `**\/web?*view_type=form*`, in which Playwright treats `?` as
+   * a LITERAL character. Seeding `/web?#...` (the pre-prod URL shape) makes every base page-object URL
+   * wait work unchanged on the Migration server. See CRM-12325_2.x (section II) for the failure this
+   * fixes: "CREATE" navigated to `/web#...view_type=form` and the wait timed out anyway.
+   */
+  static appUrl(hash: string): string {
+    return `${baseUrl_mig}web?${hash}`;
+  }
+
   async openAppAndAssertRendered(hash: string) {
-    await this.goto(`${baseUrl_mig}web${hash}`);
+    await this.goto(MigPlatformPage.appUrl(hash));
     await this.waitForActionLoaded();
   }
 
@@ -116,7 +137,7 @@ export class MigPlatformPage extends BasePage {
    *  dismiss any error dialog. */
   async openAppAndMeasureMs(hash: string): Promise<number> {
     const start = Date.now();
-    await this.goto(`${baseUrl_mig}web${hash}`);
+    await this.goto(MigPlatformPage.appUrl(hash));
     await this.waitForActionLoaded();
     return Date.now() - start;
   }

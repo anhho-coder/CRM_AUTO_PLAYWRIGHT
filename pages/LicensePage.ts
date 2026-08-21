@@ -21,6 +21,16 @@ export class LicensePage extends BasePage {
   private readonly monitoringRow = () => this.page.locator('tr').filter({ hasText: /for monitoring/i }).first();
   private readonly roleOption = () => this.page.locator('[role="option"]');
   private readonly supportTypeField = () => this.page.locator('select[name="support_type"]').first();
+  /** Selected option of a selection field in EDIT mode (label text, not the stored value). */
+  private readonly selectedOption = (fieldName: string) =>
+    this.page.locator(`xpath=//select[@name="${fieldName}"]/option[@selected]`)
+      .or(this.page.locator(`select[name="${fieldName}"] option:checked`))
+      .first();
+  /** Selection-field value rendered as TEXT after save (readonly form). XPath primary, CSS fallback. */
+  private readonly readonlyFieldValue = (fieldName: string) =>
+    this.page.locator(`xpath=//span[@name="${fieldName}"] | //div[@name="${fieldName}"]`)
+      .or(this.page.locator(`span[name="${fieldName}"], div[name="${fieldName}"]`))
+      .first();
 
   constructor(page: Page) {
     super(page);
@@ -152,12 +162,53 @@ export class LicensePage extends BasePage {
       console.log(`  - Looking for Support Type field`);
       
       await this.supportTypeField().waitFor({ state: 'visible', timeout });
-      
+
       // Select value from dropdown
       await this.supportTypeField().selectOption({ label: value });
       console.log(`  - Support Type: Changed to "${value}"`);
     } catch (error) {
       console.log(`  - Support Type error: ${error instanceof Error ? error.message : String(error)}`);
     }
+  }
+
+  /**
+   * Read a selection field's current value from the License form.
+   * Works after SAVE (readonly form renders the label as text) and in edit mode (reads the selected
+   * <option> label, falling back to the stored value). XPath primary, CSS fallback.
+   * @param fieldName - the Odoo field name (e.g. "support_type", "it_monitoring_mode_select")
+   * @returns the value/label text, or '' when the field cannot be read
+   */
+  private async getSelectionFieldValue(fieldName: string): Promise<string> {
+    // Readonly form: the value is rendered as text.
+    const readonlyValue = this.readonlyFieldValue(fieldName);
+    const readonlyExists = await readonlyValue.count() > 0;
+    if (readonlyExists) {
+      const text = ((await readonlyValue.textContent().catch(() => '')) || '').trim();
+      if (text) return text;
+    }
+    // Edit mode: the selected option's label.
+    const option = this.selectedOption(fieldName);
+    const optionExists = await option.count() > 0;
+    if (optionExists) {
+      const text = ((await option.textContent().catch(() => '')) || '').trim();
+      if (text) return text;
+    }
+    // Last resort: the stored value of the <select>.
+    const select = this.page.locator(`select[name="${fieldName}"]`).first();
+    const selectExists = await select.count() > 0;
+    if (selectExists) {
+      return ((await select.inputValue().catch(() => '')) || '').trim();
+    }
+    return '';
+  }
+
+  /** Current "Support Type" value on the License form (e.g. "24/7" / "24_7"). */
+  async getSupportTypeValue(): Promise<string> {
+    return await this.getSelectionFieldValue('support_type');
+  }
+
+  /** Current "for monitoring" value on the License form (e.g. "sockets" / "SOCKET"). */
+  async getForMonitoringValue(): Promise<string> {
+    return await this.getSelectionFieldValue('it_monitoring_mode_select');
   }
 }

@@ -33,7 +33,7 @@ export class BasePage {
    * Locator for Edit button (appears after saving a form)
    */
   protected editButton() {
-    return this.page.getByRole('button', { name: /^Edit$/i });
+    return this.page.getByRole('button', { name: /^\s*Edit\s*$/i });
   }
 
   /**
@@ -180,6 +180,113 @@ await newPage.close();
     const currentUrl = this.page.url();
     const idMatch = currentUrl.match(/[?&#]id=(\d+)/);
     return idMatch ? idMatch[1] : '';
+  }
+
+  /**
+   * Readonly value of a field located by its Odoo FIELD NAME rather than by its on-screen label.
+   * Label/row lookups (`td:has-text("Contact Name")`) depend on the theme's table markup and miss on
+   * the O12 Migration server's sidebar theme; the `name` attribute Odoo puts on every rendered field
+   * is identical on both hosts. XPath primary, CSS fallback.
+   */
+  protected fieldValueByName(field: string) {
+    return this.page
+      .locator(`xpath=//span[@name="${field}"] | //div[@name="${field}"] | //a[@name="${field}"]`)
+      .or(this.page.locator(`span[name="${field}"], div[name="${field}"], a[name="${field}"]`));
+  }
+
+  /**
+   * Text of a saved (readonly) field, located by its Odoo field name.
+   *
+   * Scans EVERY node carrying that field name and returns the first non-empty one: an Odoo form
+   * regularly renders the same field more than once (invisible groups, lead-vs-opportunity view
+   * variants), and the first copy in DOM order is often the empty one - taking `.first()` blindly
+   * reports a saved value as missing.
+   * @returns the trimmed text, or '' when no copy holds a value (Odoo's empty "false" counts as empty)
+   */
+  protected async readFieldTextByName(field: string): Promise<string> {
+    const nodes = this.fieldValueByName(field);
+    const total = Math.min(await nodes.count(), 8);
+    for (let i = 0; i < total; i++) {
+      const text = ((await nodes.nth(i).textContent().catch(() => '')) || '').trim();
+      if (text && !/^false$/i.test(text)) return text;
+    }
+    return '';
+  }
+
+  /**
+   * The saved Address as shown on the form, read robustly.
+   *
+   * Three traps this handles, all hit on the O12 CE Migration server:
+   *  1. `td:has-text("Address")` also matches *"Address Type"* - a different field - and happily
+   *     returns "Address TypeContact". Match the label EXACTLY instead.
+   *  2. The Address row is rendered more than once; the copy that comes first in DOM order can hold
+   *     the label only. Scan the matches for one that carries a value.
+   *  3. Odoo re-renders the readonly form right AFTER save (a 0.4 s save is normal here), so a single
+   *     read can land before the address exists. Poll for a few seconds before giving up.
+   * @returns the address text, or '' when the form really shows no address
+   */
+  protected async readAddressText(): Promise<string> {
+    const exactLabelRows = this.page.locator(
+      'xpath=//tr[td[normalize-space()="Address"] or td/label[normalize-space()="Address"]]'
+    );
+    const attempts = 10;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const total = Math.min(await exactLabelRows.count().catch(() => 0), 8);
+      for (let i = 0; i < total; i++) {
+        const text = ((await exactLabelRows.nth(i).textContent().catch(() => '')) || '').trim();
+        if (text.replace(/^address/i, '').trim()) return text;
+      }
+      const byFields = await this.readAddressByFieldNames();
+      if (byFields) return byFields;
+      if (attempt < attempts) await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return '';
+  }
+
+  /**
+   * Address text rebuilt from the individual address sub-fields (street / city / state / country).
+   * Used as a fallback when the label-based "Address" row cannot be found (Mig sidebar theme).
+   */
+  protected async readAddressByFieldNames(): Promise<string> {
+    const parts: string[] = [];
+    for (const field of ['street', 'street2', 'city', 'zip', 'state_id', 'country_id']) {
+      const value = await this.readFieldTextByName(field);
+      if (value) parts.push(value);
+    }
+    return parts.join(' ').trim();
+  }
+
+  /**
+   * Read the Odoo record id currently shown in the form URL (`?id=` or `#id=`), without waiting.
+   * @returns the id as a string, or '' when the URL carries no numeric id (e.g. an unsaved "New" form)
+   */
+  getRecordIdFromUrl(): string {
+    const match = this.page.url().match(/[?&#]id=(\d+)/);
+    return match ? match[1] : '';
+  }
+
+  /**
+   * Wait until the form URL shows a DIFFERENT record id than the given one - i.e. Odoo actually
+   * switched records. Needed when the model in the URL cannot tell two screens apart (a Deal Element
+   * and the Quotation it creates are both `sale.order`, so a model-only URL wait matches immediately).
+   * @param previousId - the record id before the action ('' when the form was unsaved)
+   * @param timeout - how long to wait for the id to change
+   * @returns the new record id, or '' when it did not change within the timeout
+   */
+  async waitForRecordIdChange(previousId: string, timeout: number = 30000): Promise<string> {
+    try {
+      await this.page.waitForFunction(
+        (prev) => {
+          const match = window.location.href.match(/[?&#]id=(\d+)/);
+          return !!match && match[1] !== prev;
+        },
+        previousId,
+        { timeout }
+      );
+      return this.getRecordIdFromUrl();
+    } catch {
+      return '';
+    }
   }
 
   /**

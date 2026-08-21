@@ -412,7 +412,18 @@ export class ContactPage extends BasePage {
    */
   async clickSave() {
     await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.saveButton().click();
+    try {
+      // Explicit timeout on purpose: when a validation modal is up (e.g. "The email is invalid!") it
+      // covers the toolbar, and an untimed click keeps retrying until the whole TEST times out (seen
+      // burning 14.6 min on O12 CE). Fail in seconds and say WHY instead.
+      await this.saveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    } catch (error) {
+      const blockingText = await this.getBlockingPopupText().catch(() => '');
+      if (blockingText) {
+        throw new Error(`SAVE could not be clicked - a blocking dialog is open: "${blockingText.trim()}"`);
+      }
+      throw error;
+    }
   }
 
   /**
@@ -456,10 +467,12 @@ export class ContactPage extends BasePage {
    */
   async getContactNameReadonly(): Promise<string> {
     try {
-      return await this.contactNameReadonly().textContent({ timeout: 3000 }) || '';
+      const name = ((await this.contactNameReadonly().textContent({ timeout: CommonUtils.waitTimes.extraLong })) || '').trim();
+      if (name) return name;
     } catch {
-      return '';
+      // fall through to the field-name read
     }
+    return await this.readFieldTextByName('name');
   }
 
   /**
@@ -498,11 +511,7 @@ export class ContactPage extends BasePage {
    * Get address in readonly mode (contains country and state)
    */
   async getAddressReadonly(): Promise<string> {
-    try {
-      return await this.addressReadonly().textContent({ timeout: 3000 }) || '';
-    } catch {
-      return '';
-    }
+    return await this.readAddressText();
   }
 
   /**

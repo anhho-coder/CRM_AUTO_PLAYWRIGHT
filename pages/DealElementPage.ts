@@ -16,7 +16,9 @@ export class DealElementPage extends BasePage {
   private readonly dropdownOption = () => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
   private readonly qtyInput = () => this.page.locator('input[name="product_uom_qty"]').first();
   private readonly firstProductRow = () => this.page.locator('xpath=//tr[contains(@class,"o_data_row")][1]');
-  private readonly firstProductNameField = () => this.firstProductRow().locator('xpath=//*[@name="product_id"]');
+  // `.//` keeps the search INSIDE the first order-line row - a leading `//` is document-absolute even
+  // when chained off a row locator, which read an unrelated (empty) product_id node.
+  private readonly firstProductNameField = () => this.firstProductRow().locator('xpath=.//*[@name="product_id"]').first();
   private readonly orderLineRows = () => this.page.locator('[name="order_line"] .o_data_row');
   private readonly lastRowQtyInput = () => this.orderLineRows().last().locator('xpath=//input[@name="product_uom_qty"]');
   private readonly lastRowUoMInput = () => this.orderLineRows().last().locator('xpath=//div[@name="product_uom"]//input');
@@ -901,14 +903,18 @@ export class DealElementPage extends BasePage {
       const paymentTermRow = this.paymentTermRow();
       const paymentTermCell = paymentTermRow.locator('td').last();
       const exists = await paymentTermCell.count() > 0;
-      
+
       if (exists) {
-        return await paymentTermCell.textContent();
+        const text = ((await paymentTermCell.textContent()) || '').trim();
+        // A cell carrying only the label ("Payment Terms") is empty - the Mig sidebar theme keeps the
+        // value in a sibling field span. Fall through to the field-name read in that case.
+        if (text.replace(/^payment\s*terms?/i, '').trim()) return text;
       }
-      return null;
     } catch (error) {
-      return null;
+      // fall through to the field-name read
     }
+    const byFieldName = await this.readFieldTextByName('payment_term_id');
+    return byFieldName || null;
   }
 
   /**
