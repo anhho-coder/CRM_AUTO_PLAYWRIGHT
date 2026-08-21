@@ -1,0 +1,416 @@
+{
+  "generatedAt": "2026-07-14T08:13:35.168Z",
+  "jiraBase": "http://jira.nakivo.com/browse/",
+  "rerunProject": "chrome-headless",
+  "bugMetaSource": "cache",
+  "bugMetaAsOf": "2026-07-02T09:00:00+07:00",
+  "totals": {
+    "specsScanned": 845,
+    "blockedTests": 27,
+    "byModifier": {
+      "skip": 26,
+      "describe.skip": 1,
+      "fixme": 0,
+      "fail": 0
+    },
+    "distinctBugs": 5,
+    "fixedBugsSeen": 1,
+    "testsReadyToRerun": 0,
+    "smokeTagged": 10,
+    "regressionTagged": 0,
+    "gapCount": 1
+  },
+  "readyToRerun": [],
+  "byBug": [
+    {
+      "bug": "CRM-10787",
+      "link": "http://jira.nakivo.com/browse/CRM-10787",
+      "status": "Resolved",
+      "statusCategory": "done",
+      "isFixed": true,
+      "count": 1,
+      "grep": "\\[CRM-10787\\]",
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-1992_Lead_merging/1.Deal-registration-will-be-cloned-from-Source-Lead-to-Target-Lead/1.2.Multiple-leads-same-public-email/1.2.1.Leads-with-different-priority-if/1.2.1.2.Higher-priority-lead-is-created-manually-and-has-tag-can_merge-and/1.2.1.2.1.Lower-priority-lead-has-Lead-form-Subscribe-Form/tc-crm-1992-1-2-1-2-1-merge-leads-same-public-email-manual-can-merge-vs-subscribe.spec.ts",
+          "line": 155,
+          "title": "CRM-1992_1.2.1.2.1 [CRM-11289] [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": [
+            "CRM-11289"
+          ]
+        }
+      ]
+    },
+    {
+      "bug": "CRM-8930",
+      "link": "http://jira.nakivo.com/browse/CRM-8930",
+      "status": "Open",
+      "statusCategory": "new",
+      "isFixed": false,
+      "count": 2,
+      "grep": "\\[CRM-8930\\]",
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/2.Leads-are-NOT-qualified-to-be-merged/2.2.Multiple-leads-different-company/tc-crm-542-2-2-1-no-merge-each-lead-has-each-company.spec.ts",
+          "line": 184,
+          "title": "CRM-542_2.2.1 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and different companies",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/2.Leads-are-NOT-qualified-to-be-merged/2.2.Multiple-leads-different-company/tc-crm-542-2-2-2-no-merge-a-lead-has-company-another-lead-has-email-domain.spec.ts",
+          "line": 182,
+          "title": "CRM-542_2.2.2 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and one lead has a company while the other has not",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "",
+          "titleTagged": true,
+          "alsoOpen": []
+        }
+      ]
+    },
+    {
+      "bug": "CRM-9059",
+      "link": "http://jira.nakivo.com/browse/CRM-9059",
+      "status": "Open",
+      "statusCategory": "new",
+      "isFixed": false,
+      "count": 7,
+      "grep": "\\[CRM-9059\\]",
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/2. Leads_are_NOT_qualified_to_be_merged/2.3.(Item#4)Multiple_leads_with_the_same_Contact/tc-crm-2178-2-3-1-1-NOT-merge-leads-same-Contaact-company-email-first-lead-is-manual.spec.ts",
+          "line": 162,
+          "title": "Verify merging leads will NOT happen with same Contact and Contact.Level NOT set",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Test marked as fixme due to known bug CRM-9059",
+          "titleTagged": false,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/2. Leads_are_NOT_qualified_to_be_merged/2.3.(Item#4)Multiple_leads_with_the_same_Contact/tc-crm-2178-2-3-1-2-CRM-9059-strict-repro-diff-salesteam-salesperson.spec.ts",
+          "line": 92,
+          "title": "CRM-2178_2.3.1.2 [CRM-9059]: Verify merging leads will NOT happen with same Contact (Level NOT set) and DIFFERENT non-empty Sales Team + Salesperson",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Test marked as skip due to known bug CRM-9059 (leads with same Contact / Level NOT set and DIFFERENT non-empty Sales Team + Salesperson are still merged)",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/A.Sales-Team/tc-crm-9059-7-1-4-salesteam-different-NO-merge.spec.ts",
+          "line": 137,
+          "title": "CRM-9059_7.1.4 [CRM-9059]: Verify leads do NOT merge with same company email and DIFFERENT Sales Team",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with different Sales Team still merge)",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/B.Salesperson/tc-crm-9059-7-2-4-salesperson-different-NO-merge.spec.ts",
+          "line": 139,
+          "title": "CRM-9059_7.2.4 [CRM-9059]: Verify leads do NOT merge with same company email and DIFFERENT Salesperson",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with different Salesperson still merge)",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/C.Combined/tc-crm-9059-7-3-1-sameteam-diff-salesperson-NO-merge.spec.ts",
+          "line": 137,
+          "title": "CRM-9059_7.3.1 [CRM-9059]: Verify leads do NOT merge with same Sales Team but DIFFERENT Salesperson",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with same Sales Team but different Salesperson still merge)",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/C.Combined/tc-crm-9059-7-3-2-diffteam-same-salesperson-NO-merge.spec.ts",
+          "line": 137,
+          "title": "CRM-9059_7.3.2 [CRM-9059]: Verify leads do NOT merge with DIFFERENT Sales Team but same Salesperson",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with different Sales Team still merge)",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/C.Combined/tc-crm-9059-7-3-3-diffteam-diff-salesperson-NO-merge.spec.ts",
+          "line": 137,
+          "title": "CRM-9059_7.3.3 [CRM-9059]: Verify leads do NOT merge with DIFFERENT Sales Team and DIFFERENT Salesperson",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with different Sales Team and Salesperson still merge)",
+          "titleTagged": true,
+          "alsoOpen": []
+        }
+      ]
+    },
+    {
+      "bug": "CRM-11289",
+      "link": "http://jira.nakivo.com/browse/CRM-11289",
+      "status": "Open",
+      "statusCategory": "new",
+      "isFixed": false,
+      "count": 10,
+      "grep": "\\[CRM-11289\\]",
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-1992_Lead_merging/1.Deal-registration-will-be-cloned-from-Source-Lead-to-Target-Lead/1.2.Multiple-leads-same-public-email/1.2.1.Leads-with-different-priority-if/1.2.1.2.Higher-priority-lead-is-created-manually-and-has-tag-can_merge-and/1.2.1.2.1.Lower-priority-lead-has-Lead-form-Subscribe-Form/tc-crm-1992-1-2-1-2-1-merge-leads-same-public-email-manual-can-merge-vs-subscribe.spec.ts",
+          "line": 155,
+          "title": "CRM-1992_1.2.1.2.1 [CRM-11289] [CRM-10787]: Verify merging lead happens successfully when leads have same public email with manual Can_Merge vs Subscribe Form",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/1.Leads_are_qualified_to_be_merged/1.2.Multiple-leads-with-the-same-public-email/1.2.1.Leads-with-different-priority-if/tc-crm-2178-1-2-1-1-merge-leads-same-public-email-lower-priority-manual.spec.ts",
+          "line": 140,
+          "title": "[CRM-11289] Verify merging leads with same public email and different priority",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/1.Leads_are_qualified_to_be_merged/1.2.Multiple-leads-with-the-same-public-email/1.2.1.Leads-with-different-priority-if/tc-crm-2178-1-2-1-2-merge-leads-same-public-email-higher-priority-manual.spec.ts",
+          "line": 152,
+          "title": "[CRM-11289] Verify merging leads with same public email and different priority",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/1.Leads_are_qualified_to_be_merged/1.2.Multiple-leads-with-the-same-public-email/1.2.2.Leads-with-same-priority-if/tc-crm-2178-1-2-2-1-merge-leads-same-company-email-first-lead-is-manual.spec.ts",
+          "line": 153,
+          "title": "[CRM-11289] Verify merging leads with same public email and same priority",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/1.Leads_are_qualified_to_be_merged/1.2.Multiple-leads-with-the-same-public-email/1.2.2.Leads-with-same-priority-if/tc-crm-2178-1-2-2-2-merge-leads-same-company-email-second-lead-is-manual.spec.ts",
+          "line": 141,
+          "title": "[CRM-11289] Verify merging leads with same public email and same priority",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/1.Leads-are-qualified-to-be-merged/1.2.Multiple-leads-same-public-domain-email/1.2.1.Leads-with-different-priority-if/tc-crm-542-1-2-1-1-merge-leads-public-domain-ib-renewal.spec.ts",
+          "line": 142,
+          "title": "[CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead)",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/1.Leads-are-qualified-to-be-merged/1.2.Multiple-leads-same-public-domain-email/1.2.1.Leads-with-different-priority-if/tc-crm-542-1-2-1-2-merge-leads-public-domain-partner-signup.spec.ts",
+          "line": 143,
+          "title": "[CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (Partner sign up lead)",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/1.Leads-are-qualified-to-be-merged/1.2.Multiple-leads-same-public-domain-email/1.2.2.Leads-with-equal-priority-some-filled-fields-not-same/tc-crm-542-1-2-2-1-merge-leads-public-domain-equal-priority.spec.ts",
+          "line": 143,
+          "title": "[CRM-11289] Verify merging lead happens successfully when leads from same public domain email with equal priority",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/2.Leads-are-NOT-qualified-to-be-merged/2.1.Multiple-leads-different-public-domain-email/tc-crm-542-2-1-1-no-merge-different-public-domains.spec.ts",
+          "line": 143,
+          "title": "[CRM-11289] Verify merging leads do NOT happen when leads from different public domain emails",
+          "suite": "Lead_Merging",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/9.CRM_Module/CRM_3523_Phase1-Contacts-should-be-assigned-to-the-Company-they-worked-at/2.Manual-creates-a-new-Individual/2.1.if-entering-a-new-individual-email-using-public-domain-at-Opp-page/tc-crm-3523-2-1-1-Verify-Company-contact-created-automatically-if-entering-Public-domain-at-Opp-page.spec.ts",
+          "line": 261,
+          "title": "CRM-3523_2.1.1 [CRM-11289]: Verify a Company contact will be created automatically if entering a public domain at Opp page",
+          "suite": "CRM_Module",
+          "modifier": "skip",
+          "reason": "Skipped due to bug CRM-11289 - Company Name cleared on Opp page with public domain",
+          "titleTagged": true,
+          "alsoOpen": []
+        }
+      ]
+    },
+    {
+      "bug": "CRM-11410",
+      "link": "http://jira.nakivo.com/browse/CRM-11410",
+      "status": "unknown",
+      "statusCategory": "unknown",
+      "isFixed": false,
+      "count": 7,
+      "grep": "\\[CRM-11410\\]",
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-1-assign-salesteam-bdeu-salesperson-thomas.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.1: Verify converting a qualified lead to Opportunity assigning Sales Team = ${sp.team} and Salesperson = ${sp.displayName} is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-10-assign-salesteam-marketing-bdeu-salesperson-stiblin.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.10: Verify converting a qualified lead to Opportunity assigning Sales Team = ${sp.team} and Salesperson = ${sp.displayName} is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-2-assign-salesteam-eam-salesperson-bilal.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.2: Verify converting a qualified lead to Opportunity assigning Sales Team = ${sp.team} and Salesperson = ${sp.displayName} is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-3-assign-salesteam-ibsa-salesperson-timo.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.3: Verify converting a qualified lead to Opportunity assigning Sales Team = ${ibsa.team} and Salesperson = ${ibsa.displayName} is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-4-assign-salesperson-only-thomas.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.4: Verify converting a qualified lead to Opportunity assigning only the Salesperson (${sp.displayName}) is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-7-preset-team-salesperson-reassign-salesperson-thomas.spec.ts",
+          "line": 83,
+          "title": "TC.-A.4.3.7: Verify converting a Lead pre-assigned to ${leadAssign.team} / ${leadAssign.displayName} and reassigning the Salesperson to ${reassign.displayName} on conversion is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        },
+        {
+          "file": "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-4-Salesperson-qualifies-lead-to-opportunity/UC-A.4.3.Assign-this-opportunity-to-section/tc-a-4-3-9-assign-salesteam-cmr-salesperson-karachin.spec.ts",
+          "line": 80,
+          "title": "TC.-A.4.3.9: Verify converting a qualified lead to Opportunity assigning Sales Team = ${sp.team} and Salesperson = ${sp.displayName} is successful [CRM-11410]",
+          "suite": "O12",
+          "modifier": "skip",
+          "reason": "Skipped due to open defect CRM-11410: manual \"Convert to Opportunity\" does not assign the selected Salesperson.",
+          "titleTagged": true,
+          "alsoOpen": []
+        }
+      ]
+    },
+    {
+      "bug": null,
+      "link": null,
+      "status": "n/a",
+      "statusCategory": "n/a",
+      "isFixed": false,
+      "count": 1,
+      "grep": null,
+      "tests": [
+        {
+          "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-671_Cross_team_lead_merging/2.Leads-are-NOT-qualified-to-be-merged/2.1.IBSA-and-CMR-teams/tc-crm-671-2-1-8-no-merge-ibsa-website-teams.spec.ts",
+          "line": 92,
+          "title": "Verify that leads do NOT merge when IBSA team and Website team have same email",
+          "suite": "Lead_Merging",
+          "modifier": "describe.skip",
+          "reason": "No Website Sales Team",
+          "titleTagged": false,
+          "alsoOpen": []
+        }
+      ]
+    }
+  ],
+  "gaps": {
+    "bugBlockedNoKey": [],
+    "keyNotInTitle": [
+      {
+        "file": "tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/2. Leads_are_NOT_qualified_to_be_merged/2.3.(Item#4)Multiple_leads_with_the_same_Contact/tc-crm-2178-2-3-1-1-NOT-merge-leads-same-Contaact-company-email-first-lead-is-manual.spec.ts",
+        "line": 162,
+        "title": "Verify merging leads will NOT happen with same Contact and Contact.Level NOT set",
+        "suite": "Lead_Merging",
+        "modifier": "skip",
+        "bugs": [
+          "CRM-9059"
+        ]
+      }
+    ]
+  },
+  "tiers": {
+    "smoke": [
+      "tests/1.Project_CRM/2.Leads_Assignment/BDEU_team/1.1.State_Group/tc-bdeu-1-1-1-2-salesperson-assigned-to-thomas-semerich.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/BDR_team/1.1.Country_Group/tc-bdr-1-1-1-1-sales-team-bdr.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/CMR_team/1.Assign_to_CMR_team/tc-cmr-1-1-1-1-assign-ukraine-activated-partner-deal-registration.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/IBSA_team/1.Assing-to-IBSA-team/1.1.Nakivo_Customer=TRUE/1.1.1.Tags-contains-IB_NC_Leads/tc-ibsa-1-1-1-1-assign-italy-nakivo_customer-tags-IBSA_Leads.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/Marketing_BDEU/2.2.Lead_Form-contain/tc-mbdeu-2-2-2-assign-france-lead-form_contains-eBook.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/THD_team/Assing_to_THD_team(CRM_6592)/3.2.Nakivo_customer_True/3.2.1.Partner_True/3.2.1.Country_name/tc-thd-3-2-1-2-assign-nakivo_customer_true-partner_true-country_Indonesia.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/BDEU_team/tc-a-3-1-BDEU-assign-salesperson-thomas-semerich-bdeu.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/CMR_team/tc-cmr-1-1-1-1-assign-ukraine-activated-partner-deal-registration.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/IBSA_team/tc-ibsa-1-1-1-1-assign-italy-nakivo_customer-tags-IBSA_Leads.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/Marketing_BDEU/tc-mbdeu-2-2-2-assign-france-lead-form_contains-eBook.spec.ts"
+    ],
+    "regression": [],
+    "smokeWithoutRegression": [
+      "tests/1.Project_CRM/2.Leads_Assignment/BDEU_team/1.1.State_Group/tc-bdeu-1-1-1-2-salesperson-assigned-to-thomas-semerich.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/BDR_team/1.1.Country_Group/tc-bdr-1-1-1-1-sales-team-bdr.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/CMR_team/1.Assign_to_CMR_team/tc-cmr-1-1-1-1-assign-ukraine-activated-partner-deal-registration.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/IBSA_team/1.Assing-to-IBSA-team/1.1.Nakivo_Customer=TRUE/1.1.1.Tags-contains-IB_NC_Leads/tc-ibsa-1-1-1-1-assign-italy-nakivo_customer-tags-IBSA_Leads.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/Marketing_BDEU/2.2.Lead_Form-contain/tc-mbdeu-2-2-2-assign-france-lead-form_contains-eBook.spec.ts",
+      "tests/1.Project_CRM/2.Leads_Assignment/THD_team/Assing_to_THD_team(CRM_6592)/3.2.Nakivo_customer_True/3.2.1.Partner_True/3.2.1.Country_name/tc-thd-3-2-1-2-assign-nakivo_customer_true-partner_true-country_Indonesia.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/BDEU_team/tc-a-3-1-BDEU-assign-salesperson-thomas-semerich-bdeu.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/CMR_team/tc-cmr-1-1-1-1-assign-ukraine-activated-partner-deal-registration.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/IBSA_team/tc-ibsa-1-1-1-1-assign-italy-nakivo_customer-tags-IBSA_Leads.spec.ts",
+      "tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC/UC-A-3-System-creates-a-lead-and-assigns-a-salesperson/Marketing_BDEU/tc-mbdeu-2-2-2-assign-france-lead-form_contains-eBook.spec.ts"
+    ]
+  }
+}
