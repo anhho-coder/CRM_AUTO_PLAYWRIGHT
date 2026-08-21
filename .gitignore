@@ -5,6 +5,9 @@ node_modules/
 playwright-report/
 test-results/
 blob-report/
+# Intermediate blob output of the /maintain_bundly_automation skill
+# (BLOB=blob-report-bundle-$ROOT); the deliverable is playwright-report/Bundle_execution_$ROOT/
+blob-report-bundle-*/
 
 # Note: Reports are now versioned with timestamps under playwright-report/
 # Each run creates: playwright-report/YYYY-MM-DD-HHMMSS/ (HTML report)
