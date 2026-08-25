@@ -33,7 +33,13 @@ export class BasePage {
    * Locator for Edit button (appears after saving a form)
    */
   protected editButton() {
-    return this.page.getByRole('button', { name: /^\s*Edit\s*$/i });
+    // XPath primary, role fallback: on the O12 CE Migration server's backend theme the toolbar Edit
+    // control does not resolve through getByRole('button', {name: 'Edit'}) at all (clickEdit() then
+    // reports "no Edit button" and the form never enters edit mode), while the class / text XPath -
+    // the form used by LeadPage and DealElementPage, both proven on that host - does.
+    return this.page.locator("xpath=//button[contains(@class,'o_form_button_edit') or normalize-space(.)='Edit' or normalize-space(.)='EDIT']")
+      .or(this.page.getByRole('button', { name: /^\s*Edit\s*$/i }))
+      .first();
   }
 
   /**

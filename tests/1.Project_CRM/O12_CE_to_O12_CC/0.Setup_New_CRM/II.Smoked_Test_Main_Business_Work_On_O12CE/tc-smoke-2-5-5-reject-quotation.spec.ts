@@ -57,7 +57,13 @@ import {
  */
 
 const SKIP_CLEANUP_OPP = true; // true = skip teardown-delete (O12 CE convention: keep created records)
-const APPROVAL_QTY = 20;       // Ordered Qty that pushes the Quotation over the no-approval threshold
+const APPROVAL_QTY = 100;      // Ordered Qty that pushes the Quotation over the approval threshold.
+// Approval rule 38 "Quote amount >= $20K" is the only team-agnostic rule on crm-mig:
+//   if record.amount_total_company_signed >= 20000: record.create_approvals(38)
+// "NAKIVO Backup" lists at $329 on the Migration server, so the Quotation needs qty >= 61 for
+// need_approve to become True and the "TO APPROVE" button to lose its invisible modifier.
+// 100 x $329 = $32,900 leaves margin. (Verified on crm-mig 2026-08-25 - qty 30 gave $9,870,
+// need_approve=false, so TO APPROVE stayed hidden and CRM-12325_2.5.4/2.5.5 could not run.)
 
 test.describe('CRM-12325_2.5.5 - O12 CE smoke: reject a Quotation', () => {
 

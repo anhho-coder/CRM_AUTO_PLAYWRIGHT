@@ -8,12 +8,29 @@ import { CommonUtils } from '@/helpers/common.utils';
  */
 export class QuotationPage extends BasePage {
   // Locators
-  private readonly editButtonLoc = () => this.page.getByRole('button', { name: /^\s*Edit\s*$/i }).first();
-  private readonly actionButton = () => this.page.getByRole('button', { name: /^Action$/i });
-  private readonly saveButton = () => this.page.getByRole('button', { name: /^SAVE$/i }).or(this.page.getByRole('button', { name: /^Save$/i })).first();
+  // XPath primary, role fallback - the Mig backend theme does not expose the toolbar Edit button
+  // through getByRole (see BasePage.editButton).
+  private readonly editButtonLoc = () => this.page.locator("xpath=//button[contains(@class,'o_form_button_edit') or normalize-space(.)='Edit' or normalize-space(.)='EDIT']")
+    .or(this.page.getByRole('button', { name: /^\s*Edit\s*$/i }))
+    .first();
+  private readonly actionButton = () => this.page.getByRole('button', { name: /^\s*Action\s*$/i });
+  // Class-first (like editButtonLoc): on the Migration server the theme renders the control-panel
+  // save button as <i class="fa fa-check"/> + <span>Save</span>, so its accessible name is " Save"
+  // (leading space). Playwright normalizes whitespace for STRING name matching but NOT for regex,
+  // so an anchored /^Save$/i can never match it - hence the o_form_button_save class comes first
+  // and the regex fallback tolerates surrounding whitespace.
+  private readonly saveButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_save')]")
+      .or(this.page.getByRole('button', { name: /^\s*SAVE\s*$/i }))
+      .first();
   private readonly sendByEmailButton = () => this.page.getByRole('button', { name: /SEND BY EMAIL/i }).or(this.page.getByRole('button', { name: /Send by Email/i })).first();
-  private readonly emailDialog = () => this.page.locator('.o_dialog, .modal');
-  private readonly sendButtonInDialog = () => this.emailDialog().getByRole('button', { name: /^SEND$/i }).or(this.emailDialog().getByRole('button', { name: /^Send$/i })).first();
+  // Odoo's rich-text editor (summernote) keeps three hidden .modal dialogs permanently in the DOM
+  // (note-image-dialog / note-link-dialog / note-help-dialog), and a stacked o_technical_modal can
+  // still be present, so a bare '.o_dialog, .modal' hit strict mode with 5 matches once the mail
+  // composer opened. Scope to the VISIBLE dialog and take the topmost (last opened) one. When no
+  // dialog is open this resolves to 0 elements, which is what waitFor({state:'hidden'}) wants.
+  private readonly emailDialog = () => this.page.locator('.o_dialog, .modal').filter({ visible: true }).last();
+  private readonly sendButtonInDialog = () => this.emailDialog().getByRole('button', { name: /^\s*SEND\s*$/i }).or(this.emailDialog().getByRole('button', { name: /^\s*Send\s*$/i })).first();
   private readonly successNotification = () => this.page.locator('.o_notification_manager, .o_notification, .o_toast').filter({ hasText: /sent|success/i }).first();
   private readonly newQuotationButton = () => this.page.locator("//button[contains(@name,'action_create_quote_from_de')]");
   private readonly confirmButton = () => this.page.locator('xpath=(//button[@name="action_confirm"])[2]');

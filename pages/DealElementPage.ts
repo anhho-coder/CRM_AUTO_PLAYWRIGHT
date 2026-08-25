@@ -12,6 +12,12 @@ export class DealElementPage extends BasePage {
   private readonly pricelistInput = () => this.page.getByRole('textbox', { name: /Pricelist/i }).or(this.page.locator('input[name="pricelist_id"]')).first();
   private readonly paymentTermInput = () => this.page.getByRole('textbox', { name: /Payment Term/i }).first();
   private readonly addProductButton = () => this.page.getByRole('button', { name: 'Add a product' });
+  /** Odoo renders the x2many row adder as an ANCHOR; the role=button lookup does not always resolve
+   *  it on the O12 CE backend theme. XPath primary, CSS fallback. */
+  private readonly addProductLink = () =>
+    this.page.locator('xpath=//a[normalize-space()="Add a product"] | //div[contains(@class,"o_field_x2many_list_row_add")]//a')
+      .or(this.page.locator('.o_field_x2many_list_row_add a'))
+      .first();
   private readonly productInput = () => this.page.locator('.o_data_cell > .o_field_widget > .o_input_dropdown > .o_input').first();
   private readonly dropdownOption = () => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
   private readonly qtyInput = () => this.page.locator('input[name="product_uom_qty"]').first();
@@ -152,8 +158,29 @@ export class DealElementPage extends BasePage {
    */
   async addProduct(productName: string): Promise<boolean> {
     try {
-      await this.addProductButton().click();
-      console.log('  - Clicked "Add a product" button');
+      // Bounded click with an anchor fallback: an untimed click() here retries until the whole TEST
+      // times out (15 min burned on CRM-12325_2.4.1 with not a single log line), so fail in seconds
+      // and say what the screen was showing instead.
+      let clicked = await this.addProductButton()
+        .click({ timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true)
+        .catch(() => false);
+      if (!clicked) {
+        clicked = await this.addProductLink()
+          .click({ timeout: CommonUtils.waitTimes.abnormalWait })
+          .then(() => true)
+          .catch(() => false);
+        console.log(`  - "Add a product": role=button not clickable, anchor fallback ${clicked ? 'worked' : 'failed'}`);
+      }
+      if (!clicked) {
+        const blocking = (await this.getBlockingPopupText().catch(() => '') || '').replace(/\s+/g, ' ').trim();
+        const adderCount = await this.addProductLink().count().catch(() => 0);
+        throw new Error(
+          `"Add a product" could not be clicked (adder elements found: ${adderCount})` +
+          (blocking ? ` - a blocking dialog is open: "${blocking.substring(0, 160)}"` : ' - no blocking dialog on screen')
+        );
+      }
+      console.log('  - Clicked "Add a product"');
 
       // Target the product_id input of the new empty row (last order line row)
       const newRowInput = this.orderLineRows().last().locator('[name="product_id"] input');
@@ -808,8 +835,15 @@ export class DealElementPage extends BasePage {
    */
   async getFirstProductName(): Promise<string> {
     try {
-      const text = await this.firstProductNameField().textContent();
-      return text || 'first product';
+      const field = this.firstProductNameField();
+      // Readonly row: the cell is a <span name="product_id"> that carries the product name as text.
+      const text = ((await field.textContent().catch(() => '')) ?? '').trim();
+      if (text) return text;
+      // Edit mode: the cell is the many2one WIDGET (<div name="product_id"> wrapping an <input>), so
+      // textContent() returns only the wrapper's whitespace - the name lives in the input's value.
+      const value = ((await field.locator('input').first().inputValue().catch(() => '')) ?? '').trim();
+      if (value) return value;
+      return 'first product';
     } catch (error) {
       return 'first product';
     }
@@ -831,6 +865,25 @@ export class DealElementPage extends BasePage {
     await this.wait(waitTime);
     
     return productText || 'first product';
+  }
+
+  /**
+   * Poll for proof that the Deal Element was written, using only NON-WAITING checks so the poll can
+   * never outlive its budget.
+   * @param budgetMs - hard time budget
+   * @returns a short string naming the proof found, or '' when none appeared in time
+   */
+  private async waitForSavedProof(budgetMs: number): Promise<string> {
+    const deadline = Date.now() + budgetMs;
+    while (Date.now() < deadline) {
+      if (await this.editButton().isVisible().catch(() => false)) return 'Edit button back';
+      const recordId = this.getRecordIdFromUrl();
+      if (recordId) return `record id ${recordId}`;
+      const orderName = await this.readFieldTextByName('name').catch(() => '');
+      if (/^[A-Z]{1,3}\d{3,}/.test(orderName)) return `sequence ${orderName}`;
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    return '';
   }
 
   /**
@@ -876,8 +929,27 @@ export class DealElementPage extends BasePage {
           });
         });
 
-        // Quoc Anh: wait for Edit button to appear as indication that form is saved and back to non-editable mode
-        await this.editButton().waitFor({ state: 'visible', timeout })
+        // Saved-signal, polled under a HARD budget. Three facts learned on the O12 CE Migration
+        // server: (1) the form can stay in edit mode after a SUCCESSFUL write, so a hidden Edit
+        // button proves nothing; (2) the hash can keep an EMPTY id=; (3) waiting on those signals
+        // with waitFor()/waitForFunction() burned 13.6 min inside one step. So poll only with
+        // NON-WAITING calls and give up on time, accepting whichever proof appears first:
+        // Edit button back (pre-prod), a record id in the URL, or the sequence name Odoo assigns
+        // on create (DE0200xx) - verified against DE020058 / DE020060 in the database.
+        const savedProof = await this.waitForSavedProof(timeout);
+        if (!savedProof) {
+          // Capture WHAT the form is showing instead - on the O12 CE Migration server the record is
+          // written server-side (verified: DE020058 / DE020060 / DE020072 exist with their order
+          // line) while the client stays on the unsaved record: title "New", breadcrumb "/ New",
+          // chatter "Creating a new record...". That is a finding for Dev, so state it precisely.
+          const heading = (await this.page.locator('h1, .breadcrumb-item.active').first().textContent().catch(() => '') || '').trim();
+          const chatter = (await this.getChatterText().catch(() => '')).slice(0, 120).replace(/\s+/g, ' ').trim();
+          throw new Error(
+            'SAVE did not complete in the UI: no Edit button, no record id in the URL and no sequence name. ' +
+            `Form still shows "${heading}" (chatter: "${chatter}") - the record may exist server-side while the client stays on the unsaved form.`
+          );
+        }
+        console.log(`  - Saved (proof: ${savedProof})`);
         await this.waitForFormSaved(10000);
         await CommonUtils.waitForSpinnersToHide(this.page);
       } else {

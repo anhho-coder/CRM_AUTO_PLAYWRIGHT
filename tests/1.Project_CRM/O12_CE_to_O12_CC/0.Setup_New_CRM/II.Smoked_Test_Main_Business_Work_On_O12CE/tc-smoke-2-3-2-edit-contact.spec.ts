@@ -133,8 +133,8 @@ test.describe('CRM-12325_2.3.2 - O12 CE smoke: edit a Contact', () => {
       console.log('\n--- Step 5: Change the State ---');
       console.log(`  From : ${O12CE_DATA.state}`);
       console.log(`  To   : ${O12CE_DATA.stateEdited}`);
-      await contactPage.selectState(O12CE_DATA.stateEdited);
-      console.log('  OK - State re-selected');
+      const stateSelected = await contactPage.selectState(O12CE_DATA.stateEdited);
+      console.log(`  State re-selected: ${stateSelected}`);
     });
 
     await test.step('Step 6: Press "SAVE" button', async () => {

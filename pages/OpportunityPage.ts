@@ -24,7 +24,19 @@ export class OpportunityPage extends BasePage {
   private readonly contactNameInputCss = () => this.page.locator('input[name="contact_name"]').filter({ visible: true }).first();
   private readonly streetInput = () => this.page.locator('xpath=(//input[@name="street"])[2]');
   private readonly countryInputXPath = () => this.page.locator("xpath=(//div[contains(@class,'address_country')])[2]/div/input");
-  private readonly stateInputXPath = () => this.page.locator("xpath=(//div[contains(@class,'address_state')])[2]/div/input");
+  // Pre-prod renders the address block TWICE (lead + opportunity views) and only the SECOND copy is
+  // visible; the O12 CE Migration server renders it ONCE. Keep both candidate sets as plain locators
+  // and let resolveStateInput() pick the visible one scanning from the LAST match backwards - do NOT
+  // chain them with .or().first(), because that returns the first match in DOM order, i.e. the hidden
+  // pre-prod copy (it silently filled the wrong input and the State never saved).
+  private readonly stateInputsXPath = () =>
+    this.page.locator("xpath=//div[contains(@class,'address_state')]//input");
+  private readonly stateInputsByName = () => this.page.locator('input[name="state_id"]');
+  /** The form itself in edit mode - the reliable "we are editing" signal on both hosts. */
+  private readonly formEditableRoot = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_form_editable")]')
+      .or(this.page.locator('.o_form_editable'))
+      .first();
   private readonly createdManuallyCheckbox = () => this.createdManuallyRow().locator('input[type="checkbox"]').first();
 // Opp page locators
   private readonly salesTeamSelect = () => this.page.locator('select[name="team_id"]').or(this.page.locator('combobox:has-text("Sales Team")').locator('select')).or(this.page.getByLabel('Sales Team')).first();
@@ -438,22 +450,64 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   /**
    * Select state from dropdown using XPath
    */
+  /**
+   * The State input a user would actually type into: the LAST VISIBLE match, so a hidden duplicate
+   * address block (pre-prod) can never be filled by mistake.
+   * @returns the resolved Locator, or null when no visible State input exists (form not in edit mode)
+   */
+  private async resolveStateInput() {
+    for (const candidates of [this.stateInputsXPath(), this.stateInputsByName()]) {
+      const total = await candidates.count().catch(() => 0);
+      for (let i = total - 1; i >= 0; i--) {
+        const candidate = candidates.nth(i);
+        if (await candidate.isVisible().catch(() => false)) return candidate;
+      }
+    }
+    return null;
+  }
+
   async selectState(state: string) {
     try {
-      const input = this.stateInputXPath();
+      const input = await this.resolveStateInput();
+      if (!input) {
+        console.log('  - State: no VISIBLE state input on this form (not in edit mode?)');
+        return false;
+      }
       await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       await input.click();
-      await input.fill(state);
-      await this.wait(1000);
-      
-      const option = this.dropdownOption().filter({ hasText: state }).first();
+      // Odoo searches res.country.state by NAME, not by display_name: typing the full "CA (US)"
+      // returns "No results to show...", because the record's name is just "CA". Search with the
+      // bare name and still pick the option by its full display text.
+      const searchTerm = state.replace(/\s*\([A-Za-z]{2}\)\s*$/, '').trim() || state;
+      await input.fill(searchTerm);
+      await this.wait(CommonUtils.waitTimes.standard);
+
+      let options = this.dropdownOption().filter({ hasText: state });
+      if ((await options.count().catch(() => 0)) === 0 && searchTerm !== state) {
+        options = this.dropdownOption().filter({ hasText: searchTerm });
+      }
+      const optionCount = await options.count().catch(() => 0);
+      if (optionCount === 0) {
+        // Log what the autocomplete DID offer - a silent false here used to strand the caller.
+        const allOptions = this.dropdownOption();
+        const allCount = await allOptions.count().catch(() => 0);
+        const sample: string[] = [];
+        for (let i = 0; i < Math.min(allCount, 5); i++) {
+          sample.push(((await allOptions.nth(i).textContent().catch(() => '')) || '').trim());
+        }
+        console.log(`  - State: typed "${state}" but no matching option (dropdown had ${allCount}: ${JSON.stringify(sample)})`);
+        return false;
+      }
+      const option = options.first();
       const optionVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
       if (optionVisible) {
         await option.click();
         return true;
       }
+      console.log(`  - State: option "${state}" found in DOM but never became visible`);
       return false;
     } catch (error) {
+      console.log(`  - State error: ${error instanceof Error ? error.message : String(error)}`);
       return false;
     }
   }
@@ -931,7 +985,10 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       await button.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       await button.first().scrollIntoViewIfNeeded();
       await button.first().click();
-      await this.page.locator('.o_form_editable, input:not([readonly])').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      // Wait for the FORM to be editable, not for "any non-readonly input": on the O12 CE Migration
+      // server the theme's hidden "Search menus..." box is the first such input, so the loose
+      // selector resolved to it and never went visible (30 s timeout on a form that WAS in edit mode).
+      await this.formEditableRoot().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       return true;
     }
     return false;
@@ -951,7 +1008,13 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * Includes waiting for URL change and page stabilization
    */
   async saveAndWaitForCompletion() {
-    await this.saveButton().waitFor({ state: 'visible' });
+    // Explicit timeout: without one this wait inherits the TEST timeout, so a form that never entered
+    // edit mode (no SAVE button) burns the whole 15 min instead of failing with a usable message.
+    try {
+      await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage });
+    } catch {
+      throw new Error('SAVE button never appeared - the form is not in edit mode (nothing to save)');
+    }
     await this.saveButton().scrollIntoViewIfNeeded();
     await this.saveButton().click();
     

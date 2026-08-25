@@ -109,6 +109,11 @@ test.describe('CRM-12325_2.4.1 - O12 CE smoke: create a Deal Element', () => {
       dealElementUrl = page.url();
       paymentTermReadback = (await dealElementPage.getPaymentTermValue()) ?? '';
       orderLineCount = await dealElementPage.getOrderLineCount();
+      // Verify #3 is about the SAVED record, so re-read the product from the readonly form. The
+      // creation-time capture happens while the row is still in edit mode and can come back blank.
+      const savedProductName = await dealElementPage.getFirstProductName().catch(() => '');
+      if (savedProductName && savedProductName !== 'first product') productName = savedProductName;
+      productName = productName.trim();
       payerReadback = await dealElementPage.getPayerValue().catch(() => '');
       console.log(`  Deal Element URL : ${dealElementUrl}`);
       console.log(`  Payment Term     : "${paymentTermReadback.trim()}"`);

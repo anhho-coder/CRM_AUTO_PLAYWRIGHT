@@ -307,20 +307,39 @@ export class ContactPage extends BasePage {
   /**
    * Select state from dropdown
    */
-  async selectState(state: string) {
-    await this.wait(500);
+  /**
+   * Select a State by its DISPLAY value (e.g. "CA (US)").
+   *
+   * Odoo's autocomplete searches res.country.state by NAME ("CA"), so typing the whole display value
+   * returns "No results to show...". Search with the bare name, then pick the option by its full
+   * display text. A missing option returns false instead of clicking a never-visible element, which
+   * used to hang until the TEST timeout (15 min on CRM-12325_2.1.2).
+   * @returns true when an option was picked
+   */
+  async selectState(state: string): Promise<boolean> {
+    await this.wait(CommonUtils.waitTimes.medium);
     const input = this.stateInput();
     await input.click();
     await input.fill('');
-    await this.wait(300);
-    await input.fill(state);
-    await this.wait(800);
-    
-    const option = this.dropdownOption(state);
-    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
-    await option.click().catch(async () => {
-      await this.page.keyboard.press('Enter');
-    });
+    await this.wait(CommonUtils.waitTimes.short);
+    const searchTerm = state.replace(/\s*\([A-Za-z]{2}\)\s*$/, '').trim() || state;
+    await input.fill(searchTerm);
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    for (const text of [state, searchTerm]) {
+      const option = this.dropdownOption(text);
+      const visible = await option
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true)
+        .catch(() => false);
+      if (visible) {
+        await option.click();
+        return true;
+      }
+    }
+    console.log(`  - State: no autocomplete option for "${state}" (searched "${searchTerm}")`);
+    await this.page.keyboard.press('Enter');
+    return false;
   }
 
   /**
@@ -522,7 +541,10 @@ export class ContactPage extends BasePage {
     const exists = await button.count() > 0;
     if (exists) {
       await button.first().click();
-      await this.formEditable().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      // Wait for the FORM to be editable, not for "any non-readonly input": the Mig theme's hidden
+      // "Search menus..." input is the first such match and never becomes visible.
+      await this.page.locator('.o_form_editable').first()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       return true;
     }
     return false;

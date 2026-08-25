@@ -95,7 +95,8 @@ test.describe('CRM-12325_2.2.2 - O12 CE smoke: edit a CRM Opportunity', () => {
 
     await test.step('Step 8: Press "EDIT" button', async () => {
       console.log('\n--- Step 8: Click EDIT ---');
-      await opportunityPage.clickEdit();
+      const inEditMode = await opportunityPage.clickEdit();
+      expect(inEditMode, 'the Opportunity form must switch to edit mode (EDIT button found and clicked)').toBeTruthy();
       console.log('  OK - form back in edit mode');
     });
 
@@ -103,7 +104,8 @@ test.describe('CRM-12325_2.2.2 - O12 CE smoke: edit a CRM Opportunity', () => {
       console.log('\n--- Step 9: Change the State ---');
       console.log(`  From : ${O12CE_DATA.state}`);
       console.log(`  To   : ${O12CE_DATA.stateEdited}`);
-      await opportunityPage.selectState(O12CE_DATA.stateEdited);
+      const stateSelected = await opportunityPage.selectState(O12CE_DATA.stateEdited);
+      expect(stateSelected, `the State "${O12CE_DATA.stateEdited}" must be selectable on the O12 CE Opportunity form`).toBeTruthy();
       console.log('  OK - State re-selected');
     });
 
