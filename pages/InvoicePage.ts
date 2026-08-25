@@ -13,7 +13,12 @@ import { CommonUtils } from '@/helpers/common.utils';
 export class InvoicePage extends BasePage {
 
   // ─── Action buttons ───────────────────────────────────────────────────────
-  private readonly editButtonLoc               = () => this.page.getByRole('button', { name: /^\s*Edit\s*$/i }).first();
+  // XPath primary, role fallback - the Mig backend theme does not expose the toolbar Edit button
+  // through getByRole (see BasePage.editButton): it renders as <i class="fa fa-pencil"/> + <span>Edit</span>,
+  // so the accessible name carries a leading space and an anchored regex can never match it.
+  private readonly editButtonLoc               = () => this.page.locator("xpath=//button[contains(@class,'o_form_button_edit') or normalize-space(.)='Edit' or normalize-space(.)='EDIT']")
+    .or(this.page.getByRole('button', { name: /^\s*Edit\s*$/i }))
+    .first();
   private readonly editButtonXPath             = () => this.page.locator("xpath=//button[contains(@class,'button_edit')]");
   private readonly saveButton                  = () => this.page.getByRole('button', { name: 'Save' }).or(this.page.getByRole('button', { name: 'SAVE' })).first();
   private readonly createInvoiceButton         = () => this.page.locator("//button[@class='btn btn-primary']//span[contains(text(),'Create Invoice')]");
@@ -187,7 +192,14 @@ export class InvoicePage extends BasePage {
     await button.click();
     console.log('  - Clicked CREATE AND VIEW INVOICES button (performance timer started)');
     
-    // Wait for Edit button to appear (indicates invoice is fully created)
+    // Gate on the INVOICE record actually being opened before looking at the form. The Edit button
+    // alone is not a signal here: the Sales Order form underneath carries its own Edit button, so
+    // waiting on it resolves instantly and the TC then reads the Sale Order's statusbar as if it
+    // were the invoice's (elapsed 0.15s, invoice number empty, URL still model=sale.order).
+    await this.page.waitForURL(/model=account\.invoice/, { timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log('  - Invoice record opened (URL carries model=account.invoice)');
+
+    // Then wait for the invoice form to finish rendering (Edit button back = readonly mode)
     await this.editButtonLoc().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Edit button visible - invoice fully created');
     

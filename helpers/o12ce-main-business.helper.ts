@@ -308,7 +308,18 @@ export async function confirmQuotationOnO12CE(page: Page): Promise<{ status: str
   await test.step('Press "CONFIRM" button and wait to create a Sales Order', async () => {
     console.log('\n--- Press CONFIRM (Quotation -> Sale Order) ---');
     await quotationPage.clickConfirm(CommonUtils.waitTimes.savingPage);
-    status = await quotationPage.getQuotationStatus();
+
+    // clickConfirm() returns as soon as the click lands, so the statusbar still reads "Quotation"
+    // for a moment while the server writes state=sale. Poll until it flips instead of reading once
+    // (a single read came back "Quotation" 330ms after the click, while the record was already
+    // state=sale server-side). Bounded, so a quotation that genuinely never confirms still fails.
+    const confirmDeadline = Date.now() + CommonUtils.waitTimes.reAssignationWait;
+    do {
+      status = await quotationPage.getQuotationStatus();
+      if (/sale|order/i.test(status)) break;
+      await page.waitForTimeout(CommonUtils.waitTimes.long);
+    } while (Date.now() < confirmDeadline);
+
     orderNumber = await quotationPage.getSalesOrderNumber(CommonUtils.waitTimes.abnormalWait).catch(() => '');
     console.log(`  Quotation status after CONFIRM : "${status}"`);
     console.log(`  Sale Order number              : "${orderNumber}"`);
