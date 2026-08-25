@@ -18,6 +18,7 @@
     "test:parallel3": "playwright test --project=chromium-headless --workers=3",
     "codegen": "playwright codegen",
     "report": "playwright show-report",
+    "stamp:reports": "node config/stamp-report-folder.js",
     "clean": "rimraf test-results playwright-report",
     "inventory": "node ci/build-test-inventory.js",
     "check:identity": "node ci/check-test-identity.js",

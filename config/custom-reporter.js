@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { stampReportFolder } = require('./stamp-report-folder');
 
 /**
  * Custom reporter to track test failures and rename report folder
@@ -94,6 +95,7 @@ class CustomReporter {
       // Use atomic rename - this is a single operation, no copying involved
       fs.renameSync(tempFolder, finalFolder);
       console.log(`✓ Report folder renamed to: ${finalFolderName}`);
+      this.stampReport(finalFolder);
     } catch (error) {
       console.error(`[Custom Reporter] Error renaming folder:`, error.message);
       // If rename fails, try the copy approach as fallback
@@ -103,9 +105,23 @@ class CustomReporter {
         this.copyFolderRecursive(tempFolder, finalFolder);
         this.deleteFolderRecursive(tempFolder);
         console.log(`✓ Report folder copied to: ${finalFolderName}`);
+        this.stampReport(finalFolder);
       } catch (fallbackError) {
         console.error(`[Custom Reporter] Fallback also failed:`, fallbackError.message);
       }
+    }
+  }
+
+  /**
+   * Write the report folder name into the HTML report itself (tab title + a pill in the
+   * corner), so an opened report says which playwright-report/ folder it came from.
+   */
+  stampReport(finalFolder) {
+    try {
+      const result = stampReportFolder(finalFolder, { force: true });
+      console.log(`[Custom Reporter] Report folder name stamped into index.html (${result})`);
+    } catch (error) {
+      console.error(`[Custom Reporter] Could not stamp report folder name:`, error.message);
     }
   }
 

@@ -6,6 +6,10 @@ const customReporterPath = path.resolve(__dirname, 'config', 'custom-reporter.js
 // MUST come before 'html' so the report shows a single video (see reporter[] below).
 const videoMergeReporterPath = path.resolve(__dirname, 'config', 'video-merge-reporter.js');
 
+// Per-project video mode. The CI projects keep 'retain-on-failure' so Jenkins behaviour is
+// unchanged; a LOCAL run can keep the video of a PASSING test with `VIDEO=on npx playwright test ...`.
+const videoMode = process.env.VIDEO === 'on' ? ('on' as const) : ('retain-on-failure' as const);
+
 // Generate timestamp ONCE at config load time
 // Format: YYYY-MM-DD-HHMMSS (e.g., 2025-12-10-143527)
 const now = new Date();
@@ -167,7 +171,7 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'],
         channel: 'chrome',
         headless: true,
-        video: 'retain-on-failure',
+        video: videoMode,
       },
     },
 
@@ -176,32 +180,32 @@ export default defineConfig({
     {
       name: 'SalesReport_Performance',
       testDir: './tests/1.Project_CRM/1.SalesReport_Performance',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       name: 'Leads_Assignment',
       testDir: './tests/1.Project_CRM/2.Leads_Assignment',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       name: 'Lead_Merging',
       testDir: './tests/1.Project_CRM/3.Lead_Merging',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       name: 'Investments',
       testDir: './tests/1.Project_CRM/4.Investments',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       name: 'CRM_Module',
       testDir: './tests/1.Project_CRM/9.CRM_Module',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       name: 'O12',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       // 7.Pre-sales sub-tree of the O12 migration suite (16 specs, titles pre-sale-7.x).
@@ -209,7 +213,7 @@ export default defineConfig({
       // folder via --project=PreSales. Overlaps with (is a subset of) the O12 project.
       name: 'PreSales',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/7.Pre-sales',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       // 1.Business-Process (Salesperson process) sub-tree of the O12 migration suite
@@ -218,7 +222,7 @@ export default defineConfig({
       // --project=BusinessProcess. Overlaps with (is a subset of) the O12 project.
       name: 'BusinessProcess',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/1.Business-Process→Salesperson-process-on-Odoo-12CC',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
       // 3 team sub-folders of 2.Leads_Assignment run as ONE job:
@@ -236,7 +240,7 @@ export default defineConfig({
         '**/CMR_team/**/*.spec.ts',
         '**/THD_team/**/*.spec.ts',
       ],
-      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: 'retain-on-failure' },
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
 
     // {
