@@ -871,6 +871,55 @@ export class PaymentPage extends BasePage {
     return value;
   }
 
+  /**
+   * Read the "Payment Date" value on the open payment form. Works in both readonly (posted) and edit
+   * state - readonly renders the date as a span, edit as an <input>.
+   *
+   * CRM-12424: the payment date, its journal-entry accounting date and the confirmation email must all
+   * land on the day the card was actually charged; this is the first of the three reads.
+   * @returns the trimmed date text as shown (e.g. "08/26/2026"), or "" when absent
+   */
+  async getPaymentDateOnForm(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const container = this.page.locator('xpath=//div[@name="payment_date"] | //span[@name="payment_date"] | //input[@name="payment_date"]').first();
+    await container.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const value = await this.page.evaluate(() => {
+      const c = document.querySelector('div[name="payment_date"], span[name="payment_date"]');
+      if (c) {
+        const inp = c.querySelector('input') as HTMLInputElement | null;
+        if (inp && inp.value) return inp.value.trim();
+        const t = (c as HTMLElement).innerText || c.textContent || '';
+        if (t.trim()) return t.trim();
+      }
+      const direct = document.querySelector('input[name="payment_date"]') as HTMLInputElement | null;
+      return direct && direct.value ? direct.value.trim() : '';
+    }).catch(() => '');
+    console.log(`  ✓ Payment Date (payment form) = "${value}"`);
+    return value;
+  }
+
+  /**
+   * Read one column of the Journal Items list for EVERY data row, resolved by its header text.
+   * Call clickJournalItems() first. Used by CRM-12424 to read the accounting "Date" of the journal
+   * entry the payment posted, which is the figure that actually hits the books.
+   * @param headerText - column header, prefix-matched (e.g. "Date", "Journal Entry", "Matching Number")
+   */
+  async getJournalItemsColumnValues(headerText: string): Promise<string[]> {
+    await this.firstDataRow().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const values = await this.page.evaluate((header: string) => {
+      const table = document.querySelector('table.o_list_view, .o_list_view table, table');
+      if (!table) return [] as string[];
+      const headers = Array.from(table.querySelectorAll('thead th')).map((h) => (h.textContent || '').trim());
+      const idx = headers.findIndex((h) => h.startsWith(header));
+      if (idx === -1) return [] as string[];
+      return Array.from(table.querySelectorAll('tbody tr.o_data_row')).map((row) => {
+        const cells = row.querySelectorAll('td');
+        return cells[idx] ? (cells[idx].textContent || '').trim() : '';
+      });
+    }, headerText).catch(() => [] as string[]);
+    console.log(`  ✓ Journal Items "${headerText}" column: ${JSON.stringify(values)}`);
+    return values;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Invoices smart button (bidirectional link after reconciliation - UC-B-6.9)
   // ═══════════════════════════════════════════════════════════════════════════

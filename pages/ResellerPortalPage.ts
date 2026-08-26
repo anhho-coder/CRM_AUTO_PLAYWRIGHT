@@ -152,6 +152,16 @@ export class ResellerPortalPage extends BasePage {
   private readonly payNowButtonXPath = () =>
     this.page.locator("xpath=//a[@data-toggle='modal' and @data-target='#pay_with']").first();
   private readonly payNowButtonCss = () => this.page.locator("a[data-target='#pay_with']").first();
+  // --- Portal card payment (#pay_with block) - CRM-12373 ---
+  // "Pay now" expands the #pay_with block ON THE SAME PAGE (Bootstrap collapse/modal); it does NOT
+  // navigate to the acquirer's site. Inside it, each acquirer is a radio input[name="pm_id"] (value
+  // "new_<acquirer id>", e.g. "new_8" for Stripe) and the card fields are Stripe.js v3 Elements
+  // rendered as separate iframes from js.stripe.com. Submit is #o_payment_form_pay.
+  private readonly payWithBlock = () => this.page.locator('#pay_with').first();
+  private readonly acquirerRadios = () => this.page.locator("#pay_with input[name='pm_id']");
+  private readonly acquirerRadioByValue = (value: string) =>
+    this.page.locator(`#pay_with input[name='pm_id'][value='${value}']`).first();
+  private readonly submitPaymentButton = () => this.page.locator('#o_payment_form_pay').first();
   // Left-side summary amount (the invoice Total / Amount Due, e.g. "$ 85.85"). XPath primary, CSS fallback.
   private readonly detailTotalBlockXPath = () =>
     this.page.locator("xpath=//div[contains(@class,'q-page__price')]").first();
@@ -1170,6 +1180,193 @@ export class ResellerPortalPage extends BasePage {
         await this.waitForCommentSectionReady().catch(() => {});
         await this.wait(interval);
       }
+    }
+    return false;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // Portal CARD PAYMENT (#pay_with) - CRM-12373
+  //   "Pay now" on the invoice detail expands the #pay_with block on the SAME page. The card fields
+  //   are Stripe.js v3 Elements, each mounted in its own iframe served from js.stripe.com, so they
+  //   are reachable from Playwright (they are NOT a provider-hosted page). Acquirer 8
+  //   "Stripe (Credit Сard)" runs in `environment = test` on pre-prod, so Stripe test cards work.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  /**
+   * Click "Pay now" on the invoice detail page and wait for the #pay_with payment block to render.
+   * @param timeout - max time to wait for the block (default: elementAppear)
+   */
+  async clickPayNow(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<void> {
+    let btn = this.payNowButtonXPath();
+    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+      btn = this.payNowButtonCss();
+    }
+    await btn.click({ timeout });
+    await this.payWithBlock().waitFor({ state: 'visible', timeout });
+    await this.wait(CommonUtils.waitTimes.extraLong); // let Stripe mount its Elements iframes
+    console.log('  - "Pay now" clicked; the #pay_with payment block is open');
+  }
+
+  /**
+   * Read the acquirer radio values offered in the #pay_with block, e.g. ["new_8"].
+   * The value encodes the payment.acquirer id ("new_<id>" = pay with a NEW card on that acquirer).
+   */
+  async getPaymentAcquirerValues(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string[]> {
+    await this.acquirerRadios().first().waitFor({ state: 'attached', timeout }).catch(() => {});
+    const values = await this.acquirerRadios().evaluateAll((els) =>
+      els.map((el) => (el as HTMLInputElement).value)
+    ).catch(() => [] as string[]);
+    console.log(`  - Acquirer options in #pay_with: ${values.length ? values.join(', ') : '(none)'}`);
+    return values;
+  }
+
+  /**
+   * Select an acquirer in the #pay_with block by its radio value ("new_<acquirer id>").
+   * Idempotent - the block usually pre-selects the only published acquirer.
+   * @param value - the radio value, e.g. "new_8" for Stripe on pre-prod
+   */
+  async selectPaymentAcquirer(value: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const radio = this.acquirerRadioByValue(value);
+    await radio.waitFor({ state: 'attached', timeout });
+    // The radio is often visually replaced by a styled label, so check() can miss - click it via JS.
+    await radio.evaluate((el) => (el as HTMLInputElement).click()).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const checked = await radio.isChecked().catch(() => false);
+    console.log(`  - Acquirer "${value}" selected: ${checked}`);
+  }
+
+  /**
+   * Fill ONE Stripe Elements field. Each Element lives in its own js.stripe.com iframe and the inputs
+   * carry Stripe's stable names (cardnumber / exp-date / cvc / postal), so the frame is located by
+   * looking for that input rather than by iframe order (which is not stable).
+   *
+   * Stripe Elements ignore Locator.fill() (they need real key events), so the value is typed.
+   *
+   * The Elements re-format WHILE you type (the expiry Element inserts " / " after the month), and a
+   * keystroke landing during that re-render is swallowed - "1229" then echoes back as "12 / 2" and
+   * Stripe rejects the card with "Your expiration date is incomplete". So the value is typed, read
+   * back, and retyped with a longer delay until the digits Stripe holds match the digits asked for.
+   *
+   * @returns the value Stripe echoes back in the input (formatted), or "" when the field was not found
+   */
+  private async fillStripeElement(
+    inputName: string,
+    value: string,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<string> {
+    const wantedDigits = value.replace(/\D/g, '');
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      for (const frame of this.page.frames()) {
+        if (!/js\.stripe\.com/.test(frame.url())) continue;
+        const input = frame.locator(`input[name="${inputName}"]`).first();
+        if (!(await input.count().catch(() => 0))) continue;
+
+        let echoed = '';
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          await input.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+          // Clear whatever a previous attempt left behind before retyping.
+          await input.press('Control+a').catch(() => {});
+          await input.press('Backspace').catch(() => {});
+          await input.pressSequentially(value, { delay: attempt * 90 });
+          echoed = (await input.inputValue().catch(() => '')) || '';
+          if (echoed.replace(/\D/g, '') === wantedDigits) {
+            console.log(`  - Stripe field "${inputName}" filled -> "${echoed}"`);
+            return echoed;
+          }
+          console.log(`  - Stripe field "${inputName}" came back as "${echoed}", expected digits "${wantedDigits}" (attempt ${attempt}/3) - retyping slower`);
+        }
+        console.log(`  ⚠ Stripe field "${inputName}" would not accept "${value}"; last value "${echoed}"`);
+        return echoed;
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    console.log(`  ⚠ Stripe field "${inputName}" not found in any js.stripe.com frame`);
+    return '';
+  }
+
+  /**
+   * Fill the whole Stripe card form (number, expiry, CVC and - when the Element is mounted - ZIP).
+   * ZIP is optional because Stripe only renders the postal Element for some account/country configs.
+   * @returns what Stripe echoed back per field, so the caller can assert the form really took the data
+   */
+  async fillStripeCardDetails(card: {
+    number: string;
+    expiry: string;
+    cvc: string;
+    zip?: string;
+  }): Promise<{ number: string; expiry: string; cvc: string; zip: string }> {
+    const numberEcho = await this.fillStripeElement('cardnumber', card.number);
+    const expiryEcho = await this.fillStripeElement('exp-date', card.expiry);
+    const cvcEcho = await this.fillStripeElement('cvc', card.cvc);
+    const zipEcho = card.zip ? await this.fillStripeElement('postal', card.zip) : '';
+    return { number: numberEcho, expiry: expiryEcho, cvc: cvcEcho, zip: zipEcho };
+  }
+
+  /**
+   * Press the "PAY NOW" submit button inside the #pay_with block. Does NOT wait for the outcome -
+   * pair it with waitForPaymentToLeaveTheForm() / the paid-banner poll.
+   */
+  async submitPortalPayment(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<void> {
+    const btn = this.submitPaymentButton();
+    await btn.waitFor({ state: 'visible', timeout });
+    await btn.click({ timeout });
+    console.log('  - Submitted the portal card payment ("PAY NOW")');
+  }
+
+  /**
+   * Wait for the browser to leave the invoice form after submitting - Odoo posts the s2s transaction
+   * and then hands over to /payment/process (which polls the transaction) before returning to the
+   * portal. Returns the URL it landed on; "" when it never navigated.
+   * @param timeout - max time to wait (default: pageLoad)
+   */
+  async waitForPaymentToLeaveTheForm(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<string> {
+    const startUrl = this.page.url();
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const url = this.page.url();
+      if (url !== startUrl) {
+        console.log(`  - Payment submitted; the portal navigated to: ${url}`);
+        return url;
+      }
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    console.log('  ⚠ The page never navigated after submitting the payment');
+    return '';
+  }
+
+  /**
+   * Read any Stripe / Odoo payment error surfaced in the #pay_with block (e.g. a declined card or a
+   * validation message). Returns "" when the block is gone or carries no alert.
+   */
+  async getPortalPaymentError(timeout: number = CommonUtils.waitTimes.long): Promise<string> {
+    const alert = this.page.locator('#pay_with .alert, #pay_with .o_payment_form_error, #pay_with .text-danger');
+    await alert.first().waitFor({ state: 'attached', timeout }).catch(() => {});
+    const texts = await alert.allTextContents().catch(() => [] as string[]);
+    const joined = texts.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' | ');
+    if (joined) console.log(`  - Portal payment error text: "${joined}"`);
+    return joined;
+  }
+
+  /**
+   * Reload the portal invoice page and poll until it shows the "This invoice is paid" banner.
+   * The s2s transaction can still be in `/payment/process` when the browser first returns, so a
+   * one-shot read is not enough.
+   * @param invoiceUrl - the portal invoice detail URL (/my/invoices/<id>?access_token=...)
+   * @param maxAttempts - how many reload/poll rounds (default 10)
+   * @param interval - wait between rounds (default: extraLong)
+   */
+  async waitForPortalInvoicePaid(
+    invoiceUrl: string,
+    maxAttempts: number = 10,
+    interval: number = CommonUtils.waitTimes.extraLong
+  ): Promise<boolean> {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      await this.page.goto(invoiceUrl, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const paid = await this.isInvoicePaidMessageShown(CommonUtils.waitTimes.abnormalWait).catch(() => false);
+      console.log(`  - Portal "invoice is paid" poll ${attempt}/${maxAttempts}: ${paid}`);
+      if (paid) return true;
+      if (attempt < maxAttempts) await this.wait(interval);
     }
     return false;
   }
