@@ -1,4 +1,4 @@
-import { Browser, BrowserContext, Page, test, expect } from '@playwright/test';
+import { Browser, BrowserContext, Page, TestInfo, test, expect } from '@playwright/test';
 import { OpportunityPage, DealElementPage, QuotationPage, InvoicePage, LicensePage } from '@pages';
 import { LoginPageMig, HomePageMig } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
@@ -111,9 +111,21 @@ export async function loginToO12CE(
 export async function openApproverSessionOnO12CE(
   browser: Browser,
   quotationUrl: string,
-  account: O12ceAccount = users.manager_max_crm_mig
+  account: O12ceAccount = users.manager_max_crm_mig,
+  testInfo?: TestInfo
 ): Promise<{ approverPage: Page; approverContext: BrowserContext }> {
-  const approverContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  // Playwright records video PER BrowserContext, and a context built with browser.newContext() does
+  // NOT inherit `use.video` from the config - only the `page` fixture's context does. Without this
+  // the report showed the sales-IC session only and the whole APPROVE / REJECT half of the TC (the
+  // part the manual step calls "play as the Max account") was missing from the evidence.
+  // Size matches the fixture video (800x450) so the merge reporter can fast-concat the two clips
+  // into one full-video.webm instead of re-encoding.
+  const approverContext = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    ...(testInfo
+      ? { recordVideo: { dir: testInfo.outputPath('approver-session'), size: { width: 800, height: 450 } } }
+      : {}),
+  });
   const approverPage = await approverContext.newPage();
 
   console.log(`\n--- Open the approver session (${account.displayName}) ---`);
@@ -126,9 +138,48 @@ export async function openApproverSessionOnO12CE(
   await approverPage.waitForTimeout(CommonUtils.waitTimes.extraLong);
   const quotationPage = new QuotationPage(approverPage);
   await quotationPage.waitForPageLoad(CommonUtils.waitTimes.savingPage).catch(() => {});
+
+  // crm-mig raises an INTERMITTENT "Odoo Client Error" popup on the Sale Order form in the approver
+  // session. It is a `.modal.o_technical_modal` with `data-backdrop="static"`, so it swallows every
+  // pointer event: APPROVE / REJECT then never become clickable and the click retries until the
+  // timeout ("<div id=modal_4 ...> intercepts pointer events"). Clear it the way a tester would -
+  // press Ok - and SAY SO in the log, because a popup here is a server-side defect worth reporting,
+  // not something to swallow silently.
+  const dismissed = await quotationPage.dismissErrorDialogWithRetry();
+  if (dismissed > 0) {
+    console.log(`  ⚠ crm-mig raised ${dismissed} "Odoo Client Error" popup(s) on the approver's Sale Order form - dismissed`);
+  }
   console.log(`  Quotation opened in the approver session: ${approverPage.url()}`);
 
   return { approverPage, approverContext };
+}
+
+/**
+ * Close the approver session and attach ITS video to the test.
+ *
+ * The video file is only finalised once the context closes, so the attach has to happen here. It is
+ * attached under the name "video" on purpose: config/video-merge-reporter.js then sees two videos on
+ * the test and concatenates them into a single `full-video.webm` - the sales-IC half followed by the
+ * manager half - which is what the report shows. Ordering is by file name (rank() in that reporter):
+ * the fixture's `video.webm` sorts first, this one after.
+ *
+ * Safe to call with `undefined` and never throws - it runs in the spec's `finally`.
+ */
+export async function closeApproverSessionOnO12CE(
+  session: { approverPage: Page; approverContext: BrowserContext } | undefined,
+  testInfo?: TestInfo
+): Promise<void> {
+  if (!session) return;
+  const video = session.approverPage.video();
+  await session.approverContext.close().catch(() => {});
+  if (!video || !testInfo) return;
+  try {
+    const videoPath = await video.path();
+    await testInfo.attach('video', { path: videoPath, contentType: 'video/webm' });
+    console.log(`  Approver-session video attached: ${videoPath}`);
+  } catch (err) {
+    console.log(`  ⚠ Approver-session video not attached: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 /** Step 2 - open CRM and land on the Opportunities LIST view (pre-prod: "click at view list"). */

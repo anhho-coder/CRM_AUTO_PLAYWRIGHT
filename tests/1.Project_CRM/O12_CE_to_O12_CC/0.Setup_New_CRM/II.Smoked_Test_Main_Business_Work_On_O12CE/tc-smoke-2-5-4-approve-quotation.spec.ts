@@ -11,6 +11,7 @@ import {
   addDealElementOnO12CE,
   pressNewQuotationOnO12CE,
   openApproverSessionOnO12CE,
+  closeApproverSessionOnO12CE,
   O12ceOpportunity,
   O12ceQuotationResult,
 } from '@helpers/o12ce-main-business.helper';
@@ -163,8 +164,12 @@ test.describe('CRM-12325_2.5.4 - O12 CE smoke: approve a Quotation', () => {
       ).toBeTruthy();
     });
 
+    // The try opens HERE, not at Verification: a failure inside the approver steps must still
+    // reach the finally, otherwise the approver session's video is never attached (it was lost
+    // exactly that way when Step 5 threw).
+    try {
     await test.step(`Steps run - Step 3 & 4: Open another browser, login as ${users.manager_max_crm_mig.displayName} and open the Quotation`, async () => {
-      session = await openApproverSessionOnO12CE(browser, quotationUrl, users.manager_max_crm_mig);
+      session = await openApproverSessionOnO12CE(browser, quotationUrl, users.manager_max_crm_mig, testInfo);
       return session;
     });
 
@@ -178,7 +183,6 @@ test.describe('CRM-12325_2.5.4 - O12 CE smoke: approve a Quotation', () => {
       console.log(`  Status after APPROVE   : "${statusAfterApprove}"`);
     });
 
-    try {
       await test.step('Verification', async () => {
       const pendingOk = /pending|approv/i.test(statusAfterToApprove);
 
@@ -206,8 +210,8 @@ test.describe('CRM-12325_2.5.4 - O12 CE smoke: approve a Quotation', () => {
       expect(approvalCheck.approved, `"APPROVE" must complete the O12 CE approval (approveGone=${approvalCheck.approveButtonGone}, confirm=${approvalCheck.confirmVisible}, sendByEmail=${approvalCheck.sendByEmailVisible})`).toBeTruthy();
       });
     } finally {
-      // Always close the approver browser context, including when the verification failed.
-      await session?.approverContext.close().catch(() => {});
+      // Always close the approver browser context (and attach its video), even when verification failed.
+      await closeApproverSessionOnO12CE(session, testInfo);
     }
   });
 });

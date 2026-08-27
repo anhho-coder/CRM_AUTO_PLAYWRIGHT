@@ -541,19 +541,33 @@ export class QuotationPage extends BasePage {
       
       if (buttonVisible) {
         console.log('  ✓ NEW QUOTATION button found');
+        // The Deal Element is itself a sale.order (DE#####) opened at "#id=<deId>". "New quotation"
+        // creates the child Sale Order server-side and only THEN opens it, so the record in the URL
+        // changes to the new SO ("#id=<soId>&active_id=<deId>", breadcrumb "DE##### > SO#####").
+        // Measured 8-18s on pre-prod: without this gate the caller keeps working on the Deal Element,
+        // where "TO APPROVE" can never appear (the DE has need_approve=false) - and the reload-poll in
+        // clickToApprove() then re-loads the DE URL and kills the pending navigation for good.
+        const idBefore = /[#&]id=(\d+)/.exec(this.page.url())?.[1] ?? '';
         await button.scrollIntoViewIfNeeded();
         await button.click({});
         console.log('  ✓ Clicked NEW QUOTATION button successfully');
-        
-        // NEW QUOTATION creates and saves the quotation automatically
-        // Wait for navigation to the new quotation page
-        const confirmButton = this.confirmButton();
-      await button.waitFor({ state: 'visible', timeout: saveTimeout }).catch(() => {});
-        console.log('  - Navigated to new Quotation page');
-        
-        
-        //await button.waitFor({ state: 'hidden', timeout: saveTimeout }).catch(async () => {
-          
+
+        await this.page.waitForFunction(
+          (prev) => {
+            const m = /[#&]id=(\d+)/.exec(window.location.hash);
+            return !!m && m[1] !== prev;
+          },
+          idBefore,
+          { timeout: saveTimeout, polling: 500 }
+        );
+        const idAfter = /[#&]id=(\d+)/.exec(this.page.url())?.[1] ?? '';
+        console.log(`  ✓ Navigated to the new Quotation page (record ${idBefore} -> ${idAfter})`);
+
+        // The quotation form must be rendered before anything is read/clicked on it.
+        await this.editButtonLoc()
+          .waitFor({ state: 'visible', timeout: saveTimeout })
+          .catch(() => console.log('  ⚠ Quotation form opened but Edit button is not visible yet'));
+
       } else {
         console.log('  ✗ NEW QUOTATION button not found or not visible');
         throw new Error('NEW QUOTATION button not found or not visible on the page');
@@ -613,7 +627,12 @@ export class QuotationPage extends BasePage {
     const startApproveTime = Date.now();
     
     const button = this.approveButton();
-    
+
+    // A late "Odoo Client Error" popup on crm-mig is a static-backdrop modal that intercepts every
+    // pointer event, so the click below would retry until it times out against a button that is
+    // plainly on screen. Clear it first.
+    await this.dismissErrorDialogWithRetry(2).catch(() => 0);
+
     // Wait for "APPROVE" button to be visible
     await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Found "APPROVE" button');
@@ -659,7 +678,10 @@ export class QuotationPage extends BasePage {
     const startRejectTime = Date.now();
     
     const button = this.rejectButton();
-    
+
+    // Same static-backdrop "Odoo Client Error" guard as clickApprove() - see the note there.
+    await this.dismissErrorDialogWithRetry(2).catch(() => 0);
+
     // Wait for "REJECT" button to be visible
     await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Found "REJECT" button');
@@ -668,14 +690,24 @@ export class QuotationPage extends BasePage {
     await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "REJECT" button - waiting for dialog');
     
-    // Wait for "Reject Reason" dialog to appear. The Mig backend theme re-labels the wizard, so fall
-    // back to any visible modal when the "Reject Reason" title does not match.
-    await this.wait(1000);
+    // Wait for the "Reject Reason" dialog to appear. Use waitFor, NOT isVisible({timeout}):
+    // isVisible() is an IMMEDIATE check - it never retries and its `timeout` option does not make it
+    // poll. That is why CRM-12325_2.5.5 logged "dialog did not appear" 1s after the click while the
+    // evidence screenshot taken moments later showed the wizard wide open, so the reason was never
+    // filled, the dialog stayed open and APPROVE/REJECT were never consumed.
+    // The Mig backend theme re-labels the wizard, so fall back to any visible modal when the
+    // "Reject Reason" title does not match.
     let rejectDialog = this.page.locator('.o_dialog, .modal').filter({ hasText: /Reject Reason/i }).first();
-    let dialogVisible = await rejectDialog.isVisible({ timeout: 5000 }).catch(() => false);
+    let dialogVisible = await rejectDialog
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
     if (!dialogVisible) {
       rejectDialog = this.page.locator('.o_dialog, .modal').filter({ visible: true }).first();
-      dialogVisible = await rejectDialog.isVisible({ timeout: 5000 }).catch(() => false);
+      dialogVisible = await rejectDialog
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true)
+        .catch(() => false);
       if (dialogVisible) console.log('  - Reject wizard found by visible-modal fallback');
     }
     
