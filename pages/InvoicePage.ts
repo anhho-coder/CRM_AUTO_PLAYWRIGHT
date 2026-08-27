@@ -1705,6 +1705,88 @@ export class InvoicePage extends BasePage {
     return value;
   }
 
+  /**
+   * Remove every applied search facet from the Invoices list, so the next filter starts from a clean
+   * search bar.
+   *
+   * Why this is needed: `openCustomerInvoicesList()` navigates by hash, and when the hash is unchanged
+   * Odoo does NOT re-render the action - the previously applied facets survive. A loop that filters by
+   * one currency after another then silently ANDs them ("Currency contains EUR" AND "Currency contains
+   * GBP"), which matches nothing. Clearing the facets first makes each pass independent.
+   *
+   * @param timeout max time to wait for each facet control (default: abnormalWait)
+   * @returns how many facets were removed
+   */
+  async clearListSearchFacets(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    let removed = 0;
+    // Each click re-renders the search bar, so re-query and always take the first remaining control.
+    for (let guard = 0; guard < 10; guard++) {
+      const controls = this.facetRemoveButtons();
+      const count = await controls.count().catch(() => 0);
+      if (count === 0) break;
+      const first = controls.first();
+      const visible = await first.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+      if (!visible) break;
+      await first.click({ timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      removed++;
+    }
+    if (removed) {
+      await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    console.log(`  ✓ Search facets cleared from the Invoices list (${removed} removed)`);
+    return removed;
+  }
+
+  /**
+   * Read a set of columns from ONE row of the Invoices LIST view, resolving every column by its header
+   * text so the reader survives a column re-order or an optional column being toggled on.
+   *
+   * Used by the exchange-rate cases, which need an invoice's Number, Invoice Date, Total and
+   * "Total in Company Currency" together in order to re-compute the conversion from the rate history.
+   * ("Total in Company Currency" is a list-only column - it is NOT on the invoice form.)
+   *
+   * @param headerLabels the column headers to read, e.g. ['Number','Invoice Date','Total','Total in Company Currency']
+   * @param rowIndex     0-based index of the data row to read (default: the first row)
+   * @param timeout      max time to wait for the list (default: abnormalWait)
+   * @returns a map of header -> cell text; a header that is not present maps to ''
+   */
+  async getInvoiceListRowFields(
+    headerLabels: string[],
+    rowIndex: number = 0,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<Record<string, string>> {
+    await this.invoiceListTable().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.anyInvoiceListRow().waitFor({ state: 'visible', timeout }).catch(() => {});
+
+    const fields = await this.page.evaluate(
+      (args: { labels: string[]; idx: number }) => {
+        const out: Record<string, string> = {};
+        const table = document.querySelector('table.o_list_view') || document.querySelector('.o_list_view table');
+        if (!table) return out;
+        const headers = Array.from(table.querySelectorAll('thead th'))
+          .map((h) => (h.textContent || '').replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').trim());
+        const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+        const row = rows[args.idx];
+        if (!row) return out;
+        const cells = Array.from(row.querySelectorAll('td'));
+        for (const label of args.labels) {
+          const colIdx = headers.findIndex((h) => h === label || h.startsWith(label));
+          out[label] = colIdx !== -1 && cells[colIdx]
+            ? (cells[colIdx].textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+            : '';
+        }
+        return out;
+      },
+      { labels: headerLabels, idx: rowIndex }
+    ).catch(() => ({} as Record<string, string>));
+
+    const shown = headerLabels.map((l) => `${l}="${fields[l] ?? ''}"`).join(', ');
+    console.log(`  ✓ Invoices list row #${rowIndex + 1}: ${shown}`);
+    return fields;
+  }
+
   // ═══════════════════════════════════════════════════════════════════════════
   // Invoices LIST view - "Add Custom Filter" facets + row actions (data-cleanup utilities)
   //   Odoo 12 "Filters > Add Custom Filter" builds the exact facets seen in the UI:
@@ -1728,6 +1810,9 @@ export class InvoicePage extends BasePage {
   private readonly firstRowNumberCell  = () => this.page.locator("xpath=(//tr[contains(@class,'o_data_row')])[1]/td[contains(@class,'o_data_cell')][1]").first();
   private readonly breadcrumbInvoicesLink = () => this.page.locator("xpath=//li[contains(@class,'breadcrumb-item')]//a[normalize-space()='Invoices']").first();
   private readonly listPager           = () => this.page.locator('.o_pager_counter, .o_pager').first();
+  // The (x) control on an applied search facet chip. Odoo renders one per facet, titled "Remove".
+  private readonly facetRemoveButtons  = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')]//*[contains(@title,'Remove')] | //div[contains(@title,'Remove')]");
   private readonly listNoContent       = () => this.page.locator('.o_view_nocontent, .oe_view_nocontent, .o_nocontent_help').first();
 
   /**
