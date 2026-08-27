@@ -548,6 +548,58 @@ const BUG_BY_PRIORITY = {
   ],
 };
 
+// --- Classified Support ticket (the "Support ticket" page) -------------------
+// The team's quarterly QA review of the CRM support tickets RECEIVED in a range,
+// split into the 5 categories the review reports on. Reproduces the review
+// spreadsheet's JQL column verbatim (see sources/support-classification.js):
+// category A is identified by the Investigation issue TYPE (it carries no
+// "Support Ticket Type" value); B-E by that field's value on a plain
+// "Post-EA - Support Ticket". Whole-project scope, NO reporter clause - this
+// counts what the team RECEIVED, not what a QA opened (hence it is larger than
+// the by-reporter "Support Ticket created" card on the same page).
+// `bucket` places each row's count in the table's "Support Ticket" or
+// "Investigation" column; `tint` is the row colour of the review sheet.
+const SUPPORT_CLASSIFICATION = {
+  key: 'supportClassification',
+  label: 'Classified Support ticket',
+  project: 'CRM',
+  ticketType: 'Post-EA - Support Ticket',
+  investigationType: 'Post-EA - Support Ticket - Investigation',
+  typeField: 'Support Ticket Type',
+  // `note` = the team's confirmed definition of the group (reference/classification-rules.md
+  // of the report_support_ticket_for_quarter skill, confirmed 2026-08-27). It is what the
+  // table's "Note" column shows, so a reader can tell WHY a ticket belongs to the row
+  // without opening the review workbook.
+  categories: [
+    { code: 'A', label: 'Check data & explain logic',
+      expected: 'Post-EA - Support Ticket - Investigation', bucket: 'investigation', tint: '#daeaf6', color: '#2c7be5',
+      note: 'Investigation only: the data was read and the behaviour explained — no code or config change came out of it. An investigation that spawned separate fix tickets is counted ONCE here (the defect belongs to the child ticket). The type field does not exist on this issue type, so the issue type itself classifies the group.' },
+    { code: 'B', label: 'Request update data/config & create data',
+      expected: 'Request', typeValue: 'Request', bucket: 'ticket', tint: '#ddf0d9', color: '#1e7e34',
+      note: 'The deliverable was a data or config change: update/create records, create an account, or map missing configuration (a country not mapped, an id not migrated). Also used when the root cause sat outside our code (Odoo core, a third party, mail routing) but the fix we shipped was data/config.' },
+    { code: 'C', label: 'Bug leakage',
+      expected: 'Leaked Defect', typeValue: 'Leaked Defect', bucket: 'ticket', tint: '#fbe1d1', color: '#e0672c',
+      note: 'A defect a USER reported (the ticket quotes the reporter). A defect the team caught itself — production log sweep, queue.job audit, KPI cross-check, testing with an internal account — is coverage work and belongs in New improvement, NOT here. This number feeds the team KPI, so it is never classified from the title; duplicates are collapsed to one incident first.' },
+    { code: 'D', label: 'New improvement',
+      expected: 'New Improvement', typeValue: 'New Improvement', bucket: 'ticket', tint: '#fdf2cf', color: '#e6a700',
+      note: 'A logic change on a feature that already exists: no spec covered the behaviour (so there was nothing to violate), an outdated feature being improved gradually, relaxing a long-standing validation or permission, or performance work on a feature that behaves correctly.' },
+    { code: 'E', label: 'New feature',
+      expected: 'New Feature Request', typeValue: 'New Feature Request', bucket: 'ticket', tint: '#e6dff3', color: '#6a3093',
+      note: 'The feature never existed — including a ticket whose deliverable is a NEW prevention mechanism, even when a customer incident is what triggered it.' },
+  ],
+  // Shown as an extra row ONLY when the 5 categories do not add up to the
+  // independently-counted TOTAL (a support ticket whose "Support Ticket Type" is
+  // empty or holds a value outside the list). Q3-2026 = 0; Q2-2026 = 11.
+  residualLabel: 'Not classified',
+  residualExpected: 'Support Ticket Type empty, or a value outside the five (Question / Environmental)',
+  residualTint: '#f0eef2',
+  residualColor: '#a99bbd',
+  residualNote: 'The field is empty or holds a value outside the five — Question, Documentation, Invalid Escalation, Unknown or Environmental (an outage/infrastructure failure is Environmental). Before Q3-2026 the field was largely unset, so this row dominates older periods.',
+  totalNote: 'Every support ticket of BOTH issue types created in the period. Counted by its own query, not summed from the rows — so the rows plus “Not classified” always reconcile with this number.',
+  // Where the definitions come from, shown in the hover note for provenance.
+  rulesSource: 'the team’s confirmed classification rules (27 Aug 2026)',
+};
+
 // --- Report sections (the "Manual test" / "Automation test" tabs) ------------
 // The 3rd tab, "Worklog allocation", is the separate worklog page. Each section
 // lists its metric keys IN DISPLAY ORDER; render.js builds one page per section
@@ -582,6 +634,17 @@ const SECTIONS = [
     key: 'manual',
     label: 'Manual test',
     metricKeys: ['testCasesNewCreated', 'manualTcExecuted', 'uniqueTcExecuted', 'executedTcPerDay', 'bugsValidReported', 'bugsFixVerified', 'supportTicketCreated', 'leakedDefects'],
+  },
+  {
+    // The "Support ticket" tab (support.html): the by-reporter "Support Ticket
+    // created" card (also listed on Manual test) plus the review's "Classified
+    // Support ticket" table (data.supportClassification, its own shape). Sits
+    // between Manual test and Automation test; opens on This quarter, the period
+    // the classification review is run for.
+    key: 'support',
+    label: 'Support ticket',
+    defaultRange: 'thisQuarter',
+    metricKeys: ['supportTicketCreated'],
   },
   {
     key: 'automation',
@@ -690,7 +753,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

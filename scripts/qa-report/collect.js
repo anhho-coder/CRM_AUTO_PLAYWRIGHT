@@ -17,6 +17,7 @@ const { collectUniqueMetrics } = require('./sources/unique-testexec');
 const { collectFrdMetrics } = require('./sources/frd');
 const { collectFeatureExec } = require('./sources/feature-exec');
 const { collectBugByPriority } = require('./sources/bug-by-priority');
+const { collectSupportClassification } = require('./sources/support-classification');
 const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = require('./sources/executed-per-day');
 const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { buildAutomationClaudeSplit } = require('./sources/automation-split');
@@ -48,6 +49,7 @@ async function main() {
     worklog: null,
     featureExec: null,
     bugByPriority: null,
+    supportClassification: null,
     kpiJql: {},
   };
 
@@ -197,6 +199,24 @@ async function main() {
   } catch (e) {
     data.sources.jiraBugByPriority = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Jira bug-by-priority source failed:', e.message || e);
+  }
+
+  // --- Jira SUPPORT CLASSIFICATION ("Classified Support ticket"; Support ticket
+  //     page): every CRM support ticket CREATED in the range split into the QA
+  //     review's 5 categories (A Check data & explain logic / B Request update
+  //     data-config & create data / C Bug leakage / D New improvement / E New
+  //     feature), plus an independently-counted TOTAL and a "Not classified"
+  //     residual row when the two disagree. Whole project, NO reporter clause
+  //     (tickets RECEIVED, not the ones a QA opened). One cheap count per
+  //     (range x category) + one per range for the total. Stored under
+  //     data.supportClassification (a custom shape, not a by-tester card).
+  //     Wrapped independently so a Jira failure here never blocks the rest.
+  try {
+    data.supportClassification = await collectSupportClassification(ranges);
+    data.sources.jiraSupportClassification = { status: 'ok', source: 'jira support tickets by Support Ticket Type' };
+  } catch (e) {
+    data.sources.jiraSupportClassification = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Jira support-classification source failed:', e.message || e);
   }
 
   // --- Jira DERIVED metric(s) (Executed test cases per day): a RATE, not a fetch.
@@ -374,6 +394,11 @@ async function main() {
   if (data.automationCoverage) {
     const ac = data.automationCoverage;
     console.log(`[collect]   Automation coverage: ${ac.automationTcs}/${ac.totalTcs} = ${ac.coverage}% (remaining ${ac.remaining})`);
+  }
+  if (data.supportClassification) {
+    const tq = data.supportClassification.ranges.thisQuarter;
+    if (tq) console.log(`[collect]   Classified Support ticket (this quarter): ${tq.total.tickets} = ` +
+      tq.rows.map((r) => `${r.code} ${r.tickets}`).join(', ') + (tq.residual ? `, unclassified ${tq.residual.tickets}` : ''));
   }
   if (data.worklog) {
     const lw = data.worklog.ranges.lastWeek;

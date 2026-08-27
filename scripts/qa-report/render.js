@@ -1067,6 +1067,169 @@ function bugByPrioritySection(bp, def) {
   </section>`;
 }
 
+/* --------------- Classified Support ticket (Support ticket page) -------------- */
+// The QA review's split of every CRM support ticket CREATED in the range into the
+// review's 5 categories (A…E) — the review spreadsheet, rendered live. Data per
+// range from sources/support-classification.js: supportClassification.ranges[key] =
+//   { key, label, from, to, rows: [{ code, label, expected, bucket, tint, tickets, jql }],
+//     residual | null, total: { tickets, ticketCount, investigationCount, jql } }
+// Row tints come from the config, so the table reads like the review sheet. Every
+// JQL cell is a LINK to the Jira issue navigator running exactly that query, so a
+// reviewer can open the ticket list behind any number in one click.
+
+/** A Jira issue-navigator URL that runs `jql` (Jira Server/DC). */
+function jqlUrl(base, jql) {
+  return `${String(base || '').replace(/\/+$/, '')}/issues/?jql=${encodeURIComponent(jql)}`;
+}
+
+// The "Support Ticket" / "Investigation" columns are the same count placed in the
+// bucket the category belongs to (each category's JQL pins one issue type), so the
+// other column always reads 0 — exactly as in the review sheet. The last column is
+// the team's DEFINITION of the group (config `note`), so the table explains itself;
+// the exact JQL behind every row lives in the ℹ️ hover note above the table, and each
+// row's ticket COUNT is a link that opens that query in Jira (JQL also in its tooltip).
+function supportClassificationTable(block, jiraBase) {
+  const total = block.total.tickets || 0;
+  // One decimal, as the review sheet writes it (19.9% / 36.0% / 100.0%).
+  const pct = (n) => (total ? `${((n / total) * 100).toFixed(1)}%` : '—');
+  const countCell = (n, jql, label) =>
+    `<td class="num sc-tk"><a href="${esc(jqlUrl(jiraBase, jql))}" target="_blank" rel="noopener"` +
+    ` title="${esc(label)} — open these tickets in Jira. JQL: ${esc(jql)}">${fmt(n)}</a></td>`;
+  const row = (r) => `<tr style="background:${esc(r.tint || '#ffffff')}">
+      <td class="sc-code">${esc(r.code)}</td>
+      <td class="sc-cat">${esc(r.label)}</td>
+      <td class="sc-exp">${esc(r.expected)}</td>
+      ${countCell(r.tickets, r.jql, r.label)}
+      <td class="num">${pct(r.tickets)}</td>
+      <td class="num">${fmt(r.bucket === 'ticket' ? r.tickets : 0)}</td>
+      <td class="num">${fmt(r.bucket === 'investigation' ? r.tickets : 0)}</td>
+      <td class="sc-note">${esc(r.note || '')}</td>
+    </tr>`;
+  const rows = (block.residual ? [...block.rows, block.residual] : block.rows).map(row).join('');
+  const totalRow = `<tr class="sc-total">
+      <td class="sc-code"></td>
+      <td class="sc-cat">TOTAL</td>
+      <td class="sc-exp"></td>
+      ${countCell(total, block.total.jql, 'All support tickets')}
+      <td class="num">${total ? '100.0%' : '—'}</td>
+      <td class="num">${fmt(block.total.ticketCount)}</td>
+      <td class="num">${fmt(block.total.investigationCount)}</td>
+      <td class="sc-note">${esc(block.total.note || '')}</td>
+    </tr>`;
+  const head = `<tr>
+      <th class="sc-code">#</th>
+      <th>Category</th>
+      <th>Expected “Support Ticket Type”<span class="sc-sub">(or the issue type, where the group carries no field value)</span></th>
+      <th class="num">Tickets</th>
+      <th class="num">% of total</th>
+      <th class="num">Support Ticket</th>
+      <th class="num">Investigation</th>
+      <th class="sc-noteh">Note<span class="sc-sub">(what belongs in this group — the team’s confirmed rule)</span></th>
+    </tr>`;
+  return `<div class="stuckwrap"><table class="stucktbl sctbl"><thead>${head}</thead><tbody>${rows}${totalRow}</tbody></table></div>`;
+}
+
+// The category split as a pie (reuses the shared piePath helper): one slice per row of
+// the table, in TABLE ORDER (A…E, then "Not classified") so the two read together, and
+// in the same hues — the table row's pale `tint`, the slice its saturated `color`.
+// Categories with 0 tickets are dropped from both slices and legend (a 0% legend row is
+// noise); the legend value is the same Jira link as the table's count.
+function supportClassificationPie(block, jiraBase) {
+  const total = block.total.tickets || 0;
+  const all = block.residual ? [...block.rows, block.residual] : block.rows;
+  const slices = all.filter((r) => r.tickets > 0);
+  if (!total || !slices.length) return '<p class="muted">No support tickets created in this period.</p>';
+  const pct = (n) => `${((n / total) * 100).toFixed(1)}%`;
+  const cx = 100, cy = 100, r = 92;
+  let svg = `<svg viewBox="0 0 200 200" width="200" height="200" role="img" aria-label="Support tickets by category">`;
+  if (slices.length === 1) {
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${esc(slices[0].color)}"><title>${esc(slices[0].label)}: ${fmt(slices[0].tickets)} (100.0%)</title></circle>`;
+  } else {
+    let a = -Math.PI / 2;                                  // start at 12 o'clock
+    for (const s of slices) {
+      const a1 = a + (s.tickets / total) * 2 * Math.PI;
+      svg += `<path d="${piePath(cx, cy, r, a, a1)}" fill="${esc(s.color)}" stroke="#fff" stroke-width="1.5">` +
+        `<title>${esc(s.code)} · ${esc(s.label)}: ${fmt(s.tickets)} (${pct(s.tickets)})</title></path>`;
+      a = a1;
+    }
+  }
+  svg += '</svg>';
+  const legend = slices.map((s) => `<li>
+      <span class="sw" style="background:${esc(s.color)}"></span>
+      <span class="scl-lbl"><b>${esc(s.code)}</b> ${esc(s.label)}</span>
+      <a class="scl-val" href="${esc(jqlUrl(jiraBase, s.jql))}" target="_blank" rel="noopener" title="Open these tickets in Jira">${fmt(s.tickets)}</a>
+      <span class="scl-pct">${pct(s.tickets)}</span>
+    </li>`).join('');
+  const zero = all.filter((x) => x.tickets === 0).map((x) => x.code).join(', ');
+  return `<div class="scpie">
+    <div class="scpie-svg">${svg}</div>
+    <ul class="scpie-legend">${legend}
+      <li class="scl-total"><span class="sw sw-none"></span><span class="scl-lbl">TOTAL</span>
+        <span class="scl-val">${fmt(total)}</span><span class="scl-pct">100.0%</span></li>
+    </ul>
+  </div>${zero ? `<div class="scpie-zero">No tickets in ${zero.length > 1 ? 'categories' : 'category'} ${esc(zero)} in this period — omitted from the chart.</div>` : ''}`;
+}
+
+// The review sheet's title block: the period, the issue types in scope, the total and
+// when the data was pulled (+ a note while the period is still running).
+function supportClassificationCaption(sc, block, generatedAt) {
+  const inProgress = /^(this|current)/.test(String(block.key));
+  const pulled = String(generatedAt || '').replace('T', ' ').slice(0, 16);
+  return `<div class="sccap"><b>CRM Support tickets — ${esc(block.label)} (${esc(block.from)} → ${esc(block.to)})</b>
+    <div class="sccap-sub">Issue types: “${esc(sc.ticketType)}” and “${esc(sc.investigationType)}” · Total: <b>${fmt(block.total.tickets)}</b> tickets · Data pulled ${esc(pulled)} UTC${inProgress ? ' · period still in progress' : ''}</div>
+  </div>`;
+}
+
+// The JQL-per-range hover note (mirrors bugByPriorityNote): the exact query behind
+// every row, toggled per range with the same data-range mechanism as the table.
+function supportClassificationNote(sc, def) {
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const variants = METRIC_RANGE_ORDER.filter((k) => sc.ranges[k]).map((k) => {
+    const r = sc.ranges[k];
+    const lines = (r.residual ? [...r.rows, r.residual] : r.rows)
+      .map((row) => `<div><b>${esc(row.code)} · ${esc(row.label)}</b>: ${code(row.jql)}</div>`).join('');
+    return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}">${lines}` +
+      `<div><b>TOTAL</b>: ${code(r.total.jql)}</div></div>`;
+  }).join('');
+  const notes = [
+    'Counts every CRM support ticket <b>created</b> within the selected range — whole project, <b>no reporter filter</b>: this is what the team RECEIVED, not what a QA opened.',
+    `Category <b>A</b> carries no “${esc(sc.typeField)}” value — the <b>Investigation issue type</b> is what identifies it. <b>B–E</b> are the values of that field on a plain “${esc(sc.ticketType)}”.`,
+    'The <b>Support Ticket</b> / <b>Investigation</b> columns split the same count by issue type; each category lives in exactly one of the two, so the other column reads 0.',
+    '<b>TOTAL</b> is counted by its own query, not summed from the rows. Any gap — a support ticket whose type field is empty or holds a value outside the five — appears as a <b>“Not classified”</b> row, so the rows always reconcile with TOTAL.',
+    'The <b>“Support Ticket created”</b> card above uses a DIFFERENT filter (by reporter ∈ the QA team, junk resolutions dropped), so its total is smaller — the two are not meant to match.',
+    'Counts follow the “Support Ticket Type” field <b>as currently set in Jira</b>. The quarterly review audits that field ticket-by-ticket (leakage especially) — when it corrects a value, the number here moves with it on the next build.',
+    'Values outside the five (e.g. <b>Question</b>, <b>Environmental</b>) and empty ones land in the “Not classified” row.',
+    'The window is <b>day-inclusive at both ends</b> — the upper bound is written <code>&lt;= "&lt;to&gt; 23:59"</code> because a bare upper date means 00:00 of that day in JQL, which would drop everything created on the last day (i.e. all of today, on every This-week/month/quarter/year view).',
+    'Each row’s <b>ticket count is a link</b> — it opens the Jira issue navigator running exactly that row’s query (the query is listed above and in the link’s tooltip).',
+    `The <b>Note</b> column is ${esc(sc.rulesSource || 'the team’s classification rules')} — what belongs in the group. The counts themselves come from the field value, not from the note.`,
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ How the classification is counted<span class="wlnote-hint"> (per selected range — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">Query per category</div>
+      ${variants}
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((x) => `<li>${x}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+function supportClassificationSection(sc, def, jiraBase, generatedAt, controls) {
+  const blocks = METRIC_RANGE_ORDER.filter((k) => sc.ranges[k]).map((k) => {
+    const r = sc.ranges[k];
+    return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
+      ${supportClassificationCaption(sc, r, generatedAt)}
+      ${supportClassificationPie(r, jiraBase)}
+      ${supportClassificationTable(r, jiraBase)}
+    </div>`;
+  }).join('\n');
+  return `<section class="metric supportcls">
+    <h2>${esc(sc.label)} <span class="pill">QA review</span> <span class="muted">· Every CRM support ticket created in the range, split by “${esc(sc.typeField)}” · whole project — tickets received, not the ones a QA opened</span></h2>
+    ${controls || ''}
+    ${supportClassificationNote(sc, def)}
+    ${blocks}
+  </section>`;
+}
+
 /* -------------------- Automation coverage (Automation · Quarterly) ----------- */
 // A point-in-time donut on the Automation test page's Quarterly KPI view: what share
 // of the whole CRM Post-EA test-case repository is in automation scope. Data (custom
@@ -1350,6 +1513,7 @@ function pageNav(active) {
     tab('index.html', 'jiraDashboard', 'QA CRM - Jira - Dashboard') +
     tab('frd.html', 'frd', 'FRD/Spec Review/I2L') +
     tab('manual.html', 'manual', 'Manual test') +
+    tab('support.html', 'support', 'Support ticket') +
     tab('automation.html', 'automation', 'Automation test') +
     tab('worklog.html', 'worklog', 'Worklog allocation') +
     tab('claude.html', 'claude', 'Claude vs Legacy') +
@@ -1648,6 +1812,43 @@ h2{margin:0 0 12px;font-size:17px}
 .bugpri .bptbl tr.bp-total td{color:#111}
 .bugpri .fcaption{color:#111;font-size:13.75px}
 .bugpri .fcaption b{color:#111}
+/* "Classified Support ticket" (Support ticket page): the QA review sheet, live. The
+   per-row tints are inline (from the config), so only layout/typography lives here.
+   Text is black/brand-purple, never grey. */
+.sctbl{min-width:1020px}
+.sctbl th.sc-code,.sctbl td.sc-code{width:34px;text-align:center;font-weight:800;color:#111}
+.sctbl td.sc-cat{font-weight:700;color:#111;min-width:215px}
+.sctbl td.sc-exp{color:#111;min-width:195px}
+.sctbl th .sc-sub{display:block;font-weight:600;text-transform:none;letter-spacing:0;font-size:10.5px;color:#4b2170;margin-top:3px;white-space:normal;max-width:235px}
+.sctbl td.sc-tk{font-weight:800;color:#111}
+/* The last column is the group's DEFINITION (prose, not JQL) — it needs to wrap and to
+   stay smaller than the numbers; scoped under .supportcls so it beats the section's
+   generic 13.2px cell rule below. The ticket COUNT is the Jira link now. */
+.sctbl th.sc-noteh{min-width:300px}
+.supportcls .sctbl td.sc-note{max-width:430px;color:#111;font-size:11.8px;line-height:1.5;white-space:normal;font-weight:400}
+.supportcls .sctbl td.sc-tk a{color:#111;text-decoration:none;border-bottom:1px dotted #b39ddb}
+.supportcls .sctbl td.sc-tk a:hover{color:#6a3093;border-bottom-color:#6a3093}
+.sctbl tr.sc-total td{font-weight:800;color:#111;border-top:2px solid #d9c9ee;background:#f3eefc}
+.supportcls .stucktbl th,.supportcls .stucktbl td{font-size:13.2px}
+.supportcls .stucktbl thead th{color:#111;font-size:11.4px}
+.supportcls .muted{color:#111}
+.sccap{margin:12px 0 2px;font-size:14px;color:#111}
+.sccap-sub{margin-top:2px;font-size:12.2px;color:#2a2140;font-style:italic}
+/* Category pie: slice colours come from the config (inline), so only layout here. The
+   legend sits beside the chart and mirrors the table's row order. */
+.scpie{display:flex;gap:26px;align-items:center;flex-wrap:wrap;margin:12px 0 6px}
+.scpie-svg{flex:0 0 auto}
+.scpie-legend{list-style:none;margin:0;padding:0;min-width:330px}
+.scpie-legend li{display:flex;align-items:baseline;gap:9px;padding:5px 0;border-bottom:1px solid #f0ecf7;font-size:13px;color:#111}
+.scpie-legend li:last-child{border-bottom:none}
+.scpie-legend .sw{flex:0 0 auto;width:12px;height:12px;border-radius:3px;display:inline-block}
+.scpie-legend .sw-none{background:transparent}
+.scpie-legend .scl-lbl{flex:1 1 auto}
+.scpie-legend .scl-val{flex:0 0 auto;font-weight:800;font-variant-numeric:tabular-nums;color:#111;text-decoration:none;border-bottom:1px dotted #b39ddb}
+.scpie-legend a.scl-val:hover{color:#6a3093;border-bottom-color:#6a3093}
+.scpie-legend .scl-pct{flex:0 0 54px;text-align:right;font-variant-numeric:tabular-nums;color:#2a2140}
+.scpie-legend .scl-total{font-weight:800;border-top:2px solid #d9c9ee;margin-top:3px;padding-top:7px}
+.scpie-zero{font-size:12px;color:#2a2140;margin:-2px 0 8px}
 .frdcards{display:flex;gap:16px;flex-wrap:wrap;margin:6px 0 4px}
 .frdcard{flex:1;min-width:170px;background:#faf7fe;border:1px solid #ece3fa;border-radius:12px;padding:18px 22px}
 .frdcard.lead{background:linear-gradient(135deg,#6a3093,#a044ff);border:none;color:#fff}
@@ -2274,6 +2475,73 @@ ${wlDataScript}
 <script src="app.js"></script>
 </body></html>`;
 
+  // --- Support ticket page (support.html) ------------------------------------
+  // Two blocks, in the order the team reads them: (1) the "Support Ticket created"
+  // card — the same metric the Manual test page lists (kept there too), with the
+  // portal-style Quarterly KPI view (per-quarter bars + By-IC table) it is normally
+  // read in, plus the usual By range view; (2) the quarterly review's "Classified
+  // Support ticket" table. The table sits OUTSIDE the view tabs (so it is visible
+  // from either view) and in its OWN .rangescope, so its period buttons never move
+  // the card above and vice versa. Opens on Quarterly KPI / This quarter — the
+  // period the classification review is run for.
+  const supportSec = cfg.SECTIONS.find((s) => s.key === 'support');
+  const supMetrics = supportSec ? supportSec.metricKeys.map((k) => metaByKey[k]).filter(Boolean) : [];
+  const supDef = (supportSec && supportSec.defaultRange && data.ranges[supportSec.defaultRange])
+    ? supportSec.defaultRange : defRange;
+  const supQuarterlyMetrics = supMetrics.filter((m) => data.quarterly && data.quarterly[m.key]);
+  const supQuarterlySections = supQuarterlyMetrics
+    .map((m, i) => withAnchor(m, quarterlySection(m, data.quarterly[m.key], i === 0), '-q')).join('\n');
+  const supPickerHtml = quarterlyPicker(supQuarterlyMetrics.map((m) => data.quarterly[m.key]));
+  const supRangeSections = supMetrics.filter((m) => data.metrics[m.key])
+    .map((m, i) => {
+      const fn = m.split ? splitRangeSection : m.perDay ? perDayRangeSection : rangeSection;
+      const mem = data.metrics[m.key].members || data.members;
+      return withAnchor(m, fn(m, data.metrics[m.key], supDef, i === 0, mem));
+    }).join('\n');
+  const supCls = data.supportClassification;
+  const supClsRanges = (supCls && supCls.ranges) || {};
+  const supClsDef = supClsRanges[supDef] ? supDef : (supClsRanges.thisQuarter ? 'thisQuarter' : defRange);
+  // The classification period control lives INSIDE the card (passed to the section as
+  // `controls`) so it is unmistakably the table's, not the chart's above it.
+  const supClsControls = Object.keys(supClsRanges).length ? `<div class="sub muted" style="margin:2px 0 2px">Period: ${windowSpans(data.ranges, supClsDef, METRIC_RANGE_ORDER)}</div>
+    ${selector(data.ranges, supClsDef)}` : '';
+  const supClsBody = Object.keys(supClsRanges).length ? `<div class="rangescope">
+    ${withAnchor({ key: 'supportClassification', label: supCls.label },
+      supportClassificationSection(supCls, supClsDef, jiraBase, data.generatedAt, supClsControls))}
+  </div>` : '<p class="muted">No support-ticket classification data available (the Jira source needs a token at collect time).</p>';
+  const supportHtml = `${docHead('CRM QA — Support ticket')}
+<div class="hero">
+  <h1>CRM QA Team — ${esc(supportSec ? supportSec.label : 'Support ticket')}</h1>
+  <div class="sub">${subline}</div>
+  ${pageNav('support')}
+</div>
+<div class="wrap wide">
+  ${sourceBanner(data.sources)}
+  <div class="viewtabs">
+    <button type="button" data-viewbtn="quarterly" class="active">Quarterly KPI</button>
+    <button type="button" data-viewbtn="range">By range</button>
+  </div>
+
+  <div class="view is-active" data-view="quarterly">
+    ${supPickerHtml}
+    ${supQuarterlySections || '<p class="muted">No quarterly data available.</p>'}
+  </div>
+
+  <div class="view" data-view="range">
+    <div class="rangescope">
+      <div class="sub muted" style="margin:4px 0 2px">Showing ${windowSpans(data.ranges, supDef, METRIC_RANGE_ORDER)}</div>
+      ${selector(data.ranges, supDef)}
+      ${jqlNote(supMetrics, data.ranges, supDef, data.kpiJql || {})}
+      ${supRangeSections || '<p class="muted">No range data available.</p>'}
+    </div>
+  </div>
+
+  ${supClsBody}
+  <div class="foot">Source: Jira — “Support Ticket created” (Post-EA support tickets the team opened, by reporter) and “Classified Support ticket” (every CRM support ticket created in the range, split by the “Support Ticket Type” field) · regenerated daily · self-contained page.</div>
+</div>
+<script src="app.js"></script>
+</body></html>`;
+
   // --- Claude vs Legacy page (claude.html) -----------------------------------
   // A derived, render-only view: reuses the "Test cases automated — with vs without
   // Claude" split data and recasts it as an automation-velocity (TCs/day) comparison.
@@ -2447,13 +2715,14 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'index.html'), jiraDashboardHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'frd.html'), frdHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'manual.html'), manualHtml);
+  fs.writeFileSync(path.join(cfg.OUT_DIR, 'support.html'), supportHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'automation.html'), automationHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'worklog.html'), worklogHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'claude.html'), claudeHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'ranking.html'), rankingHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'pdp.html'), pdpHtml);
   fs.writeFileSync(path.join(cfg.OUT_DIR, 'pdp-dashboard.html'), pdpDashHtml);
-  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + automation.html + worklog.html + claude.html + ranking.html + pdp.html + pdp-dashboard.html (hidden) (+ styles.css, app.js)`);
+  console.log(`[render] Wrote index.html (Jira Dashboard) + frd.html + manual.html + support.html + automation.html + worklog.html + claude.html + ranking.html + pdp.html + pdp-dashboard.html (hidden) (+ styles.css, app.js)`);
 }
 
 main();
