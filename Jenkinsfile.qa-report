@@ -23,7 +23,7 @@ pipeline {
     }
 
     options {
-        timeout(time: 60, unit: 'MINUTES')
+        timeout(time: 180, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '30'))
     }
 
@@ -55,7 +55,7 @@ pipeline {
                     // Bounded retry: re-run collect a few times to recover a TRANSIENT
                     // source failure (a brief Odoo/Jira network blip). Capped LOW on
                     // purpose — when a source is genuinely down, retrying can't fix it, and
-                    // 20 slow re-collects previously blew the 60-min timeout and ABORTED the
+                    // 20 slow re-collects previously blew the build timeout and ABORTED the
                     // build with NO report (blank page). With a small cap the Render +
                     // publish stages always run, so a report is ALWAYS published (UNSTABLE
                     // if degraded), never blank. The bat is wrapped so a collect crash can't

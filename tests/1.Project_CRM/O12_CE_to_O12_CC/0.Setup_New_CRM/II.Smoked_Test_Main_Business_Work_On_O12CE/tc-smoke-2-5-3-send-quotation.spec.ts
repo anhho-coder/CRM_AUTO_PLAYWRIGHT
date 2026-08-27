@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
+import { users } from '@config/users.config';
 import { QuotationPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
@@ -16,8 +17,8 @@ import {
 /**
  * O12 CE Main-Business Smoke - Send a Quotation by email
  * Test Case ID: CRM-12325_2.5.3
- * Automation-Type: new
- * Automation-Date: 2026-08-21
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-26
  *
  * Summary:
  *   Verify a created Quotation can be sent by email on the O12 CE Migration server - the "Send" mail
@@ -27,14 +28,16 @@ import {
  * FUNCTIONAL smoke (elapsed time printed for reference; the gate is the business outcome).
  *
  * O12 CE notes (grounded on crm-mig, 2026-08-21):
- *   - Login as Admin (`users.admin_crm_mig`); CRM > Pipeline opened in list view by URL hash.
+ *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`) - the pre-prod owner of
+ *     this chain; CRM > Pipeline opened in list view by URL hash.
  *   - sale.order on the Migration server carries the "sent" state ("Quotation Sent"), so the state
  *     transition is the assertable signal (an on-screen success toast is not reliable in Odoo 12).
  *   - This TC needs the created Quotation to be OPEN on screen, so it asserts that "NEW QUOTATION"
  *     navigated to the new Quotation form (see CRM-12325_2.5.1 for the two observed variants).
  *
  * Pre-conditions:
- *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
+ *   The O12 CE Migration server is reachable and the sales IC account Thomas Semerich can log in
+ *   (CRM-12325_1.1.1).
  *
  * Steps (1-11 = the shared Opportunity + Deal Element chain):
  *   1-7.  Login, open the Opportunities list, CREATE + fill + SAVE the Opportunity, wait for Contact.
@@ -91,7 +94,7 @@ test.describe('CRM-12325_2.5.3 - O12 CE smoke: send a Quotation by email', () =>
     let statusAfterSend = '';
     let notification = { success: false, message: '' };
 
-    await loginToO12CE(page);
+    await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
     await openOpportunitiesListOnO12CE(page);
     opp = await createOpportunityOnO12CE(page, TC_ID);
     await addDealElementOnO12CE(page);

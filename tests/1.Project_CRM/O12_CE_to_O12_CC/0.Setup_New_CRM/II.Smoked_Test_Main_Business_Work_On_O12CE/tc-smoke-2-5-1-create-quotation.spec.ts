@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
+import { users } from '@config/users.config';
 import { QuotationPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
@@ -16,8 +17,8 @@ import {
 /**
  * O12 CE Main-Business Smoke - Create a Quotation
  * Test Case ID: CRM-12325_2.5.1
- * Automation-Type: new
- * Automation-Date: 2026-08-21
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-26
  *
  * Summary:
  *   Verify pressing "NEW QUOTATION" on a saved Deal Element creates the Quotation (sale.order) on the
@@ -27,14 +28,16 @@ import {
  * a FUNCTIONAL smoke (elapsed time printed for reference; the gate is the business outcome).
  *
  * O12 CE notes (grounded on crm-mig, 2026-08-21):
- *   - Login as Admin (`users.admin_crm_mig`); CRM > Pipeline opened in list view by URL hash.
+ *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`) - the pre-prod owner of
+ *     this chain; CRM > Pipeline opened in list view by URL hash.
  *   - Two behaviours exist on pre-prod for this button: it either navigates to the created Quotation
  *     (performance suite) or creates the Sale Order in place and logs it in the Deal Element chatter
  *     (TC.-A.5.1). Both count as "the Quotation was created"; the spec reports which variant O12 CE
  *     took, so the chained TCs (2.5.2-2.7.2) can be read against it.
  *
  * Pre-conditions:
- *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
+ *   The O12 CE Migration server is reachable and the sales IC account Thomas Semerich can log in
+ *   (CRM-12325_1.1.1).
  *
  * Steps (1-11 = the shared Opportunity + Deal Element chain):
  *   1-7.  Login, open the Opportunities list, CREATE + fill + SAVE the Opportunity, wait for Contact.
@@ -87,7 +90,7 @@ test.describe('CRM-12325_2.5.1 - O12 CE smoke: create a Quotation', () => {
     let quotationStatus = '';
     let quotationUrl = '';
 
-    await loginToO12CE(page);
+    await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
     await openOpportunitiesListOnO12CE(page);
     opp = await createOpportunityOnO12CE(page, TC_ID);
     await addDealElementOnO12CE(page);

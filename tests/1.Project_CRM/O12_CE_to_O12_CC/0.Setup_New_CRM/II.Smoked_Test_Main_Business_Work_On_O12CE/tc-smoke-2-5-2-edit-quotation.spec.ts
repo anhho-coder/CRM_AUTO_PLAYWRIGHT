@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
+import { users } from '@config/users.config';
 import { QuotationPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
@@ -17,8 +18,8 @@ import {
 /**
  * O12 CE Main-Business Smoke - Edit a Quotation
  * Test Case ID: CRM-12325_2.5.2
- * Automation-Type: new
- * Automation-Date: 2026-08-21
+ * Automation-Type: refactored
+ * Automation-Date: 2026-08-26
  *
  * Summary:
  *   Verify a created Quotation can be edited on the O12 CE Migration server - changing "Payment Terms"
@@ -28,7 +29,8 @@ import {
  * FUNCTIONAL smoke (elapsed time printed for reference; the gate is the persisted change).
  *
  * O12 CE notes (grounded on crm-mig, 2026-08-21):
- *   - Login as Admin (`users.admin_crm_mig`); CRM > Pipeline opened in list view by URL hash.
+ *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`) - the pre-prod owner of
+ *     this chain; CRM > Pipeline opened in list view by URL hash.
  *   - This TC needs the created Quotation to be OPEN on screen, so it asserts that "NEW QUOTATION"
  *     navigated to the new Quotation form. If O12 CE instead created the Sale Order in place (the
  *     TC.-A.5.1 variant), the spec fails here with the chatter evidence - that is a real finding to
@@ -36,7 +38,8 @@ import {
  *   - Payment term "15 Days" exists on the Migration server (id 2).
  *
  * Pre-conditions:
- *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
+ *   The O12 CE Migration server is reachable and the sales IC account Thomas Semerich can log in
+ *   (CRM-12325_1.1.1).
  *
  * Steps (1-11 = the shared Opportunity + Deal Element chain):
  *   1-7.  Login, open the Opportunities list, CREATE + fill + SAVE the Opportunity, wait for Contact.
@@ -92,7 +95,7 @@ test.describe('CRM-12325_2.5.2 - O12 CE smoke: edit a Quotation', () => {
     let paymentTermCheck: { success: boolean; actualValue: string } = { success: false, actualValue: '' };
     let editSaveMs = 0;
 
-    await loginToO12CE(page);
+    await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
     await openOpportunitiesListOnO12CE(page);
     opp = await createOpportunityOnO12CE(page, TC_ID);
     await addDealElementOnO12CE(page);

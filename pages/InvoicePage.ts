@@ -38,7 +38,24 @@ export class InvoicePage extends BasePage {
   // "OK" button on the "Are you sure you want to cancel this invoice?" confirmation dialog
   private readonly cancelConfirmOkButton       = () => this.page.locator('.modal, .o_dialog').filter({ hasText: /cancel this invoice|are you sure/i }).getByRole('button', { name: /^OK$/i }).first();
   private readonly sendAndPrintButton          = () => this.page.getByRole('button', { name: /SEND & PRINT/i }).or(this.page.getByRole('button', { name: /Send & Print/i })).first();
-  private readonly sendButton                  = () => this.page.locator("xpath=(//button/span[contains(text(),'Send')])[4]");
+  // ─── "Send Invoice" wizard (account.invoice.send) ─────────────────────────
+  // The wizard footer carries THREE buttons that all POST the same action and differ only by class:
+  //   <button name="send_and_print_action" class="send_and_print"> "Send & Print"  (is_print AND is_email)
+  //   <button name="send_and_print_action" class="send">           "Send"          (is_email, NOT is_print)
+  //   <button name="send_and_print_action" class="print">          "Print"         (is_print, NOT is_email)
+  // Only one is ever visible. The old locator - (//button/span[contains(text(),'Send')])[4] - was a
+  // positional guess that matched nothing on crm-mig, where the wizard opens with BOTH "Print" and
+  // "Email" ticked, so the footer reads "Send & Print" and the plain "Send" button stays hidden.
+  private readonly sendWizardDialog            = () => this.page.locator('.o_dialog, .modal').filter({ visible: true }).last();
+  private readonly sendWizardPrintCheckbox     = () => this.sendWizardDialog().locator("xpath=.//div[@name='option_print']//input[@type='checkbox']").first();
+  private readonly sendWizardFooterButton      = () => this.sendWizardDialog()
+    .locator("xpath=.//button[@name='send_and_print_action']")
+    .filter({ visible: true })
+    .first();
+  private readonly sendButton                  = () => this.sendWizardDialog()
+    .locator("xpath=.//button[@name='send_and_print_action' and contains(@class,'send') and not(contains(@class,'send_and_print'))]")
+    .filter({ visible: true })
+    .first();
   private readonly createLicenseButton         = () => this.page.getByRole('button', { name: 'CREATE LICENSE' }).or(this.page.getByRole('button', { name: 'Create License' })).first();
 
   // ─── Dialog / overlay ─────────────────────────────────────────────────────
@@ -467,16 +484,50 @@ export class InvoicePage extends BasePage {
   async clickSendAndWaitForCompletion(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<number> {
     const startTime = Date.now();
     
-    const sendButton = this.sendButton();
+    // The manual TC presses "SEND". The wizard only offers that button when the "Print" option is
+    // OFF; with Print ticked the same footer slot renders "Send & Print", which additionally renders
+    // the PDF - and crm-mig has no wkhtmltopdf, so that path 500s instead of sending. Untick Print
+    // first so the wizard exposes the "SEND" button the manual step asks for.
+    await this.sendWizardDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    let sendVisible = await this.sendButton().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    if (!sendVisible) {
+      const printChecked = await this.sendWizardPrintCheckbox().isChecked().catch(() => false);
+      if (printChecked) {
+        // Odoo's boolean widget lays a styled label over the real <input>, so a plain uncheck()
+        // never becomes actionable and hangs until the test budget runs out. Force the click (the
+        // repo-wide pattern for Odoo checkboxes), then fall back to a dispatched click if the model
+        // did not pick the change up.
+        await this.sendWizardPrintCheckbox()
+          .uncheck({ force: true, timeout: CommonUtils.waitTimes.abnormalWait })
+          .catch(() => {});
+        await this.wait(CommonUtils.waitTimes.standard);
+        if (await this.sendWizardPrintCheckbox().isChecked().catch(() => false)) {
+          await this.sendWizardPrintCheckbox().dispatchEvent('click').catch(() => {});
+          await this.wait(CommonUtils.waitTimes.standard);
+        }
+        const stillChecked = await this.sendWizardPrintCheckbox().isChecked().catch(() => false);
+        console.log(`  - Unticked the "Print" option so the wizard offers "SEND" (Print checked now: ${stillChecked})`);
+      }
+      sendVisible = await this.sendButton().isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    }
+
+    const sendButton = sendVisible ? this.sendButton() : this.sendWizardFooterButton();
+    if (!sendVisible) {
+      const label = (await sendButton.textContent().catch(() => ''))?.replace(/\s+/g, ' ').trim();
+      console.log(`  - "SEND" not available; falling back to the visible wizard action "${label}"`);
+    }
     await sendButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
     console.log('  - Found "SEND" button');
-    
-    await sendButton.click();
+
+    await sendButton.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "SEND" button (performance timer started)');
-    
-    // Wait for send to complete - dialog should close and return to invoice page
-    await this.wait(2000);
-    
+
+    // The send completed only when the composer actually closed - a wizard that stays open means the
+    // action raised (the old code slept 2s and then read the Edit button of the form BEHIND the
+    // still-open modal, which is why a failed send could still look like a pass).
+    await this.sendWizardDialog().waitFor({ state: 'hidden', timeout });
+    console.log('  - "Send Invoice" composer closed');
+
     // Wait for Edit button to appear (indicates invoice is fully sent)
     await this.editButtonLoc().waitFor({ state: 'visible', timeout });
     
@@ -977,6 +1028,29 @@ export class InvoicePage extends BasePage {
     await list.waitFor({ state: 'visible', timeout }).catch(() => {});
     const count = await this.page.locator('xpath=//div[@name="payment_ids"]//tr[contains(@class,"o_data_row")]').count().catch(() => 0);
     console.log(`  ✓ Payment rows on the Payments tab: ${count}`);
+    return count;
+  }
+
+  /**
+   * Count the rows in the "Transactions Payment" tab's one2many list (transaction_ids) - the
+   * `payment.transaction` records (online acquirer / partner-portal payments) attached to this
+   * invoice. The tab is added by the Odoo Studio customisation of account.invoice.form.
+   *
+   * A back-office REGISTER PAYMENT creates an `account.payment` and NO `payment.transaction`, so this
+   * count stays 0 on that path while getPaymentRowCount() goes up. CRM-12373 uses the contrast to
+   * show which payments can reach the payment-confirmation-email hook and which cannot.
+   *
+   * Call openNotebookTab('Transactions Payment') first - Odoo keeps inactive notebook pages hidden.
+   * @param timeout - max time to wait for the list to render (default: abnormalWait)
+   */
+  async getTransactionRowCount(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    const list = this.page.locator('xpath=//div[@name="transaction_ids"]').first();
+    await list.waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await this.page
+      .locator('xpath=//div[@name="transaction_ids"]//tr[contains(@class,"o_data_row")]')
+      .count()
+      .catch(() => 0);
+    console.log(`  ✓ Payment-transaction rows on the "Transactions Payment" tab: ${count}`);
     return count;
   }
 

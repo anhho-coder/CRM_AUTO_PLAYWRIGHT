@@ -10,7 +10,21 @@ export class LicensePage extends BasePage {
   // Locators - declared in one place
   private readonly formViewLocator = () => this.page.locator('.o_form_view');
   private readonly saveButton = () => this.page.getByRole('button', { name: 'Save' }).or(this.page.getByRole('button', { name: 'SAVE' })).first();
-  private readonly saveOrEditButton = () => this.page.getByRole('button', { name: /^(Save|SAVE|Edit|EDIT)$/i }).first();
+  // Class-first (see QuotationPage.saveButton): the Migration theme renders the control-panel
+  // save/edit buttons as <i class="fa fa-check"/> + <span>Save</span>, so the accessible name is
+  // " Save" (leading space). Playwright normalizes whitespace for STRING name matching but NOT
+  // for regex, so an anchored /^(Save|Edit)$/i never matches on crm-mig - hence the
+  // o_form_button_save / o_form_button_edit classes come first and the regex fallback tolerates
+  // surrounding whitespace.
+  // filter({visible:true}) is REQUIRED: Odoo keeps BOTH control-panel buttons in the DOM and only
+  // shows the one matching the current mode. On a freshly created License the form opens in EDIT
+  // mode, so o_form_button_edit is present but HIDDEN and a bare .first() (DOM order) locks onto it
+  // and waits forever, even though the visible "Save" button is right there.
+  private readonly saveOrEditButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_save') or contains(@class,'o_form_button_edit')]")
+      .or(this.page.getByRole('button', { name: /^\s*(Save|SAVE|Edit|EDIT)\s*$/i }))
+      .filter({ visible: true })
+      .first();
   private readonly forMonitoringDropdown = () => this.page.locator('select[name="it_monitoring_mode_select"]').or(
     this.page.locator('xpath=//select[@name="it_monitoring_mode_select"]')
   ).first();

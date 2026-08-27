@@ -32,12 +32,64 @@ export class QuotationPage extends BasePage {
   private readonly emailDialog = () => this.page.locator('.o_dialog, .modal').filter({ visible: true }).last();
   private readonly sendButtonInDialog = () => this.emailDialog().getByRole('button', { name: /^\s*SEND\s*$/i }).or(this.emailDialog().getByRole('button', { name: /^\s*Send\s*$/i })).first();
   private readonly successNotification = () => this.page.locator('.o_notification_manager, .o_notification, .o_toast').filter({ hasText: /sent|success/i }).first();
+  // --- CRM-12415 regression guard (used by CRM-12325_2.5.6): the "Recipients" row of the
+  // Send-by-Email composer. On crm-mig the mail.compose.message form renders it as
+  //   <label for="partner_ids" string="Recipients"/>
+  //   <span name="document_followers_text">Followers of the document and</span>
+  //   <field name="partner_ids" widget="many2many_tags_email" placeholder="Add contacts to notify..."/>
+  // so every PROPOSED recipient is one .o_badge_text tag inside div[name="partner_ids"]. All four
+  // locators are scoped to the composer dialog - a tag rendered on the Quotation form behind it must
+  // never be read by mistake.
+  private readonly emailRecipientsCell = () =>
+    this.emailDialog().locator("xpath=.//div[@name='partner_ids']").first();
+  private readonly emailRecipientTags = () =>
+    this.emailDialog().locator("xpath=.//div[@name='partner_ids']//span[contains(@class,'o_badge_text')]");
+  private readonly emailSubjectInput = () =>
+    this.emailDialog().locator("xpath=.//input[@name='subject'] | .//div[@name='subject']//input").first();
+  private readonly cancelButtonInDialog = () =>
+    this.emailDialog().getByRole('button', { name: /^\s*Cancel\s*$/i }).first();
   private readonly newQuotationButton = () => this.page.locator("//button[contains(@name,'action_create_quote_from_de')]");
   private readonly confirmButton = () => this.page.locator('xpath=(//button[@name="action_confirm"])[2]');
   private readonly lockButton = () => this.page.locator('xpath=//button/span[contains(text(),"Lock")]');
   private readonly toApproveButton = () => this.page.locator("//button[contains(@name,'button_to_approve')]");
-  private readonly approveButton = () => this.page.locator('button').filter({ hasText: /^APPROVE$/i }).first();
-  private readonly rejectButton = () => this.page.locator('button').filter({ hasText: /^REJECT$/i }).first();
+  // Pin the approval buttons by their Odoo action name and keep only the VISIBLE match. Odoo renders
+  // these buttons for everyone and hides them with `o_invisible_modifier` when the current user is
+  // not an eligible approver, so a plain `.first()` resolves to a hidden node and the wait times out
+  // against a button that is genuinely on screen for the approver.
+  // `not(@disabled)` matters as much as the visibility filter: Odoo keeps a DISABLED copy of these
+  // buttons in the DOM while an RPC is in flight, and clicking a disabled element never becomes
+  // actionable - Playwright then waits for it forever (a click with no explicit timeout ate the
+  // whole 15-min test budget of CRM-12325_2.5.5).
+  private readonly approveButton = () => this.page.locator("xpath=//button[@name='action_approve' and not(@disabled)]")
+    .or(this.page.locator('button').filter({ hasText: /^APPROVE$/i }))
+    .filter({ visible: true })
+    .first();
+  private readonly rejectButton = () => this.page.locator("xpath=//button[@name='action_wizard_reject' and not(@disabled)]")
+    .or(this.page.locator('button').filter({ hasText: /^REJECT$/i }))
+    .filter({ visible: true })
+    .first();
+  // Header "Cancel" (`action_cancel`). The Mig sale.order form shows it with
+  // states="approved,pending_approval" (view 1365) ON TOP of the base states="draft,sent,sale"
+  // (view 787), so a Quotation waiting for approval carries a live Cancel for its OWNER - that is
+  // what CRM-12325_2.5.9 exercises. Same visible+not(@disabled) discipline as APPROVE/REJECT.
+  private readonly cancelButton = () => this.page.locator("xpath=//button[@name='action_cancel' and not(@disabled)]")
+    .or(this.page.locator('button').filter({ hasText: /^\s*Cancel\s*$/i }))
+    .filter({ visible: true })
+    .first();
+  // Header "Duplicate" (`action_duplicate`) - added by view 1398 with NO attrs, i.e. always shown.
+  // The same view sets create="false" on the form, so Duplicate is the sanctioned way to copy a
+  // Quotation on O12 CE. Exercised by CRM-12325_2.5.10.
+  private readonly duplicateButton = () => this.page.locator("xpath=//button[@name='action_duplicate' and not(@disabled)]")
+    .or(this.page.locator('button').filter({ hasText: /^\s*Duplicate\s*$/i }))
+    .filter({ visible: true })
+    .first();
+  // "Set to Quotation" (`action_draft`, states="cancel") - the post-Cancel signal. The statusbar
+  // cannot be used for it: base view 787 declares statusbar_visible="draft,sent,sale", so the
+  // `cancel` state highlights NO statusbar button and getQuotationStatus() has nothing to read.
+  private readonly setToQuotationButton = () => this.page.locator("xpath=//button[@name='action_draft' and not(@disabled)]")
+    .or(this.page.locator('button').filter({ hasText: /^\s*Set to Quotation\s*$/i }))
+    .filter({ visible: true })
+    .first();
   private readonly salesOrderNumberField = () => this.page.locator('xpath=(//span[@name="name"] | //div[@name="name"]//span | //h1[@name="name"])[1]').first();
   private readonly quotationStatusField = () => this.page.locator('xpath=//div[contains(@class,"o_statusbar_status")]//button[@aria-checked="true" or @aria-selected="true" or contains(@class,"btn-primary")]').first();
   private readonly totalInCompanyCurrencyField = () => this.page.locator('xpath=//div[@name="currency_amount_total"]//span | //span[@name="currency_amount_total"] | //div[@name="amount_total"]//span[@class="o_stat_value"] | //td[@name="currency_amount_total"] | //span[@name="amount_total"]').first();
@@ -413,6 +465,66 @@ export class QuotationPage extends BasePage {
   }
 
   /**
+   * Read the recipient tags proposed in the "Recipients" row of the OPEN Send-by-Email composer.
+   * Regression guard for CRM-12415 ("Quotation Payer is not auto-filled into Recipients"): an EMPTY
+   * result IS the failure signature, so this returns [] and logs the raw cell text (the
+   * "Add contacts to notify..." placeholder) rather than throwing - the spec asserts on it.
+   * @param timeout - Maximum time to wait for the Recipients row to render (default: 30000ms)
+   * @returns one string per recipient tag, e.g. ["company20260824101612.com <Test@company...com>"]
+   */
+  async getEmailRecipients(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string[]> {
+    await this.emailRecipientsCell().waitFor({ state: 'visible', timeout }).catch(() => {
+      console.log('  ⚠ The composer "Recipients" row did not render within the wait budget');
+    });
+    const tags = this.emailRecipientTags();
+    const tagCount = await tags.count().catch(() => 0);
+    const recipients: string[] = [];
+    for (let i = 0; i < tagCount; i++) {
+      const raw = ((await tags.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (raw) recipients.push(raw);
+    }
+    if (!recipients.length) {
+      const cellText = ((await this.emailRecipientsCell().innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      const placeholder = ((await this.emailRecipientsCell().locator('input').first().getAttribute('placeholder').catch(() => '')) || '').trim();
+      console.log(`  ⚠ Recipients row carries NO recipient tag (cell text: "${cellText}", input placeholder: "${placeholder}")`);
+      return [];
+    }
+    console.log(`  - Recipients (${recipients.length}): ${recipients.map(r => `"${r}"`).join(', ')}`);
+    return recipients;
+  }
+
+  /**
+   * Read the Subject pre-filled in the open email composer (diagnostic - Odoo fills it from the mail
+   * template, so it stays filled even when the recipient list does not, see CRM-12415).
+   */
+  async getEmailSubject(): Promise<string> {
+    const value = ((await this.emailSubjectInput().inputValue().catch(() => '')) || '').trim();
+    console.log(`  - Composer Subject: "${value}"`);
+    return value;
+  }
+
+  /**
+   * Close the email composer WITHOUT sending it, via the footer "Cancel" button (special="cancel" in
+   * the mail.compose.message form). Used by the TCs that only INSPECT the composer, so the run never
+   * emails the test customer. Falls back to Escape when the button is not rendered.
+   * @param timeout - Maximum time to wait for the composer to disappear (default: 30000ms)
+   * @returns true when the composer closed
+   */
+  async cancelEmailDialog(timeout: number = CommonUtils.waitTimes.savingPage): Promise<boolean> {
+    const cancelVisible = await this.cancelButtonInDialog().isVisible({ timeout: CommonUtils.waitTimes.searchOppWait }).catch(() => false);
+    if (cancelVisible) {
+      await this.cancelButtonInDialog().click();
+      console.log('  - Clicked "Cancel" in the email composer (nothing is sent)');
+    } else {
+      await this.page.keyboard.press('Escape');
+      console.log('  ⚠ "Cancel" button not found - pressed Escape to close the email composer');
+    }
+    const closed = await this.emailDialog().waitFor({ state: 'hidden', timeout }).then(() => true).catch(() => false);
+    console.log(`  - Email composer closed: ${closed}`);
+    return closed;
+  }
+
+  /**
    * Click NEW QUOTATION button to create a new quotation
    * @param saveTimeout - Maximum time to wait for quotation creation (default: 90000ms)
    */
@@ -460,12 +572,32 @@ export class QuotationPage extends BasePage {
   async clickToApprove(timeout: number = 50000): Promise<void> {
     //Feb 02, 26: Cannot see the button
     const button = this.toApproveButton();
-    
-    // Wait for button to be visible
+
+    // "TO APPROVE" is invisible until the approval rules have materialised:
+    //   attrs="{'invisible':['|',('need_approve','=',False),('state','!=','draft')]}"
+    // On crm-mig those approval rows appear on a DELAYED write, not with the Quotation - measured
+    // 17s after creation for SO177982, and still absent 30s later for SO177983. `need_approve` is a
+    // server-side value the open form never re-reads, so waiting on the button alone can never
+    // succeed: the form must be RELOADED for the freshly created approvals to un-hide it.
+    let visible = await button.isVisible().catch(() => false);
+    if (!visible) {
+      const deadline = Date.now() + CommonUtils.waitTimes.elementAppear;
+      let attempt = 0;
+      while (!visible && Date.now() < deadline) {
+        attempt++;
+        await this.page.reload({ waitUntil: 'domcontentloaded' });
+        await this.waitForPageLoad(CommonUtils.waitTimes.savingPage).catch(() => {});
+        visible = await button.isVisible().catch(() => false);
+        console.log(`  - "TO APPROVE" poll ${attempt}: visible=${visible} (approvals are created on a delayed write)`);
+        if (!visible) await this.wait(CommonUtils.waitTimes.long);
+      }
+    }
+
+    // Final gate - fails with Playwright's own diagnostics when the button never appears.
     await button.waitFor({ state: 'visible', timeout });
     console.log('  - Found "TO APPROVE" button');
-    
-    await button.click();
+
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "TO APPROVE" button - approval request sent');
     
     // Wait for the approval request to be processed
@@ -490,7 +622,7 @@ export class QuotationPage extends BasePage {
     await this.wait(2000);
     
     // Use force: true to bypass any potential overlay issues
-    await button.click({ force: true });
+    await button.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "APPROVE" button (performance timer started)');
     
     // Wait for approval to complete - button should disappear or page should update
@@ -533,13 +665,19 @@ export class QuotationPage extends BasePage {
     console.log('  - Found "REJECT" button');
     
     // Click the REJECT button
-    await button.click();
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "REJECT" button - waiting for dialog');
     
-    // Wait for "Reject Reason" dialog to appear
+    // Wait for "Reject Reason" dialog to appear. The Mig backend theme re-labels the wizard, so fall
+    // back to any visible modal when the "Reject Reason" title does not match.
     await this.wait(1000);
-    const rejectDialog = this.page.locator('.o_dialog, .modal').filter({ hasText: /Reject Reason/i });
-    const dialogVisible = await rejectDialog.isVisible({ timeout: 5000 }).catch(() => false);
+    let rejectDialog = this.page.locator('.o_dialog, .modal').filter({ hasText: /Reject Reason/i }).first();
+    let dialogVisible = await rejectDialog.isVisible({ timeout: 5000 }).catch(() => false);
+    if (!dialogVisible) {
+      rejectDialog = this.page.locator('.o_dialog, .modal').filter({ visible: true }).first();
+      dialogVisible = await rejectDialog.isVisible({ timeout: 5000 }).catch(() => false);
+      if (dialogVisible) console.log('  - Reject wizard found by visible-modal fallback');
+    }
     
     if (dialogVisible) {
       console.log('  - "Reject Reason" dialog appeared');
@@ -548,14 +686,19 @@ export class QuotationPage extends BasePage {
       const reasonField = rejectDialog.locator('textarea, input[name="reason"]').first();
       const reasonFieldVisible = await reasonField.isVisible({ timeout: 3000 }).catch(() => false);
       if (reasonFieldVisible) {
-        await reasonField.fill('Performance test rejection');
+        await reasonField.fill('Performance test rejection', { timeout: CommonUtils.waitTimes.abnormalWait });
         console.log('  - Entered rejection reason');
       }
       
-      // Click REJECT button in the dialog
-      const dialogRejectButton = rejectDialog.getByRole('button', { name: /^REJECT$/i }).first();
+      // Click REJECT button in the dialog. Anchor on the text, not on the accessible name: the Mig
+      // backend theme prefixes toolbar/dialog buttons with a FontAwesome glyph (U+F0xx), so an
+      // anchored getByRole name regex matches zero elements there.
+      const dialogRejectButton = rejectDialog.locator('button')
+        .filter({ hasText: /^\s*REJECT\s*$/i })
+        .filter({ visible: true })
+        .first();
       await dialogRejectButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-      await dialogRejectButton.click();
+      await dialogRejectButton.click({ timeout: CommonUtils.waitTimes.abnormalWait });
       console.log('  - Clicked REJECT button in dialog (performance timer running)');
       
       // Wait for dialog to close
@@ -733,6 +876,184 @@ export class QuotationPage extends BasePage {
     console.log(`  ${rejected ? '✓' : '⚠'} Rejection ${rejected ? 'successful' : 'NOT confirmed'}`);
 
     return { rejected, approveButtonGone, rejectButtonGone, editButtonVisible };
+  }
+
+  /**
+   * Is the header "APPROVE" (`action_approve`) button OFFERED to the CURRENT user right now?
+   *
+   * The button is not a static part of the form: view 1365 hides it with
+   * `attrs="{'invisible':['|','|',('button_approve','=',False),('need_approve','=',False),('state','!=','pending_approval')]}"`,
+   * so `button_approve` is evaluated PER USER. A non-approver sees the node in the DOM carrying
+   * `o_invisible_modifier`, which is why approveButton() filters on `visible`.
+   *
+   * @param timeout - how long to wait for the button to appear (default: abnormalWait)
+   */
+  async isApproveButtonVisible(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const visible = await this.approveButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - "APPROVE" button offered to the current user: ${visible}`);
+    return visible;
+  }
+
+  /** Is the header "REJECT" (`action_wizard_reject`) button offered to the CURRENT user right now? */
+  async isRejectButtonVisible(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const visible = await this.rejectButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - "REJECT" button offered to the current user: ${visible}`);
+    return visible;
+  }
+
+  /** Is the header "Cancel" (`action_cancel`) button offered to the CURRENT user right now? */
+  async isCancelButtonVisible(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const visible = await this.cancelButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - "Cancel" button offered to the current user: ${visible}`);
+    return visible;
+  }
+
+  /** Is the header "Duplicate" (`action_duplicate`) button offered to the CURRENT user right now? */
+  async isDuplicateButtonVisible(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const visible = await this.duplicateButton().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    console.log(`  - "Duplicate" button offered to the current user: ${visible}`);
+    return visible;
+  }
+
+  /**
+   * RELOAD the form, then read the statusbar - i.e. read the status the SERVER holds, not the one
+   * the open form happens to be rendering.
+   *
+   * Needed after any header action that writes `state` (`action_approve`, `action_wizard_reject`,
+   * `action_cancel`): an Odoo 12 form does not re-read server-side values on its own, so a status
+   * taken from the open DOM can report the value the record had BEFORE the action. Reloading makes
+   * the reading authoritative in both directions - it cannot report a stale success or a stale
+   * failure.
+   *
+   * @param timeout - how long to wait for the reloaded form (default: savingPage)
+   */
+  async getQuotationStatusFromServer(timeout: number = CommonUtils.waitTimes.savingPage): Promise<string> {
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForPageLoad(timeout).catch(() => {});
+    return this.getQuotationStatus().catch(() => '');
+  }
+
+  /**
+   * Press the header "Cancel" (`action_cancel`) button on the Quotation.
+   *
+   * @param timeout - how long to wait for the Cancel button
+   * @returns the elapsed time in ms, plus any popup text the click produced
+   */
+  async clickCancelQuotation(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    elapsedMs: number;
+    popupText: string;
+  }> {
+    const start = Date.now();
+    const button = this.cancelButton();
+    await button.waitFor({ state: 'visible', timeout });
+    console.log('  - Found the header "Cancel" button');
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log('  - Clicked "Cancel"');
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // The view declares no `confirm=` on action_cancel, so no dialog is EXPECTED - but a modal that
+    // does appear must be resolved with its affirmative button, otherwise the cancel silently never
+    // happens and the verification below fails with a misleading "still pending" reading.
+    const dialog = this.page.locator('.o_dialog, .modal').filter({ visible: true }).first();
+    let popupText = '';
+    if (await dialog.isVisible({ timeout: CommonUtils.waitTimes.searchOppWait }).catch(() => false)) {
+      popupText = ((await dialog.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      console.log(`  - A dialog appeared after "Cancel": "${popupText.substring(0, 300)}"`);
+      const confirmButton = dialog.locator('button')
+        .filter({ hasText: /^\s*(Ok|OK|Yes|Confirm|Cancel Order|Validate|Apply)\s*$/i })
+        .filter({ visible: true })
+        .first();
+      if (await confirmButton.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+        await confirmButton.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+        await dialog.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      }
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+
+    return { elapsedMs: Date.now() - start, popupText };
+  }
+
+  /**
+   * Verify the Quotation was cancelled (call after clickCancelQuotation()).
+   *
+   * The statusbar is deliberately NOT the signal: base view 787 declares
+   * `statusbar_visible="draft,sent,sale"`, so the `cancel` state highlights no statusbar button at
+   * all. The reliable marker is `action_draft` "Set to Quotation" (states="cancel"), which only ever
+   * renders on a cancelled order - together with the pending-approval buttons being consumed.
+   *
+   * @param timeout - how long to wait for "Set to Quotation" to appear (default: abnormalWait)
+   */
+  async verifyQuotationCancelled(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    cancelled: boolean;
+    setToQuotationVisible: boolean;
+    approveButtonGone: boolean;
+    rejectButtonGone: boolean;
+    cancelButtonGone: boolean;
+  }> {
+    const setToQuotationVisible = await this.setToQuotationButton()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+
+    const approveButtonGone = !(await this.approveButton().isVisible().catch(() => false));
+    const rejectButtonGone = !(await this.rejectButton().isVisible().catch(() => false));
+    const cancelButtonGone = !(await this.cancelButton().isVisible().catch(() => false));
+
+    // "Set to Quotation" is the state=cancel marker; the button sweep guards against reading a form
+    // that simply has not refreshed yet.
+    const cancelled = setToQuotationVisible && approveButtonGone && rejectButtonGone;
+
+    console.log(`  - "Set to Quotation" visible (state = cancel): ${setToQuotationVisible}`);
+    console.log(`  - APPROVE button gone: ${approveButtonGone}`);
+    console.log(`  - REJECT button gone: ${rejectButtonGone}`);
+    console.log(`  - Cancel button gone: ${cancelButtonGone}`);
+    console.log(`  ${cancelled ? '✓' : '⚠'} Quotation cancelled: ${cancelled}`);
+
+    return { cancelled, setToQuotationVisible, approveButtonGone, rejectButtonGone, cancelButtonGone };
+  }
+
+  /**
+   * Press the header "Duplicate" (`action_duplicate`) button and land on the COPY.
+   *
+   * The copy is detected by the form's RECORD ID changing, not by the URL model - a Quotation, its
+   * Deal Element and its copy are all `sale.order`, so a model-only wait would match instantly and
+   * report a duplication that never happened (same trap as pressNewQuotationOnO12CE).
+   *
+   * @param timeout - how long to wait for the Duplicate button
+   */
+  async clickDuplicateQuotation(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{
+    sourceRecordId: string;
+    newRecordId: string;
+    navigated: boolean;
+    elapsedMs: number;
+    popupText: string;
+  }> {
+    const sourceRecordId = this.getRecordIdFromUrl();
+    const button = this.duplicateButton();
+    await button.waitFor({ state: 'visible', timeout });
+    console.log(`  - Found the header "Duplicate" button (source record id: ${sourceRecordId || '(none)'})`);
+
+    const start = Date.now();
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log('  - Clicked "Duplicate"');
+
+    const newRecordId = await this.waitForRecordIdChange(sourceRecordId, CommonUtils.waitTimes.savingPage);
+    const navigated = newRecordId !== '' && newRecordId !== sourceRecordId;
+    if (navigated) {
+      await this.waitForFormView(CommonUtils.waitTimes.savingPage).catch(() => {});
+      await this.waitForEditButton(CommonUtils.waitTimes.savingPage).catch(() => {});
+    }
+    const elapsedMs = Date.now() - start;
+
+    const popupText = await this.getBlockingPopupText(CommonUtils.waitTimes.extraLong);
+    if (popupText) {
+      console.log(`  - Backend answered with a popup: "${popupText.substring(0, 300)}"`);
+      await this.dismissBlockingPopup();
+    }
+
+    console.log(`  - Record id after "Duplicate": ${newRecordId || '(unchanged)'}`);
+    console.log(`  - Landed on the copy: ${navigated} (${(elapsedMs / 1000).toFixed(2)}s)`);
+    return { sourceRecordId, newRecordId, navigated, elapsedMs, popupText };
   }
 
   /**

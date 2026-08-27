@@ -88,6 +88,36 @@ export const users = {
     displayName: 'Anh Ho',
     createdByName: 'Ho Quoc Anh',
   },
+  accountance_ic_faye_crm_mig: {
+    username: 'faye.nguyen@nakivo.com',
+    password: 'FNUaT@0123456789012',
+    displayName: 'Faye Nguyen',
+  },
+  accountance_ic_yulia_crm_mig: {
+    username: 'yuliya.malihonova@nakivo.com',
+    password: 'YMUaT@0123456789012',
+    displayName: 'Yulia Malihonova',
+  },
+  pre_sales_engineer_crm_mig: {
+    username: 'nick.luchkov@nakivo.com',
+    password: 'NLUaT@0123456789012',
+    displayName: 'Nick Luchkov',
+  },
+  sale_ic_thomas_crm_mig: {
+    username: 'thomas.semerich@nakivo.com',
+    password: 'TSUaT@123456789012',
+    displayName: 'Thomas Semerich',
+  },
+  manager_veronika_crm_mig: {
+    username: 'veronika@nakivo.com',
+    password: 'VSUaT@123456789012',
+    displayName: 'Veronika Stasinievych',
+  },
+  manager_max_crm_mig: {
+    username: 'max.zaprykutenko@nakivo.com',
+    password: 'MZUaT@123456789012',
+    displayName: 'Max Zaprykutenko',
+  }
 } as const;
 // Base URL of the CRM Pre-production environment
 // IMPORTANT: Need to connect to VPN before accessing this URL http://10.220.222.100/

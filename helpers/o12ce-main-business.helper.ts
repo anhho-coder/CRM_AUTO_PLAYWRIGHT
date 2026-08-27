@@ -1,4 +1,4 @@
-import { Page, test, expect } from '@playwright/test';
+import { Browser, BrowserContext, Page, test, expect } from '@playwright/test';
 import { OpportunityPage, DealElementPage, QuotationPage, InvoicePage, LicensePage } from '@pages';
 import { LoginPageMig, HomePageMig } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
@@ -65,17 +65,70 @@ export interface O12ceOpportunity {
   leadForm: string;
 }
 
-/** Step 1 - log in to the O12 CE Migration server as Admin. */
-export async function loginToO12CE(page: Page): Promise<void> {
-  await test.step('Step 1: Use the account of Admin to login successful (O12 CE Migration server)', async () => {
+/** Credentials shape shared by every `users.*` entry in `@config/users.config`. */
+export interface O12ceAccount {
+  readonly username: string;
+  readonly password: string;
+  readonly displayName: string;
+}
+
+/**
+ * Step 1 - log in to the O12 CE Migration server.
+ *
+ * Defaults to the Admin account so the 2.1-2.4 / 2.7 specs are unchanged. The 2.5.x / 2.6.x
+ * Quotation + Invoice specs pass `users.sale_ic_thomas_crm_mig` to mirror the pre-prod manual TCs,
+ * where the sales IC (Thomas) owns the whole create -> quote -> invoice chain.
+ */
+export async function loginToO12CE(
+  page: Page,
+  account: O12ceAccount = users.admin_crm_mig
+): Promise<void> {
+  await test.step(`Step 1: Use the account of ${account.displayName} to login successful (O12 CE Migration server)`, async () => {
     const loginPage = new LoginPageMig(page);
     console.log('\n--- Step 1: Login to the O12 CE Migration server ---');
     console.log(`  Target  : ${baseUrl_mig}`);
-    console.log(`  Account : ${users.admin_crm_mig.username}`);
+    console.log(`  Account : ${account.username} (${account.displayName})`);
     await loginPage.navigateTo(baseUrl_mig);
-    await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
+    await loginPage.login(account.username, account.password);
     console.log('  OK - logged in on the O12 CE Migration server');
   });
+}
+
+/**
+ * Open a SECOND browser session as the approver and land it on the Quotation under approval.
+ *
+ * Mirrors the pre-prod manual TCs (TC.Performance.1.1.5.4 / 1.1.5.5): the sales IC presses
+ * "TO APPROVE", copies the Quotation URL, then the manager opens it in another browser and presses
+ * APPROVE / REJECT. On crm-mig the routing is deterministic - Thomas sits in the "BDEU" sales team
+ * (crm.team id 156), and approval rule 64 "All the quotations in BD over 4K" runs
+ *   `if record.amount_total_company_signed >= 4000: record.create_approvals(64)`
+ * whose approvers are Anton Shelepchuk, MAX ZAPRYKUTENKO and Thomas Semerich. So a Thomas-owned
+ * Quotation between $4K and $10K routes to Max, and only to Max (rule 105/141 needs >= $10K,
+ * rule 38 "Quote amount >= $20K" needs >= $20K - neither fires in that band).
+ *
+ * The caller owns the returned context and MUST close it.
+ */
+export async function openApproverSessionOnO12CE(
+  browser: Browser,
+  quotationUrl: string,
+  account: O12ceAccount = users.manager_max_crm_mig
+): Promise<{ approverPage: Page; approverContext: BrowserContext }> {
+  const approverContext = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  const approverPage = await approverContext.newPage();
+
+  console.log(`\n--- Open the approver session (${account.displayName}) ---`);
+  const loginPage = new LoginPageMig(approverPage);
+  await loginPage.navigateTo(baseUrl_mig);
+  await loginPage.login(account.username, account.password);
+  console.log(`  OK - logged in as ${account.displayName}`);
+
+  await approverPage.goto(quotationUrl);
+  await approverPage.waitForTimeout(CommonUtils.waitTimes.extraLong);
+  const quotationPage = new QuotationPage(approverPage);
+  await quotationPage.waitForPageLoad(CommonUtils.waitTimes.savingPage).catch(() => {});
+  console.log(`  Quotation opened in the approver session: ${approverPage.url()}`);
+
+  return { approverPage, approverContext };
 }
 
 /** Step 2 - open CRM and land on the Opportunities LIST view (pre-prod: "click at view list"). */
@@ -297,6 +350,81 @@ export async function pressNewQuotationOnO12CE(page: Page): Promise<O12ceQuotati
   console.log(`  NEW QUOTATION elapsed : ${(outcome.elapsedMs / 1000).toFixed(2)}s`);
   console.log(`  Navigated to the Quotation form : ${outcome.navigated}`);
   console.log(`  Creation logged in the Deal Element chatter : ${outcome.chatterFound}`);
+  return outcome;
+}
+
+/** Outcome of driving a freshly created Quotation into the Pending Approval state. */
+export interface O12cePendingApprovalResult {
+  /** Statusbar value read back once the poll loop settled. */
+  status: string;
+  /** True when the statusbar reads a pending/approval state. */
+  pending: boolean;
+  /** True when "TO APPROVE" was actually pressed (false when the order was already pending). */
+  toApprovePressed: boolean;
+  /** Quotation form URL, carrying the record id. */
+  quotationUrl: string;
+}
+
+/**
+ * Drive a freshly created Quotation into "Pending Approval" and return once the statusbar says so.
+ *
+ * Why this is not just `clickToApprove()`: on crm-mig the approval rows are written on a DELAYED
+ * server write, and "TO APPROVE" is
+ *   `attrs="{'invisible':['|',('need_approve','=',False),('state','!=','draft')]}"`
+ * so it needs `need_approve = True` AND `state = 'draft'` in the same instant. Depending on how fast
+ * the approval rules land, the Quotation can be ALREADY `pending_approval` by the time the form is
+ * readable - and then "TO APPROVE" is never clickable at all, which is NOT a defect. So:
+ *   1. poll the statusbar first - if it already reads Pending Approval, there is nothing to press;
+ *   2. otherwise press "TO APPROVE" (tolerantly - a button that never appears is not fatal here);
+ *   3. poll the statusbar again until it flips, bounded by `reAssignationWait`.
+ * The status is polled rather than read once because clickToApprove() returns as soon as the click
+ * lands, while the server is still writing `state = pending_approval` - a single read came back
+ * "Quotation" for SO177974 which was already pending server-side.
+ */
+export async function bringQuotationToPendingApprovalOnO12CE(page: Page): Promise<O12cePendingApprovalResult> {
+  const quotationPage = new QuotationPage(page);
+  const outcome: O12cePendingApprovalResult = {
+    status: '', pending: false, toApprovePressed: false, quotationUrl: '',
+  };
+
+  const readStatus = async () => quotationPage.getQuotationStatus().catch(() => '');
+  const pollUntilPending = async (budget: number) => {
+    const deadline = Date.now() + budget;
+    do {
+      outcome.status = await readStatus();
+      if (/pending|approv/i.test(outcome.status)) return true;
+      await page.waitForTimeout(CommonUtils.waitTimes.long);
+    } while (Date.now() < deadline);
+    return false;
+  };
+
+  outcome.pending = await pollUntilPending(CommonUtils.waitTimes.extraLong);
+  if (outcome.pending) {
+    console.log(`  - The Quotation is ALREADY "${outcome.status}" - "TO APPROVE" is not offered and is not needed`);
+  } else {
+    try {
+      await quotationPage.clickToApprove(CommonUtils.waitTimes.abnormalWait);
+      outcome.toApprovePressed = true;
+    } catch (err) {
+      console.log(`  - "TO APPROVE" was not clickable: ${err instanceof Error ? err.message.split('\n')[0] : String(err)}`);
+    }
+    outcome.pending = await pollUntilPending(CommonUtils.waitTimes.reAssignationWait);
+  }
+
+  outcome.quotationUrl = page.url();
+  console.log(`  Status               : "${outcome.status}"`);
+  console.log(`  "TO APPROVE" pressed : ${outcome.toApprovePressed}`);
+  console.log(`  Quotation URL        : ${outcome.quotationUrl}`);
+
+  expect(
+    outcome.pending,
+    `the Quotation must reach "Pending Approval" before the approval buttons can be exercised (status read back: "${outcome.status}")`
+  ).toBeTruthy();
+  expect(
+    /[?#&]id=\d+/.test(outcome.quotationUrl),
+    `the Quotation URL must carry a record id (read back: ${outcome.quotationUrl})`
+  ).toBeTruthy();
+
   return outcome;
 }
 

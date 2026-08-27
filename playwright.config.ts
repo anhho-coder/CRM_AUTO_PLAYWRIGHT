@@ -84,10 +84,30 @@ function getReportFolderName(): string {
 }
 
 /**
+ * Per-run artifact folder: test-results/<timestamp>_<Folder>_[Worker-N]
+ *
+ * Playwright REMOVES its `outputDir` when a run starts. With the default flat `test-results/`, a
+ * second Playwright process started in this repo (a parallel Claude session, a probe run, ...)
+ * wipes the videos/screenshots/traces of the run already in flight - the HTML reporter then finds
+ * nothing to copy, and the report shows a video player with a dead src (0:00, black) because the
+ * attachment entry was recorded but its file is gone.
+ *
+ * Giving every run its own subfolder means each process only ever deletes its own, so concurrent
+ * runs no longer destroy each other's evidence. `npm run clean` (rimraf test-results) and
+ * scripts/merge-videos.js (recursive scan) both still work on the nested layout.
+ */
+function getOutputDirName(): string {
+  return `${TEST_TIMESTAMP}_${TEST_FOLDER}_[Worker-${WORKER_COUNT}]`;
+}
+
+/**
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
   testDir: './tests',
+  /* Per-run artifact folder so parallel Playwright processes cannot wipe each other - see
+     getOutputDirName(). Override with PW_OUTPUT_DIR when a job needs a fixed path. */
+  outputDir: process.env.PW_OUTPUT_DIR || `test-results/${getOutputDirName()}`,
   /* Global setup and teardown */
   globalSetup: require.resolve('./config/global-setup.ts'),
   /* Run tests in files in parallel */
