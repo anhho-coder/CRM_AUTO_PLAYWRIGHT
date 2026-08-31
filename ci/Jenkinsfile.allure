@@ -111,7 +111,8 @@ pipeline {
                 reportFiles: 'index.html',
                 reportName: 'Allure Report'
             ])
-            archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+            // archiveArtifacts removed 2026-08-31: duplicate of the publishHTML(keepAll) copy.
+            // See ci/Jenkinsfile.period-allure for the rationale.
         }
     }
 }

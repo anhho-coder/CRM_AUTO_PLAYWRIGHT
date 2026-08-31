@@ -139,7 +139,11 @@ pipeline {
                     reportFiles: 'index.html',
                     reportName: 'Allure-Report'
                 ])
-                archiveArtifacts artifacts: 'allure-report/**', allowEmptyArchive: true
+                // archiveArtifacts removed 2026-08-31: publishHTML(keepAll) already stores an
+                // identical copy of allure-report under builds/<n>/htmlreports, so archiving it
+                // doubled JENKINS_HOME on C: (10.4 GB of pure duplicate). Nothing reads the
+                // artifact copy -- no copyArtifacts anywhere, the portal links htmlreports, and
+                // the rerun jobs read the frozen reports from C:llure\periods (junction to E:).
             }
         }
     }
