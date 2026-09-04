@@ -425,14 +425,24 @@ function jqlNote(metrics, ranges, def, kpiJql) {
       // Mirror sources/support-ticket.js buildJql, config-driven so both the type-based
       // metrics and the field-based leaked-defects metric render their real query.
       const parts = [];
-      if (m.project) parts.push(`project = ${m.project}`);
-      if (m.types) parts.push(`type in (${m.types.map(q).join(', ')})`);
+      if (m.project) parts.push(`project = ${q(m.project)}`);
+      // `issuetype` (not the `type` alias) — the collector's PAT context rejects `type`,
+      // so showing `type` here handed the reader a query their Jira would 400 on.
+      if (m.types) parts.push(m.types.length === 1
+        ? `issuetype = ${q(m.types[0])}`
+        : `issuetype in (${m.types.map(q).join(', ')})`);
       if (m.leakField) parts.push(`${q(m.leakField)} is not EMPTY`);
+      if (m.fieldEquals) parts.push(`${q(m.fieldEquals.field)} = ${q(m.fieldEquals.value)}`);
       (m.labels || []).forEach((l) => parts.push(`labels = ${q(l)}`));
       if (m.excludeResolutions && m.excludeResolutions.length)
         parts.push(`(resolution is EMPTY OR resolution not in (${m.excludeResolutions.map(q).join(', ')}))`);
       if (m.priorities) parts.push(`priority in (${m.priorities.map(q).join(', ')})`);
-      parts.push(`createdDate >= ${q(r.from)}`, `createdDate <= ${q(r.to)}`);
+      // Upper bound pinned to 23:59: a BARE upper date means 00:00 of that day in JQL,
+      // so `created <= <to>` silently drops everything created ON the last day — and every
+      // This-week/month/quarter/year range ends TODAY. The collector counts the `to` day
+      // inclusively, so without the time the pasted query undercounts what the card shows.
+      // (Same fix as sources/support-classification.js — verified on live Jira 2026-08-27.)
+      parts.push(`created >= ${r.from}`, `created <= ${q(`${r.to} 23:59`)}`);
       if (!m.splitOtherReporters) parts.push(`reporter in (${reporters})`);
       const suffix = m.splitOtherReporters
         ? ` <span class="muted">— counted by ${code('created')} day + reporter; non-team reporters grouped into “Other”${m.yearBucket === 'quarter' ? '. This year / Last year Trend is bucketed per QUARTER' : ''}.</span>`
@@ -504,6 +514,8 @@ function jqlNote(metrics, ranges, def, kpiJql) {
     '“Unique Executed Test Cases” instead runs ONE window query per tester over the whole range, so a test case worked on many days counts ONCE — it is the distinct-count counterpart of “Manual Test cases executed” (which sums per day and can be larger). Its trend bars are per-bucket distinct counts, so they need not sum to the range total.',
     '“Executed test cases per day” is a RATE derived from that distinct count: per calendar-day = executed ÷ working days (Mon–Fri minus VN public holidays), and per man-day = executed ÷ test-case-execution man-days, where man-days = test-case worklog hours ÷ 8 × the tester’s workload. The per-man-day team figure is the blended rate (Σ executed ÷ Σ man-days).',
     '“Test cases automated — with vs without Claude” adds no query: it re-uses the “Automation Test cases created” daily series and splits each range at the team’s Claude-adoption date (2026-06-05, first Claude co-authored commit) — with Claude = resolved on/after it, legacy = before it, Total = both (so Total matches that card for the same range).',
+    '“Leaked defects” counts the support tickets the QA review CLASSIFIED as a leak — <code>issuetype = "Post-EA - Support Ticket"</code> with <code>"Support Ticket Type" = "Leaked Defect"</code> — the same rule as the “Bug leakage” row on the Support ticket tab, so the two agree. It is whole-team (no reporter clause; non-QA reporters land in “Other”) and carries NO priority filter: every classified leak counts. Changed 2026-08-28 — it previously counted <code>"Leaked defect priority" is not EMPTY</code>, P1–P3.',
+    'Every <code>created</code>-based query ends at <code>"&lt;to&gt; 23:59"</code>: a bare upper date means 00:00 of that day in JQL, which would drop everything created ON the last day (and these ranges end today). The report counts the last day, so the query shown here does too.',
   ];
 
   return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for each metric<span class="wlnote-hint"> (for the selected range — hover)</span>

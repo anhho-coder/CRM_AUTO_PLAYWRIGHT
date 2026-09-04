@@ -151,31 +151,39 @@ const JIRA_METRICS = [
     quarterly: true, // also show an actual-only card in the Automation Quarterly view
   },
   {
-    // Leaked defects (defect leakage): CRM issues that got a "Leaked defect priority"
-    // set (QA marks a ticket as a leak during verification), P1-P3 only. Counted by
-    // `created` day + reporter, same card as "Support Ticket created" (big number +
-    // By tester bars + stacked Trend). The team's saved filter (verbatim) is:
-    //   project = CRM AND "Leaked defect priority" is not EMPTY
-    //     AND createdDate >= <from> AND createdDate <= <to>
-    //     AND priority in ("Blocker (P1)", "Critical (P2)", "Major (P3)")
-    // No `types`/`reporter` clause — the leak field is CRM-QA-specific, so almost every
-    // hit is reported by the QA team; the rare non-team reporter (a dev/PM who filed the
-    // underlying ticket) is kept (so the headline total matches the saved filter exactly)
-    // and grouped into an "Other" By-tester/Trend bar via `splitOtherReporters` — see
-    // sources/support-ticket.js. `yearBucket: 'quarter'` makes the This year / Last year
-    // Trend show one column PER QUARTER (Q1..Q4) instead of per month (see lib/ranges.js
-    // aggregate() + collect.js) — per request 2026-07-15. "By range" only (no Quarterly card).
+    // Leaked defects (defect leakage): the CRM support tickets the QA review CLASSIFIED
+    // as a leak — a plain "Post-EA - Support Ticket" whose "Support Ticket Type" field
+    // reads "Leaked Defect" (category C of the quarterly review, see
+    // SUPPORT_CLASSIFICATION). Counted by `created` day + reporter, same card as
+    // "Support Ticket created" (big number + By tester bars + stacked Trend). The JQL
+    // this reproduces (confirmed by the team 2026-08-28) is:
+    //   project = "CRM" AND issuetype = "Post-EA - Support Ticket"
+    //     AND "Support Ticket Type" = "Leaked Defect"
+    //     AND created >= <from> AND created <= "<to> 23:59"
+    // REPLACES the previous definition (`"Leaked defect priority" is not EMPTY` AND
+    // priority in P1-P3), which counted the OLD per-ticket leak-priority field. There is
+    // no `priority` clause any more — every classified leak counts, whatever its
+    // priority — and still no `reporter` clause: the classification is whole-team, so the
+    // occasional non-QA reporter (a dev/PM who filed the underlying ticket) is kept (the
+    // headline total then equals the saved filter exactly) and grouped into an "Other"
+    // By-tester/Trend bar via `splitOtherReporters` — see sources/support-ticket.js.
+    // `yearBucket: 'quarter'` makes the This year / Last year Trend show one column PER
+    // QUARTER (Q1..Q4) instead of per month (see lib/ranges.js aggregate() +
+    // collect.js) — per request 2026-07-15.
     key: 'leakedDefects',
     label: 'Leaked defects',
-    kpiName: 'Jira · CRM leaked defects — "Leaked defect priority" set, P1-P3 (by reporter)',
+    kpiName: 'Jira · CRM support tickets classified "Support Ticket Type" = Leaked Defect (by reporter)',
     project: 'CRM',
-    leakField: 'Leaked defect priority',
-    priorities: ['Blocker (P1)', 'Critical (P2)', 'Major (P3)'],
+    types: ['Post-EA - Support Ticket'],
+    // Custom-field equality clause: `"<field>" = "<value>"`. Same field the quarterly
+    // support-ticket classification reads (SUPPORT_CLASSIFICATION.typeField, category C),
+    // so this card and the "Support ticket" tab's "Bug leakage" row agree by construction.
+    fieldEquals: { field: 'Support Ticket Type', value: 'Leaked Defect' },
     splitOtherReporters: true, // count ALL reporters; non-team ones grouped into an "Other" bar
     yearBucket: 'quarter',     // This year / Last year Trend uses quarterly columns, not monthly
     quarterly: true,           // also show an actual-only card in the Quarterly KPI view (per-quarter bars + Reporter table)
-    quarterlyFillEmpty: true,  // keep a contiguous 5-quarter x-axis — quarters with 0 leaks still show (this field only went live Q4-2025)
-    quarterlyNote: 'The x-axis keeps 5 consecutive quarters ending at the current one. The "Leaked defect priority" field has only been in use since Q4-2025, so earlier quarters read 0 (0 leaks = good). The highlighted (teal) column is the current quarter; the Reporter table follows it. Each new quarter, the axis slides forward.',
+    quarterlyFillEmpty: true,  // keep a contiguous 5-quarter x-axis — quarters with 0 leaks still show
+    quarterlyNote: 'The x-axis keeps 5 consecutive quarters ending at the current one. A quarter reads 0 when no support ticket created in it was classified "Support Ticket Type" = Leaked Defect (0 leaks = good); the field has carried that value since Q1-2025. The highlighted (teal) column is the current quarter; the Reporter table follows it. Each new quarter, the axis slides forward.',
     byLabel: 'Reporter',       // per-tester breakdown is by REPORTER (incl. non-team "Other"); label it so, not "By tester"
   },
 ];

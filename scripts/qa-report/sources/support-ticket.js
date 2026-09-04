@@ -33,6 +33,7 @@ const jqlStr = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
  * (Support tickets / Bugs found by automation) and the field-based leaked-defects
  * metric share this builder:
  *   [project = <project>] AND [issuetype in (<types>)] AND ["<leakField>" is not EMPTY]
+ *     AND ["<fieldEquals.field>" = "<fieldEquals.value>"]
  *     AND [labels = <l> …] AND [(resolution is EMPTY OR resolution not in (<junk>))]
  *     AND [priority in (<priorities>)]
  *     AND createdDate >= "<fetchFrom>" [AND reporter in (<team>)]
@@ -48,8 +49,13 @@ function buildJql(metric, fetchFrom) {
   // whole query and made the build UNSTABLE. `issuetype` is what the working
   // testexec/automation modules use. (See build #18, 2026-06-18.)
   if (metric.types) clauses.push(`issuetype in (${metric.types.map(jqlStr).join(', ')})`);
-  // Field-based scope (e.g. leaked defects): the custom field is set => it's a leak.
+  // Field-based scope: the custom field is merely SET (`is not EMPTY`).
   if (metric.leakField) clauses.push(`${jqlStr(metric.leakField)} is not EMPTY`);
+  // Field-value scope (leaked defects): the custom field holds one exact value, e.g.
+  // "Support Ticket Type" = "Leaked Defect". Both sides are quoted — the field name has
+  // spaces and the value is a select option with spaces/case that JQL must match literally.
+  if (metric.fieldEquals)
+    clauses.push(`${jqlStr(metric.fieldEquals.field)} = ${jqlStr(metric.fieldEquals.value)}`);
   // Optional: a `labels = <label>` clause per configured label (e.g. the
   // "Bugs found by automation test" metric narrows to labels = QA-CRM_Automation).
   for (const l of (metric.labels || [])) clauses.push(`labels = ${jqlStr(l)}`);
