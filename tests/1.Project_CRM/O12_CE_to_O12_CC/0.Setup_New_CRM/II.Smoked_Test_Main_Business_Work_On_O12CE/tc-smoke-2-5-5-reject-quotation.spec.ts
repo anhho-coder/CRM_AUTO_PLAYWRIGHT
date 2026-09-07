@@ -14,6 +14,7 @@ import {
   closeApproverSessionOnO12CE,
   O12ceOpportunity,
   O12ceQuotationResult,
+  teardownMigRecords,
 } from '@helpers/o12ce-main-business.helper';
 
 /**
@@ -75,7 +76,8 @@ import {
  *   npx playwright test --grep "CRM-12325_2\.5\.5:" --project=chromium
  */
 
-const SKIP_CLEANUP_OPP = true; // true = skip teardown-delete (O12 CE convention: keep created records)
+const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
+// Set true ONLY to keep a broken chain for hand-debugging - the 16:00 leftover-data check then reports it.
 const APPROVAL_QTY = 20;       // Ordered Qty, as on pre-prod: 20 x $329 = $6,580.
 // Why 20 and not more: the Quotation must need approval from MAX ALONE.
 //   rule  64 "All the quotations in BD over 4K"  -> >= $4,000  -> Anton / MAX / Thomas   (want it)
@@ -105,7 +107,7 @@ test.describe('CRM-12325_2.5.5 - O12 CE smoke: reject a Quotation', () => {
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
-    console.log(`Teardown: SKIP_CLEANUP_OPP=${SKIP_CLEANUP_OPP} - the created records are kept on O12 CE`);
+    await teardownMigRecords(page, SKIP_CLEANUP_OPP);
   });
 
   test('CRM-12325_2.5.5: Verify a Quotation can be rejected on the O12 CE Migration server', async ({ page, browser }, testInfo) => {

@@ -3,7 +3,7 @@ import { config } from '@config/test.config';
 import { ContactPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
-import { loginToO12CE, O12CE_DATA } from '@helpers/o12ce-main-business.helper';
+import { loginToO12CE, O12CE_DATA, teardownMigRecords, registerMigRecord } from '@helpers/o12ce-main-business.helper';
 
 /**
  * O12 CE Main-Business Smoke - Create a Contact
@@ -55,7 +55,8 @@ import { loginToO12CE, O12CE_DATA } from '@helpers/o12ce-main-business.helper';
  *   npx playwright test --grep "CRM-12325_2\.3\.1:" --project=chromium
  */
 
-const SKIP_CLEANUP_CONTACT = true; // true = skip teardown-delete (O12 CE convention: keep created records)
+const SKIP_CLEANUP_CONTACT = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
+// Set true ONLY to keep a broken chain for hand-debugging - the 16:00 leftover-data check then reports it.
 
 test.describe('CRM-12325_2.3.1 - O12 CE smoke: create a Contact', () => {
 
@@ -76,7 +77,7 @@ test.describe('CRM-12325_2.3.1 - O12 CE smoke: create a Contact', () => {
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
-    console.log(`Teardown: SKIP_CLEANUP_CONTACT=${SKIP_CLEANUP_CONTACT} - the created Contact is kept on O12 CE`);
+    await teardownMigRecords(page, SKIP_CLEANUP_CONTACT);
   });
 
   test('CRM-12325_2.3.1: Verify a Contact can be created on the O12 CE Migration server', async ({ page }, testInfo) => {
@@ -138,6 +139,8 @@ test.describe('CRM-12325_2.3.1 - O12 CE smoke: create a Contact', () => {
       await contactPage.clickSave();
       await contactPage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage);
       contactId = await contactPage.waitForIdInUrlAndExtract(CommonUtils.waitTimes.savingPage);
+      // Queue it for the crm-mig teardown - this spec creates the Contact itself, not via the chain helper.
+      registerMigRecord('res.partner', contactId, 'Contact');
       saveMs = Date.now() - start;
       console.log(`  Save elapsed : ${(saveMs / 1000).toFixed(2)}s (recorded for reference, not asserted)`);
       console.log(`  Contact id   : ${contactId}`);

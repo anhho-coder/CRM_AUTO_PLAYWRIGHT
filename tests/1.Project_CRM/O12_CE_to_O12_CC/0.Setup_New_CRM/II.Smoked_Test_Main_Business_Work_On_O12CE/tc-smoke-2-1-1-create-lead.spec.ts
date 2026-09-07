@@ -3,7 +3,7 @@ import { config } from '@config/test.config';
 import { LeadPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
-import { loginToO12CE, O12CE_DATA } from '@helpers/o12ce-main-business.helper';
+import { loginToO12CE, O12CE_DATA, teardownMigRecords, registerMigRecord } from '@helpers/o12ce-main-business.helper';
 
 /**
  * O12 CE Main-Business Smoke - Create a CRM Lead
@@ -58,7 +58,8 @@ import { loginToO12CE, O12CE_DATA } from '@helpers/o12ce-main-business.helper';
  *   npx playwright test --grep "CRM-12325_2\.1\.1:" --project=chromium
  */
 
-const SKIP_CLEANUP_LEAD = true; // true = skip teardown-delete (O12 CE convention: keep created records)
+const SKIP_CLEANUP_LEAD = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
+// Set true ONLY to keep a broken chain for hand-debugging - the 16:00 leftover-data check then reports it.
 
 test.describe('CRM-12325_2.1.1 - O12 CE smoke: create a CRM Lead', () => {
 
@@ -79,7 +80,7 @@ test.describe('CRM-12325_2.1.1 - O12 CE smoke: create a CRM Lead', () => {
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
-    console.log(`Teardown: SKIP_CLEANUP_LEAD=${SKIP_CLEANUP_LEAD} - the created Lead is kept on O12 CE`);
+    await teardownMigRecords(page, SKIP_CLEANUP_LEAD);
   });
 
   test('CRM-12325_2.1.1: Verify a CRM Lead can be created on the O12 CE Migration server', async ({ page }, testInfo) => {
@@ -152,6 +153,8 @@ test.describe('CRM-12325_2.1.1 - O12 CE smoke: create a CRM Lead', () => {
       await leadPage.waitForSaveComplete(CommonUtils.waitTimes.savingPage);
       saveMs = Date.now() - start;
       leadId = await leadPage.waitForIdInUrlAndExtract(CommonUtils.waitTimes.savingPage);
+      // Queue it for the crm-mig teardown - this spec creates the Lead itself, not via the chain helper.
+      registerMigRecord('crm.lead', leadId, 'Lead');
       console.log(`  Save elapsed : ${(saveMs / 1000).toFixed(2)}s (recorded for reference, not asserted)`);
       console.log(`  Lead id      : ${leadId}`);
       console.log(`  Lead URL     : ${page.url()}`);

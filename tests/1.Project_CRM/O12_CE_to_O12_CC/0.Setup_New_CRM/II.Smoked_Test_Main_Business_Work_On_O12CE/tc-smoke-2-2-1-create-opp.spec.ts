@@ -9,6 +9,7 @@ import {
   createOpportunityOnO12CE,
   O12CE_DATA,
   O12ceOpportunity,
+  teardownMigRecords,
 } from '@helpers/o12ce-main-business.helper';
 
 /**
@@ -55,7 +56,8 @@ import {
  *   npx playwright test --grep "CRM-12325_2\.2\.1:" --project=chromium
  */
 
-const SKIP_CLEANUP_OPP = true; // true = skip teardown-delete (O12 CE convention: keep created records)
+const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
+// Set true ONLY to keep a broken chain for hand-debugging - the 16:00 leftover-data check then reports it.
 
 test.describe('CRM-12325_2.2.1 - O12 CE smoke: create a CRM Opportunity', () => {
 
@@ -76,7 +78,7 @@ test.describe('CRM-12325_2.2.1 - O12 CE smoke: create a CRM Opportunity', () => 
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
-    console.log(`Teardown: SKIP_CLEANUP_OPP=${SKIP_CLEANUP_OPP} - the created Opportunity is kept on O12 CE`);
+    await teardownMigRecords(page, SKIP_CLEANUP_OPP);
   });
 
   test('CRM-12325_2.2.1: Verify a CRM Opportunity can be created on the O12 CE Migration server', async ({ page }, testInfo) => {

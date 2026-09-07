@@ -1,6 +1,6 @@
 import { Browser, BrowserContext, Page, TestInfo, test, expect } from '@playwright/test';
 import { OpportunityPage, DealElementPage, QuotationPage, InvoicePage, LicensePage } from '@pages';
-import { LoginPageMig, HomePageMig } from '@pages/mig';
+import { LoginPageMig, HomePageMig, MigPlatformPage } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
 import { CommonUtils } from '@helpers/common.utils';
 
@@ -83,6 +83,10 @@ export async function loginToO12CE(
   page: Page,
   account: O12ceAccount = users.admin_crm_mig
 ): Promise<void> {
+  // Every spec in this suite starts here, so this is the one chokepoint where the per-test
+  // cleanup ledger can be emptied - a worker reused across tests must not inherit the previous
+  // test's records and try to delete them twice.
+  resetMigCreatedRecords();
   await test.step(`Step 1: Use the account of ${account.displayName} to login successful (O12 CE Migration server)`, async () => {
     const loginPage = new LoginPageMig(page);
     console.log('\n--- Step 1: Login to the O12 CE Migration server ---');
@@ -251,6 +255,7 @@ export async function createOpportunityOnO12CE(page: Page, tcId: string): Promis
     await opportunityPage.saveAndWaitForCompletion();
     result.oppUrl = page.url();
     result.oppId = await opportunityPage.waitForIdInUrlAndExtract(CommonUtils.waitTimes.savingPage);
+    registerMigRecordFromUrl(result.oppUrl, `Opportunity ${tcId}`, 'crm.lead');
     console.log(`  Opp URL : ${result.oppUrl}`);
     console.log(`  Opp id  : ${result.oppId}`);
     expect(
@@ -387,6 +392,9 @@ export async function pressNewQuotationOnO12CE(page: Page): Promise<O12ceQuotati
   outcome.quotationId = quotationId;
   console.log(`  Deal Element record id : ${dealElementId || '(none)'}`);
   console.log(`  Record id after click  : ${quotationId || '(unchanged)'}`);
+  // Both the Deal Element and the Quotation are sale.order records created by this run.
+  registerMigRecord('sale.order', dealElementId, 'Deal Element');
+  registerMigRecord('sale.order', quotationId, 'Quotation');
 
   if (outcome.navigated) {
     await quotationPage.waitForFormView(CommonUtils.waitTimes.savingPage);
@@ -463,6 +471,7 @@ export async function bringQuotationToPendingApprovalOnO12CE(page: Page): Promis
   }
 
   outcome.quotationUrl = page.url();
+  registerMigRecordFromUrl(outcome.quotationUrl, 'Quotation (pending approval)', 'sale.order');
   console.log(`  Status               : "${outcome.status}"`);
   console.log(`  "TO APPROVE" pressed : ${outcome.toApprovePressed}`);
   console.log(`  Quotation URL        : ${outcome.quotationUrl}`);
@@ -529,6 +538,7 @@ export async function createInvoiceOnO12CE(
     console.log('\n--- Press CREATE AND VIEW INVOICES ---');
     elapsedMs = await invoicePage.clickCreateAndViewInvoices();
     invoiceUrl = page.url();
+    registerMigRecordFromUrl(invoiceUrl, 'Invoice', 'account.invoice');
     invoiceNumber = await invoicePage.getInvoiceNumber(CommonUtils.waitTimes.abnormalWait).catch(() => '');
     status = await invoicePage.getInvoiceStatus(CommonUtils.waitTimes.abnormalWait).catch(() => '');
     console.log(`  Elapsed        : ${(elapsedMs / 1000).toFixed(2)}s`);
@@ -555,6 +565,8 @@ export async function openLicenseFromInvoiceOnO12CE(page: Page): Promise<{ licen
     await invoicePage.clickCreateLicense(CommonUtils.waitTimes.savingPage);
     await licensePage.waitForPageLoad(CommonUtils.waitTimes.savingPage);
     licenseUrl = page.url();
+    // Model comes from the URL hash - the license model name is not hardcoded anywhere else here.
+    registerMigRecordFromUrl(licenseUrl, 'License');
     console.log(`  License form URL : ${licenseUrl}`);
   });
 
@@ -583,4 +595,157 @@ export async function validateInvoiceOnO12CE(page: Page): Promise<{ status: stri
     console.log(`  Invoice number               : "${invoiceNumber}"`);
   });
   return { status, invoiceNumber };
+}
+
+/* ===========================================================================
+ * Teardown - house rule "CRM Migration server needs to clean up test data"
+ *
+ * crm-mig is a shared migration/QA box: every record this chain creates
+ * (Opportunity -> Deal Element -> Quotation -> Sale Order -> Invoice -> License)
+ * has to go away again, or the migration counts and the next tester's
+ * reproduction both drift. The chain functions above REGISTER what they create;
+ * `cleanupMigRecordsOnO12CE` deletes it, newest first.
+ *
+ * Deletion goes through the authenticated web-client RPC (`MigPlatformPage.callKw`)
+ * rather than the UI: it is deterministic, needs no navigation, and still works
+ * from an `afterEach` where the page may be parked on any screen.
+ *
+ * `SKIP_CLEANUP_MIG=1` turns the deletion off (for debugging a failed chain by
+ * hand). It logs the ids it did NOT delete, so the 16:00 leftover-data check
+ * (ci/crm_mig_cleanup_check) reports something explainable rather than a mystery.
+ * =========================================================================== */
+
+/** One record created on crm-mig by the current test, to be deleted on teardown. */
+export interface MigCreatedRecord {
+  model: string;
+  id: number;
+  /** Human label for the log line ("Invoice", "Deal Element", ...). */
+  label: string;
+}
+
+/** Registration ledger for the CURRENT test - emptied by `loginToO12CE`. */
+const migCreated: MigCreatedRecord[] = [];
+
+/** Drop every registration (called at login, i.e. once per test). */
+export function resetMigCreatedRecords(): void {
+  migCreated.length = 0;
+}
+
+/** What is currently queued for deletion (newest last). */
+export function listMigCreatedRecords(): MigCreatedRecord[] {
+  return [...migCreated];
+}
+
+/** Queue one record for deletion. Ignores empty ids and duplicates. */
+export function registerMigRecord(model: string, id: number | string, label: string): void {
+  const numericId = Number(id);
+  if (!model || !Number.isInteger(numericId) || numericId <= 0) return;
+  if (migCreated.some((r) => r.model === model && r.id === numericId)) return;
+  migCreated.push({ model, id: numericId, label });
+  console.log(`  [mig-cleanup] registered ${model}#${numericId} (${label})`);
+}
+
+/**
+ * Queue the record a saved-form URL points at. The model comes from the URL hash
+ * (`#id=123&model=sale.order&...`) unless `modelHint` is given - the license form is the case
+ * where only the URL knows the model name.
+ */
+export function registerMigRecordFromUrl(url: string, label: string, modelHint?: string): void {
+  const id = (url.match(/[?#&]id=(\d+)/) || [])[1];
+  const model = modelHint || (url.match(/[?#&]model=([\w.]+)/) || [])[1];
+  if (!id || !model) {
+    console.log(`  [mig-cleanup] NOT registered (${label}) - no id/model in URL: ${url}`);
+    return;
+  }
+  registerMigRecord(model, id, label);
+}
+
+/** Models Odoo 12 refuses to unlink outside draft/cancel, and the action that gets them there. */
+const CANCEL_BEFORE_UNLINK: Record<string, { action: string; deletableStates: string[] }> = {
+  // account.invoice.unlink() raises unless the invoice is draft or cancelled.
+  'account.invoice': { action: 'action_invoice_cancel', deletableStates: ['draft', 'cancel'] },
+  // sale.order.unlink() raises unless the order is draft or cancelled ('sent' included).
+  'sale.order': { action: 'action_cancel', deletableStates: ['draft', 'cancel'] },
+};
+
+/**
+ * Delete everything the chain registered on crm-mig, newest first (License -> Invoice ->
+ * Quotation/Sale Order -> Deal Element -> Opportunity), so a child never blocks its parent.
+ *
+ * Never throws: a teardown failure must not overwrite the test's real verdict. It logs a
+ * "TEARDOWN INCOMPLETE" block naming every record it could not remove and returns them, so a
+ * caller can assert on it if it wants to, and the 16:00 check has something to match against.
+ */
+export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRecord[]> {
+  const queued = [...migCreated].reverse();
+  if (queued.length === 0) return [];
+
+  if (process.env.SKIP_CLEANUP_MIG === '1') {
+    console.log(
+      `\n[mig-cleanup] SKIPPED by SKIP_CLEANUP_MIG=1 - ${queued.length} record(s) LEFT on crm-mig:\n` +
+      queued.map((r) => `  kept ${r.model}#${r.id} (${r.label})`).join('\n'),
+    );
+    resetMigCreatedRecords();
+    return [];
+  }
+
+  console.log(`\n[mig-cleanup] deleting ${queued.length} record(s) created on crm-mig`);
+  const platform = new MigPlatformPage(page);
+  const failed: MigCreatedRecord[] = [];
+
+  for (const record of queued) {
+    try {
+      const needsCancel = CANCEL_BEFORE_UNLINK[record.model];
+      if (needsCancel) {
+        const [row] = await platform.callKw<Array<{ state?: string }>>(
+          record.model, 'read', [[record.id], ['state']],
+        );
+        const state = row?.state ?? '';
+        if (state && !needsCancel.deletableStates.includes(state)) {
+          await platform.callKw(record.model, needsCancel.action, [[record.id]]);
+          console.log(`  cancelled ${record.model}#${record.id} (was "${state}")`);
+        }
+      }
+      await platform.callKw(record.model, 'unlink', [[record.id]]);
+      console.log(`  deleted   ${record.model}#${record.id} (${record.label})`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.log(`  FAILED    ${record.model}#${record.id} (${record.label}) - ${msg}`);
+      failed.push(record);
+    }
+  }
+
+  if (failed.length > 0) {
+    console.log(
+      `\n[mig-cleanup] TEARDOWN INCOMPLETE - ${failed.length} record(s) still on crm-mig:\n` +
+      failed.map((r) => `  LEFTOVER ${r.model}#${r.id} (${r.label})`).join('\n') +
+      '\nThe 16:00 leftover-data check will report these - delete them by hand or fix the order above.',
+    );
+  } else {
+    console.log('[mig-cleanup] done - every registered record was deleted');
+  }
+
+  resetMigCreatedRecords();
+  return failed;
+}
+
+/**
+ * The one-liner every section-II spec calls from its `afterEach`.
+ *
+ * `skip` is the spec's own SKIP_CLEANUP_* toggle: false (the default) deletes what the test
+ * created, true keeps it for hand-debugging and says so, so the 16:00 leftover-data check has a
+ * matching explanation instead of an unexplained pile of records.
+ */
+export async function teardownMigRecords(page: Page, skip: boolean): Promise<void> {
+  if (skip) {
+    const kept = listMigCreatedRecords();
+    console.log(
+      `Teardown: cleanup SKIPPED by the spec toggle - ${kept.length} record(s) KEPT on O12 CE ` +
+      '(the 16:00 leftover-data check will report them)' +
+      (kept.length ? '\n' + kept.map((r) => `  kept ${r.model}#${r.id} (${r.label})`).join('\n') : ''),
+    );
+    resetMigCreatedRecords();
+    return;
+  }
+  await cleanupMigRecordsOnO12CE(page);
 }
