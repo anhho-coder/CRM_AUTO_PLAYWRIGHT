@@ -28,6 +28,10 @@ const LOOPS = parseInt(__ENV.LOOPS || '1', 10);
 const GAP_S = parseInt(__ENV.GAP_S || '30', 10);
 const P95_MS = parseInt(__ENV.P95_MS || '20000', 10);
 const RUN_ID = (__ENV.RUN_ID || 'local').replace(/[^A-Za-z0-9_-]/g, '');
+const TEARDOWN_S = (function () {
+  const n = parseInt(__ENV.TEARDOWN_S, 10);
+  return Number.isFinite(n) && n > 0 ? n : 2700;
+})(); // same cleanup ceiling (s) + NaN guard as create-lead-scale (see its note)
 const PREFIX = 'K6PERF-' + RUN_ID + '-';
 
 const MODEL = __ENV.MODEL || 'crm.lead';
@@ -69,7 +73,7 @@ LEVELS.forEach((n, i) => {
 
 export const options = {
   hosts: hostsMap, insecureSkipTLSVerify: true, scenarios: scenarios, thresholds: thresholds,
-  teardownTimeout: '1200s',
+  teardownTimeout: TEARDOWN_S + 's', // override with -e TEARDOWN_S=<seconds>
 };
 
 function login(u) {

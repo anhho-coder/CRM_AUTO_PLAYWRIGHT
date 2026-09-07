@@ -17,6 +17,12 @@ pipeline {
     environment { K6_DIR = 'C:\\tools\\k6'; REPORT_DIR = 'perf\\k6\\report' }
     options { timestamps(); timeout(time: 20, unit: 'MINUTES') }
 
+    // Weekly perf trend (Goal 2 on the Grafana dashboard needs more than one build to plot).
+    // Saturday evening, STAGGERED: two k6 tests running at once would each become the
+    // other's background load on the same pre-prod and every latency number would be junk.
+    // CRM-K6-LeadsList-Read @ 19:20 Sat - ~2min observed (build #2: 94s)
+    triggers { cron('20 19 * * 6') }
+
     stages {
         stage('Checkout') { steps { bat 'git config --global core.longpaths true'; checkout scm } }
 

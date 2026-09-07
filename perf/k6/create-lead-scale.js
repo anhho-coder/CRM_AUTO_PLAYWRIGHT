@@ -37,6 +37,12 @@ const LOOPS = parseInt(__ENV.LOOPS || '1', 10);
 const GAP_S = parseInt(__ENV.GAP_S || '30', 10);
 const P95_MS = parseInt(__ENV.P95_MS || '20000', 10); // 20s: accepted SLA given the intentional sequential assignment cron
 const RUN_ID = (__ENV.RUN_ID || 'local').replace(/[^A-Za-z0-9_-]/g, '');
+const TEARDOWN_S = (function () {
+  const n = parseInt(__ENV.TEARDOWN_S, 10);
+  return Number.isFinite(n) && n > 0 ? n : 2700;
+})(); // cleanup ceiling (s): 190 leads / 8 per batch x ~92s p95 unlink ~= 37min.
+// Guarded: an empty or non-numeric Jenkins TEARDOWN_S would make parseInt NaN and
+// teardownTimeout the invalid string 'NaNs' - the exact class of failure this knob fixes.
 const PREFIX = 'K6PERF-' + RUN_ID + '-';
 
 const hostFor = (u) => u.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
@@ -105,7 +111,10 @@ export const options = {
   // cron locks each new lead while it processes, so unlink blocks until the cron moves past it.
   // Give teardown a wide ceiling and unlink in small batches (see teardown) so cleanup can grind
   // through as the cron drains, instead of timing out and leaving orphans.
-  teardownTimeout: '1200s',
+  // Measured on build #6 (InfluxDB, testid=create-lead-scale): unlink avg 62.7s / p95 92.4s / max 121.1s.
+  // 190 leads at 8 per batch = 24 batches -> ~37min at p95, so the old 1200s cap aborted cleanup at
+  // round 18 (exit 101) even though every load level had PASSed. Override with -e TEARDOWN_S=<seconds>.
+  teardownTimeout: TEARDOWN_S + 's',
 };
 
 // ---- helpers ----

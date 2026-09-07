@@ -13,10 +13,17 @@ pipeline {
         string(name: 'MAP_IP',   defaultValue: '10.220.222.100', description: 'IP the BASE_URL host maps to. Blank to disable.')
         string(name: 'P95_MS',   defaultValue: '20000', description: 'Per-level create() p95 gate in ms.')
         string(name: 'INFLUX_URL', defaultValue: 'http://10.8.81.44:8086/k6', description: 'InfluxDB v1 URL for the Grafana report. Tagged testid=create-contact-scale + build. Blank = do not stream.')
+        string(name: 'TEARDOWN_S', defaultValue: '2700', description: 'Cleanup (k6 teardown) ceiling in seconds. Deleting freshly-created records is slow because the sequential assignment/scoring cron locks each new row: measured unlink avg 62.7s / p95 92.4s / max 121.1s, and 190 records at 8 per batch = 24 batches. The old hard-coded 1200s aborted cleanup mid-way (k6 exit 101) even when every load level PASSed. Raise only together with the pipeline timeout below.')
     }
 
     environment { K6_DIR = 'C:\\tools\\k6'; REPORT_DIR = 'perf\\k6\\report' }
-    options { timestamps(); timeout(time: 45, unit: 'MINUTES') }
+    options { timestamps(); timeout(time: 75, unit: 'MINUTES') }
+
+    // Weekly perf trend (Goal 2 on the Grafana dashboard needs more than one build to plot).
+    // Saturday evening, STAGGERED: two k6 tests running at once would each become the
+    // other's background load on the same pre-prod and every latency number would be junk.
+    // CRM-K6-CreateContact-Scale @ 21:00 Sat - never run yet; 60min budgeted -> ends ~22:00
+    triggers { cron('0 21 * * 6') }
 
     stages {
         stage('Checkout') { steps { bat 'git config --global core.longpaths true'; checkout scm } }
@@ -30,6 +37,7 @@ pipeline {
                     env.EFF_BASE_URL = (params.BASE_URL?.trim()) ?: 'https://pre-production.nakivo.site'
                     env.EFF_MAP_IP   = (params.MAP_IP != null) ? params.MAP_IP.trim() : '10.220.222.100'
                     env.EFF_P95_MS   = (params.P95_MS?.trim()) ?: '20000'
+                    env.EFF_TEARDOWN_S = (params.TEARDOWN_S?.trim()) ?: '2700'
                     env.EFF_RUN_ID   = 'j' + env.BUILD_NUMBER
                     echo "Effective -> LEVELS=${env.EFF_LEVELS} | GAP_S=${env.EFF_GAP_S} | RUN_ID=${env.EFF_RUN_ID} | P95_MS=${env.EFF_P95_MS}"
 
@@ -78,6 +86,7 @@ pipeline {
                             -e LOOPS=%EFF_LOOPS% ^
                             -e GAP_S=%EFF_GAP_S% ^
                             -e P95_MS=%EFF_P95_MS% ^
+                            -e TEARDOWN_S=%EFF_TEARDOWN_S% ^
                             -e RUN_ID=%EFF_RUN_ID% ^
                             -e MODEL=res.partner ^
                             -e VALS_FILE=vals-contact.json ^

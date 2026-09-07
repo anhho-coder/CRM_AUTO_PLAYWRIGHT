@@ -66,3 +66,57 @@ k6 run -e LEVELS=5,10 -e GAP_S=5 perf/k6/create-lead-nosave.js
 Extra env knobs (no-save): `PARTNER_ID` (customer to select in `onchange`; `0`=auto-pick a company),
 `VERIFY_NOSAVE` (`1`=assert nothing persisted, default). Jenkins: **Pipeline from SCM**, branch
 `now_code_on_Cursor`, Script Path `perf/Jenkinsfile.k6-create-lead-nosave` — no credentials required.
+
+---
+
+## Cleanup ceiling — `TEARDOWN_S`
+
+Deleting freshly-created records is the slowest part of these jobs, not the load itself: the
+intentional sequential assignment/scoring cron locks each new row, so `unlink` blocks until the
+cron moves past it. Measured on `CRM-K6-CreateLead-Scale` build #6 (InfluxDB,
+`testid=create-lead-scale`, grouped by `rpc`):
+
+| rpc | avg | p95 | max | reqs |
+|---|---|---|---|---|
+| `create` (the measured workload) | 7,360ms | 14,128ms | 15,704ms | 187 |
+| `search` | 682ms | 707ms | 715ms | 19 |
+| **`unlink` (teardown)** | **62,729ms** | **92,387ms** | **121,100ms** | 18 |
+
+190 leads at 8 per batch = 24 batches, so cleanup needs ~37min at p95. The old hard-coded
+`teardownTimeout: '1200s'` aborted it at round 18 → `k6` exit **101** → red build, even though
+every load level had **PASSed**. Now `teardownTimeout` reads `TEARDOWN_S` (default **2700** = 45min)
+and the pipeline `timeout` is **75 MINUTES** so Jenkins does not kill the build first.
+
+- Raise `TEARDOWN_S` only together with the pipeline timeout — a teardown ceiling above the pipeline
+  timeout just swaps a k6 timeout for a Jenkins abort.
+- Applies to `create-lead-scale.js` and `create-record-scale.js` (contact/opp).
+- The knob is guarded: an empty, non-numeric or non-positive `TEARDOWN_S` falls back to 2700
+  rather than producing the invalid duration `'NaNs'` (the Jenkins param is a free-text string).
+- A red build here can mean *cleanup* failed while the perf result passed. Read the
+  `=== k6 ... Scaling Report ===` verdict before treating it as a perf regression.
+
+## Weekly schedule (Saturday evening)
+
+Declared in each Jenkinsfile as `triggers { cron(...) }` — version-controlled, no Jenkins UI edit.
+A declarative trigger only registers **after Jenkins has run that pipeline once** to read the new
+Jenkinsfile, so each job needs one manual build after this change before its cron is live.
+
+| Sat | Job | Jenkinsfile | Budget |
+|---|---|---|---|
+| 19:00 | CRM-K6-Login-Scale | `Jenkinsfile.k6-scale` | ~3min |
+| 19:10 | CRM-K6-Login-LoadTest | `Jenkinsfile.k6-login` | ~1min |
+| 19:20 | CRM-K6-LeadsList-Read | `Jenkinsfile.k6-leads-list` | ~2min |
+| 19:30 | CRM-K6-SalesReport-Read | `Jenkinsfile.k6-sales-report` | ~3min |
+| 19:40 | CRM-K6-CreateLead-NoSave | `Jenkinsfile.k6-create-lead-nosave` | ~2min |
+| 19:50 | CRM-K6-CreateLead-Scale | `Jenkinsfile.k6-create-lead` | ~3min load + up to 45min cleanup |
+| 21:00 | CRM-K6-CreateContact-Scale | `Jenkinsfile.k6-create-contact` | 60min budgeted |
+| 22:10 | CRM-K6-CreateOpp-Scale | `Jenkinsfile.k6-create-opp` | 60min budgeted |
+
+**Why staggered and not all at 19:00** — two k6 tests running at once against the same pre-prod each
+become the other's background load, and every latency number in both reports is invalid.
+`CRM-K6-Monitoring-Deploy` is deliberately left with **no** trigger: it installs the
+InfluxDB/Grafana services and must stay manual.
+
+Each run needs the **VPN route to pre-prod up on the Jenkins agent** — the `Route pre-check` stage
+fails the build when `10.220.222.100:443` is unreachable, so a red Saturday build may simply mean
+the route was down.

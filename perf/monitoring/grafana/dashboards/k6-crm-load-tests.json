@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -17,251 +20,624 @@
   "graphTooltip": 1,
   "links": [],
   "liveNow": false,
-  "refresh": "",
-  "schemaVersion": 39,
-  "tags": ["k6", "crm", "load-test"],
-  "templating": {
-    "list": [
-      {
-        "name": "testid",
-        "label": "Test",
-        "type": "query",
-        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"testid\"",
-        "refresh": 1,
-        "sort": 1,
-        "includeAll": true,
-        "allValue": ".*",
-        "multi": true,
-        "current": { "text": ["All"], "value": ["$__all"] }
-      },
-      {
-        "name": "build",
-        "label": "Build",
-        "type": "query",
-        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"build\" WHERE \"testid\" =~ /^$testid$/",
-        "refresh": 2,
-        "sort": 4,
-        "includeAll": true,
-        "allValue": ".*",
-        "multi": true,
-        "current": { "text": ["All"], "value": ["$__all"] }
-      },
-      {
-        "name": "level",
-        "label": "Concurrency",
-        "type": "query",
-        "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"level\" WHERE \"testid\" =~ /^$testid$/",
-        "refresh": 2,
-        "sort": 3,
-        "includeAll": true,
-        "allValue": ".+",
-        "multi": true,
-        "current": {}
-      }
-    ]
-  },
-  "time": { "from": "now-7d", "to": "now" },
-  "timepicker": {},
-  "timezone": "",
-  "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
-  "uid": "k6-crm-load",
-  "version": 5,
   "panels": [
     {
-      "id": 1,
-      "type": "timeseries",
-      "title": "Goal 1 - p95 by concurrency - $testid (build $build)",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
       "description": "How latency (p95) scales as concurrent users go 10 -> 30 -> 50 -> 100. One panel per test (repeats over $testid), each auto-scaled. Teardown/cleanup requests (no level tag) are excluded.",
-      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-      "repeat": "testid",
-      "repeatDirection": "h",
-      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 0 },
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
-          "custom": { "drawStyle": "bars", "fillOpacity": 40, "lineWidth": 1, "barAlignment": 0 }
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "lineWidth": 1
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean"], "sortBy": "Max", "sortDesc": false },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(none)",
-          "rawQuery": true,
-          "resultFormat": "time_series",
-          "alias": "$tag_level users"
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max",
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "sortBy": "Max",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
-      ]
-    },
-    {
-      "id": 4,
-      "type": "table",
-      "title": "Error rate by concurrency - $testid (build $build)",
-      "description": "http_req_failed averaged per level -> % of failed HTTP requests at each concurrency. Should stay ~0%. One panel per test.",
-      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      },
       "repeat": "testid",
       "repeatDirection": "h",
-      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "alias": "$tag_level users",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(none)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "title": "Goal 1 - p95 by concurrency - $testid (build $build)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
+      "description": "http_req_failed averaged per level -> % of failed HTTP requests at each concurrency. Should stay ~0%. One panel per test.",
       "fieldConfig": {
-        "defaults": { "unit": "percent" },
+        "defaults": {
+          "unit": "percent"
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "level" },
-            "properties": [{ "id": "unit", "value": "short" }, { "id": "custom.width", "value": 120 }]
+            "matcher": {
+              "id": "byName",
+              "options": "level"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              },
+              {
+                "id": "custom.width",
+                "value": 120
+              }
+            ]
           }
         ]
       },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 4,
       "options": {
         "showHeader": true,
-        "sortBy": [{ "displayName": "level", "desc": false }]
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "level"
+          }
+        ]
       },
-      "transformations": [
-        { "id": "convertFieldType", "options": { "fields": {}, "conversions": [{ "targetField": "level", "destinationType": "number" }] } }
-      ],
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT mean(\"value\") * 100 AS \"error_pct\" FROM \"http_req_failed\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\"",
-          "rawQuery": true,
-          "resultFormat": "table"
-        }
-      ]
-    },
-    {
-      "id": 2,
-      "type": "timeseries",
-      "title": "Goal 2 - p95 trend across builds - $testid",
-      "description": "Each cluster of points = one build/run over calendar time (time order = build order). Rising over time = regression vs the earlier baseline. Widen the time range (top-right) to see more history. One panel per test (auto-scaled).",
-      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
       "repeat": "testid",
       "repeatDirection": "h",
-      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT mean(\"value\") * 100 AS \"error_pct\" FROM \"http_req_failed\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\"",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "table"
+        }
+      ],
+      "title": "Error rate by concurrency - $testid (build $build)",
+      "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "level"
+              }
+            ],
+            "fields": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
+      "description": "Each cluster of points = one build/run over calendar time (time order = build order). Rising over time = regression vs the earlier baseline. Widen the time range (top-right) to see more history. One panel per test (auto-scaled).",
       "fieldConfig": {
         "defaults": {
-          "unit": "ms",
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
-            "points": "always",
             "pointSize": 6,
+            "points": "always",
             "spanNulls": false,
-            "thresholdsStyle": { "mode": "line+area" }
+            "thresholdsStyle": {
+              "mode": "line+area"
+            }
           },
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "red", "value": 5000 }
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 5000
+              }
             ]
-          }
+          },
+          "unit": "ms"
         },
         "overrides": []
       },
-      "options": {
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max", "mean", "last"], "sortBy": "Max", "sortDesc": false },
-        "tooltip": { "mode": "multi", "sort": "desc" }
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
       },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(null)",
-          "rawQuery": true,
-          "resultFormat": "time_series",
-          "alias": "$tag_level users"
+      "id": 2,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max",
+            "mean",
+            "last"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "sortBy": "Max",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
         }
-      ]
-    },
-    {
-      "id": 3,
-      "type": "table",
-      "title": "Goal 3 - Bottleneck: measured requests by operation - $testid (build $build)",
-      "description": "MEASURED in-test requests only, by concurrency level and operation (step=get/post for login; rpc=create for create-lead), sorted by p95 desc so the slowest measured op is on top. Teardown cleanup (unlink/search, no concurrency level) is excluded here and shown separately in the lock-contention evidence panel below. One panel per test.",
-      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
+      },
       "repeat": "testid",
       "repeatDirection": "h",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 18 },
+      "targets": [
+        {
+          "alias": "$tag_level users",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT percentile(\"value\", 95) FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY time($__interval), \"level\" fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "title": "Goal 2 - p95 trend across builds - $testid",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
+      "description": "MEASURED in-test requests only, by concurrency level and operation (step=get/post for login; rpc=create for create-lead), sorted by p95 desc so the slowest measured op is on top. Teardown cleanup (unlink/search, no concurrency level) is excluded here and shown separately in the lock-contention evidence panel below. One panel per test.",
       "fieldConfig": {
-        "defaults": { "unit": "ms", "custom": { "align": "auto" } },
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          },
+          "unit": "ms"
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "reqs" },
-            "properties": [{ "id": "unit", "value": "short" }]
-          },
-          {
-            "matcher": { "id": "byRegexp", "options": "/level|step|rpc|name/" },
-            "properties": [{ "id": "unit", "value": "string" }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "p95_ms" },
+            "matcher": {
+              "id": "byName",
+              "options": "reqs"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } },
-              { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 2000 }, { "color": "red", "value": 5000 }] } }
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/level|step|rpc|name/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "string"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p95_ms"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 2000
+                    },
+                    {
+                      "color": "red",
+                      "value": 5000
+                    }
+                  ]
+                }
+              }
             ]
           }
         ]
       },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 3,
       "options": {
         "showHeader": true,
-        "sortBy": [{ "displayName": "level", "desc": false }]
-      },
-      "transformations": [
-        { "id": "convertFieldType", "options": { "fields": {}, "conversions": [{ "targetField": "level", "destinationType": "number" }] } }
-      ],
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\", \"step\", \"rpc\"",
-          "rawQuery": true,
-          "resultFormat": "table"
-        }
-      ]
-    },
-    {
-      "id": 6,
-      "type": "table",
-      "title": "Teardown lock-contention evidence - delete vs read on the SAME new leads (create-lead)",
-      "description": "NOT part of the measured load. During cleanup the test deletes the leads it just created. On identical rows a read (search) returns in under 1 s, but a delete (unlink) blocks up to ~2 min -> the new leads are lock-held by the assignment/scoring cron. This delete/read gap is the fingerprint of the create() serialization behind Goal 1 and Goal 3.",
-      "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
-      "fieldConfig": {
-        "defaults": { "unit": "ms", "custom": { "align": "auto" } },
-        "overrides": [
-          { "matcher": { "id": "byName", "options": "reqs" }, "properties": [{ "id": "unit", "value": "short" }] },
-          { "matcher": { "id": "byName", "options": "rpc" }, "properties": [{ "id": "unit", "value": "string" }, { "id": "displayName", "value": "operation" }] },
-          { "matcher": { "id": "byName", "options": "max_ms" }, "properties": [{ "id": "custom.cellOptions", "value": { "type": "color-background", "mode": "gradient" } }, { "id": "thresholds", "value": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 5000 }, { "color": "red", "value": 30000 }] } }] }
+        "sortBy": [
+          {
+            "desc": false,
+            "displayName": "level"
+          }
         ]
       },
-      "options": { "showHeader": true, "sortBy": [{ "displayName": "max_ms", "desc": true }] },
+      "repeat": "testid",
+      "repeatDirection": "h",
       "targets": [
         {
-          "refId": "A",
-          "datasource": { "type": "influxdb", "uid": "influxdb-k6" },
-          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" = 'create-lead-scale' AND (\"rpc\" = 'unlink' OR \"rpc\" = 'search') AND $timeFilter GROUP BY \"rpc\"",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" =~ /^$testid$/ AND \"build\" =~ /^$build$/ AND \"level\" =~ /^($level)$/ AND $timeFilter GROUP BY \"level\", \"step\", \"rpc\"",
           "rawQuery": true,
+          "refId": "A",
           "resultFormat": "table"
         }
-      ]
+      ],
+      "title": "Goal 3 - Bottleneck: measured requests by operation - $testid (build $build)",
+      "transformations": [
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "level"
+              }
+            ],
+            "fields": {}
+          }
+        }
+      ],
+      "type": "table"
     },
     {
-      "id": 5,
-      "type": "text",
-      "title": "Bottleneck diagnosis - risk / cause / evidence",
-      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
+      "description": "NOT part of the measured load. During cleanup the test deletes the leads it just created. On identical rows a read (search) returns in under 1 s, but a delete (unlink) blocks up to ~2 min -> the new leads are lock-held by the assignment/scoring cron. This delete/read gap is the fingerprint of the create() serialization behind Goal 1 and Goal 3.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          },
+          "unit": "ms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "reqs"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "short"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rpc"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "string"
+              },
+              {
+                "id": "displayName",
+                "value": "operation"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "max_ms"
+            },
+            "properties": [
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "mode": "gradient",
+                  "type": "color-background"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "orange",
+                      "value": 5000
+                    },
+                    {
+                      "color": "red",
+                      "value": 30000
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 28
+      },
+      "id": 6,
       "options": {
-        "mode": "markdown",
-        "content": "### Create-lead - the bottleneck  (latency / scaling risk, 0 failures)\n- **Risk** - create() p95 = **15.1 s** at 100 concurrent users (**75%** of the 20 s gate); scales **~5.5x** from 10 -> 100 users, so ~130-140 concurrent creates would breach the gate. Lead intake is the first thing to buckle under a spike.\n- **Cause** - create() is **serialized**, not compute-bound: latency grows with *concurrency* (requests queue), not payload - the signature of a shared serial resource (Odoo's synchronous lead assignment / scoring + row locks on each new lead).\n- **Evidence** - on the *same* new leads, a `search` returns in **0.68 s** avg but a `delete` (`unlink`) **blocks up to 121 s** (avg **62.7 s**, p95 **92 s**). Fast read + stalled write on identical rows = they are **lock-held by the assignment cron** - the same contention that inflates create() under load. (Deletes are cleanup-only, so they never fail the test - but they are the clearest fingerprint of the lock.)\n\n### Login - healthy\np95 stays **< 1 s** even at 100 users and scales **sub-linearly** (2.2x for a 10x user increase). Heavier half is the initial `GET /web/login` CSRF page (p95 1.14 s) vs the auth `POST` (0.95 s) - a static-asset detail, not a scaling concern.\n\n_Baseline: login #2, create-lead #6. All requests succeeded - this is a latency/scaling risk, not a functional defect. Watch create() p95 @ 100u build-over-build._"
-      }
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "max_ms"
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT mean(\"value\") AS \"avg_ms\", percentile(\"value\", 95) AS \"p95_ms\", max(\"value\") AS \"max_ms\", count(\"value\") AS \"reqs\" FROM \"http_req_duration\" WHERE \"testid\" = 'create-lead-scale' AND (\"rpc\" = 'unlink' OR \"rpc\" = 'search') AND $timeFilter GROUP BY \"rpc\"",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "table"
+        }
+      ],
+      "title": "Teardown lock-contention evidence - delete vs read on the SAME new leads (create-lead)",
+      "type": "table"
+    },
+    {
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 36
+      },
+      "id": 5,
+      "options": {
+        "content": "### Create-lead - the bottleneck  (latency / scaling risk, 0 failures)\n- **Risk** - create() p95 = **15.1 s** at 100 concurrent users (**75%** of the 20 s gate); scales **~5.5x** from 10 -> 100 users, so ~130-140 concurrent creates would breach the gate. Lead intake is the first thing to buckle under a spike.\n- **Cause** - create() is **serialized**, not compute-bound: latency grows with *concurrency* (requests queue), not payload - the signature of a shared serial resource (Odoo's synchronous lead assignment / scoring + row locks on each new lead).\n- **Evidence** - on the *same* new leads, a `search` returns in **0.68 s** avg but a `delete` (`unlink`) **blocks up to 121 s** (avg **62.7 s**, p95 **92 s**). Fast read + stalled write on identical rows = they are **lock-held by the assignment cron** - the same contention that inflates create() under load. (Deletes are cleanup-only, so they never fail the test - but they are the clearest fingerprint of the lock.)\n\n### Login - healthy\np95 stays **< 1 s** even at 100 users and scales **sub-linearly** (2.2x for a 10x user increase). Heavier half is the initial `GET /web/login` CSRF page (p95 1.14 s) vs the auth `POST` (0.95 s) - a static-asset detail, not a scaling concern.\n\n_Baseline: login #2, create-lead #6. All requests succeeded - this is a latency/scaling risk, not a functional defect. Watch create() p95 @ 100u build-over-build._",
+        "mode": "markdown"
+      },
+      "title": "Bottleneck diagnosis - risk / cause / evidence",
+      "type": "text"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "id": 7,
+      "title": "Track B - Playwright single-user timing (pw_perf)",
+      "type": "row"
+    },
+    {
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb-k6"
+      },
+      "description": "Single-user E2E timing of the guarded sales-chain actions (deal element, quotation, invoice, license...) measured by the 1.SalesReport_Performance Playwright specs and streamed to pw_perf.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "lineWidth": 1
+          },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "id": 8,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max",
+            "mean"
+          ],
+          "displayMode": "table",
+          "placement": "right",
+          "sortBy": "Max",
+          "sortDesc": false
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "alias": "$tag_testid",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb-k6"
+          },
+          "query": "SELECT mean(\"duration_s\") FROM \"pw_perf\" WHERE $timeFilter GROUP BY time($__interval), \"testid\" fill(none)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        }
+      ],
+      "title": "Single-user action timing (s) by feature - Playwright (pw_perf)",
+      "type": "timeseries"
     }
-  ]
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "k6",
+    "crm",
+    "load-test"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-k6"
+        },
+        "includeAll": true,
+        "label": "Test",
+        "multi": true,
+        "name": "testid",
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"testid\"",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": ".*",
+        "current": {
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-k6"
+        },
+        "includeAll": true,
+        "label": "Build",
+        "multi": true,
+        "name": "build",
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"build\" WHERE \"testid\" =~ /^$testid$/",
+        "refresh": 2,
+        "sort": 4,
+        "type": "query"
+      },
+      {
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "influxdb",
+          "uid": "influxdb-k6"
+        },
+        "includeAll": true,
+        "label": "Concurrency",
+        "multi": true,
+        "name": "level",
+        "query": "SHOW TAG VALUES FROM \"http_req_duration\" WITH KEY = \"level\" WHERE \"testid\" =~ /^$testid$/",
+        "refresh": 2,
+        "sort": 3,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-90d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "k6 CRM Load Tests - Latency, Build Trend & Bottlenecks",
+  "uid": "k6-crm-load",
+  "version": 0
 }

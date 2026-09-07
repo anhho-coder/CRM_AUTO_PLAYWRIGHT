@@ -25,6 +25,12 @@ pipeline {
         timeout(time: 25, unit: 'MINUTES')
     }
 
+    // Weekly perf trend (Goal 2 on the Grafana dashboard needs more than one build to plot).
+    // Saturday evening, STAGGERED: two k6 tests running at once would each become the
+    // other's background load on the same pre-prod and every latency number would be junk.
+    // CRM-K6-Login-Scale @ 19:00 Sat - ~3min observed (build #3: 174s)
+    triggers { cron('0 19 * * 6') }
+
     stages {
         stage('Checkout') {
             steps {
