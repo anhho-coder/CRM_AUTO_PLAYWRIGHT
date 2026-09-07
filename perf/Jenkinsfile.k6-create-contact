@@ -6,7 +6,7 @@ pipeline {
     agent any
 
     parameters {
-        string(name: 'LEVELS',   defaultValue: '10,30,50,100', description: 'Comma list of concurrency levels (simultaneous users), in order.')
+        string(name: 'LEVELS',   defaultValue: '10,30,50', description: 'Comma list of concurrency levels (simultaneous users), in order. Deliberately one level SHORTER than the create-lead/create-opp siblings: deleting res.partner is the slowest cleanup of the three (measured build #2: unlink avg 124s per batch of 8, vs 91s for crm.lead), so 190 records need ~2976s and overran the 2700s TEARDOWN_S ceiling - the load levels all PASSed and the build still went red, leaving ~22 orphan contacts. 90 records need ~12 batches (~25min), which fits. Add 100 back only together with a larger TEARDOWN_S AND a larger pipeline timeout.')
         string(name: 'LOOPS',    defaultValue: '1',    description: 'Contacts created per user per level.')
         string(name: 'GAP_S',    defaultValue: '30',   description: 'Seconds between bursts (server recovery).')
         string(name: 'BASE_URL', defaultValue: 'https://pre-production.nakivo.site', description: 'Pre-prod base URL (HTTPS).')
@@ -31,7 +31,7 @@ pipeline {
         stage('Resolve config') {
             steps {
                 script {
-                    env.EFF_LEVELS   = (params.LEVELS?.trim()) ?: '10,30,50,100'
+                    env.EFF_LEVELS   = (params.LEVELS?.trim()) ?: '10,30,50'   // see the LEVELS param note: res.partner cleanup cannot finish 190 records
                     env.EFF_LOOPS    = (params.LOOPS?.trim()) ?: '1'
                     env.EFF_GAP_S    = (params.GAP_S?.trim()) ?: '30'
                     env.EFF_BASE_URL = (params.BASE_URL?.trim()) ?: 'https://pre-production.nakivo.site'

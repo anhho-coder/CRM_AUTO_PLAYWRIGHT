@@ -92,6 +92,25 @@ and the pipeline `timeout` is **75 MINUTES** so Jenkins does not kill the build 
 - Applies to `create-lead-scale.js` and `create-record-scale.js` (contact/opp).
 - The knob is guarded: an empty, non-numeric or non-positive `TEARDOWN_S` falls back to 2700
   rather than producing the invalid duration `'NaNs'` (the Jenkins param is a free-text string).
+
+**Cleanup speed differs per model, so the levels do too.** Measured 2026-09-07, `unlink` per
+batch of 8: `crm.lead` ~91s, `res.partner` ~**124s**. At 190 records that is ~25 batches for
+lead/opportunity (both finished, `remaining=0`) but ~2976s for contacts - over the 2700s
+ceiling. `CRM-K6-CreateContact-Scale` #2 therefore reported `Verdict: ALL PASS` for every load
+level and still went red on `teardown() execution timed out`, leaving ~22 orphan
+`K6PERF-j2-*` contacts behind. That job now defaults to `LEVELS=10,30,50` (90 records,
+~12 batches, ~25min) instead of adding a fourth level. Contacts are the *fastest* to create
+(p95 6,727ms at 100 users vs ~15,100ms for lead/opp) - the constraint is purely deletion.
+
+| Job | records | levels | cleanup batches | fits 2700s |
+|---|---|---|---|---|
+| CreateLead-Scale | 190 | 10,30,50,100 | 25 @ ~91s = ~2280s | yes |
+| CreateOpp-Scale | 190 | 10,30,50,100 | 25 @ ~91s = ~2280s | yes |
+| CreateContact-Scale | 90 | 10,30,50 | ~12 @ ~124s = ~1490s | yes |
+
+If a create-* build ever dies on `teardown() execution timed out`, records are left behind -
+find them with a name filter of `K6PERF-<RUN_ID>-` (RUN_ID is `j<build number>`) and delete
+them, because the next run uses a new RUN_ID and will not clean up the previous one's leftovers.
 - A red build here can mean *cleanup* failed while the perf result passed. Read the
   `=== k6 ... Scaling Report ===` verdict before treating it as a perf regression.
 
