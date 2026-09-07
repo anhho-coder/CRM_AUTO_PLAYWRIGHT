@@ -111,6 +111,19 @@ level and still went red on `teardown() execution timed out`, leaving ~22 orphan
 If a create-* build ever dies on `teardown() execution timed out`, records are left behind -
 find them with a name filter of `K6PERF-<RUN_ID>-` (RUN_ID is `j<build number>`) and delete
 them, because the next run uses a new RUN_ID and will not clean up the previous one's leftovers.
+
+That is not hypothetical: `CreateLead-Scale` #6 (2026-08-04) left **38** `K6PERF-j6-*` leads
+sitting on pre-prod for 34 days, and `CreateContact-Scale` #2 left **14** `K6PERF-j2-*`
+contacts. Both sets were deleted 2026-09-07; #7 and `CreateOpp-Scale` #1 both finished with
+`remaining=0` and left nothing.
+
+**Why each model is slow differs.** For `crm.lead` it really is the assignment/scoring cron
+holding freshly-created rows: the 34-day-old j6 leads deleted in 5 clean batches with no
+timeout at all, while same-day leads needed ~91s per batch. For `res.partner` age makes no
+difference - two-hour-old contacts still took over 90s per batch of 8 - so contact deletion is
+intrinsically slow (cascading related-table checks), not cron-gated. Do not expect a wait or a
+retry to speed contact cleanup up; reduce the record count instead, which is why that job runs
+three levels.
 - A red build here can mean *cleanup* failed while the perf result passed. Read the
   `=== k6 ... Scaling Report ===` verdict before treating it as a perf regression.
 
