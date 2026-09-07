@@ -40,13 +40,47 @@
  *
  * Cost: ranges × (categories + 1) cheap maxResults=0 counts — 7 × 6 = 42 per build,
  * run 8-way concurrent inside JiraClient's retry/backoff. Same profile as
- * sources/bug-by-priority.js.
+ * sources/bug-by-priority.js. Plus one FULL search per range for each category
+ * flagged `listIssues` (currently C — Bug leakage): 7 more, over sets in the tens,
+ * feeding the "Leakage defects list" table at the bottom of the page.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
 const { loadJira, SUPPORT_CLASSIFICATION } = require('../config');
 
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
 const jqlStr = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
+
+// --- Issue-list support (the categories flagged `listIssues`) -----------------
+// Jira's priority NAMES carry the rank ("Blocker (P1)" … ), but sorting on the name
+// would order them alphabetically (Blocker < Critical < Major < Minor happens to be
+// right, Trivial/Undefined are not). Sort on the numeric id Jira gives each priority
+// instead — 1 = P1 … — with unknown/absent priorities pushed to the end.
+const priorityRank = (p) => {
+  const n = Number(p && p.id);
+  return Number.isFinite(n) ? n : 99;
+};
+
+/** Flatten one Jira issue to the fields the table renders. */
+function shapeIssue(it) {
+  const f = (it && it.fields) || {};
+  return {
+    key: it.key,
+    summary: f.summary || '',
+    priority: (f.priority && f.priority.name) || '—',
+    priorityRank: priorityRank(f.priority),
+    reporter: (f.reporter && f.reporter.displayName) || '—',
+    assignee: (f.assignee && f.assignee.displayName) || 'Unassigned',
+    status: (f.status && f.status.name) || '—',
+    resolution: (f.resolution && f.resolution.name) || null, // null => still unresolved
+    // Server-tz day, the same slice the created-by-day metrics use, so a ticket shows
+    // the date it was counted on rather than a viewer-local shift.
+    created: String(f.created || '').slice(0, 10),
+  };
+}
+
+/** Highest priority first, then newest first. */
+const byPriorityThenNewest = (a, b) =>
+  a.priorityRank - b.priorityRank || String(b.created).localeCompare(String(a.created));
 
 /**
  * The date window every query shares. The lower bound is a bare date (= 00:00, already
@@ -85,9 +119,13 @@ function residualJql(cfg, from, to) {
 /**
  * @param ranges  computeRanges(now) — the selectable windows.
  * @returns { label, project, typeField, ticketType, investigationType,
+ *            leakageList,
  *            ranges: { <rangeKey> -> { key, label, from, to,
  *              rows: [{ code, label, expected, bucket, tint, color, note, tickets, jql }],
  *              residual: { code, label, expected, bucket, tickets, jql } | null,
+ *              leakageCode, leakageJql,
+ *              leakageIssues: [{ key, summary, priority, priorityRank, reporter,
+ *                                assignee, status, resolution, created }] | null,
  *              total: { tickets, ticketCount, investigationCount, jql } } } }
  */
 async function collectSupportClassification(ranges) {
@@ -105,6 +143,27 @@ async function collectSupportClassification(ranges) {
     tasks.push({ ri, ci: 'total', jql: totalJql(cfg, range.from, range.to) });
   });
   const results = await mapLimit(tasks, 8, async (t) => ({ ...t, n: await jira.count(t.jql) }));
+
+  // The categories flagged `listIssues` (currently C — Bug leakage) ALSO need the
+  // matching issues, not just the count: that number feeds the team KPI, so the page
+  // lists the tickets behind it. One searchAll per (range × flagged category) — the
+  // sets are small (single/low-double digits), so this stays far cheaper than the
+  // count sweep above. A failure here must NOT lose the counts, so each fetch is
+  // wrapped: on error the range simply carries no list and the table renders empty.
+  const listCats = cfg.categories.filter((c) => c.listIssues);
+  const listTasks = [];
+  rangeList.forEach((range, ri) => listCats.forEach((cat) => {
+    listTasks.push({ ri, code: cat.code, jql: categoryJql(cfg, cat, range.from, range.to) });
+  }));
+  const listResults = await mapLimit(listTasks, 8, async (t) => {
+    try {
+      const issues = await jira.searchAll(t.jql, ['summary', 'priority', 'reporter', 'assignee', 'created', 'status', 'resolution']);
+      return { ...t, issues: issues.map(shapeIssue).sort(byPriorityThenNewest) };
+    } catch (err) {
+      console.error(`[support-classification] issue list for ${t.code} failed: ${err.message || err}`);
+      return { ...t, issues: null };
+    }
+  });
 
   const out = {};
   rangeList.forEach((range, ri) => {
@@ -141,10 +200,16 @@ async function collectSupportClassification(ranges) {
       jql: residualJql(cfg, range.from, range.to),
     } : null;
     const all = residual ? [...rows, residual] : rows;
+    // The per-ticket list behind the flagged category (C — Bug leakage). `null` means
+    // the fetch failed for this range; `[]` means the range genuinely has no leaks.
+    const listed = listResults.find((r) => r.ri === ri);
     out[range.key] = {
       key: range.key, label: range.label, from: range.from, to: range.to,
       rows,
       residual,
+      leakageCode: listCats.length ? listCats[0].code : null,
+      leakageJql: listed ? listed.jql : null,
+      leakageIssues: listed ? listed.issues : null,
       total: {
         tickets: total,
         ticketCount: all.filter((r) => r.bucket === 'ticket').reduce((a, r) => a + r.tickets, 0),
@@ -162,6 +227,7 @@ async function collectSupportClassification(ranges) {
     ticketType: cfg.ticketType,
     investigationType: cfg.investigationType,
     rulesSource: cfg.rulesSource,
+    leakageList: cfg.leakageList || null, // labels/notes for the bottom-of-page table
     ranges: out,
   };
 }

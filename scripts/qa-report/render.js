@@ -1242,6 +1242,65 @@ function supportClassificationSection(sc, def, jiraBase, generatedAt, controls) 
   </section>`;
 }
 
+/* ---------------- Leakage defects list (bottom of the Support page) ---------- */
+// The per-ticket audit trail behind row C of the classification table. Bug leakage
+// feeds the team KPI, so the count must never stand alone — this lists exactly which
+// tickets were counted. Data: supportClassification.ranges[key].leakageIssues
+// (null = the fetch failed for that range; [] = genuinely no leaks). Range-aware like
+// every other block on the page: one .range-block per range, the shared selector
+// switches them, so the table always matches the period shown above it.
+
+/** One range's table. Reuses the .stucktbl style the other issue lists use. */
+function leakageListTable(block, jiraBase, listCfg) {
+  const issues = block.leakageIssues;
+  if (issues === null) {
+    return '<p class="muted">The ticket list could not be read from Jira for this period (the counts above are unaffected).</p>';
+  }
+  if (!issues.length) return `<p class="muted">${esc(listCfg.emptyNote || 'No bug leakage in this period.')}</p>`;
+  const rows = issues.map((it, i) => {
+    const url = `${String(jiraBase || '').replace(/\/+$/, '')}/browse/${encodeURIComponent(it.key)}`;
+    // An unresolved leak is the one a reader should act on, so say "Unresolved"
+    // explicitly rather than leaving the cell blank.
+    const res = it.resolution || 'Unresolved';
+    return `<tr>
+      <td class="num sc-code">${i + 1}</td>
+      <td class="skey"><a href="${esc(url)}" target="_blank" rel="noopener">${esc(it.key)}</a></td>
+      <td class="ssum">${esc(it.summary)}</td>
+      <td class="stype">${esc(it.priority)}</td>
+      <td class="sasg">${esc(it.reporter)}</td>
+      <td class="sasg">${esc(it.status)}</td>
+      <td class="sasg${it.resolution ? '' : ' leak-open'}">${esc(res)}</td>
+      <td class="num">${esc(it.created || '—')}</td>
+    </tr>`;
+  }).join('');
+  const head = `<tr>
+      <th class="num sc-code">#</th><th>Key</th><th>Summary</th><th>Priority</th>
+      <th>Reporter</th><th>Status</th><th>Resolution</th><th class="num">Created</th>
+    </tr>`;
+  return `<div class="stuckwrap"><table class="stucktbl leaktbl"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+}
+
+function leakageListSection(sc, def, jiraBase) {
+  const listCfg = sc.leakageList || {};
+  const ranges = sc.ranges || {};
+  const blocks = METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) => {
+    const r = ranges[k];
+    const n = (r.leakageIssues || []).length;
+    const jqlLink = r.leakageJql
+      ? ` · <a href="${esc(jqlUrl(jiraBase, r.leakageJql))}" target="_blank" rel="noopener">open in Jira</a>`
+      : '';
+    return `<div class="range-block${k === def ? ' is-active' : ''}" data-range="${esc(k)}">
+      <div class="sub muted" style="margin:2px 0 6px">${esc(r.label)} · ${esc(r.from)} → ${esc(r.to)} · <b>${fmt(n)}</b> ticket${n === 1 ? '' : 's'} · ${esc(listCfg.sortNote || '')}${jqlLink}</div>
+      ${leakageListTable(r, jiraBase, listCfg)}
+    </div>`;
+  }).join('\n');
+  return `<section class="metric supportcls leaklist">
+    <h2>${esc(listCfg.label || 'Leakage defects list')} <span class="pill">KPI evidence</span> <span class="muted">· the tickets behind row C (Bug leakage) of the table above</span></h2>
+    ${blocks}
+    <p class="muted frdnote">${esc(listCfg.note || '')}</p>
+  </section>`;
+}
+
 /* -------------------- Automation coverage (Automation · Quarterly) ----------- */
 // A point-in-time donut on the Automation test page's Quarterly KPI view: what share
 // of the whole CRM Post-EA test-case repository is in automation scope. Data (custom
@@ -1844,6 +1903,14 @@ h2{margin:0 0 12px;font-size:17px}
 .supportcls .stucktbl th,.supportcls .stucktbl td{font-size:13.2px}
 .supportcls .stucktbl thead th{color:#111;font-size:11.4px}
 .supportcls .muted{color:#111}
+/* "Leakage defects list" (bottom of the Support page): the ticket-level evidence
+   behind row C. Tinted with the same peach the C row uses, so the eye ties the two
+   together; an unresolved leak's Resolution cell is called out in that red. */
+.leaklist .stucktbl thead th{background:#fbe1d1;border-bottom-color:#e0672c}
+.leaklist .stucktbl td.sc-code{color:#8a6a55;font-weight:700;width:1%}
+.leaklist .stucktbl tbody tr:hover{background:#fff6ef}
+.leaklist .stucktbl td.leak-open{color:#c0392b;font-weight:700}
+.leaklist .stucktbl td.skey a{color:#c05621}
 .sccap{margin:12px 0 2px;font-size:14px;color:#111}
 .sccap-sub{margin-top:2px;font-size:12.2px;color:#2a2140;font-style:italic}
 /* Category pie: slice colours come from the config (inline), so only layout here. The
@@ -2517,9 +2584,14 @@ ${wlDataScript}
   // `controls`) so it is unmistakably the table's, not the chart's above it.
   const supClsControls = Object.keys(supClsRanges).length ? `<div class="sub muted" style="margin:2px 0 2px">Period: ${windowSpans(data.ranges, supClsDef, METRIC_RANGE_ORDER)}</div>
     ${selector(data.ranges, supClsDef)}` : '';
+  // The "Leakage defects list" sits INSIDE the same .rangescope as the classification
+  // table, so the period control in that card drives both — the list at the bottom of
+  // the page always shows the tickets for the period the table above it is counting.
   const supClsBody = Object.keys(supClsRanges).length ? `<div class="rangescope">
     ${withAnchor({ key: 'supportClassification', label: supCls.label },
       supportClassificationSection(supCls, supClsDef, jiraBase, data.generatedAt, supClsControls))}
+    ${withAnchor({ key: 'leakageList', label: (supCls.leakageList && supCls.leakageList.label) || 'Leakage defects list' },
+      leakageListSection(supCls, supClsDef, jiraBase))}
   </div>` : '<p class="muted">No support-ticket classification data available (the Jira source needs a token at collect time).</p>';
   const supportHtml = `${docHead('CRM QA — Support ticket')}
 <div class="hero">
@@ -2549,7 +2621,7 @@ ${wlDataScript}
   </div>
 
   ${supClsBody}
-  <div class="foot">Source: Jira — “Support Ticket created” (Post-EA support tickets the team opened, by reporter) and “Classified Support ticket” (every CRM support ticket created in the range, split by the “Support Ticket Type” field) · regenerated daily · self-contained page.</div>
+  <div class="foot">Source: Jira — “Support Ticket created” (Post-EA support tickets the team opened, by reporter), “Classified Support ticket” (every CRM support ticket created in the range, split by the “Support Ticket Type” field) and “Leakage defects list” (the tickets behind row C, listed per ticket) · regenerated daily · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;

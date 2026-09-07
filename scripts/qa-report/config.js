@@ -587,6 +587,11 @@ const SUPPORT_CLASSIFICATION = {
       note: 'The deliverable was a data or config change: update/create records, create an account, or map missing configuration (a country not mapped, an id not migrated). Also used when the root cause sat outside our code (Odoo core, a third party, mail routing) but the fix we shipped was data/config.' },
     { code: 'C', label: 'Bug leakage',
       expected: 'Leaked Defect', typeValue: 'Leaked Defect', bucket: 'ticket', tint: '#fbe1d1', color: '#e0672c',
+      // ALSO pull the matching issues (not just the count) so the page can list them.
+      // This number feeds the team KPI, so a reader must be able to audit the tickets
+      // behind it without re-running the JQL in Jira — see LEAKAGE_LIST below and the
+      // "Leakage defects list" table at the bottom of the Support ticket page.
+      listIssues: true,
       note: 'A defect a USER reported (the ticket quotes the reporter). A defect the team caught itself — production log sweep, queue.job audit, KPI cross-check, testing with an internal account — is coverage work and belongs in New improvement, NOT here. This number feeds the team KPI, so it is never classified from the title; duplicates are collapsed to one incident first.' },
     { code: 'D', label: 'New improvement',
       expected: 'New Improvement', typeValue: 'New Improvement', bucket: 'ticket', tint: '#fdf2cf', color: '#e6a700',
@@ -606,6 +611,20 @@ const SUPPORT_CLASSIFICATION = {
   totalNote: 'Every support ticket of BOTH issue types created in the period. Counted by its own query, not summed from the rows — so the rows plus “Not classified” always reconcile with this number.',
   // Where the definitions come from, shown in the hover note for provenance.
   rulesSource: 'the team’s confirmed classification rules (27 Aug 2026)',
+  // --- "Leakage defects list" table (bottom of the Support ticket page) -------
+  // The per-ticket audit trail behind row C. Bug leakage feeds the team KPI, so the
+  // number must never stand on its own — a reader opens the page and sees exactly
+  // WHICH tickets were counted, without re-running the JQL in Jira. Driven by the
+  // category flagged `listIssues: true`; the collector attaches the matching issues
+  // to each range as `leakageIssues` (see sources/support-classification.js).
+  leakageList: {
+    label: 'Leakage defects list',
+    // Sorted highest priority first, then newest first — the same order as the
+    // "Leaked defects list" on the Jira Dashboard page, so the two read alike.
+    sortNote: 'highest priority first, then newest first',
+    note: 'Every ticket counted in row C (Bug leakage) for the selected period — the audit trail behind the KPI number. A row here is a defect a USER reported; anything the team caught itself belongs in New improvement. Click a key to open the ticket in Jira.',
+    emptyNote: 'No bug leakage classified in this period. 🎉',
+  },
 };
 
 // --- Report sections (the "Manual test" / "Automation test" tabs) ------------
