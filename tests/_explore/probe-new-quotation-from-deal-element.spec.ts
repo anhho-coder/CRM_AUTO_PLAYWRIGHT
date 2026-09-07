@@ -4,6 +4,11 @@ import { DealElementPage, OpportunityPage, QuotationPage } from '@pages';
 import { LoginPageMig } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
 import { CommonUtils } from '@helpers/common.utils';
+import {
+  registerMigRecord,
+  resetMigCreatedRecords,
+  cleanupMigRecordsOnO12CE,
+} from '@helpers/o12ce-main-business.helper';
 
 /**
  * PROBE (throwaway, not a test case): what does "NEW QUOTATION" do when pressed on an existing
@@ -15,8 +20,15 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 test.describe('PROBE - NEW QUOTATION from the Deal Element screen', () => {
 
+  // House rule "CRM Migration server needs to clean up test data" applies to a throwaway probe too:
+  // pressing NEW QUOTATION creates a real sale.order on the shared crm-mig box.
+  test.afterEach(async ({ page }) => {
+    await cleanupMigRecordsOnO12CE(page);
+  });
+
   test('PROBE_NQ: observe what NEW QUOTATION does on DE020087 (id 194673, total 100)', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
+    resetMigCreatedRecords();
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const loginPage = new LoginPageMig(page);
@@ -60,6 +72,14 @@ test.describe('PROBE - NEW QUOTATION from the Deal Element screen', () => {
       console.log('  clicked NEW QUOTATION');
 
       const idAfter = await dealElementPage.waitForRecordIdChange(idBefore, CommonUtils.waitTimes.savingPage);
+      // Queue ONLY the quotation this probe just created. The Deal Element it was pressed from
+      // (194673) and its Opportunity are MIGRATED PRODUCTION DATA - if the form never switched
+      // records, idAfter is that same Deal Element, and registering it would delete real data.
+      if (idAfter && idAfter !== idBefore) {
+        registerMigRecord('sale.order', idAfter, 'Quotation created by this probe');
+      } else {
+        console.log('  [mig-cleanup] nothing to delete - no new record was created');
+      }
       const elapsed = ((Date.now() - started) / 1000).toFixed(1);
       const errorText = await dealElementPage.getBlockingPopupText().catch(() => '');
       const chatterAfter = (await dealElementPage.getChatterText().catch(() => '')).replace(/\s+/g, ' ').trim();
