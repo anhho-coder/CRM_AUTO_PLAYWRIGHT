@@ -7,76 +7,120 @@ export interface UserCredentials {
   displayName: string;
 }
 
+import * as fs from 'fs';
+import * as path from 'path';
+
+/**
+ * Passwords are NOT kept in this file.
+ *
+ * They live in `config/users.secrets.json`, which is git-ignored, so no credential is ever
+ * committed or pushed. Shape: a flat { "<account key>": "<password>" } map - see
+ * `config/users.secrets.example.json`.
+ *
+ *   local  : copy users.secrets.example.json -> users.secrets.json and fill it in
+ *   Jenkins: the "Secret file" credential `crm-users-secrets` is bound to CRM_SECRETS_FILE
+ *            (see the Jenkinsfile), which overrides the default path below
+ */
+const secretsPath = process.env.CRM_SECRETS_FILE || path.resolve(__dirname, 'users.secrets.json');
+
+let secrets: Record<string, string>;
+try {
+  secrets = JSON.parse(fs.readFileSync(secretsPath, 'utf8')) as Record<string, string>;
+} catch (err) {
+  throw new Error(
+    `Cannot read the credentials file "${secretsPath}". Copy ` +
+    `config/users.secrets.example.json to config/users.secrets.json and fill in the passwords ` +
+    `(that file is git-ignored), or point CRM_SECRETS_FILE at it. Cause: ${(err as Error).message}`
+  );
+}
+
+/** Look a password up by account key; fails loudly rather than logging in with an empty string. */
+const pw = (key: string): string => {
+  const value = secrets[key];
+  if (!value) {
+    throw new Error(`No password for "${key}" in ${secretsPath} - add that key to the file.`);
+  }
+  return value;
+};
+
 export const users = {
   reseller_basic: {
     username: 'Test-Reseller@Reseller-company-automation-basic.com',
-    password: 'Test-Reseller@0123456789012',
+    password: pw('reseller_basic'),
     displayName: 'TEST-Reseller#1_Automation_Basic',
     level: 'Basic',
   },
   reseller_bronze: {
     username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
-    password: 'Test-Reseller@0123456789012',
+    password: pw('reseller_bronze'),
     displayName: 'TEST-Reseller#1_Automation_Test',
     level: 'Bronze',
   },
   reseller_silver: {
     username: 'Test-Reseller@Reseller-company-automation-silver.com',
-    password: 'Test-Reseller@0123456789012',
+    password: pw('reseller_silver'),
     displayName: 'TEST-Reseller#1_Automation_Silver',
     level: 'Silver',
   },
   reseller_gold: {
     username: 'Test-Reseller@Reseller-company-automation-gold.com',
-    password: 'Test-Reseller@0123456789012',
+    password: pw('reseller_gold'),
     displayName: 'TEST-Reseller#1_Automation_Gold',
     level: 'Gold',
   },
   distributor_partner: {
     username: 'Test-Distributor@Distributor-company.com',
-    password: 'Test-Distributor@0123456789012',
+    password: pw('distributor_partner'),
     displayName: 'TEST-Distributor#1_Automation',
     level: 'Distributor',
   },
   msp_partner: {
     username: 'Test-MSP@MSP-company.com',
-    password: 'Test-MSP@0123456789012',
+    password: pw('msp_partner'),
     displayName: 'TEST-MSP#1_Automation',
     level: 'MSP',
   },
   accountance_ic_faye: {
     username: 'faye.nguyen@nakivo.com',
-    password: 'FNUaT@0123456789012',
+    password: pw('accountance_ic_faye'),
     displayName: 'Faye Nguyen',
   },
   accountance_ic_yulia: {
     username: 'yuliya.malihonova@nakivo.com',
-    password: 'YMUaT@0123456789012',
+    password: pw('accountance_ic_yulia'),
     displayName: 'Yulia Malihonova',
   },
   pre_sales_engineer: {
     username: 'nick.luchkov@nakivo.com',
-    password: 'NLUaT@0123456789012',
+    password: pw('pre_sales_engineer'),
     displayName: 'Nick Luchkov',
   },
   sale_ic_thomas: {
     username: 'thomas.semerich@nakivo.com',
-    password: 'TSUaT@123456789012',
+    password: pw('sale_ic_thomas'),
     displayName: 'Thomas Semerich',
   },
   manager_veronika: {
     username: 'veronika@nakivo.com',
-    password: 'VSUaT@123456789012',
+    password: pw('manager_veronika'),
     displayName: 'Veronika Stasinievych',
   },
   manager_max: {
     username: 'max.zaprykutenko@nakivo.com',
-    password: 'MZUaT@123456789012',
+    password: pw('manager_max'),
     displayName: 'Max Zaprykutenko',
+  },
+  // Support L2 Manager. On pre-prod this user is `nam.pham@nakivo.com` / "Nam Pham" (res.users id
+  // 262, groups After-Sales / Manager + After-Sales / User), which carries read+write+create on
+  // helpdesk.ticket and NO unlink - so specs archive their tickets, they cannot delete them.
+  support_l2_manager_nam: {
+    username: 'nam.pham@nakivo.com',
+    password: pw('support_l2_manager_nam'),
+    displayName: 'Nam Pham',
   },
   admin_crm: {
     username: 'anh.ho@nakivo.com',
-    password: 'W3lcomeVN?0123456789012',
+    password: pw('admin_crm'),
     displayName: 'Anh Ho',
     createdByName: 'Ho Quoc Anh',
   },
@@ -84,38 +128,38 @@ export const users = {
   // as admin_crm but a DIFFERENT password on that instance, so it is a separate entry.
   admin_crm_mig: {
     username: 'anh.ho@nakivo.com',
-    password: 'AHUaT@098765',
+    password: pw('admin_crm_mig'),
     displayName: 'Anh Ho',
     createdByName: 'Ho Quoc Anh',
   },
   accountance_ic_faye_crm_mig: {
     username: 'faye.nguyen@nakivo.com',
-    password: 'FNUaT@0123456789012',
+    password: pw('accountance_ic_faye_crm_mig'),
     displayName: 'Faye Nguyen',
   },
   accountance_ic_yulia_crm_mig: {
     username: 'yuliya.malihonova@nakivo.com',
-    password: 'YMUaT@0123456789012',
+    password: pw('accountance_ic_yulia_crm_mig'),
     displayName: 'Yulia Malihonova',
   },
   pre_sales_engineer_crm_mig: {
     username: 'nick.luchkov@nakivo.com',
-    password: 'NLUaT@0123456789012',
+    password: pw('pre_sales_engineer_crm_mig'),
     displayName: 'Nick Luchkov',
   },
   sale_ic_thomas_crm_mig: {
     username: 'thomas.semerich@nakivo.com',
-    password: 'TSUaT@123456789012',
+    password: pw('sale_ic_thomas_crm_mig'),
     displayName: 'Thomas Semerich',
   },
   manager_veronika_crm_mig: {
     username: 'veronika@nakivo.com',
-    password: 'VSUaT@123456789012',
+    password: pw('manager_veronika_crm_mig'),
     displayName: 'Veronika Stasinievych',
   },
   manager_max_crm_mig: {
     username: 'max.zaprykutenko@nakivo.com',
-    password: 'MZUaT@123456789012',
+    password: pw('manager_max_crm_mig'),
     displayName: 'Max Zaprykutenko',
   }
 } as const;

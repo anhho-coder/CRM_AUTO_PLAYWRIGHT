@@ -325,7 +325,17 @@ echo ffmpeg OK
                         timeout(time: runTimeout, unit: 'MINUTES') {
                             parallel(
                                 'playwright': {
-                                    try { runPlaywright() } finally { bat 'echo done> .pw_done' }
+                                    // Credentials: config/users.config.ts no longer carries passwords -
+                                    // it reads them from CRM_SECRETS_FILE, bound here to the Jenkins
+                                    // "Secret file" credential `crm-users-secrets` (a flat
+                                    // {"<account key>":"<password>"} JSON, shape in
+                                    // config/users.secrets.example.json). The file is written to a temp
+                                    // path for the duration of the block and deleted afterwards.
+                                    try {
+                                        withCredentials([file(credentialsId: 'crm-users-secrets', variable: 'CRM_SECRETS_FILE')]) {
+                                            runPlaywright()
+                                        }
+                                    } finally { bat 'echo done> .pw_done' }
                                 },
                                 'vpn-watchdog': {
                                     while (!fileExists('.pw_done')) {
