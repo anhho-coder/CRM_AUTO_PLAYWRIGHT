@@ -15,7 +15,7 @@ pipeline {
     parameters {
         choice(
             name: 'PROJECT',
-            choices: ['auto', 'Investments', 'Lead_Merging', 'Leads_Assignment', 'SalesReport_Performance', 'CRM_Module', 'O12', 'PreSales', 'BusinessProcess', 'Leads_Assignment_3Teams'],
+            choices: ['auto', 'Investments', 'Lead_Merging', 'Leads_Assignment', 'SalesReport_Performance', 'CRM_Module', 'O12', 'PreSales', 'BusinessProcess', 'Leads_Assignment_3Teams', 'MigSmoke'],
             description: 'Section to run. "auto" = pick by job name (e.g. CRM_Investments -> Investments).'
         )
         string(
@@ -241,6 +241,7 @@ echo ffmpeg OK
                         'CRM_O12_PreSales'     : 'PreSales',
                         'CRM_O12_BusinessProcess' : 'BusinessProcess',
                         'CRM_Leads_Assignment_3Teams' : 'Leads_Assignment_3Teams',
+                        'CRM_O12_MIG_Smoke'    : 'MigSmoke',
                     ]
                     def spec = params.SPEC?.trim()
                     // JIRA_PATH (Jira/Xray Test Repository path) -> spec list via the resolver.
@@ -293,7 +294,10 @@ echo ffmpeg OK
                     // CRM_Leads_Assignment_3Teams runs Marketing_BDEU+CMR_team+THD_team (68 async
                     // specs) serially; each polls the assignment cron up to 35 min (breaks early),
                     // THD_team is the slow lane -> floor 480 like BusinessProcess.
-                    def jobMinTimeout = [ 'CRM_O12_PreSales' : 240, 'CRM_O12_BusinessProcess' : 480, 'CRM_Leads_Assignment_3Teams' : 480 ]
+                    // CRM_O12_MIG_Smoke runs the 23 II.Smoked_Test_Main_Business specs (CRM-12450)
+                    // serially against crm-mig; each drives a full UI chain, so floor it at 240
+                    // like PreSales rather than letting the 90-min default guillotine the tail.
+                    def jobMinTimeout = [ 'CRM_O12_PreSales' : 240, 'CRM_O12_BusinessProcess' : 480, 'CRM_Leads_Assignment_3Teams' : 480, 'CRM_O12_MIG_Smoke' : 240 ]
                     runTimeout = Math.max(runTimeout, (jobMinTimeout[env.JOB_BASE_NAME] ?: 0))
                     // Resolve this run's single Playwright invocation into a closure so it can
                     // run under the mid-run VPN watchdog below.
