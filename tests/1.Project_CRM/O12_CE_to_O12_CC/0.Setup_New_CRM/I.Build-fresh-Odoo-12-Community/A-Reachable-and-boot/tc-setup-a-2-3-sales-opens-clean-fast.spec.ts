@@ -5,26 +5,48 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-A.2 - Sales app opens cleanly and within a reasonable time (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.1.4
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-A.2 - Sales app opens cleanly and within a reasonable time
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.1.4
+ * Jira            : CRM-12339
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/A. Reachable & boot
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Verifies the Sales app opens on the Migration server with no server error / traceback and
- *   renders within a reasonable response-time budget.
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2):
- *   Pre-conditions: Login as Admin (anh.ho) on the O12 Migration server.
- *   Steps to reproduce:
- *     1. Open the Sales app and let its action view render.
- *   Verification Points (ticket Part 2-A bullet 2, for the Sales app):
- *     1. No server error / traceback dialog is shown.
- *     2. The app loads within a reasonable time (response time under the budget).
+ *   Verifies the Sales app opens on the Migration server with no server error / traceback
+ *   and renders within a reasonable response-time budget.
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12325_1\.1\.4:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12339, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Open the Sales app (via its menu) and let its action view render.
+ *      AUTOMATION: automated - opens by URL hash and waits for the loading spinner to clear
+ *      (@pages/mig MigPlatformPage.openAppAndMeasureMs).
+ *
+ * Verification - Expected Result on step 1:
+ *   _ No server error / traceback dialog is shown
+ *   _ The Sales app loads within a reasonable time (response time under the ~30s budget)
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Open the Sales app (via its menu) and let its action view render.',
+  verify: 'Verification',
+} as const;
+
 test.describe('CRM-12325 Part 2-A.2 - Sales opens cleanly and fast', () => {
 
   test.beforeEach(async ({ page, context }) => {
@@ -48,11 +70,14 @@ test.describe('CRM-12325 Part 2-A.2 - Sales opens cleanly and fast', () => {
     const loginPage = new LoginPageMig(page);
     const platform  = new MigPlatformPage(page);
 
+    const budget = MigPlatformPage.APP_RESPONSE_BUDGET_MS;
     let ms: number;
     let hasError: boolean;
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    console.log('========== CRM-12325_1.1.4 - Sales app opens cleanly and fast ==========');
+
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -60,34 +85,29 @@ test.describe('CRM-12325 Part 2-A.2 - Sales opens cleanly and fast', () => {
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Open the Sales app and let its action view render', async () => {
-      console.log('\n=== SALES APP OPEN ===');
-      const budget = MigPlatformPage.APP_RESPONSE_BUDGET_MS;
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.sales);
       hasError = await platform.isErrorDialogVisible();
-      console.log(`  Criterion 1 (no server error): errorDialog=${hasError} -> ${hasError ? 'FAIL' : 'PASS'}`);
-      console.log(`  Criterion 2 (response time)  : ${ms} ms  (budget ${budget} ms) -> ${ms < budget ? 'PASS' : 'FAIL'}`);
+      console.log(`  Sales opened - errorDialog=${hasError}, response time=${ms} ms`);
     });
 
-    await test.step('Verification: No server error / traceback dialog is shown and app loads within budget', async () => {
-      const budget = MigPlatformPage.APP_RESPONSE_BUDGET_MS;
-
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       console.log('\n==================== VERIFY ====================');
-      console.log('  Verify #1 - No server error / traceback dialog is shown:');
-      console.log(`    Expected : hasError=false`);
-      console.log(`    Actual   : hasError=${hasError}`);
-      console.log(`    Result   : ${hasError ? 'FAIL' : 'PASS'}`);
-      console.log('  Verify #2 - The app loads within a reasonable time:');
-      console.log(`    Expected : response time < ${budget}ms`);
-      console.log(`    Actual   : ${ms}ms`);
-      console.log(`    Result   : ${ms < budget ? 'PASS' : 'FAIL'}`);
+      console.log('Verify #1 - No server error / traceback dialog is shown:');
+      console.log(`   Expected : hasError = false`);
+      console.log(`   Actual   : hasError = ${hasError}`);
+      console.log(`   Result   : ${!hasError ? 'PASS' : 'FAIL'}`);
+      console.log('Verify #2 - The Sales app loads within a reasonable time (response time under the ~30s budget):');
+      console.log(`   Expected : ms < ${budget}`);
+      console.log(`   Actual   : ms = ${ms}`);
+      console.log(`   Result   : ${ms < budget ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      console.log(`OVERALL: ${!hasError && ms < budget ? 'PASS' : 'FAIL'} - Sales app opens with no server error and within budget`);
+      console.log(`OVERALL: ${(!hasError && ms < budget) ? 'PASS' : 'FAIL'} - Sales app opens cleanly and within budget`);
 
       expect(hasError, 'Sales app should open with no server error / traceback').toBeFalsy();
       expect(ms, `Sales app should load within ${budget}ms (actual ${ms}ms)`).toBeLessThan(budget);
     });
-
-    console.log('\nPART 2-A.2 SALES OPEN - COMPLETED');
   });
 });

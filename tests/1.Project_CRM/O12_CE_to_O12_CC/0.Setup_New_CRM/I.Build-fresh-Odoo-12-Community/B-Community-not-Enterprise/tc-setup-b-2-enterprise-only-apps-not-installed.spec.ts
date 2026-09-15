@@ -5,33 +5,51 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-B - Enterprise-only apps are not installed (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.2.2
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-B - Enterprise-only apps are NOT installed
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.2.2
+ * Jira            : CRM-12365
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/B. Community not Enterprise
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Verifies the enterprise-only apps (Studio, Documents, Sign, Helpdesk, Field Service, Marketing
- *   Automation, Approvals, VoIP, IoT) are NOT installed on the Migration server - on Community they are absent
- *   or 'uninstallable', never installed.
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2-B):
- *
- * Pre-conditions:
- *   Login as Admin (anh.ho) on the O12 Migration server.
- *
- * Steps to reproduce:
- *   1. Read the module registry and look up each enterprise-only app by its technical name.
- *
- * Verification Points:
- *   1. None of the enterprise-only apps is installed (each is absent or 'uninstallable', never 'installed').
- *
- * Ground truth (crm-mig MCP, 2026-08-19): web_studio / helpdesk / marketing_automation / sign / voip
- * are 'uninstallable'; documents / industry_fsm / iot are absent - none is 'installed'.
+ *   Verifies the enterprise-only apps (Studio, Documents, Sign, Helpdesk, Field Service,
+ *   Marketing Automation, Approvals, VoIP, IoT) are NOT installed - on Community they are
+ *   absent or "uninstallable".
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12325_1\.2\.2:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12365, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Read the module registry and look up each enterprise-only app by technical name
+ *      (web_studio, documents, sign, helpdesk, industry_fsm, marketing_automation,
+ *      approvals, voip, iot).
+ *      AUTOMATION: automated - getModules via RPC.
+ *
+ * Verification - Expected Result on step 1:
+ *   _ None of the enterprise-only apps is installed (each is absent or 'uninstallable',
+ *     never 'installed')
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Read the module registry and look up each enterprise-only app by technical name (web_studio, documents, sign, helpdesk, industry_fsm, marketing_automation, approvals, voip, iot).',
+  verify: 'Verification',
+} as const;
+
+/** The enterprise-only apps the TC looks up, as [display name, technical name]. */
 const ENTERPRISE_APPS: Array<[string, string]> = [
   ['Studio',               'web_studio'],
   ['Documents',            'documents'],
@@ -71,8 +89,8 @@ test.describe('CRM-12325 Part 2-B - Enterprise-only apps are not installed', () 
 
     console.log('========== CRM-12325_1.2.2 - Enterprise-only apps are not installed ==========');
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -80,8 +98,8 @@ test.describe('CRM-12325 Part 2-B - Enterprise-only apps are not installed', () 
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Read the module registry and look up each enterprise-only app', async () => {
-      console.log('\n--- Step 1: Look up each enterprise-only app in the module registry ---');
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       const mods = await platform.getModules();
       const byName = new Map(mods.map(m => [m.name, m.state]));
       states = ENTERPRISE_APPS.map(([label, tech]) => {
@@ -91,9 +109,9 @@ test.describe('CRM-12325 Part 2-B - Enterprise-only apps are not installed', () 
       states.forEach(s => console.log(`  ${s.label.padEnd(22)} (${s.tech}): ${s.state}`));
     });
 
-    await test.step('Verification', async () => {
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       const installedEnt = states.filter(s => s.installed).map(s => `${s.label} (${s.tech})`);
-      console.log('\n==================== VERIFY ====================');
       console.log('Verify #1 - No enterprise-only app is installed:');
       console.log(`  Expected : none installed (each absent or 'uninstallable')`);
       console.log(`  Actual   : installed = [${installedEnt.join(', ')}]`);

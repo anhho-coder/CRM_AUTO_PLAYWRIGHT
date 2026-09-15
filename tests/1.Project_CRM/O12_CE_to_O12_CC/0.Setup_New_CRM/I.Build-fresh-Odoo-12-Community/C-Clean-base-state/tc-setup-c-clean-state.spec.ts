@@ -5,34 +5,59 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-C - Clean base state (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.3.1
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-C - Clean base state
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.3.1
+ * Jira            : CRM-12363
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/C. Clean base state
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Verifies the base is in a clean state - no *_enterprise module installed, no module stuck in a
- *   transient state (To Upgrade / To Install / To Remove), and the core screens load with no traceback.
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2):
- *
- * Pre-conditions:
- *   Login as Admin (anh.ho) on the O12 Migration server.
- *
- * Steps to reproduce (ticket Part 2-C, valid clean-state checks; the "no nakivo_*" sub-point
- * was intentionally dropped and must stay dropped):
- *   1. Read the installed modules and check no enterprise (*_enterprise) module is installed.
- *   2. Check no module is stuck in a transient state (To Upgrade / To Install / To Remove).
- *   3. Open the core screens (CRM, Settings) and check no traceback.
- *
- * Verification Points:
- *   1. No *_enterprise module is installed.
- *   2. No module is stuck in a transient state.
- *   3. Core screens load with no traceback.
+ *   Verifies the base is in a clean state - no *_enterprise module installed, no module
+ *   stuck in a transient state (To Upgrade / To Install / To Remove), and the core screens
+ *   load with no traceback.
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12325_1\.3\.1:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12363, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Read installed modules; check no enterprise (*_enterprise) module is installed.
+ *
+ * Steps to reproduce #2:
+ *   2. Check no module is stuck in To Upgrade / To Install / To Remove.
+ *
+ * Steps to reproduce #3:
+ *   3. Open the core screens (CRM, Settings) and check no traceback.
+ *      NOTE: the 'no nakivo_*' and 'no leftover data' bullets are dropped - the instance is
+ *      data-migrated (nakivo_* modules + full data present), so they do not apply.
+ *      AUTOMATION: automated - RPC module states + UI error-dialog check.
+ *
+ * Verification - Expected Result on step 3:
+ *   _ No *_enterprise module is installed
+ *   _ No module is stuck in a transient state
+ *   _ Core screens load with no traceback
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Read installed modules; check no enterprise (*_enterprise) module is installed.',
+  s2:     'Step 2: Check no module is stuck in To Upgrade / To Install / To Remove.',
+  s3:     'Step 3: Open the core screens (CRM, Settings) and check no traceback.',
+  verify: 'Verification',
+} as const;
+
 test.describe('CRM-12325 Part 2-C - Clean base state', () => {
 
   test.beforeEach(async ({ page, context }) => {
@@ -62,8 +87,8 @@ test.describe('CRM-12325 Part 2-C - Clean base state', () => {
     let stuck: string[] = [];
     const screenResults: { [name: string]: boolean } = {};
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -71,19 +96,22 @@ test.describe('CRM-12325 Part 2-C - Clean base state', () => {
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Read the installed modules and check no enterprise (*_enterprise) module is installed', async () => {
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       const mods = await platform.getModules();
       enterpriseInstalled = mods.filter(m => m.state === 'installed' && /enterprise/i.test(m.name)).map(m => m.name);
       stuck = mods.filter(m => ['to upgrade', 'to install', 'to remove'].includes(m.state)).map(m => `${m.name}:${m.state}`);
       console.log(`Step 1: enterprise installed: [${enterpriseInstalled.join(', ')}]`);
     });
 
-    await test.step('Step 2: Check no module is stuck in a transient state (To Upgrade / To Install / To Remove)', async () => {
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
       // Computed alongside Step 1 (same module snapshot) so the two reads stay consistent.
       console.log(`Step 2: stuck modules: [${stuck.join(', ')}]`);
     });
 
-    await test.step('Step 3: Open the core screens (CRM, Settings) and check no traceback', async () => {
+    await test.step(STEP.s3, async () => {
+      console.log(`\n--- ${STEP.s3} ---`);
       for (const [name, hash] of [['CRM', MigPlatformPage.HASH.crm], ['Settings', MigPlatformPage.HASH.settings]] as Array<[string, string]>) {
         await platform.openAppAndAssertRendered(hash);
         screenResults[name] = await platform.isErrorDialogVisible();
@@ -91,11 +119,11 @@ test.describe('CRM-12325 Part 2-C - Clean base state', () => {
       }
     });
 
-    await test.step('Verification', async () => {
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       const coreScreensPass = Object.values(screenResults).every(hasError => !hasError);
       const screenErrors = Object.entries(screenResults).filter(([, hasError]) => hasError).map(([name]) => name);
 
-      console.log('\n==================== VERIFY ====================');
       console.log('  Verify #1 - No *_enterprise module is installed:');
       console.log(`     Expected : 0 enterprise modules`);
       console.log(`     Actual   : ${enterpriseInstalled.length} [${enterpriseInstalled.join(', ')}]`);

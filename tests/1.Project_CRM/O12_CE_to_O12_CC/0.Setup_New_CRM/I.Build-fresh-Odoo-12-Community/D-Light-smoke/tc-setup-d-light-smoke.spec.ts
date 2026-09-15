@@ -5,31 +5,52 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-D - Light smoke (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.4.1
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-D - Light smoke
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.4.1
+ * Jira            : CRM-12364
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/D. Light smoke
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Light smoke of the Migration server - the core CE apps (Contacts, CRM, Sales, Settings) render
- *   with no error, and the write path is alive (create + delete a trivial Contact).
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2):
- *
- * Pre-conditions:
- *   Login as Admin (anh.ho) on the O12 Migration server.
- *
- * Steps to reproduce (ticket Part 2-D):
- *   1. Open a few core CE apps (Contacts, CRM, Sales, Settings) and confirm they render.
- *   2. Create and delete one trivial record (a Contact) to confirm the write path is alive.
- *
- * Verification Points:
- *   1. Each core app renders with no error.
- *   2. The write path persisted a record (create returns an id), then cleaned it up.
+ *   Light smoke of the Migration server - the core CE apps (Contacts, CRM, Sales, Settings)
+ *   render with no error, and the write path is alive (create + delete a trivial Contact).
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12325_1\.4\.1:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12364, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Open a few core CE apps (Contacts, CRM, Sales, Settings) and confirm they render.
+ *
+ * Steps to reproduce #2:
+ *   2. Create and delete one trivial record (a Contact) to confirm the write path is alive.
+ *      AUTOMATION: automated - write path via RPC create+unlink res.partner (the partner UI
+ *      form requires accounting fields from nakivo_accounting, beyond a base smoke).
+ *
+ * Verification - Expected Result on step 2:
+ *   _ Each core app renders with no error
+ *   _ The write path persisted a record (create returns an id), then cleaned it up
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Open a few core CE apps (Contacts, CRM, Sales, Settings) and confirm they render.',
+  s2:     'Step 2: Create and delete one trivial record (a Contact) to confirm the write path is alive.',
+  verify: 'Verification',
+} as const;
+
 test.describe('CRM-12325 Part 2-D - Light smoke', () => {
 
   test.beforeEach(async ({ page, context }) => {
@@ -58,8 +79,8 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
     const appRenderResults: { name: string; hasError: boolean }[] = [];
     let writePathResult: { id: number; deleted: boolean; error?: string } | null = null;
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -67,8 +88,8 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Open a few core CE apps (Contacts, CRM, Sales, Settings) and confirm they render', async () => {
-      console.log('\n=== STEP 1: CORE APPS RENDER ===');
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       const apps: Array<[string, string]> = [
         ['Contacts', MigPlatformPage.HASH.contacts],
         ['CRM', MigPlatformPage.HASH.crm],
@@ -83,8 +104,8 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
       }
     });
 
-    await test.step('Step 2: Create and delete one trivial record (a Contact) to confirm the write path is alive', async () => {
-      console.log('\n=== STEP 2: WRITE PATH (create + delete a Contact) ===');
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
       const contactName = `TEST Contact Mig ${Date.now()}`;
       writePathResult = await platform.writePathAliveViaPartner(contactName);
       console.log(`  Created: ${contactName}`);
@@ -92,8 +113,8 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
       console.log(`  Result : ${writePathResult.id > 0 ? 'PASS' : 'FAIL'} (write path persisted a record)`);
     });
 
-    await test.step('Verification', async () => {
-      console.log('\n==================== VERIFY ====================');
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
 
       // Verification #1: Each core app renders with no error
       console.log('  Verify #1 - Each core app renders with no error:');

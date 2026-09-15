@@ -5,30 +5,48 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-A.2 - Approval app opens cleanly and within a reasonable time (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.1.13
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-A.2 - Approval app opens cleanly and within a reasonable time
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.1.13
+ * Jira            : CRM-12347
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/A. Reachable & boot
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Verifies the Approval app opens on the Migration server with no server error / traceback and
- *   renders within a reasonable response-time budget.
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2):
- *
- * Pre-conditions:
- *   Login as Admin (anh.ho) on the O12 Migration server (crm-mig.nakivo.site).
- *
- * Steps to reproduce:
- *   1. Open the Approval app and let its action view render.
- *
- * Verification Points (ticket Part 2-A bullet 2, for the Approval app):
- *   1. No server error / traceback dialog is shown.
- *   2. The app loads within a reasonable time (response time under the budget).
+ *   Verifies the Approval app opens on the Migration server with no server error / traceback
+ *   and renders within a reasonable response-time budget.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_1.1.13:" --project=chromium
+ *   npx playwright test --grep "CRM-12325_1\.1\.13:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12347, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Open the Approval app (via its menu) and let its action view render.
+ *      AUTOMATION: automated - opens by URL hash and waits for the loading spinner to clear
+ *      (@pages/mig MigPlatformPage.openAppAndMeasureMs).
+ *
+ * Verification - Expected Result on step 1:
+ *   _ No server error / traceback dialog is shown
+ *   _ The Approval app loads within a reasonable time (response time under the ~30s budget)
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Open the Approval app (via its menu) and let its action view render.',
+  verify: 'Verification',
+} as const;
+
 test.describe('CRM-12325 Part 2-A.2 - Approval opens cleanly and fast', () => {
 
   test.beforeEach(async ({ page, context }) => {
@@ -58,8 +76,8 @@ test.describe('CRM-12325 Part 2-A.2 - Approval opens cleanly and fast', () => {
 
     console.log('========== CRM-12325_1.1.13 - Approval app opens cleanly and fast ==========');
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -67,23 +85,24 @@ test.describe('CRM-12325 Part 2-A.2 - Approval opens cleanly and fast', () => {
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Open the Approval app and let its action view render', async () => {
-      console.log('\n--- Step 1: Open the Approval app and let its action view render ---');
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.approval);
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Approval opened - errorDialog=${hasError}, response time=${ms} ms`);
     });
 
-    await test.step('Verification', async () => {
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       console.log('\n==================== VERIFY ====================');
       console.log('Verify #1 - No server error / traceback dialog is shown:');
-      console.log(`  Expected : hasError = false`);
-      console.log(`  Actual   : hasError = ${hasError}`);
-      console.log(`  Result   : ${!hasError ? 'PASS' : 'FAIL'}`);
-      console.log('Verify #2 - The app loads within a reasonable time (response time under the budget):');
-      console.log(`  Expected : ms < ${budget}`);
-      console.log(`  Actual   : ms = ${ms}`);
-      console.log(`  Result   : ${ms < budget ? 'PASS' : 'FAIL'}`);
+      console.log(`   Expected : hasError = false`);
+      console.log(`   Actual   : hasError = ${hasError}`);
+      console.log(`   Result   : ${!hasError ? 'PASS' : 'FAIL'}`);
+      console.log('Verify #2 - The Approval app loads within a reasonable time (response time under the ~30s budget):');
+      console.log(`   Expected : ms < ${budget}`);
+      console.log(`   Actual   : ms = ${ms}`);
+      console.log(`   Result   : ${ms < budget ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
       console.log(`OVERALL: ${(!hasError && ms < budget) ? 'PASS' : 'FAIL'} - Approval app opens cleanly and within budget`);
 

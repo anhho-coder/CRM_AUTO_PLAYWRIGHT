@@ -5,29 +5,55 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
- * CRM-12325 Part 2-B - Correct Odoo 12 + Community, NOT Enterprise (crm-mig.nakivo.site)
- * Test Case ID: CRM-12325_1.2.1
- * Automation-Type: new
- * Automation-Date: 2026-08-19
+ * ===========================================================================
+ * CRM-12325 Part 2-B - Odoo 12 Community, NOT Enterprise
+ * ===========================================================================
+ * Test Case ID    : CRM-12325_1.2.1
+ * Jira            : CRM-12362
+ * Test Repository : /CRM test/Migration - Setup New CRM/CRM-12325_Build fresh Odoo 12 Community/B. Community not Enterprise
+ * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
+ * Automation-Type : new
+ * Automation-Date : 2026-08-19
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
  *
  * Summary:
- *   Verifies the Migration server runs Odoo 12.0 Community, not Enterprise - the reported
- *   version/edition is 12.0 Community and no enterprise (web_enterprise / *_enterprise) module is
- *   installed.
- *
- * Source manual TC (mirrors ticket CRM-12325 Part 2):
- * Pre-conditions: Login as Admin (anh.ho) on the O12 Migration server.
- * Steps to reproduce (ticket Part 2-B):
- *   1. Read the server version and edition.
- *   2. Read the installed modules and check for enterprise modules.
- * Verification Points:
- *   1. Version reads Odoo 12.0 and Community edition.
- *   2. No enterprise (*_enterprise) module is installed.
- *   3. web_enterprise is not installed.
+ *   Verifies the Migration server runs Odoo 12.0 Community (not Enterprise) - the reported
+ *   version/edition is 12.0 Community and no enterprise (web_enterprise / *_enterprise)
+ *   module is installed.
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12325_1\.2\.1:" --project=chromium
+ *
+ * ---------------------------------------------------------------------------
+ * Source manual TC - Jira CRM-12362, Xray Manual Steps (verbatim, in order)
+ * ---------------------------------------------------------------------------
+ * Pre-conditions:
+ *   _ Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site
+ *
+ * Steps to reproduce #1:
+ *   1. Read the server version and edition.
+ *
+ * Steps to reproduce #2:
+ *   2. Read the installed modules and check for any enterprise (*_enterprise) module,
+ *      including web_enterprise.
+ *      AUTOMATION: automated - reads version_info + ir.module.module via the authenticated
+ *      web-client RPC (the CE "Upgrade to Enterprise" banner is unreliable / debranded).
+ *
+ * Verification - Expected Result on step 2:
+ *   _ Version reads Odoo 12.0 and Community edition
+ *   _ No enterprise (*_enterprise) module is installed
+ *   _ web_enterprise is not installed
+ * ---------------------------------------------------------------------------
  */
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition 1: Login: anh.ho@nakivo.com (admin_crm_mig) on crm-mig.nakivo.site',
+  s1:     'Step 1: Read the server version and edition.',
+  s2:     'Step 2: Read the installed modules and check for any enterprise (*_enterprise) module, including web_enterprise.',
+  verify: 'Verification',
+} as const;
+
 test.describe('CRM-12325 Part 2-B - Community, not Enterprise', () => {
 
   test.beforeEach(async ({ page, context }) => {
@@ -61,8 +87,8 @@ test.describe('CRM-12325 Part 2-B - Community, not Enterprise', () => {
     let webEnt: any;
     let webEntInstalled: boolean;
 
-    await test.step('Pre-condition 1: Login as Admin on the O12 Migration server', async () => {
-      console.log('\n--- Pre-condition 1: Login as Admin on the O12 Migration server ---');
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -70,28 +96,28 @@ test.describe('CRM-12325 Part 2-B - Community, not Enterprise', () => {
       console.log('  OK - logged in on the Migration server');
     });
 
-    await test.step('Step 1: Read the server version and edition', async () => {
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       v = await platform.getServerVersionInfo();
       is12 = String(v.server_version).startsWith('12.0');
       isCommunity = !String(v.server_version).includes('+e') && v.server_version_info[5] !== 'e';
-      console.log('\n=== STEP 1: VERSION + EDITION ===');
       console.log(`  server_version      : ${v.server_version}`);
       console.log(`  server_version_info : ${JSON.stringify(v.server_version_info)}`);
     });
 
-    await test.step('Step 2: Read the installed modules and check for enterprise modules', async () => {
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
       mods = await platform.getModules();
       enterpriseInstalled = mods.filter(m => m.state === 'installed' && /enterprise/i.test(m.name)).map(m => m.name);
       webEnt = mods.find(m => m.name === 'web_enterprise');
       webEntInstalled = !!webEnt && webEnt.state === 'installed';
-      console.log('\n=== STEP 2: NO ENTERPRISE MODULE ===');
       console.log(`  installed modules      : ${mods.filter(m => m.state === 'installed').length}`);
       console.log(`  enterprise installed   : [${enterpriseInstalled.join(', ')}]`);
       console.log(`  web_enterprise state   : ${webEnt ? webEnt.state : 'absent'}`);
     });
 
-    await test.step('Verification', async () => {
-      console.log('\n==================== VERIFY ====================');
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       console.log('Verify #1 - Version reads Odoo 12.0 and Community edition:');
       console.log(`   Expected : 12.0 and Community`);
       console.log(`   Actual   : ${v.server_version} and ${isCommunity ? 'Community' : 'Enterprise'}`);
