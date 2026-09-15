@@ -14,7 +14,42 @@ import { CommonUtils } from '@helpers/common.utils';
  * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE)
  * Automation-Type : new
  * Automation-Date : 2026-08-19
- * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC)
+ * Automation-Updated: 2026-09-15 (steps re-synced with the Jira manual TC; skip-by-bug added below)
+ *
+ * ---------------------------------------------------------------------------
+ * SKIPPED BY BUG CRM-12656 - tester's decision, 2026-09-15
+ * ---------------------------------------------------------------------------
+ * Recorded as instructed. The attribution is NOT confirmed, and the note below says why, so that
+ * whoever picks this up next is not misled by the bug number alone.
+ *
+ * WHAT WAS MEASURED (6 of 6 runs on 2026-09-15, every one FAIL, response time 1507-2562 ms):
+ *   - the dialog raised here is the GENERIC shell - "Odoo Client Error" / "An error occurred" /
+ *     "Please use the copy button to report the error to your support service". Nothing else.
+ *   - the repo detects CRM-12656 by the text
+ *         /remote instance has no browser origin|NAKIVO Remote Instance|Odoo 19 URL/i
+ *     (tc-cutoff-3-3-2 line 63, tc-cutoff-3-7-2 line 86). That pattern matches this dialog
+ *     ZERO times.
+ *   - the sidebar on the resulting screen lists 24 apps and contains no "R&E Time Tracking" entry.
+ *
+ * WHAT THAT POINTS AT INSTEAD: `MigPlatformPage.ABSENT_ON_MIG` already records this app as having no
+ * live `ir.ui.menu` row at any depth, and `MigPlatformPage.HASH.reTimeTracking` states that opening
+ * the hash "WILL raise an Odoo error dialog ... the truth about the instance, not a bug in the spec".
+ * The same file adds that a dead-hash "An error occurred" shell is "an automation defect, not a
+ * product defect - so do NOT raise a bug for them". On that evidence this failure is the app being
+ * ABSENT, not CRM-12656.
+ *
+ * NOT VERIFIED: CRM-12656 itself could not be read back - the Jira MCP session was expired at the
+ * time of writing, so the ticket's own wording was never compared against this dialog.
+ *
+ * OPEN QUESTION for the TC owner - nobody has answered this yet:
+ *   Is R&E Time Tracking in scope for the migration at all?
+ *     - if YES, the app missing from crm-mig is a migration gap in its own right and this spec is
+ *       right to go red;
+ *     - if NO, manual TC CRM-12343 should drop the app and this spec should assert ABSENCE
+ *       (app not present in the menu) instead of asserting that it opens cleanly.
+ *
+ * The skip below is CONDITIONAL on the error actually occurring, following tc-cutoff-3-7-2: the day
+ * the app appears, the skip stops firing by itself and the assertions resume.
  *
  * Summary:
  *   Verifies the R&E Time Tracking app opens on the Migration server with no server error / traceback
@@ -105,6 +140,18 @@ test.describe('CRM-12325 Part 2-A.2 - R&E Time Tracking opens cleanly and fast',
       console.log(`   Result   : ${ms < budget ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
       console.log(`OVERALL: ${(!hasError && ms < budget) ? 'PASS' : 'FAIL'} - R&E Time Tracking app opens cleanly and within budget`);
+
+      // SKIPPED BY BUG CRM-12656 - tester's decision 2026-09-15. See the SKIP block in the header
+      // for the measured caveat: the dialog observed here does NOT carry this bug's signature.
+      //
+      // Deliberately placed AFTER the VERIFY logging and made conditional, not a blanket skip at the
+      // top of the file. Two reasons: the run still records hasError and the response time, so the
+      // evidence survives for whoever revisits the attribution; and the day the app appears the
+      // condition stops matching and the assertions below resume on their own.
+      if (hasError) {
+        console.log('\n  SKIP: error dialog present on a screen with no live menu - skipping by bug CRM-12656, not failing.');
+        test.skip(true, 'Skipped due to bug CRM-12656');
+      }
 
       expect(hasError, 'R&E Time Tracking app should open with no server error / traceback').toBeFalsy();
       expect(ms, `R&E Time Tracking app should load within ${budget}ms (actual ${ms}ms)`).toBeLessThan(budget);
