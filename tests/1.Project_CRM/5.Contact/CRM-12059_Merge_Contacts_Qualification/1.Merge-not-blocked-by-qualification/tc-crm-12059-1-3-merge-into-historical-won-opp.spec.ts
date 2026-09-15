@@ -40,6 +40,12 @@ import {
  *             - Name         = Environmental Design International  (#204921)
  *             - Email domain = read off the Contact form; must be a company domain, not a
  *                              public / free one
+ *           The record is then checked to still satisfy what the merge needs:
+ *             - any leftover source contact of an INTERRUPTED earlier run is deleted first (Contacts
+ *               searched by email "crm12059-1-3-src"): the source reuses the pinned Name, so residue
+ *               would otherwise break the exactly-two merge selection
+ *             - its name is exact-unique among Contacts, so the merge selection can be exactly two
+ *               records (this one + the fresh source created next)
  *      III. Create a FRESH source Company Contact (the merge SOURCE) that shares BOTH merge keys
  *           with the historical Contact:
  *             - Name         = <historical customer name>
@@ -74,6 +80,18 @@ const MERGE_END_SCREEN_RE = /no more contacts to merge/i;
  * on live data, so a data change fails loudly instead of silently testing the wrong record.
  */
 const HISTORICAL_CONTACT = { name: 'Environmental Design International', id: '204921' };
+
+// Email local-part prefix of every source contact this spec creates. The source reuses the PINNED
+// name, so a source left behind by an interrupted run (afterEach never reached) would make the
+// name search return 3 rows and break the exactly-two merge selection. Pre-condition II deletes
+// such residue first; the prefix is the only way to tell it apart from the pinned destination.
+const SOURCE_EMAIL_PREFIX = 'crm12059-1-3-src';
+const MAX_RESIDUE_SWEEPS = 4; // leftovers removed before giving up (one run leaves at most one)
+
+/** Backend form URL of a res.partner record, built from the current page's origin. */
+function partnerFormUrl(page: import('@playwright/test').Page, id: string): string {
+  return `${new URL(page.url()).origin}/web#id=${id}&action=118&model=res.partner&view_type=form&menu_id=94`;
+}
 
 test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won Opp (the fix)', () => {
   let source: CreatedContact | undefined; // fresh SOURCE contact (deleted in afterEach)
@@ -114,9 +132,40 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
     // ----------------------------------------------------------------------------------------
     // Pre-condition II: Open the PINNED historical Contact and save its email domain
     // ----------------------------------------------------------------------------------------
-    await test.step('Pre-condition II: Open the pinned historical Contact (#204921) and save its email domain', async () => {
+    await test.step('Pre-condition II: Clear leftover source contacts, then open the pinned historical Contact (#204921) and save its email domain', async () => {
       console.log('\n=== PRE-CONDITION II: Pinned historical customer + its EMAIL DOMAIN ===');
       console.log(`  - Pinned destination : "${HISTORICAL_CONTACT.name}" (#${HISTORICAL_CONTACT.id})`);
+
+      // Residue sweep (best effort): an interrupted run leaves a source contact that carries the
+      // PINNED name, which would make the merge selection three rows instead of two. Sources are
+      // identified by their email prefix, never by name, so the pinned destination cannot be hit -
+      // and its id is checked once more before any delete.
+      await contactPage.openContactsList();
+      const sweptIds = new Set<string>();
+      for (let i = 0; i < MAX_RESIDUE_SWEEPS; i++) {
+        const leftovers = await contactPage.searchContactsByEmail(SOURCE_EMAIL_PREFIX);
+        if (leftovers === 0) break;
+        try {
+          await contactPage.openFirstListRecord();
+          const leftoverId = contactPage.getCurrentRecordId();
+          // Stop on anything that is not a fresh source record: no id, the pinned destination, or an
+          // id this sweep already deleted - the Contacts list keeps listing a just-deleted contact for
+          // a while, and opening that ghost row is what would hang (its form never finishes loading).
+          if (!leftoverId || leftoverId === HISTORICAL_CONTACT.id || sweptIds.has(leftoverId)) {
+            console.log(`  - Search still lists an already-removed / non-source record (#${leftoverId || 'n/a'}) - sweep done`);
+            break;
+          }
+          sweptIds.add(leftoverId);
+          await contactPage.deleteContactByURL(partnerFormUrl(page, leftoverId));
+          console.log(`  - Removed leftover source contact #${leftoverId} from an earlier interrupted run`);
+        } catch (e) {
+          // Best effort only: the exact-name assertion below is the real gate on a clean list.
+          console.log(`  ⚠ Residue sweep stopped: ${e instanceof Error ? e.message.split('\n')[0] : String(e)}`);
+          break;
+        }
+        await contactPage.openContactsList();
+      }
+      console.log(`  ✓ Residue sweep done - ${sweptIds.size} leftover source contact(s) removed`);
 
       // Open the pinned record straight by URL. openContactFormByUrl (not openContactByUrl) gates on
       // the record actually being rendered - this Odoo is hash-routed, so a hash hop would otherwise
@@ -138,6 +187,13 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       expect(domain, `the pinned contact must expose an email domain - it is the merge key (read "${email}")`).not.toBe('');
       expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
 
+      // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
+      // must return exactly these two records - this one now, plus the source created next. Polled
+      // (re-search each attempt) because a contact the sweep just deleted keeps showing up in the
+      // Contacts list for a few seconds. A count that stays above 1 means a same-named contact that
+      // is NOT one of this spec's sources exists - the pin then needs replacing.
+      const exactByName = await contactPage.waitForExactNameCount(HISTORICAL_CONTACT.name, 1);
+      expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records (found ${exactByName}; a leftover "crm12059-1-3-src" contact from a crashed run would explain > 1)`).toBe(1);
 
       historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
       console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
@@ -149,7 +205,7 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
     // ----------------------------------------------------------------------------------------
     await test.step('Pre-condition III: Create a fresh source Company Contact whose email is in the same email domain', async () => {
       console.log('\n=== PRE-CONDITION III: Create fresh merge SOURCE (same email domain + same name) ===');
-      sourceEmail = buildEmailInDomain('crm12059-1-3-src', historical.domain);
+      sourceEmail = buildEmailInDomain(SOURCE_EMAIL_PREFIX, historical.domain);
       console.log(`  - Name  : ${historical.name}   (shared with the historical contact)`);
       console.log(`  - Email : ${sourceEmail}   (inside the shared domain "@${historical.domain}")`);
       source = await createCompanyContact(page, contactPage, historical.name, sourceEmail);

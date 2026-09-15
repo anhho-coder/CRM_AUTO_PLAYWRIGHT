@@ -1474,10 +1474,25 @@ export class ContactPage extends BasePage {
    */
   async openContactsList(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#action=118&model=res.partner&view_type=list&menu_id=94`, { waitUntil: 'domcontentloaded' });
-    await this.page.reload({ waitUntil: 'domcontentloaded' });
-    await this.dismissErrorDialog().catch(() => {});
-    await this.waitForListReady();
+    const listUrl = `${origin}/web#action=118&model=res.partner&view_type=list&menu_id=94`;
+    // Retried once: coming from a JUST-SAVED contact form, the hash hop + reload sometimes boots the
+    // web client on the APPS HOME instead of the list action (measured on pre-prod 2026-08-13 - the
+    // failure snapshot showed the app menu, so CREATE never appeared and the single attempt burned
+    // the full wait budget). Re-navigating from wherever it landed fixes it. The LAST attempt lets
+    // waitForListReady() throw, so a genuinely stuck load still fails with "CREATE button not
+    // visible" instead of looping silently.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await this.goto(listUrl, { waitUntil: 'domcontentloaded' });
+      await this.page.reload({ waitUntil: 'domcontentloaded' });
+      await this.dismissErrorDialog().catch(() => {});
+      if (attempt === 2) {
+        await this.waitForListReady();
+        break;
+      }
+      const ready = await this.waitForListReady().then(() => true).catch(() => false);
+      if (ready) break;
+      console.log(`  - Contacts list did not render (attempt ${attempt}/2) - re-navigating to the list action`);
+    }
     console.log('  ✓ Contacts list opened');
   }
 
