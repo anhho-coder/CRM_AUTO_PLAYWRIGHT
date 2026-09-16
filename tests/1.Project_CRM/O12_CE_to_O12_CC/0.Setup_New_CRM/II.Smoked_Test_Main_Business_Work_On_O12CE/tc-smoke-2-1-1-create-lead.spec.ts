@@ -3,7 +3,7 @@ import { config } from '@config/test.config';
 import { LeadPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
-import { loginToO12CE, O12CE_DATA, teardownMigRecords, registerMigRecord } from '@helpers/o12ce-main-business.helper';
+import { loginToO12CE, O12CE_DATA, teardownMigRecords, sweepMigLeftoversAfterAll, registerMigRecord } from '@helpers/o12ce-main-business.helper';
 
 /**
  * O12 CE Main-Business Smoke - Create a CRM Lead
@@ -81,6 +81,12 @@ test.describe('CRM-12325_2.1.1 - O12 CE smoke: create a CRM Lead', () => {
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
     await teardownMigRecords(page, SKIP_CLEANUP_LEAD);
+  });
+
+  // CLAUDE.md crm-mig rule: the afterAll sweep also removes what a dying test created but never
+  // got to register. Opens its own session, so it costs one extra login per spec file.
+  test.afterAll(async ({ browser }) => {
+    await sweepMigLeftoversAfterAll(browser, 'CRM-12325_2.1.1');
   });
 
   test('CRM-12325_2.1.1: Verify a CRM Lead can be created on the O12 CE Migration server', async ({ page }, testInfo) => {

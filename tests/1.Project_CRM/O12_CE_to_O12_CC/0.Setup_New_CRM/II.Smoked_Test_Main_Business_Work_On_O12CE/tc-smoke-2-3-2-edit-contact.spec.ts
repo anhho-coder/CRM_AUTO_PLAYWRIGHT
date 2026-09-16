@@ -3,7 +3,7 @@ import { config } from '@config/test.config';
 import { ContactPage } from '@pages';
 import { HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
-import { loginToO12CE, O12CE_DATA, teardownMigRecords, registerMigRecord } from '@helpers/o12ce-main-business.helper';
+import { loginToO12CE, O12CE_DATA, teardownMigRecords, sweepMigLeftoversAfterAll, registerMigRecord } from '@helpers/o12ce-main-business.helper';
 
 /**
  * O12 CE Main-Business Smoke - Edit a Contact
@@ -68,6 +68,12 @@ test.describe('CRM-12325_2.3.2 - O12 CE smoke: edit a Contact', () => {
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
     await teardownMigRecords(page, SKIP_CLEANUP_CONTACT);
+  });
+
+  // CLAUDE.md crm-mig rule: the afterAll sweep also removes what a dying test created but never
+  // got to register. Opens its own session, so it costs one extra login per spec file.
+  test.afterAll(async ({ browser }) => {
+    await sweepMigLeftoversAfterAll(browser, 'CRM-12325_2.3.2');
   });
 
   test('CRM-12325_2.3.2: Verify a Contact can be edited on the O12 CE Migration server', async ({ page }, testInfo) => {

@@ -13,6 +13,7 @@ import {
   O12ceOpportunity,
   O12ceQuotationResult,
   teardownMigRecords,
+  sweepMigLeftoversAfterAll,
 } from '@helpers/o12ce-main-business.helper';
 
 /**
@@ -94,6 +95,12 @@ test.describe('CRM-12325_2.5.6 - O12 CE smoke: Quotation Payer is proposed as em
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
     await teardownMigRecords(page, SKIP_CLEANUP_OPP);
+  });
+
+  // CLAUDE.md crm-mig rule: the afterAll sweep also removes what a dying test created but never
+  // got to register. Opens its own session, so it costs one extra login per spec file.
+  test.afterAll(async ({ browser }) => {
+    await sweepMigLeftoversAfterAll(browser, 'CRM-12325_2.5.6');
   });
 
   test('CRM-12325_2.5.6: Verify the Quotation Payer is auto-filled as a recipient in the "Send by Email" composer on the O12 CE Migration server', async ({ page }, testInfo) => {
