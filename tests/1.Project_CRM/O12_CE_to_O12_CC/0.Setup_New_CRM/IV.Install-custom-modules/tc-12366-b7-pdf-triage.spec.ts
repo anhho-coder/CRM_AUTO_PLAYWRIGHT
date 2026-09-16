@@ -23,6 +23,9 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12366_B7-PDF-TRIAGE" --project=chromium
+ * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
+ *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
+ *   output IS the artifact. UI capture is disabled for this spec on purpose.
  */
 
 interface Probe {
@@ -38,6 +41,16 @@ interface Probe {
   errorText: string;
 }
 
+// RPC-only spec: no screen is driven, so a screenshot/video would only show an idle page.
+/** Step labels - ONE source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition: log in on the Migration server',
+  s1:     'Step 2-8: [INTERNAL check, Call API] Probe each report as html and as pdf',
+  verify: 'Verification',
+} as const;
+
+test.use({ screenshot: 'off', video: 'off' });
+
 test.describe('CRM-12366 B7 triage - template or engine', () => {
 
   test('CRM-12366_B7-PDF-TRIAGE: separate a broken PDF engine from a broken report template', async ({ page }) => {
@@ -47,14 +60,16 @@ test.describe('CRM-12366 B7 triage - template or engine', () => {
     const loginPage = new LoginPageMig(page);
     console.log('========== CRM-12366_B7-PDF-TRIAGE ==========');
 
-    await test.step('Pre-condition: log in on the Migration server', async () => {
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       await loginPage.navigateTo(baseUrl_mig);
       await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
       await page.waitForTimeout(CommonUtils.waitTimes.medium);
       console.log(`  OK - logged in as ${users.admin_crm_mig.username}`);
     });
 
-    const probes: Probe[] = await test.step('Probe each report as html and as pdf', async () => {
+    const probes: Probe[] = await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       return await page.evaluate(async () => {
         async function callKw(model: string, method: string, args: any[], kwargs: any = {}) {
           const r = await fetch('/web/dataset/call_kw', {
@@ -145,7 +160,8 @@ test.describe('CRM-12366 B7 triage - template or engine', () => {
       });
     });
 
-    await test.step('Verification', async () => {
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       console.log('\n==================== VERIFY ====================');
       for (const p of probes) {
         console.log(`\n${p.label}`);

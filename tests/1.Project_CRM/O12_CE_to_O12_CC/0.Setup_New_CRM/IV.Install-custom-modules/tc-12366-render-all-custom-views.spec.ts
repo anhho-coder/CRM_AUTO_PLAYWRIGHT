@@ -26,6 +26,9 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12366_B3-RENDER-ALL" --project=chromium
+ * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
+ *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
+ *   output IS the artifact. UI capture is disabled for this spec on purpose.
  */
 
 interface ViewFailure {
@@ -46,6 +49,16 @@ interface RenderReport {
   failures: ViewFailure[];
 }
 
+// RPC-only spec: no screen is driven, so a screenshot/video would only show an idle page.
+/** Step labels - ONE source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1:   'Pre-condition: log in on the Migration server',
+  s1:     'Step 2-5: [INTERNAL check, Call API] Resolve every custom-module view and render it',
+  verify: 'Verification',
+} as const;
+
+test.use({ screenshot: 'off', video: 'off' });
+
 test.describe('CRM-12366 B3 - all custom-module views render', () => {
 
   test('CRM-12366_B3-RENDER-ALL: every view owned by an installed custom module builds without error', async ({ page }) => {
@@ -56,7 +69,8 @@ test.describe('CRM-12366 B3 - all custom-module views render', () => {
 
     console.log('========== CRM-12366_B3-RENDER-ALL ==========');
 
-    await test.step('Pre-condition: log in on the Migration server', async () => {
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  Account : ${users.admin_crm_mig.username}`);
       console.log(`  Target  : ${baseUrl_mig}`);
       await loginPage.navigateTo(baseUrl_mig);
@@ -65,7 +79,8 @@ test.describe('CRM-12366 B3 - all custom-module views render', () => {
       console.log('  OK - logged in');
     });
 
-    const report: RenderReport = await test.step('Resolve every custom-module view and render it', async () => {
+    const report: RenderReport = await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
       return await page.evaluate(async () => {
         async function callKw(model: string, method: string, args: any[], kwargs: any = {}) {
           const r = await fetch('/web/dataset/call_kw', {
@@ -141,7 +156,8 @@ test.describe('CRM-12366 B3 - all custom-module views render', () => {
       });
     });
 
-    await test.step('Verification', async () => {
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
       console.log('\n==================== VERIFY ====================');
       console.log(`Custom modules installed        : ${report.customModules}`);
       console.log(`Views owned by those modules    : ${report.viewsOwned}`);
