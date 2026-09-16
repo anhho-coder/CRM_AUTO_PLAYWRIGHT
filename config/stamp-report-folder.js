@@ -7,8 +7,9 @@
  *
  * This appends ONE self-contained script to index.html which, at view time:
  *   - sets the browser tab title to the report folder name, and
- *   - shows a small pill in the bottom-right corner with that folder name
- *     (hover = full path, click = copy the full path, x = hide it for the session).
+ *   - shows a small pill in the bottom-right corner with that folder name and the date the
+ *     report was generated on this machine
+ *     (hover = full path + created date, click = copy the full path, x = hide it for the session).
  *
  * Append-only and idempotent: the embedded report data is never rewritten, and a report
  * that already carries the stamp is left alone.
@@ -50,8 +51,36 @@ function removeStamp(indexPath) {
   fs.writeFileSync(indexPath, html.slice(0, start) + (end === -1 ? '' : html.slice(end + '</script>'.length)), 'utf8');
 }
 
-function buildSnippet(label, fullPath) {
-  const info = JSON.stringify({ label: label, fullPath: fullPath });
+/** Local 'YYYY-MM-DD HH:mm' - the format the report folders already use. */
+function formatDate(date) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+/** When index.html was written. birthtime is reliable on Windows; mtime is the fallback. */
+function fileCreationDate(indexPath) {
+  const stats = fs.statSync(indexPath);
+  const birth = stats.birthtimeMs;
+  return new Date(birth && birth > 0 ? birth : stats.mtimeMs);
+}
+
+/** The date carried by an existing stamp, so --force keeps the original generation time. */
+function readStampedDate(indexPath) {
+  try {
+    const html = fs.readFileSync(indexPath, 'utf8');
+    const start = html.indexOf('<script id="' + MARKER + '"');
+    if (start === -1) return null;
+    const match = /var info = (\{.*?\});/.exec(html.slice(start, start + 4096));
+    if (!match) return null;
+    return JSON.parse(match[1]).createdAt || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildSnippet(label, fullPath, createdAt) {
+  const info = JSON.stringify({ label: label, fullPath: fullPath, createdAt: createdAt });
   return `
 <script id="${MARKER}">
 (function () {
@@ -82,11 +111,16 @@ function buildSnippet(label, fullPath) {
       'border-radius:999px;background:rgba(24,26,30,.93);color:#f2f4f7;' +
       'border:1px solid rgba(255,255,255,.2);box-shadow:0 2px 12px rgba(0,0,0,.4);' +
       'backdrop-filter:blur(4px);cursor:pointer;';
-    pill.title = info.fullPath + '  (click to copy)';
+    var br = String.fromCharCode(10) + String.fromCharCode(10);
+    pill.title = info.fullPath + (info.createdAt ? br + 'Generated: ' + info.createdAt : '') + br + '(click to copy the path)';
 
     var text = document.createElement('span');
     text.textContent = '\uD83D\uDCC1 ' + info.label;
-    text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+    text.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1 1 auto;';
+
+    var created = document.createElement('span');
+    created.textContent = '\\uD83D\\uDD52 ' + info.createdAt;
+    created.style.cssText = 'opacity:.72;white-space:nowrap;flex:0 0 auto;';
 
     var close = document.createElement('span');
     close.textContent = '\u00D7';
@@ -114,6 +148,7 @@ function buildSnippet(label, fullPath) {
     });
 
     pill.appendChild(text);
+    if (info.createdAt) pill.appendChild(created);
     pill.appendChild(close);
     badge.appendChild(pill);
     document.body.appendChild(badge);
@@ -137,6 +172,9 @@ function stampReportFolder(folderPath, options) {
 
   const stamped = isStamped(indexPath);
   if (stamped && !force) return 'skipped';
+  // Read the generation date BEFORE touching the file: appending the stamp updates mtime, so a
+  // re-stamp (e.g. after the _Running -> _Passed rename) must reuse the date of the first stamp.
+  const createdAt = readStampedDate(indexPath) || formatDate(fileCreationDate(indexPath));
   if (stamped) removeStamp(indexPath);
 
   const absolute = path.resolve(folderPath);
@@ -145,7 +183,7 @@ function stampReportFolder(folderPath, options) {
   if (!label || label.startsWith('..')) label = path.basename(absolute);
   label = label.split(path.sep).join('/');
 
-  fs.appendFileSync(indexPath, buildSnippet(label, absolute), 'utf8');
+  fs.appendFileSync(indexPath, buildSnippet(label, absolute, createdAt), 'utf8');
   return stamped ? 'restamped' : 'stamped';
 }
 

@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import * as path from 'path';
+import * as os from 'os';
 
 const customReporterPath = path.resolve(__dirname, 'config', 'custom-reporter.js');
 // Merges per-Page videos into one full-video.webm and rewrites attachments.
@@ -105,6 +106,21 @@ function getOutputDirName(): string {
  */
 export default defineConfig({
   testDir: './tests',
+  /**
+   * Run identity: WHEN the run started and on WHICH machine. Evaluated at config-load time.
+   *
+   * Lands in test-results.json (json reporter) and in the HTML report's "Metadata" panel - but
+   * Playwright 1.56 only renders custom metadata keys when the report URL carries the flag:
+   *   index.html#?show-metadata-other=1
+   * Without the flag the panel stays empty, which is why WHEN + WHERE are also stamped onto the
+   * report itself by config/stamp-report-folder.js (the folder pill, bottom-right of any report).
+   * Values use forward slashes: the panel renders backslashes as escapes and eats them.
+   */
+  metadata: {
+    'Report created': `${now.toLocaleString('en-GB', { hour12: false })} (${Intl.DateTimeFormat().resolvedOptions().timeZone})`,
+    'Machine': `${os.hostname()} / ${os.userInfo().username}`,
+    'Report root': path.join(__dirname, 'playwright-report').split(path.sep).join('/'),
+  },
   /* Per-run artifact folder so parallel Playwright processes cannot wipe each other - see
      getOutputDirName(). Override with PW_OUTPUT_DIR when a job needs a fixed path. */
   outputDir: process.env.PW_OUTPUT_DIR || `test-results/${getOutputDirName()}`,
@@ -220,6 +236,12 @@ export default defineConfig({
     {
       name: 'CRM_Module',
       testDir: './tests/1.Project_CRM/9.CRM_Module',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
+      // Helpdesk / After-Sales module specs (CRM-12540 chatter with unstorable characters, ...).
+      name: 'Helpdesk_Module',
+      testDir: './tests/1.Project_CRM/6.Helpdesk_Module',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
