@@ -59,7 +59,30 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
     await page.waitForTimeout(CommonUtils.waitTimes.standard);
   });
 
+  // Written at test scope so the teardown below can still clean up when the test aborts mid-way.
+  type CreatedPartner = { id: number; name: string; deleted: boolean };
+  let createdPartner: CreatedPartner | null = null;
+
   test.afterEach(async ({ page }, testInfo) => {
+    // Re-read through the alias: TypeScript narrows the closure variable to `null` (nothing assigns
+    // it in this scope), so the teardown would not compile against the declared shape otherwise.
+    const created = createdPartner as CreatedPartner | null;
+    // TEARDOWN - this is the only spec in Section I that writes, so the record it creates must be
+    // gone before the run ends. writePathAliveViaPartner already unlinks inline; this is the safety
+    // net for the case where the create succeeded and that unlink did not (or the test aborted
+    // between the two), so a live res.partner is never left on the shared Migration instance.
+    if (created && created.id > 0 && !created.deleted) {
+      const platform = new MigPlatformPage(page);
+      console.log(`\n--- Teardown: removing leftover res.partner #${created.id} ---`);
+      const retry = await platform.deletePartnerById(created.id).catch(() => ({ deleted: false, error: 'teardown threw' }));
+      const remaining = await platform.countPartnersByName(created.name).catch(() => -1);
+      console.log(`  retry delete : ${retry.deleted ? 'OK' : 'FAILED - ' + (retry.error || 'unknown')}`);
+      console.log(`  rows still named "${created.name}": ${remaining} (expected 0, -1 = could not read)`);
+      if (!retry.deleted || remaining > 0) {
+        console.log(`  LEFTOVER ON crm-mig: res.partner #${created.id} "${created.name}" - delete it by hand`);
+      }
+    }
+
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       const spinnerLocator = page.locator('.o_loading, .oe_loading, [class*="loading"]');
       await page.waitForTimeout(3000);
@@ -77,7 +100,8 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
 
     // Collect results for final verification
     const appRenderResults: { name: string; hasError: boolean }[] = [];
-    let writePathResult: { id: number; deleted: boolean; error?: string } | null = null;
+    let writePathResult: { id: number; deleted: boolean; error?: string; deleteError?: string } | null = null;
+    let partnersLeft = -1; // rows still carrying the created name after the inline unlink (-1 = not read)
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
@@ -108,8 +132,15 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
       console.log(`\n--- ${STEP.s2} ---`);
       const contactName = `TEST Contact Mig ${Date.now()}`;
       writePathResult = await platform.writePathAliveViaPartner(contactName);
+      // Hand the record to the afterEach teardown BEFORE anything else can throw, so a record that
+      // was created but not unlinked is still cleaned up if this step or the verification aborts.
+      createdPartner = { id: writePathResult.id, name: contactName, deleted: writePathResult.deleted };
       console.log(`  Created: ${contactName}`);
       console.log(`  Record id: ${writePathResult.id}  |  cleanup deleted: ${writePathResult.deleted}  |  error: ${writePathResult.error || 'none'}`);
+      if (writePathResult.deleteError) console.log(`  Delete error: ${writePathResult.deleteError}`);
+      // Proves the delete really removed the row rather than trusting the unlink call's return.
+      partnersLeft = await platform.countPartnersByName(contactName);
+      console.log(`  Rows still named "${contactName}": ${partnersLeft} (expected 0)`);
       console.log(`  Result : ${writePathResult.id > 0 ? 'PASS' : 'FAIL'} (write path persisted a record)`);
     });
 
@@ -125,19 +156,26 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
       }
 
       // Verification #2: The write path persisted a record (create returns an id), then cleaned it up
+      const created  = !!writePathResult && writePathResult.id > 0;
+      const cleaned  = !!writePathResult && writePathResult.deleted === true && partnersLeft === 0;
       console.log('  Verify #2 - The write path persisted a record (create returns an id), then cleaned it up:');
-      console.log(`     Expected : record id > 0, cleanup successful`);
-      console.log(`     Actual   : id=${writePathResult?.id}, deleted=${writePathResult?.deleted}`);
-      console.log(`     Result   : ${writePathResult && writePathResult.id > 0 ? 'PASS' : 'FAIL'}`);
+      console.log(`     Expected : record id > 0, unlink reported deleted, 0 rows left with that name`);
+      console.log(`     Actual   : id=${writePathResult?.id}, deleted=${writePathResult?.deleted}, rows left=${partnersLeft}`);
+      console.log(`     Result   : ${created && cleaned ? 'PASS' : 'FAIL'}`);
 
       console.log('===============================================');
-      console.log('OVERALL: ' + (appRenderResults.every(r => !r.hasError) && writePathResult && writePathResult.id > 0 ? 'PASS' : 'FAIL') + ' - Core apps rendered and write path persisted record');
+      console.log('OVERALL: ' + (appRenderResults.every(r => !r.hasError) && created && cleaned ? 'PASS' : 'FAIL') + ' - Core apps rendered, write path alive, test record removed');
 
       // Run all expects after VERIFY block
       for (const result of appRenderResults) {
         expect(result.hasError, `${result.name} should render with no error`).toBeFalsy();
       }
       expect(writePathResult?.id, `the write path should persist a record (create returns an id). error=${writePathResult?.error || 'none'}`).toBeGreaterThan(0);
+      // Cleanup is ASSERTED, not just logged: this spec writes to a shared instance, so a create
+      // that is not followed by a successful delete has to fail the run rather than pass quietly and
+      // leave the record for the daily leftover check to find.
+      expect(writePathResult?.deleted, `the write path must delete the record it created (unlink error: ${writePathResult?.deleteError || 'none'})`).toBe(true);
+      expect(partnersLeft, `no res.partner must remain with the created name after cleanup (found ${partnersLeft}; -1 = the count could not be read)`).toBe(0);
     });
   });
 });

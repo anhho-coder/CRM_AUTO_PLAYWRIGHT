@@ -620,11 +620,62 @@ export class MigPlatformPage extends BasePage {
       try {
         const id = await callKw('res.partner', 'create', [{ name: nm }]);
         let deleted = false;
-        try { await callKw('res.partner', 'unlink', [[id]]); deleted = true; } catch (e) { deleted = false; }
-        return { id, deleted };
+        let deleteError: string | undefined;
+        // The unlink reason is CAPTURED, not swallowed: a cleanup that silently fails leaves a real
+        // record behind on a shared instance, and the caller can neither assert on it nor retry it
+        // without knowing why it failed.
+        try {
+          await callKw('res.partner', 'unlink', [[id]]);
+          deleted = true;
+        } catch (e) {
+          deleted = false;
+          deleteError = String(e).slice(0, 300);
+        }
+        return { id, deleted, deleteError };
       } catch (e) {
         return { id: 0, deleted: false, error: String(e).slice(0, 200) };
       }
+    }, name);
+  }
+
+  /**
+   * Delete one res.partner by id over the authenticated web-client session.
+   *
+   * Exists as the teardown safety net for the write-path smoke: when the create succeeded but the
+   * unlink did not, the record is live data on a shared instance, so the spec retries the delete in
+   * its afterEach instead of leaving it for the daily leftover check to find.
+   */
+  async deletePartnerById(id: number): Promise<{ deleted: boolean; error?: string }> {
+    return await this.page.evaluate(async (pid) => {
+      try {
+        const r = await fetch('/web/dataset/call_kw', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0', method: 'call',
+            params: { model: 'res.partner', method: 'unlink', args: [[pid]], kwargs: {} },
+          }),
+        });
+        const j = await r.json();
+        if (j.error) return { deleted: false, error: JSON.stringify(j.error).slice(0, 300) };
+        return { deleted: true };
+      } catch (e) {
+        return { deleted: false, error: String(e).slice(0, 300) };
+      }
+    }, id);
+  }
+
+  /** How many res.partner rows carry this exact name - used to prove a teardown really removed it. */
+  async countPartnersByName(name: string): Promise<number> {
+    return await this.page.evaluate(async (nm) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call',
+          params: { model: 'res.partner', method: 'search_count', args: [[['name', '=', nm]]], kwargs: {} },
+        }),
+      });
+      const j = await r.json();
+      return j.error ? -1 : (j.result as number);
     }, name);
   }
 }
