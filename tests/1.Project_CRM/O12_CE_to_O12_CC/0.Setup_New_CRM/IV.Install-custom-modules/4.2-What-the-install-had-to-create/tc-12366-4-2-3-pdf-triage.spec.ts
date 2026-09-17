@@ -5,7 +5,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-12366 block B7 triage - why do the 5 custom PDF reports return 500?
- * Test Case ID: CRM-12366_B7-PDF-TRIAGE
+ * Test Case ID: CRM-12366_4.2.3
  * Automation-Type: new
  * Automation-Date: 2026-08-24
  *
@@ -22,7 +22,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *   about this is custom-module specific.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12366_B7-PDF-TRIAGE" --project=chromium
+ *   npx playwright test --grep "CRM-12366_4\.2\.3:" --project=O12
  * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
  *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
  *   output IS the artifact. UI capture is disabled for this spec on purpose.
@@ -53,12 +53,12 @@ test.use({ screenshot: 'off', video: 'off' });
 
 test.describe('CRM-12366 B7 triage - template or engine', () => {
 
-  test('CRM-12366_B7-PDF-TRIAGE: separate a broken PDF engine from a broken report template', async ({ page }) => {
+  test('CRM-12366_4.2.3: separate a broken PDF engine from a broken report template', async ({ page }) => {
     test.setTimeout(12 * 60 * 1000);
     await page.setViewportSize({ width: 1600, height: 900 });
 
     const loginPage = new LoginPageMig(page);
-    console.log('========== CRM-12366_B7-PDF-TRIAGE ==========');
+    console.log('========== CRM-12366_4.2.3 ==========');
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);

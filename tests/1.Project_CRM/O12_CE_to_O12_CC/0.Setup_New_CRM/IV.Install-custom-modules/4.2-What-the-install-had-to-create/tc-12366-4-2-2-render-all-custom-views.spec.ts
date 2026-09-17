@@ -5,7 +5,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-12366 block B3 - every view owned by a custom module renders.
- * Test Case ID: CRM-12366_B3-RENDER-ALL
+ * Test Case ID: CRM-12366_4.2.2
  * Automation-Type: new
  * Automation-Date: 2026-08-24
  *
@@ -25,7 +25,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *   Login as Admin on crm-mig.nakivo.site. VPN required.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12366_B3-RENDER-ALL" --project=chromium
+ *   npx playwright test --grep "CRM-12366_4\.2\.2:" --project=O12
  * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
  *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
  *   output IS the artifact. UI capture is disabled for this spec on purpose.
@@ -61,13 +61,13 @@ test.use({ screenshot: 'off', video: 'off' });
 
 test.describe('CRM-12366 B3 - all custom-module views render', () => {
 
-  test('CRM-12366_B3-RENDER-ALL: every view owned by an installed custom module builds without error', async ({ page }) => {
+  test('CRM-12366_4.2.2: every view owned by an installed custom module builds without error', async ({ page }) => {
     test.setTimeout(20 * 60 * 1000);
     await page.setViewportSize({ width: 1600, height: 900 });
 
     const loginPage = new LoginPageMig(page);
 
-    console.log('========== CRM-12366_B3-RENDER-ALL ==========');
+    console.log('========== CRM-12366_4.2.2 ==========');
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);

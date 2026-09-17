@@ -5,7 +5,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * CRM-12366 blocks B1, B4, B6, B7 - the custom module set actually runs.
- * Test Case ID: CRM-12366_B1-B4-B6-B7
+ * Test Case ID: CRM-12366_4.2.1
  * Automation-Type: new
  * Automation-Date: 2026-08-24
  *
@@ -25,7 +25,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *   Login as Admin on crm-mig.nakivo.site. VPN required.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12366_B1-B4-B6-B7" --project=chromium
+ *   npx playwright test --grep "CRM-12366_4\.2\.1:" --project=O12
  * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
  *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
  *   output IS the artifact. UI capture is disabled for this spec on purpose.
@@ -52,12 +52,12 @@ test.use({ screenshot: 'off', video: 'off' });
 
 test.describe('CRM-12366 - the custom module set runs, not just installs', () => {
 
-  test('CRM-12366_B1-B4-B6-B7: models load, actions open, automations target live models, reports print', async ({ page }) => {
+  test('CRM-12366_4.2.1: models load, actions open, automations target live models, reports print', async ({ page }) => {
     test.setTimeout(25 * 60 * 1000);
     await page.setViewportSize({ width: 1600, height: 900 });
 
     const loginPage = new LoginPageMig(page);
-    console.log('========== CRM-12366_B1-B4-B6-B7 ==========');
+    console.log('========== CRM-12366_4.2.1 ==========');
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
