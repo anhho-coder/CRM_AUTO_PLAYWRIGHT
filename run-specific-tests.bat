@@ -21,23 +21,23 @@ REM ============================================================================
 REM LEAD ASSIGNMENT TESTS
 REM ============================================================================
 echo [TEST SUITE] Lead Assignment Tests
-call npx playwright test tests/Leads_Assignment/tc-bdeu-1-1-1-1-lead-assigned-to-bdeu.spec.ts --project=chromium
+call npx playwright test tests/1.Project_CRM/2.Leads_Assignment/BDEU_team/1.1.State_Group/tc-bdeu-1-1-1-1-sales-team-bdeu.spec.ts --project=chromium
 echo.
 
 REM ============================================================================
 REM PERFORMANCE TESTS (Uncomment to run)
 REM ============================================================================
 REM echo [TEST SUITE] Performance Tests
-REM call npx playwright test tests/SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts --project=chromium
-REM call npx playwright test tests/SalesReport_Performance/tc-performance-1-1-1-2-edit-lead.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-1-create-lead.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-2-edit-lead.spec.ts --project=chromium
 REM echo.
 
 REM ============================================================================
 REM OPPORTUNITY TESTS (Uncomment to run)
 REM ============================================================================
 REM echo [TEST SUITE] Opportunity Tests
-REM call npx playwright test tests/SalesReport_Performance/tc-performance-1-1-2-1-create-opp.spec.ts --project=chromium
-REM call npx playwright test tests/SalesReport_Performance/tc-performance-1-1-2-2-edit-opp.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-2-1-create-opp-v2.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-2-2-edit-opp.spec.ts --project=chromium
 REM echo.
 
 echo.

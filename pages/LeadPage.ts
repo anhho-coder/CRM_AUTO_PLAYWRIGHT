@@ -2818,5 +2818,385 @@ export class LeadPage extends BasePage {
     await this.clickActionDeleteOption();
     await this.confirmDeleteDialog();
   }
+
+  // ===========================================================================
+  // Lead data verification - field values + chatter log notes
+  // Selectors grounded on the live pre-production Lead form (2026-09-17):
+  //   Company Name     span|input[name="partner_name"]
+  //   Contact Name     span|input[name="contact_name"]
+  //   Company          a[name="partner_id"]  href="#id=<partnerId>&model=res.partner"
+  //   Email            a|input[name="email_from"]
+  //   Address          [name="street" | "city" | "state_id" | "country_id"]
+  //   Lead Form        [name="x_studio_lead_sorce"]
+  //   Priority         div.o_priority[name="priority_new"] > a.o_priority_star[title]
+  //                    (the plain [name="priority"] select is the hidden "Priority (System)" field)
+  //   Tags             div[name="tag_ids"] > div[data-index]
+  //   Top Deal         div[name="x_studio_top_deal"] input[type="checkbox"]
+  //   Salesperson      a|div[name="user_id"]      Sales Team  span|select[name="team_id"]
+  //   Lead Source      span|select[name="lead_source"]
+  //   Create manually  div[name="is_create_manual"] input[type="checkbox"]
+  //   Timezone         span|select[name="tz"]     Timezone offset  span[name="tz_offset"]
+  // The form renders several copies of most fields (hidden view variants), so every
+  // read/write below goes through the first :visible one.
+  // ===========================================================================
+
+  /** First VISIBLE element rendering an Odoo field. */
+  private visibleField(fieldName: string) {
+    return this.page.locator(`[name="${fieldName}"]:visible`).first();
+  }
+
+  /**
+   * Read what an Odoo field shows, in readonly OR in edit mode.
+   * select -> selected option label, input -> value, span/a -> text ('' when o_field_empty).
+   */
+  async readFieldValue(
+    fieldName: string,
+    timeout: number = CommonUtils.waitTimes.elementVisibility
+  ): Promise<string> {
+    const field = this.visibleField(fieldName);
+    await field.waitFor({ state: 'visible', timeout }).catch(() => {});
+    if ((await field.count()) === 0) return '';
+    return await field.evaluate((el: HTMLElement) => {
+      if (el instanceof HTMLSelectElement) {
+        const opt = el.selectedOptions[0];
+        return opt ? (opt.textContent || '').trim() : '';
+      }
+      if (el instanceof HTMLInputElement) return (el.value || '').trim();
+      if (el.classList.contains('o_field_empty')) return '';
+      return (el.textContent || '').replace(/​/g, '').trim();
+    }).catch(() => '');
+  }
+
+  /** True when a field is rendered at all (visible) on the current form. */
+  async isFieldPresent(fieldName: string): Promise<boolean> {
+    return (await this.visibleField(fieldName).count()) > 0;
+  }
+
+  /**
+   * The Company (partner) the Lead is linked to: the blue link under Company Name.
+   * Returns empty strings when the Lead has no Customer yet.
+   */
+  async getCompanyPartner(
+    timeout: number = CommonUtils.waitTimes.contactShowing
+  ): Promise<{ name: string; partnerId: string; href: string }> {
+    const link = this.page.locator('a[name="partner_id"]:visible').first();
+    await link.waitFor({ state: 'visible', timeout }).catch(() => {});
+    if ((await link.count()) === 0) return { name: '', partnerId: '', href: '' };
+    const name = ((await link.textContent().catch(() => '')) || '').trim();
+    const href = ((await link.getAttribute('href').catch(() => '')) || '').trim();
+    const idMatch = href.match(/[#&?]id=(\d+)/);
+    return { name, partnerId: idMatch ? idMatch[1] : '', href };
+  }
+
+  /**
+   * Wait until the automatic contact creation has linked a Customer to the Lead.
+   * Reloads the form until the Company link appears (or the budget runs out).
+   */
+  async waitForCompanyPartner(
+    maxWaitTime: number = CommonUtils.waitTimes.contactRefreshTotalWait,
+    checkInterval: number = CommonUtils.waitTimes.contactShowing
+  ): Promise<{ name: string; partnerId: string; href: string }> {
+    const deadline = Date.now() + maxWaitTime;
+    let partner = await this.getCompanyPartner(CommonUtils.waitTimes.elementVisibility);
+    let attempt = 1;
+    while (!partner.partnerId && Date.now() < deadline) {
+      console.log(`  ... Company (Customer) not linked yet - attempt #${attempt}, reloading`);
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForLoadingOverlayHidden().catch(() => {});
+      await this.wait(checkInterval);
+      partner = await this.getCompanyPartner(CommonUtils.waitTimes.elementVisibility);
+      attempt++;
+    }
+    return partner;
+  }
+
+  /**
+   * The Priority star widget (field priority_new).
+   * filledStars = the ordinal of the selection (Low = 0, Medium = 1, Medium High = 2, ...).
+   */
+  async getPriority(
+    timeout: number = CommonUtils.waitTimes.elementVisibility
+  ): Promise<{ label: string; filledStars: number; totalStars: number }> {
+    const widget = this.page.locator('div.o_priority[name="priority_new"]:visible').first();
+    await widget.waitFor({ state: 'visible', timeout }).catch(() => {});
+    if ((await widget.count()) === 0) return { label: '', filledStars: -1, totalStars: 0 };
+    return await widget.evaluate((el: HTMLElement) => {
+      const stars = Array.from(el.querySelectorAll('a.o_priority_star'));
+      const selected = stars.find((s) => s.getAttribute('aria-checked') === 'true');
+      return {
+        label: selected ? (selected.getAttribute('title') || '').trim() : 'Low',
+        filledStars: stars.filter((s) => s.classList.contains('fa-star')).length,
+        totalStars: stars.length,
+      };
+    });
+  }
+
+  /** Click the Priority star carrying this label (Medium / Medium High / High / Very High). */
+  async setPriority(label: string): Promise<boolean> {
+    const star = this.page
+      .locator(`div.o_priority[name="priority_new"]:visible a.o_priority_star[title="${label}"]`)
+      .first();
+    if ((await star.count()) === 0) {
+      console.log(`  ⚠ Priority star "${label}" not found`);
+      return false;
+    }
+    await star.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    return true;
+  }
+
+  /** Read a boolean field's checkbox (works in readonly, where the input is disabled). */
+  async isBooleanFieldChecked(fieldName: string): Promise<boolean | null> {
+    const box = this.page.locator(`div[name="${fieldName}"]:visible input[type="checkbox"]`).first();
+    if ((await box.count()) === 0) return null;
+    return await box.isChecked().catch(() => null);
+  }
+
+  /**
+   * Toggle a boolean field to the wanted state.
+   * The Bootstrap custom-checkbox hides the real input behind its label, and the label can
+   * sit outside the viewport in the long Lead form (a plain click then fails with
+   * "Element is outside of the viewport"), so scroll first and fall back to a dispatched
+   * click, which needs no viewport at all.
+   */
+  async setBooleanField(fieldName: string, checked: boolean): Promise<boolean> {
+    const holder = this.page.locator(`div[name="${fieldName}"]:visible`).first();
+    if ((await holder.count()) === 0) {
+      console.log(`  ⚠ Boolean field "${fieldName}" not found`);
+      return false;
+    }
+    const box = holder.locator('input[type="checkbox"]').first();
+    if ((await box.isChecked().catch(() => null)) === checked) return true;
+
+    const target = holder.locator('label, .custom-control-label').first();
+    await holder.scrollIntoViewIfNeeded({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    try {
+      await target.click({ force: true, timeout: CommonUtils.waitTimes.elementVisibility });
+    } catch (e) {
+      console.log(`  ℹ️ Direct click on "${fieldName}" failed (${e instanceof Error ? e.message.split('\n')[0] : String(e)}) - dispatching instead`);
+      await target.dispatchEvent('click').catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.medium);
+    return (await box.isChecked().catch(() => null)) === checked;
+  }
+
+  async getTopDealChecked(): Promise<boolean | null> {
+    return this.isBooleanFieldChecked('x_studio_top_deal');
+  }
+
+  async setTopDeal(checked: boolean): Promise<boolean> {
+    return this.setBooleanField('x_studio_top_deal', checked);
+  }
+
+  async getCreateManuallyChecked(): Promise<boolean | null> {
+    return this.isBooleanFieldChecked('is_create_manual');
+  }
+
+  async getLeadSourceValue(): Promise<string> {
+    return this.readFieldValue('lead_source');
+  }
+
+  /** Pick a Lead Source (Nakivo / Partner); pass '' to clear it. */
+  async setLeadSource(label: string): Promise<boolean> {
+    const select = this.page.locator('select[name="lead_source"]:visible').first();
+    if ((await select.count()) === 0) {
+      console.log('  ⚠ Lead Source select not found');
+      return false;
+    }
+    await select.selectOption(label ? { label } : { index: 0 });
+    await this.wait(CommonUtils.waitTimes.medium);
+    return true;
+  }
+
+  /** The tags shown on the Lead, in form order. */
+  async getTagList(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<string[]> {
+    const container = this.page.locator('div[name="tag_ids"]:visible').first();
+    await container.waitFor({ state: 'visible', timeout }).catch(() => {});
+    if ((await container.count()) === 0) return [];
+    return await container.evaluate((el: HTMLElement) =>
+      Array.from(el.querySelectorAll('div[data-index]'))
+        .map((b) => {
+          const label = b.querySelector('.o_badge_text');
+          return ((label ? label.textContent : b.textContent) || '').trim();
+        })
+        .filter((t) => t.length > 0)
+    ).catch(() => []);
+  }
+
+  /**
+   * Poll a field (reloading the form) until it shows the wanted value.
+   * Several Lead fields are finished off by a background job after SAVE
+   * (Lead Source, Priority, Salesperson, Sales Team), so a single read is not enough.
+   */
+  async waitForFieldValue(
+    fieldName: string,
+    expected: string,
+    maxWaitTime: number = CommonUtils.waitTimes.contactRefreshTotalWait,
+    checkInterval: number = CommonUtils.waitTimes.contactShowing
+  ): Promise<string> {
+    const deadline = Date.now() + maxWaitTime;
+    let value = await this.readFieldValue(fieldName);
+    let attempt = 1;
+    while (value !== expected && Date.now() < deadline) {
+      console.log(`  ... ${fieldName} is "${value}", waiting for "${expected}" - attempt #${attempt}, reloading`);
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForLoadingOverlayHidden().catch(() => {});
+      await this.wait(checkInterval);
+      value = await this.readFieldValue(fieldName);
+      attempt++;
+    }
+    return value;
+  }
+
+  /**
+   * The labelled field rows of the Lead information area (everything above the notebook),
+   * split into the left and the right column and kept in the order the form renders them.
+   * Used by the field-name / field-order test cases.
+   */
+  async getInformationAreaRows(
+    timeout: number = CommonUtils.waitTimes.elementVisibility
+  ): Promise<{ left: Array<{ label: string; field: string }>; right: Array<{ label: string; field: string }> }> {
+    await this.page.locator('.o_form_sheet').first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const rows = await this.page.evaluate(() => {
+      const shown = (el: Element) =>
+        (el as HTMLElement).offsetParent !== null && el.getBoundingClientRect().height > 0;
+      const out: Array<{ label: string; field: string; x: number; y: number }> = [];
+      document.querySelectorAll('.o_form_sheet tr').forEach((tr) => {
+        if (!shown(tr) || tr.closest('.tab-pane')) return;
+        const labelCell = tr.querySelector('td.o_td_label');
+        if (!labelCell) return;
+        const field = tr.querySelector('td:not(.o_td_label) [name]');
+        const r = tr.getBoundingClientRect();
+        out.push({
+          label: (labelCell as HTMLElement).innerText.replace(/​/g, '').trim(),
+          field: field ? field.getAttribute('name') || '' : '',
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+        });
+      });
+      out.sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
+      return out;
+    }).catch(() => [] as Array<{ label: string; field: string; x: number; y: number }>);
+
+    // The sheet is a two-column layout; the right column starts around x = 600px.
+    const split = 400;
+    return {
+      left: rows.filter((r) => r.x < split).map((r) => ({ label: r.label, field: r.field })),
+      right: rows.filter((r) => r.x >= split).map((r) => ({ label: r.label, field: r.field })),
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // Chatter / Log note
+  // --------------------------------------------------------------------------
+
+  /**
+   * One entry per chatter message, NEWEST FIRST, line breaks preserved.
+   * Unlike getChatterLogText() this does not glue all messages into one blob, so an
+   * assertion cannot accidentally match across two neighbouring notes.
+   */
+  async getChatterMessages(
+    timeout: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string[]> {
+    const messages = this.page.locator('.o_thread_message .o_thread_message_content');
+    await messages.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await messages.count();
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = await messages
+        .nth(i)
+        .evaluate((el: HTMLElement) => el.innerText.replace(/ /g, ' ').trim())
+        .catch(() => '');
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  /** The first chatter message matching, or null. */
+  async findChatterMessage(
+    pattern: string | RegExp,
+    timeout?: number
+  ): Promise<string | null> {
+    const messages = await this.getChatterMessages(timeout);
+    const hit = messages.find((m) =>
+      typeof pattern === 'string' ? m.includes(pattern) : pattern.test(m)
+    );
+    return hit ?? null;
+  }
+
+  /**
+   * Poll the chatter (reloading the form) until a message matches.
+   * The automatic contact creation and the assignment job write their notes
+   * asynchronously, so a single read right after SAVE is not enough.
+   *
+   * CAUTION with the regex `m` flag: a message is a multi-line string, so /^Foo:/m also
+   * matches a line INSIDE another note - "Opportunity created" carries its own
+   * "Priority (System): Low" line. Anchor without `m` to match only notes that START
+   * with the pattern.
+   */
+  async waitForChatterMessage(
+    pattern: string | RegExp,
+    maxWaitTime: number = CommonUtils.waitTimes.contactRefreshTotalWait,
+    checkInterval: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string | null> {
+    const deadline = Date.now() + maxWaitTime;
+    let attempt = 1;
+    let hit = await this.findChatterMessage(pattern);
+    while (!hit && Date.now() < deadline) {
+      console.log(`  ... log note ${pattern} not in the chatter yet - attempt #${attempt}, reloading`);
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForLoadingOverlayHidden().catch(() => {});
+      await this.wait(checkInterval);
+      hit = await this.findChatterMessage(pattern);
+      attempt++;
+    }
+    return hit;
+  }
+
+  /**
+   * Turn a "<key>: <value>" log note into a map.
+   * Odoo renders a tracked change as "old <arrow-icon> new"; the icon has no text, so
+   * such a value arrives as "old  new" - use splitTrackedChange() on it.
+   */
+  parseLogNoteFields(note: string): Record<string, string> {
+    const fields: Record<string, string> = {};
+    note.split('\n').forEach((line) => {
+      const m = line.match(/^\s*([^:]+?):\s*(.*)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    });
+    return fields;
+  }
+
+  /** Split a tracked value "old  new" into its two sides. */
+  splitTrackedChange(value: string): { from: string; to: string } {
+    const parts = value.split(/\s{2,}/).map((p) => p.trim()).filter((p) => p.length > 0);
+    if (parts.length >= 2) return { from: parts[0], to: parts[parts.length - 1] };
+    return { from: '', to: value.trim() };
+  }
+
+  /**
+   * The "Opportunity created" log note written when the Lead is created.
+   * Keys seen on pre-production: Customer Name, Contact Name, Email,
+   * Lead Source Technical, Priority, Stage, Expected Revenue, Active,
+   * Sales Team, Salesperson, User Email, Lead Source.
+   */
+  async getOpportunityCreatedNote(
+    maxWaitTime: number = CommonUtils.waitTimes.contactRefreshTotalWait
+  ): Promise<{ raw: string; fields: Record<string, string> } | null> {
+    const raw = await this.waitForChatterMessage(/^Opportunity created/, maxWaitTime);
+    return raw ? { raw, fields: this.parseLogNoteFields(raw) } : null;
+  }
+
+  /**
+   * The log note written by the automatic contact creation.
+   * Keys seen on pre-production: Customer, Customer Name (tracked change),
+   * Partner Contact Email, Pricelist.
+   */
+  async getCustomerCreatedNote(
+    maxWaitTime: number = CommonUtils.waitTimes.contactRefreshTotalWait
+  ): Promise<{ raw: string; fields: Record<string, string> } | null> {
+    const raw = await this.waitForChatterMessage(/^Customer:/, maxWaitTime);
+    return raw ? { raw, fields: this.parseLogNoteFields(raw) } : null;
+  }
 }
 

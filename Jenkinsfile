@@ -314,7 +314,7 @@ echo ffmpeg OK
                         runPlaywright = { bat "npx playwright test --project=${project}" }
                     } else {
                         echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
-                        runPlaywright = { bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless' }
+                        runPlaywright = { bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless' }
                     }
                     // --- Mid-run pre-prod VPN gate -------------------------------------------
                     // The background CRM-Connectivity-Check job raises

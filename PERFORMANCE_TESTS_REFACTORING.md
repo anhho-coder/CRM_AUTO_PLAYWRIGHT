@@ -133,7 +133,7 @@ npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/ --project=chr
 
 To run a specific performance test:
 ```bash
-npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-1-1-create-lead.spec.ts --project=chromium
+npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-1-create-lead.spec.ts --project=chromium
 ```
 
 ## Notes
