@@ -1,6 +1,10 @@
 import { Page, expect } from '@playwright/test';
 import { baseUrl } from '../config/users.config';
 
+// Quoc Anh: (Sep 17, 26) The host of baseUrl, escaped for use inside a RegExp, so every URL
+// assertion below pins the real server instead of accepting any host.
+const HOST = baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\./g, '\\.');
+
 /**
  * Login Page Helper
  * Provides reusable methods for interacting with the NAKIVO Partner Portal login page
@@ -12,7 +16,17 @@ export class LoginHelper {
   // "Odoo" rather than the login page.
   private readonly LOGIN_URL = `${baseUrl}web/login`;
   private readonly RESET_PASSWORD_URL = `${baseUrl}web/reset_password`;
+  // A fresh login lands on ".../web?" and this glob matches that shape.
   private readonly DASHBOARD_URL_PATTERN = '**/web?*';
+  // Quoc Anh: (Sep 17, 26) ...but an already-authenticated visit to /web/login is redirected to
+  // ".../web" with NO query string, which '**/web?*' can never match - '?' is a literal character
+  // in a Playwright glob. This regex covers both shapes while still pinning host and path.
+  private readonly BACKEND_URL_PATTERN = new RegExp(`^https?://${HOST}/web(\\?|#|$)`);
+  // Quoc Anh: (Sep 17, 26) Host-pinned, and the trailing (\?|$) ends the path. The earlier
+  // /^https?:\/\/[^/]+\/web\/login$/ accepted ANY host, and a version without the ending would also
+  // have accepted "/web/loginfoo".
+  private readonly LOGIN_URL_PATTERN = new RegExp(`^https?://${HOST}/web/login(\\?|$)`);
+  private readonly RESET_PASSWORD_URL_PATTERN = new RegExp(`^https?://${HOST}/web/reset_password(\\?|$)`);
 
   constructor(private page: Page) {}
 
@@ -20,8 +34,20 @@ export class LoginHelper {
    * Navigate to the login page
    */
   async navigateToLogin(): Promise<void> {
-    await this.page.goto(this.LOGIN_URL);
+    await this.page.goto(this.LOGIN_URL, { waitUntil: 'domcontentloaded' });
     await expect(this.page).toHaveTitle(/Login \| NAKIVO Partner Portal/);
+  }
+
+  /**
+   * Open the login URL WITHOUT asserting that the login page rendered.
+   *
+   * Quoc Anh: (Sep 17, 26) Use this when a session may still be active: Odoo bounces an
+   * authenticated visit to /web/login straight to the backend, so navigateToLogin()'s title
+   * assertion fails by design there - that redirect is exactly what the session-persistence
+   * test wants to observe.
+   */
+  async gotoLoginUrl(): Promise<void> {
+    await this.page.goto(this.LOGIN_URL, { waitUntil: 'domcontentloaded' });
   }
 
   /**
@@ -108,7 +134,8 @@ export class LoginHelper {
    */
   async loginAndWaitForSuccess(email: string, password: string): Promise<void> {
     await this.login(email, password);
-    await this.page.waitForURL(this.DASHBOARD_URL_PATTERN, { timeout: 15000 });
+    // Quoc Anh: (Sep 17, 26) Odoo never fires 'load' event; must use 'domcontentloaded' to avoid timeout.
+    await this.page.waitForURL(this.DASHBOARD_URL_PATTERN, { timeout: 15000, waitUntil: 'domcontentloaded' });
     await expect(this.page).toHaveTitle(/Odoo/);
   }
 
@@ -118,7 +145,8 @@ export class LoginHelper {
   async loginAndExpectError(email: string, password: string, errorMessage: string = 'Wrong login/password'): Promise<void> {
     await this.login(email, password);
     await expect(this.getErrorAlert()).toContainText(errorMessage);
-    await expect(this.page).toHaveURL(this.LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http -> https; must use regex that tolerates both schemes.
+    await expect(this.page).toHaveURL(this.LOGIN_URL_PATTERN);
   }
 
   /**
@@ -126,14 +154,16 @@ export class LoginHelper {
    */
   async clickForgotPassword(): Promise<void> {
     await this.getForgotPasswordLink().click();
-    await expect(this.page).toHaveURL(this.RESET_PASSWORD_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http -> https; must use regex that tolerates both schemes.
+    await expect(this.page).toHaveURL(this.RESET_PASSWORD_URL_PATTERN);
   }
 
   /**
    * Verify login page is displayed
    */
   async verifyLoginPageDisplayed(): Promise<void> {
-    await expect(this.page).toHaveURL(this.LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http -> https; must use regex that tolerates both schemes.
+    await expect(this.page).toHaveURL(this.LOGIN_URL_PATTERN);
     await expect(this.page).toHaveTitle(/Login \| NAKIVO Partner Portal/);
     await expect(this.getEmailField()).toBeVisible();
     await expect(this.getPasswordField()).toBeVisible();
@@ -144,9 +174,11 @@ export class LoginHelper {
    * Verify user is logged in and on dashboard
    */
   async verifyLoggedIn(userName?: string): Promise<void> {
-    await this.page.waitForURL(this.DASHBOARD_URL_PATTERN, { timeout: 10000 });
+    // Quoc Anh: (Sep 17, 26) Odoo never fires 'load' event; must use 'domcontentloaded' to avoid timeout.
+    // BACKEND_URL_PATTERN, not the glob: this is also called right after a redirect to a bare ".../web".
+    await this.page.waitForURL(this.BACKEND_URL_PATTERN, { timeout: 10000, waitUntil: 'domcontentloaded' });
     await expect(this.page).toHaveTitle(/Odoo/);
-    
+
     if (userName) {
       await expect(this.page.getByRole('button', { name: new RegExp(userName) })).toBeVisible();
     }
@@ -202,21 +234,24 @@ export class LoginHelper {
     await expect(this.getPasswordField()).toBeVisible();
     await expect(this.getLoginButton()).toBeVisible();
     await expect(this.getForgotPasswordLink()).toBeVisible();
-    await expect(this.page.locator('img[alt*="Logo"]').first()).toBeVisible();
+    // Quoc Anh: (Sep 17, 26) 'img[alt*="Logo"]' matches zero elements; real logos have src*="logo" or alt="Nakivo".
+    await expect(this.page.locator('img[src*="logo"]').first()).toBeVisible();
   }
 
   /**
    * Check if email field has required attribute
    */
   async verifyEmailRequired(): Promise<void> {
-    await expect(this.getEmailField()).toHaveAttribute('required', '');
+// Quoc Anh: (Sep 17, 26) Odoo renders required="required" - assert the DOM property.
+    await expect(this.getEmailField()).toHaveJSProperty('required', true);
   }
 
   /**
    * Check if password field has required attribute
    */
   async verifyPasswordRequired(): Promise<void> {
-    await expect(this.getPasswordField()).toHaveAttribute('required', '');
+// Quoc Anh: (Sep 17, 26) Odoo renders required="required" - assert the DOM property.
+    await expect(this.getPasswordField()).toHaveJSProperty('required', true);
   }
 
   /**
@@ -245,6 +280,7 @@ export class LoginHelper {
    */
   async logout(): Promise<void> {
     await this.page.goto(`${baseUrl}web/session/logout`);
-    await expect(this.page).toHaveURL(this.LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http -> https; must use regex that tolerates both schemes.
+    await expect(this.page).toHaveURL(this.LOGIN_URL_PATTERN);
   }
 }

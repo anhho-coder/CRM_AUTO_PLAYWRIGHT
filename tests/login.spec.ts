@@ -4,6 +4,7 @@ import { config } from '../config/test.config';
 // prints the value into the report step title and into trace.zip. The FAKE passwords used by the
 // negative test cases below are filled directly on purpose - there is nothing to hide there.
 import { LoginPage } from '../pages/LoginPage';
+import { baseUrl, users } from '../config/users.config';
 
 /**
  * Login Test Suite
@@ -24,15 +25,30 @@ import { LoginPage } from '../pages/LoginPage';
  */
 
 test.describe('NAKIVO Partner Portal - Login Functionality', () => {
-  const LOGIN_URL = 'http://pre-production.nakivo.site/';
+  // Quoc Anh: (Sep 17, 26) Derive LOGIN_URL from baseUrl via regex pattern to tolerate the
+  // server's 301 redirect from http:// to https://. Exact-string match fails on the scheme.
+  // The /web/login path is REQUIRED: these assertions mean "we are still on the login page", so a
+  // pattern that also accepted the bare host would pass on any page of the site.
+  const LOGIN_HOST = baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\./g, '\\.');
+  // The trailing (\?|$) ends the path: without it the pattern would also accept "/web/loginfoo".
+  const LOGIN_URL_PATTERN = new RegExp(`^https?://${LOGIN_HOST}/web/login(\\?|$)`);
+  // A fresh login lands on ".../web?" - the glob matches that shape.
   const DASHBOARD_URL_PATTERN = '**/web?*';
+  // Quoc Anh: (Sep 17, 26) ...but a visit to /web/login while ALREADY logged in redirects to
+  // ".../web" with NO query string, and '**/web?*' cannot match that: '?' is a literal character in
+  // a Playwright glob, so the pattern demands a "web?" in the URL. This regex accepts both shapes.
+  const BACKEND_URL_PATTERN = new RegExp(`^https?://${LOGIN_HOST}/web(\\?|#|$)`);
+  // The session menu is labelled with the account's full name as Odoo stores it.
+  const SESSION_USER_NAME = new RegExp(users.admin_crm.createdByName);
   
   // Navigate to login page before each test
   test.beforeEach(async ({ page }) => {
     // Clear cookies to ensure fresh state
     await page.context().clearCookies();
-    await page.goto(LOGIN_URL);
-    
+    // Quoc Anh: (Sep 17, 26) Navigate to /web/login explicitly; Odoo backend never fires
+    // the load event, so specify waitUntil:'domcontentloaded' per BasePage.ts convention.
+    await page.goto(`${baseUrl}web/login`, { waitUntil: 'domcontentloaded' });
+
     // Verify login page is loaded
     await expect(page).toHaveTitle(/Login \| NAKIVO Partner Portal/);
     await expect(page.getByRole('textbox', { name: 'Email' })).toBeVisible();
@@ -45,7 +61,9 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await expect(page.getByRole('textbox', { name: 'Password' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Log in' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Forgot password?' })).toBeVisible();
-    await expect(page.locator('img[alt*="Logo"]').first()).toBeVisible();
+    // Quoc Anh: (Sep 17, 26) 'img[alt*="Logo"]' matches zero elements on the login page;
+    // use 'img[src*="logo"]' which matches the actual logo images present.
+    await expect(page.locator('img[src*="logo"]').first()).toBeVisible();
 
     // Step 2: Enter valid email
     await page.getByRole('textbox', { name: 'Email' }).click();
@@ -59,14 +77,16 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Verify successful login
-    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000 });
+    // Quoc Anh: (Sep 17, 26) Odoo backend never fires the load event; must use
+    // waitUntil:'domcontentloaded' per BasePage.ts convention.
+    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000, waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Odoo/);
-    
+
     // Verify navigation menu is present
     await expect(page.getByRole('link', { name: 'CRM' })).toBeVisible();
-    
+
     // Verify user profile shows correct name
-    await expect(page.getByRole('button', { name: /Thanh Phan/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: SESSION_USER_NAME })).toBeVisible();
   });
 
   test('TC-2: Login with Invalid Email Format', async ({ page }) => {
@@ -82,12 +102,14 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Verify error handling
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
     await expect(page.getByRole('alert')).toContainText('Wrong login/password');
-    
+
     // Verify email field retains value
     await expect(page.getByRole('textbox', { name: 'Email' })).toHaveValue('invalid-email');
-    
+
     // Verify password field is cleared
     await expect(page.getByRole('textbox', { name: 'Password' })).toHaveValue('');
   });
@@ -105,12 +127,14 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Verify error handling
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
     await expect(page.getByRole('alert')).toContainText('Wrong login/password');
-    
+
     // Verify email field retains value
     await expect(page.getByRole('textbox', { name: 'Email' })).toHaveValue(config.credentials.username);
-    
+
     // Verify password field is cleared
     await expect(page.getByRole('textbox', { name: 'Password' })).toHaveValue('');
   });
@@ -122,16 +146,20 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
 
     // Step 2: Try to click login button
     const emailInput = page.getByRole('textbox', { name: 'Email' });
-    
+
     // Verify HTML5 validation is present
-    await expect(emailInput).toHaveAttribute('required', '');
-    
+    // Quoc Anh: (Sep 17, 26) Odoo renders required="required", so toHaveAttribute('required', '')
+    // never matched. The DOM property is the exact same requirement, checked properly.
+    await expect(emailInput).toHaveJSProperty('required', true);
+
     // Attempt form submission
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Form should not submit (stay on same page)
-    await expect(page).toHaveURL(LOGIN_URL);
-    
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
+
     // Verify no error alert appears (client-side validation prevents submission)
     const alert = page.getByRole('alert');
     await expect(alert).not.toBeVisible();
@@ -144,17 +172,20 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
 
     // Step 2: Verify password field has required attribute
     const passwordInput = page.getByRole('textbox', { name: 'Password' });
-    await expect(passwordInput).toHaveAttribute('required', '');
+    // Quoc Anh: (Sep 17, 26) Odoo renders required="required" - assert the DOM property instead.
+    await expect(passwordInput).toHaveJSProperty('required', true);
 
     // Step 3: Attempt form submission
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Form should not submit
-    await expect(page).toHaveURL(LOGIN_URL);
-    
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
+
     // Verify email field retains value
     await expect(page.getByRole('textbox', { name: 'Email' })).toHaveValue(config.credentials.username);
-    
+
     // Verify no error alert appears (client-side validation)
     const alert = page.getByRole('alert');
     await expect(alert).not.toBeVisible();
@@ -169,8 +200,10 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Form should not submit
-    await expect(page).toHaveURL(LOGIN_URL);
-    
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
+
     // Verify no error alert appears
     const alert = page.getByRole('alert');
     await expect(alert).not.toBeVisible();
@@ -189,12 +222,14 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected Results: Verify error handling (same as wrong password)
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
     await expect(page.getByRole('alert')).toContainText('Wrong login/password');
-    
+
     // Verify email field retains value
     await expect(page.getByRole('textbox', { name: 'Email' })).toHaveValue('nonexistent.user@nakivo.com');
-    
+
     // Verify password field is cleared
     await expect(page.getByRole('textbox', { name: 'Password' })).toHaveValue('');
   });
@@ -214,9 +249,11 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.keyboard.press('Enter');
 
     // Expected Results: Verify successful login
-    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000 });
+    // Quoc Anh: (Sep 17, 26) Odoo backend never fires the load event; must use
+    // waitUntil:'domcontentloaded' per BasePage.ts convention.
+    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000, waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Odoo/);
-    await expect(page.getByRole('button', { name: /Thanh Phan/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: SESSION_USER_NAME })).toBeVisible();
   });
 
   test('TC-9: Password Field Masking', async ({ page }) => {
@@ -250,19 +287,24 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await forgotPasswordLink.click();
 
     // Expected Results: Verify navigation to reset password page
-    await expect(page).toHaveURL('https://sign-off.nakivo.site/web/reset_password');
+    // Quoc Anh: (Sep 17, 26) Reset password page is on pre-production.nakivo.site, not sign-off.
+    // Derive the base host from baseUrl; tolerate http->https redirect via scheme-tolerant regex.
+    const resetPasswordPattern = new RegExp(`^https?://${LOGIN_HOST}/web/reset_password(\\?|$)`);
+    await expect(page).toHaveURL(resetPasswordPattern);
     await expect(page).toHaveTitle(/Reset password \| NAKIVO Partner Portal/);
-    
+
     // Verify reset password form elements
     await expect(page.getByRole('textbox', { name: 'Your Email' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Confirm' })).toBeVisible();
     await expect(page.getByRole('link', { name: 'Back to Login' })).toBeVisible();
-    
+
     // Additional Verification: Click "Back to Login"
     await page.getByRole('link', { name: 'Back to Login' }).click();
-    
+
     // Verify return to login page
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Use regex pattern instead of hardcoded URL to tolerate
+    // the http->https redirect that the server performs.
+    await expect(page).toHaveURL(LOGIN_URL_PATTERN);
     await expect(page).toHaveTitle(/Login \| NAKIVO Partner Portal/);
   });
 
@@ -273,18 +315,23 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Step 2: Verify successful login
-    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000 });
+    // Quoc Anh: (Sep 17, 26) Odoo backend never fires the load event; must use
+    // waitUntil:'domcontentloaded' per BasePage.ts convention. This fixes the TC-11 timeout.
+    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 15000, waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Odoo/);
 
     // Step 3: Navigate back to login page
-    await page.goto(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Derive login URL from baseUrl with waitUntil:'domcontentloaded'.
+    await page.goto(`${baseUrl}web/login`, { waitUntil: 'domcontentloaded' });
 
     // Expected Results: User should be redirected to dashboard
-    await page.waitForURL(DASHBOARD_URL_PATTERN, { timeout: 10000 });
+    // Quoc Anh: (Sep 17, 26) This redirect lands on ".../web" without a query string, so it needs
+    // BACKEND_URL_PATTERN - the '**/web?*' glob would wait forever on a URL that has no "?".
+    await page.waitForURL(BACKEND_URL_PATTERN, { timeout: 10000, waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Odoo/);
-    
+
     // Verify user is still logged in (dashboard visible, not login form)
-    await expect(page.getByRole('button', { name: /Thanh Phan/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: SESSION_USER_NAME })).toBeVisible();
     await expect(page.getByRole('link', { name: 'CRM' })).toBeVisible();
   });
 });

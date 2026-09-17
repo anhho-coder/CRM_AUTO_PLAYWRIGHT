@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { baseUrl } from '../config/users.config';
 
 /**
  * Login Edge Cases & Security Test Suite
@@ -15,11 +16,18 @@ import { test, expect } from '@playwright/test';
  */
 
 test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
-  const LOGIN_URL = 'https://sign-off.nakivo.site/web/login';
+  // Quoc Anh: (Sep 17, 26) Derive LOGIN_URL from baseUrl; server redirects http→https, so use regex for assertions
+  const LOGIN_URL = new URL('web/login', baseUrl).toString();
+  // Quoc Anh: (Sep 17, 26) Pin the real host and end the path with (\?|$): a bare /web/login prefix
+  // would also accept "/web/loginfoo", and [^/]+ would accept any host at all.
+  const LOGIN_URL_REGEX = new RegExp(
+    `^https?://${baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '').replace(/\./g, '\\.')}/web/login(\\?|$)`
+  );
 
   test.beforeEach(async ({ page }) => {
     await page.context().clearCookies();
-    await page.goto(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Odoo backend never fires load event; use domcontentloaded
+    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
     await expect(page).toHaveTitle(/Login \| NAKIVO Partner Portal/);
   });
 
@@ -82,7 +90,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Expected: Should handle gracefully with error
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-2: Email with Leading/Trailing Spaces', async ({ page }) => {
@@ -108,7 +117,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should handle gracefully
     await page.waitForTimeout(2000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-4: Very Long Password', async ({ page }) => {
@@ -119,7 +129,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should handle gracefully with error
     await page.waitForTimeout(2000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-5: Email with Special Characters', async ({ page }) => {
@@ -145,7 +156,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
       }
 
       // Refresh page for next iteration
-      await page.goto(LOGIN_URL);
+      // Quoc Anh: (Sep 17, 26) Odoo backend never fires load event; use domcontentloaded
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
     }
   });
 
@@ -171,7 +183,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
         await expect(page.getByRole('alert')).toContainText('Wrong login/password');
       }
 
-      await page.goto(LOGIN_URL);
+      // Quoc Anh: (Sep 17, 26) Odoo backend never fires load event; use domcontentloaded
+      await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
     }
   });
 
@@ -182,7 +195,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should handle gracefully
     await page.waitForTimeout(2000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-8: Unicode Characters in Email', async ({ page }) => {
@@ -192,7 +206,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should handle gracefully with error
     await page.waitForTimeout(2000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-9: Empty Email Domain', async ({ page }) => {
@@ -202,7 +217,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should show error or prevent submission
     await page.waitForTimeout(1000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-EDGE-10: Missing Email Local Part', async ({ page }) => {
@@ -212,7 +228,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: Should show error or prevent submission
     await page.waitForTimeout(1000);
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-PERF-1: Rapid Multiple Login Attempts', async ({ page }) => {
@@ -226,7 +243,8 @@ test.describe('NAKIVO Partner Portal - Login Edge Cases & Security', () => {
 
     // Expected: System should handle multiple rapid requests
     // May show rate limiting or continue showing errors
-    await expect(page).toHaveURL(LOGIN_URL);
+    // Quoc Anh: (Sep 17, 26) Server redirects http→https; use regex to tolerate both schemes
+    await expect(page).toHaveURL(LOGIN_URL_REGEX);
   });
 
   test('TC-UI-1: Copy-Paste Password', async ({ page }) => {

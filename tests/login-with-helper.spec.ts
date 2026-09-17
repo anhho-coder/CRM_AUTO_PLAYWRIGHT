@@ -1,6 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { LoginHelper } from '../helpers/login.helper';
 import { config } from '../config/test.config';
+// Quoc Anh: (Sep 17, 26) the session menu shows the account's full name as Odoo stores it,
+// not the name of whoever owned this file first.
+import { users } from '../config/users.config';
 
 /**
  * Login Test Suite - Refactored with LoginHelper
@@ -29,7 +32,7 @@ test.describe('Login Tests - Using Helper', () => {
     );
 
     // Verify user is logged in
-    await loginHelper.verifyLoggedIn('Thanh Phan');
+    await loginHelper.verifyLoggedIn(users.admin_crm.createdByName);
   });
 
   test('TC-2: Login with Invalid Email Format', async () => {
@@ -119,7 +122,7 @@ test.describe('Login Tests - Using Helper', () => {
     await loginHelper.submitWithEnterKey();
 
     // Verify successful login
-    await loginHelper.verifyLoggedIn('Thanh Phan');
+    await loginHelper.verifyLoggedIn(users.admin_crm.createdByName);
   });
 
   test('TC-9: Password Field Masking', async () => {
@@ -157,10 +160,12 @@ test.describe('Login Tests - Using Helper', () => {
     );
 
     // Try to navigate back to login page
-    await loginHelper.navigateToLogin();
+    // Quoc Anh: (Sep 17, 26) gotoLoginUrl(), not navigateToLogin(): the session is still active, so
+    // Odoo redirects this straight to the backend and the login-page title never appears.
+    await loginHelper.gotoLoginUrl();
 
     // Verify user is still logged in (redirected to dashboard)
-    await loginHelper.verifyLoggedIn('Thanh Phan');
+    await loginHelper.verifyLoggedIn(users.admin_crm.createdByName);
   });
 });
 
@@ -184,7 +189,7 @@ test.describe('Login Tests - Additional Scenarios', () => {
     );
 
     // Verify logged in
-    await loginHelper.verifyLoggedIn('Thanh Phan');
+    await loginHelper.verifyLoggedIn(users.admin_crm.createdByName);
 
     // Logout
     await loginHelper.logout();
@@ -227,7 +232,7 @@ test.describe('Login Tests - Additional Scenarios', () => {
     
     // Either succeeds (case-insensitive) or fails
     if (currentUrl.includes('/web?')) {
-      await loginHelper.verifyLoggedIn('Thanh Phan');
+      await loginHelper.verifyLoggedIn(users.admin_crm.createdByName);
     } else {
       // If case-sensitive, should show error
       await expect(loginHelper.getErrorAlert()).toContainText('Wrong login/password');
@@ -236,11 +241,12 @@ test.describe('Login Tests - Additional Scenarios', () => {
 
   test('Verify Login Page Logo and Branding', async ({ page }) => {
     // Verify NAKIVO branding elements
-    await expect(page.locator('img[alt*="Logo"]').first()).toBeVisible();
-    
+    // Quoc Anh: (Sep 17, 26) 'img[alt*="Logo"]' matches zero elements; real logos have src*="logo" or alt="Nakivo".
+    await expect(page.locator('img[src*="logo"]').first()).toBeVisible();
+
     // Verify welcome message
     await expect(page.getByText('Welcome to the NAKIVO Partner Portal')).toBeVisible();
-    
+
     // Verify company description
     await expect(page.getByText(/NAKIVO is a privately held company/)).toBeVisible();
   });
