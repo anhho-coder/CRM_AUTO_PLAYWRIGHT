@@ -7,9 +7,22 @@ const customReporterPath = path.resolve(__dirname, 'config', 'custom-reporter.js
 // MUST come before 'html' so the report shows a single video (see reporter[] below).
 const videoMergeReporterPath = path.resolve(__dirname, 'config', 'video-merge-reporter.js');
 
-// Per-project video mode. The CI projects keep 'retain-on-failure' so Jenkins behaviour is
-// unchanged; a LOCAL run can keep the video of a PASSING test with `VIDEO=on npx playwright test ...`.
-const videoMode = process.env.VIDEO === 'on' ? ('on' as const) : ('retain-on-failure' as const);
+// Per-project video mode.
+//   LOCAL  -> 'on'                : keep the video of EVERY test, passing ones included, so a green
+//                                   run can still be reviewed frame by frame.
+//   JENKINS -> 'retain-on-failure': unchanged from before - only failures keep a video, otherwise the
+//                                   agent's disk fills up (a single .webm runs 5-7 MB).
+// The switch is `CI`, which the Jenkinsfile already exports in its `environment` block; nothing on the
+// CI side needs to change. Either environment can be overridden explicitly with VIDEO=on / VIDEO=off.
+//
+// Careful when reading a report: 'retain-on-failure' deletes the video the moment a test is judged
+// PASSED, and an `afterAll` hook failing afterwards still shows the test as red - so a red test with
+// NO video on Jenkins is one whose body actually passed.
+const videoMode =
+  process.env.VIDEO === 'on'  ? ('on'  as const) :
+  process.env.VIDEO === 'off' ? ('off' as const) :
+  process.env.CI   === 'true' ? ('retain-on-failure' as const) :
+                                ('on'  as const);
 
 // Generate timestamp ONCE at config load time
 // Format: YYYY-MM-DD-HHMMSS (e.g., 2025-12-10-143527)
