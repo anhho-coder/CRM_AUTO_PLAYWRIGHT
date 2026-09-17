@@ -845,13 +845,33 @@ export async function sweepMigLeftoversOnO12CE(page: Page, tcId: string): Promis
 }
 
 /**
+ * Hook budget for the sweep.
+ *
+ * `playwright.config.ts` sets a global `timeout: 30000`, and that budget applies to `beforeAll` /
+ * `afterAll` too. The specs raise only the TEST timeout (`test.setTimeout(config.timeouts.test)`
+ * inside the test body), which does nothing for a hook - so the sweep was dying on
+ * `"afterAll" hook timeout of 30000ms exceeded` the moment it had any record to delete, and the
+ * test went red although its body had passed (CRM_O12_MIG_Smoke build #2: 12 of 52 red attempts
+ * were this, including 2.4.1 and 2.5.1 which failed 3/3 while actually passing).
+ *
+ * 120 s = 2x the worst cost measured on that build: login 10-20 s + 5 marker searches + up to 8
+ * unlinks. Kept bounded on purpose - a sweep that hangs must not stall the run for minutes.
+ */
+const MIG_SWEEP_HOOK_TIMEOUT_MS = 120_000;
+
+/**
  * The one-liner every section-II spec calls from its `afterAll`.
  *
  * `afterAll` gets no `page` fixture (page is test-scoped), so the sweep opens its own context and
  * logs in again - roughly 10-20 s per spec file, the price of the rule. Logging in directly rather
  * than via `loginToO12CE` keeps `test.step` out of a hook and leaves the ledger untouched.
+ *
+ * Raises the hook timeout here rather than in each spec: `test.setTimeout()` inside a hook changes
+ * THAT HOOK's budget (Playwright 1.56 types: "Note this affects the hook's timeout, not the test
+ * timeout"), and doing it here covers every caller from one place.
  */
 export async function sweepMigLeftoversAfterAll(browser: Browser, tcId: string): Promise<void> {
+  test.setTimeout(MIG_SWEEP_HOOK_TIMEOUT_MS);
   let context: BrowserContext | undefined;
   try {
     context = await browser.newContext();
