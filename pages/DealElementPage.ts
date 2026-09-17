@@ -1477,4 +1477,301 @@ export class DealElementPage extends BasePage {
     console.log('  \u26a0 Quotation creation not found in chatter within the timeout');
     return { found: false, chatterText };
   }
+
+  // --------------------------------------------------------------------------
+  // Structural readers - buttons, field labels, notebook tabs, order-line columns
+  //
+  // The CRM Deal Element test cases assert the SHAPE of the screen (which buttons
+  // exist, which labels the information area carries and in which order, which
+  // columns the Order Lines list has). Those reads live here because a .spec.ts
+  // is not allowed to touch page.locator directly.
+  // --------------------------------------------------------------------------
+
+  /**
+   * The control-panel buttons of the form, in screen order.
+   * Read mode returns ["EDIT", "Action"]; edit mode returns ["SAVE", "DISCARD"].
+   */
+  async getControlPanelButtons(): Promise<string[]> {
+    const panel = this.page.locator('.o_control_panel').first();
+    await panel.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    return await panel
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button, a.btn'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The buttons the form's own <header> renders above the sheet - on a saved Deal
+   * Element that is the "NEW QUOTATION" action button.
+   */
+  async getStatusbarButtons(): Promise<string[]> {
+    const bar = this.page.locator('.o_statusbar_buttons').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The VISIBLE field labels of the Deal Element information area, in form order.
+   * Labels inside the notebook (Order Lines / Optional Products / Other Information)
+   * are excluded, and so are the technical fields Odoo keeps hidden via attrs - the
+   * result is exactly what a tester reads on the screen, top-left down then top-right
+   * down.
+   */
+  async getVisibleFieldLabels(): Promise<string[]> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const notebook = el.querySelector('.o_notebook');
+        return Array.from(el.querySelectorAll('label'))
+          .filter((l) => !(notebook && notebook.contains(l)))
+          .filter((l) => !!((l as HTMLElement).offsetParent || l.getClientRects().length))
+          .map((l) => ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0);
+      })
+      .catch(() => [] as string[]);
+  }
+
+  /** The notebook tab names, in order. */
+  async getNotebookTabs(): Promise<string[]> {
+    const notebook = this.page.locator('.o_notebook').first();
+    await notebook.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await notebook
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('.nav-link'))
+          .filter((a) => !!((a as HTMLElement).offsetParent || a.getClientRects().length))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /** Bring the "Order Lines" notebook page to the front. */
+  async clickOrderLinesTab(): Promise<void> {
+    const tab = this.page.locator('.o_notebook .nav-link').filter({ hasText: /^Order Lines$/ }).first();
+    if (await tab.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false)) {
+      await tab.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+  }
+
+  /**
+   * The column headers of the Order Lines list, in order.
+   * The leading drag-handle column carries no caption and is dropped, so the result
+   * is the list of NAMED columns a tester reads on screen.
+   */
+  async getOrderLineColumns(): Promise<string[]> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('thead th'))
+          .map((th) => ((th as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * One Order Lines row read as { column caption -> cell text }.
+   * Cells are zipped onto the header row, so a column that moved could not silently
+   * shift a value onto its neighbour's assertion.
+   */
+  async getOrderLineRowCells(rowIndex: number = 0): Promise<Record<string, string>> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement, index: number) => {
+        const clean = (n: Element) => ((n as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        const headers = Array.from(el.querySelectorAll('thead th')).map(clean);
+        const row = el.querySelectorAll('tbody tr.o_data_row')[index];
+        if (!row) return {} as Record<string, string>;
+        const cells = Array.from(row.querySelectorAll('td')).map(clean);
+        const out: Record<string, string> = {};
+        headers.forEach((h, i) => {
+          if (h.length > 0) out[h] = cells[i] !== undefined ? cells[i] : '';
+        });
+        return out;
+      }, rowIndex)
+      .catch(() => ({} as Record<string, string>));
+  }
+
+  /**
+   * A field's value as the screen shows it, in READ mode as well as in EDIT mode
+   * (read mode renders text, edit mode renders an <input>).
+   */
+  async getFieldDisplayValue(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const input = el.matches('input, textarea')
+          ? (el as HTMLInputElement)
+          : (el.querySelector('input:not([type="hidden"]), textarea') as HTMLInputElement | null);
+        if (input && input.type !== 'checkbox') return (input.value || '').replace(/\s+/g, ' ').trim();
+        return (el.innerText || el.textContent || '').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+      })
+      .catch(() => '');
+  }
+
+  /** Whether a boolean field's checkbox is ticked. */
+  async isFieldChecked(fieldName: string): Promise<boolean> {
+    const box = this.page.locator('.o_form_sheet [name="' + fieldName + '"] input[type="checkbox"]').first();
+    if ((await box.count()) === 0) return false;
+    return await box.isChecked().catch(() => false);
+  }
+
+  // --------------------------------------------------------------------------
+  // Chatter / Log note
+  // --------------------------------------------------------------------------
+
+  /** One entry per chatter message, NEWEST FIRST, line breaks preserved. */
+  async getChatterMessages(
+    timeout: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string[]> {
+    const messages = this.page.locator('.o_thread_message .o_thread_message_content');
+    await messages.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await messages.count();
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = await messages
+        .nth(i)
+        .evaluate((el: HTMLElement) => el.innerText.replace(/ /g, ' ').trim())
+        .catch(() => '');
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  /** The first chatter message matching, or null. */
+  async findChatterMessage(pattern: string | RegExp, timeout?: number): Promise<string | null> {
+    const messages = await this.getChatterMessages(timeout);
+    const hit = messages.find((m) => (typeof pattern === 'string' ? m.includes(pattern) : pattern.test(m)));
+    return hit ?? null;
+  }
+
+  /**
+   * Poll the chatter (reloading the form) until a message matches. The creation
+   * notes are written by the server as the record is stored, so a single read
+   * straight after SAVE can land before they are rendered.
+   */
+  async waitForChatterMessage(
+    pattern: string | RegExp,
+    maxWaitTime: number = CommonUtils.waitTimes.savingPage,
+    checkInterval: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string | null> {
+    const deadline = Date.now() + maxWaitTime;
+    let attempt = 1;
+    let hit = await this.findChatterMessage(pattern);
+    while (!hit && Date.now() < deadline) {
+      console.log('  ... log note ' + pattern + ' not in the chatter yet - attempt #' + attempt + ', reloading');
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.wait(checkInterval);
+      hit = await this.findChatterMessage(pattern);
+      attempt++;
+    }
+    return hit;
+  }
+
+  /** Turn a "<key>: <value>" log note into a map. */
+  parseLogNoteFields(note: string): Record<string, string> {
+    const fields: Record<string, string> = {};
+    note.split('\n').forEach((line) => {
+      const m = line.match(/^\s*([^:]+?):\s*(.*)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    });
+    return fields;
+  }
+
+
+  /**
+   * Every VISIBLE label of the information area paired with the technical name and
+   * the on-screen value of the field it captions, in form order. Used by the layout
+   * test cases so an assertion names the field, not a DOM index.
+   */
+  async getFieldLabelMap(): Promise<Array<{ label: string; field: string; value: string }>> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const clean = (n: Element | null) =>
+          n ? ((n as HTMLElement).innerText || n.textContent || '').replace(/​/g, '').replace(/\s+/g, ' ').trim() : '';
+        const notebook = el.querySelector('.o_notebook');
+        const out: Array<{ label: string; field: string; value: string }> = [];
+        Array.from(el.querySelectorAll('label')).forEach((l) => {
+          if (notebook && notebook.contains(l)) return;
+          if (!((l as HTMLElement).offsetParent || l.getClientRects().length)) return;
+          const label = clean(l);
+          if (!label) return;
+          const row = l.closest('tr');
+          const widget = row ? row.querySelector('[name]') : null;
+          const valueCell = row ? row.querySelector('td.o_td_label + td') : null;
+          out.push({
+            label,
+            field: widget ? widget.getAttribute('name') || '' : '',
+            value: clean(valueCell || (widget as Element | null)),
+          });
+        });
+        return out;
+      })
+      .catch(() => [] as Array<{ label: string; field: string; value: string }>);
+  }
+
+
+  /**
+   * The NAME a many2one field shows, without the address lines Odoo prints under it.
+   * Read mode renders the name as a link followed by the partner's address, so a plain
+   * innerText read of "Payer" returns "Acme Connecticut United States"; this returns
+   * "Acme". Edit mode returns the input value.
+   */
+  async getFieldPartnerName(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const clean = (s: string) => (s || '').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+        const input = el.querySelector('input:not([type="hidden"])') as HTMLInputElement | null;
+        if (input) return clean(input.value);
+        const link = el.querySelector('a');
+        if (link) return clean((link as HTMLElement).innerText);
+        return clean((el.innerText || '').split('\n')[0]);
+      })
+      .catch(() => '');
+  }
+
+  /** The numeric part of a monetary/percent field, e.g. "0.00 ( $ 0.00 )" -> 0. */
+  async getFieldNumber(fieldName: string): Promise<number> {
+    const raw = await this.getFieldDisplayValue(fieldName);
+    const match = raw.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    return match ? parseFloat(match[0]) : NaN;
+  }
+
+
+
+  /**
+   * The value cell of the row a LABEL captions, as the screen shows it.
+   *
+   * Some rows carry two fields in one cell: "Distributor Discount (%)" renders the
+   * percent next to the money it grants, so the tester reads "0.00 ( $ 0.00 )" while
+   * the percent field alone reads "0.00". Keyed on the label rather than the field
+   * name because the form carries hidden duplicate widgets under the same name.
+   */
+  async getFieldRowTextByLabel(label: string): Promise<string> {
+    const map = await this.getFieldLabelMap();
+    const hit = map.find((entry) => entry.label === label);
+    return hit ? hit.value : '';
+  }
+
 }

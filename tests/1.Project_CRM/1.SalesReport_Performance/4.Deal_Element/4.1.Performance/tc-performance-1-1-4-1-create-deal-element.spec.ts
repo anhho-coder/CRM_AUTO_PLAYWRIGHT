@@ -7,6 +7,8 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Performance Test - Create Deal Element
  * Test Case ID: TC.Performance.1.1.4.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-09-17
  * 
  * Summary: Verify the consumer time for creating Deal Element is less than 1 min
  *
@@ -215,8 +217,13 @@ test.describe('TC.Performance.1.1.4.1 - Create Deal Element Performance', () => 
     // Pre-condition Step 8: Refresh page to verify Contact field (up to 5 times, max 5 minutes)
     stepStartTime = Date.now();
     console.log('Pre-condition Step 8: Refreshing page and verifying Contact field');
-    
-    await opportunityPage.waitForContactFieldPopulated('test');
+
+    // waitForContactFieldPopulated() polls the COMPANY field (its `field` parameter defaults to
+    // 'company'), and Odoo names the auto-created Company after the e-mail DOMAIN -
+    // "company<timestamp>.com" for the Test@company<timestamp>.com address entered above. So the
+    // old 'test' needle could never match: the helper ran all 5 attempts, waited 5 x 60s and gave
+    // up, costing ~5 minutes of dead time on every run. 'company' matches on the first attempt.
+    await opportunityPage.waitForContactFieldPopulated('company', 5, 20000);
     
     performanceMetrics['Refresh and Verify'] = Date.now() - stepStartTime;
     console.log('✓ Page refresh and Contact field check completed');
