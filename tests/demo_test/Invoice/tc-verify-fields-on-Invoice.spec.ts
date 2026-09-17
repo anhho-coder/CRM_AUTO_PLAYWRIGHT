@@ -18,7 +18,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 2. Have the following variable and their value:
  *    - Sales Order Number       = SO198100
  *    - Invoice Number           = INV/2026/1052
- *    - URL                      = http://10.220.222.100/web?debug#id=195942&action=289&active_id=72387&model=account.invoice&view_type=form&menu_id=111
+ *    - URL                      = http://pre-production.nakivo.site/web?debug#id=195942&action=289&active_id=72387&model=account.invoice&view_type=form&menu_id=111
  *    - Payer                    = TEST_company_name_2026-03-17-143012
  *    - End User Contact         = TEST_company_name_2026-03-17-143012
  *    - End User Email           = Test@company2026-03-17143012.com
@@ -71,7 +71,7 @@ test.describe('tc-verify-fields-on-Invoice - Verify the field on Invoice page', 
   // Pre-condition variables
   const SALES_ORDER_NUMBER                     = 'SO198100';
   const INVOICE_NUMBER                         = 'INV/2026/1052';
-  const INVOICE_URL                            = 'http://10.220.222.100/web?debug#id=195942&action=289&active_id=72387&model=account.invoice&view_type=form&menu_id=111';
+  const INVOICE_URL                            = 'http://pre-production.nakivo.site/web?debug#id=195942&action=289&active_id=72387&model=account.invoice&view_type=form&menu_id=111';
   const PAYER                                  = 'TEST_company_name_2026-03-17-143012';
   const END_USER_CONTACT                       = 'TEST_company_name_2026-03-17-143012';
   const END_USER_EMAIL                         = 'Test@company2026-03-17143012.com';

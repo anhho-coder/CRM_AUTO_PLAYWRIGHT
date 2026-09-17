@@ -17,8 +17,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * 1. After login successful
  * 2. Have the following variable and their value:
  *    - "Investment Name"  = TEST Investment 2026-03-16-182740
- *    - "Investment URL"   = http://10.220.222.100/web?debug#id=449&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866
- *    - "Opp URL"          = http://10.220.222.100/web?#id=984608&action=682&model=crm.lead&view_type=form&menu_id=111
+ *    - "Investment URL"   = http://pre-production.nakivo.site/web?debug#id=449&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866
+ *    - "Opp URL"          = http://pre-production.nakivo.site/web?#id=984608&action=682&model=crm.lead&view_type=form&menu_id=111
  *    - "Company Name"     = TEST_company_name_2026-03-16-182832
  *    - "Company Email"    = Test@company2026-03-16182832.com
  *
@@ -34,8 +34,8 @@ test.describe('tc-select-specific-All-Leads - Select specific lead from All Lead
 
   // Pre-condition variables
   const INVESTMENT_NAME = 'TEST Investment 2026-03-16-182740';
-  const INVESTMENT_URL  = 'http://10.220.222.100/web?debug#id=449&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866';
-  const OPP_URL         = 'http://10.220.222.100/web?#id=984608&action=682&model=crm.lead&view_type=form&menu_id=111';
+  const INVESTMENT_URL  = 'http://pre-production.nakivo.site/web?debug#id=449&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866';
+  const OPP_URL         = 'http://pre-production.nakivo.site/web?#id=984608&action=682&model=crm.lead&view_type=form&menu_id=111';
   const COMPANY_NAME    = 'TEST_company_name_2026-03-16-182832';
   const COMPANY_EMAIL   = 'Test@company2026-03-16182832.com';
 	

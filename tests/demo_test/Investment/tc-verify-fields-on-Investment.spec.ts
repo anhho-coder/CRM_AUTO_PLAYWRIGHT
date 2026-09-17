@@ -17,7 +17,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 1. After login successful
  * 2. Have the following variables and their values:
  *    - Investment Name             = TEST Investment 2026-03-17-142921
- *    - URL                         = http://10.220.222.100/web?debug#id=490&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866
+ *    - URL                         = http://pre-production.nakivo.site/web?debug#id=490&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866
  *    - Company Name                = TEST_company_name_2026-03-17-143012
  *    - Company Email               = Test@company2026-03-17143012.com
  *    - Total in Company Currency   = 329.00
@@ -38,7 +38,7 @@ test.describe('tc-verify-fields-on-Investment - Verify field on Investment', () 
 
   // Pre-condition variables
   const INVESTMENT_NAME              = 'TEST Investment 2026-03-17-142921';
-  const INVESTMENT_URL               = 'http://10.220.222.100/web?debug#id=490&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866';
+  const INVESTMENT_URL               = 'http://pre-production.nakivo.site/web?debug#id=490&action=2376&model=nakivo.investment.activity&view_type=form&menu_id=866';
   const COMPANY_NAME                 = 'TEST_company_name_2026-03-17-143012';
   const COMPANY_EMAIL                = 'Test@company2026-03-17143012.com';
   const TOTAL_IN_COMPANY_CURRENCY    = '329.00';

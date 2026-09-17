@@ -15,10 +15,10 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * I. Condition#1 - Pre-existing hardcoded data:
  * 1. Opportunity#1:
- *    URL_Opp#1      = http://10.220.222.100/web?#id=993063&action=152&model=crm.lead&view_type=form&menu_id=111
+ *    URL_Opp#1      = http://pre-production.nakivo.site/web?#id=993063&action=152&model=crm.lead&view_type=form&menu_id=111
  *    Name_Opp#1     = TEST Opp 1 CRM-2338_1.2.1
  * 2. EndUser#1:
- *    URL_EndUser#1  = http://10.220.222.100/web?#id=619457&model=res.partner&menu_id=
+ *    URL_EndUser#1  = http://pre-production.nakivo.site/web?#id=619457&model=res.partner&menu_id=
  *    Name_EndUser#1 = TEST-EndUser#1_CRM-2338_1.2.1_2026-05-04-114907
  *    Email_EndUser#1= Test-EndUser@EndUser-company2026-05-04-114907.com
  * 3. DealElement#1 (pre-existing):
@@ -45,10 +45,10 @@ test.describe('CMR-Edit-DealElement-2-product-lines - Verify the Opp has Reselle
   // ==============================================================
   // I. Condition#1 - Pre-existing hardcoded data
   // ==============================================================
-  const url_Opp1      = 'http://10.220.222.100/web?#id=993063&action=152&model=crm.lead&view_type=form&menu_id=111';
+  const url_Opp1      = 'http://pre-production.nakivo.site/web?#id=993063&action=152&model=crm.lead&view_type=form&menu_id=111';
   const name_Opp1     = 'TEST Opp 1 CRM-2338_1.2.1';
 
-  const url_EndUser1   = 'http://10.220.222.100/web?#id=619457&model=res.partner&menu_id=';
+  const url_EndUser1   = 'http://pre-production.nakivo.site/web?#id=619457&model=res.partner&menu_id=';
   const name_EndUser1  = 'TEST-EndUser#1_CRM-2338_1.2.1_2026-05-04-114907';
   const email_EndUser1 = 'Test-EndUser@EndUser-company2026-05-04-114907.com';
 

@@ -77,7 +77,7 @@ test('test name', async ({ page }) => {
   await page.goto('https://sign-off.nakivo.site/web');
   await page.waitForSelector('input[name="login"]', { timeout: 10000 });
   await page.fill('input[name="login"]', 'thanh.phan@nakivo.com');
-  await page.fill('input[name="password"]', 'TPUaT@0123456789012');
+  await page.fill('input[name="password"]', config.credentials.password);
   // ... more hardcoded values
   
   // Form filling code - very long and repetitive

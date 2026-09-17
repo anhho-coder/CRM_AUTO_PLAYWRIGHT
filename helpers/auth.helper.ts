@@ -1,4 +1,5 @@
 import { Page, expect } from '@playwright/test';
+import { baseUrl } from '../config/users.config';
 
 /**
  * Login credentials interface
@@ -20,7 +21,8 @@ export class AuthHelper {
    */
   async login(credentials: LoginCredentials): Promise<void> {
     // Navigate to Nakivo Partner Portal
-    await this.page.goto('http://10.220.222.100/web?debug=assets');
+    // Quoc Anh: (Sep 17, 26) hostname, not the raw IP - the IP serves a different dbfilter.
+    await this.page.goto(`${baseUrl}web?debug=assets`);
     
     // Wait for login form to be visible
     await this.page.waitForSelector('input[name="login"]', { timeout: 10000 });
@@ -29,7 +31,15 @@ export class AuthHelper {
     await this.page.fill('input[name="login"]', credentials.username);
     
     // Enter password
-    await this.page.fill('input[name="password"]', credentials.password);
+    // Quoc Anh: (Sep 17, 26) NOT fill() - Playwright prints the filled value into the step title,
+    // which put the password in the HTML report and in trace.zip. Same treatment as
+    // LoginPage.fillPassword() / LoginHelper.fillPassword().
+    await this.page.locator('input[name="password"]').evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, credentials.password);
     
     // Click login button
     await this.page.click('button[type="submit"]');

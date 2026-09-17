@@ -28,7 +28,7 @@ async function selectCountryField(page: Page, countryName: string, fieldIndex: n
 test.describe('Demo Tests', () => {
   test('Select country value using XPath', async ({ page }) => {
     // Navigate to the CRM application
-    await page.goto('http://10.220.222.100/');
+    await page.goto('http://pre-production.nakivo.site/');
     
     // Wait for the page to load
     await page.waitForLoadState('networkidle');
@@ -39,7 +39,7 @@ test.describe('Demo Tests', () => {
   
   test('Alternative: Select country using evaluate', async ({ page }) => {
     // Navigate to the CRM application
-    await page.goto('http://10.220.222.100/');
+    await page.goto('http://pre-production.nakivo.site/');
     
     // Wait for the page to load
     await page.waitForLoadState('networkidle');

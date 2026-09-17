@@ -24,7 +24,7 @@ import { LoginPage } from '../pages/LoginPage';
  */
 
 test.describe('NAKIVO Partner Portal - Login Functionality', () => {
-  const LOGIN_URL = 'http://10.220.222.100/';
+  const LOGIN_URL = 'http://pre-production.nakivo.site/';
   const DASHBOARD_URL_PATTERN = '**/web?*';
   
   // Navigate to login page before each test

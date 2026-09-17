@@ -35,7 +35,7 @@ The NAKIVO Partner Portal is an Odoo-based web application that provides access 
 3. Click in the "Email" input field
 4. Enter valid email: `thanh.phan@nakivo.com`
 5. Click in the "Password" input field
-6. Enter valid password: `TPUaT@0123456789012`
+6. Enter valid password: `<valid password - see config/users.secrets.json (git-ignored)>`
 7. Click the "Log in" button
 
 **Expected Results:**
@@ -200,7 +200,7 @@ The NAKIVO Partner Portal is an Odoo-based web application that provides access 
 2. Click in the "Email" input field
 3. Enter valid email: `thanh.phan@nakivo.com`
 4. Press the Tab key to move to the "Password" field
-5. Enter valid password: `TPUaT@0123456789012`
+5. Enter valid password: `<valid password - see config/users.secrets.json (git-ignored)>`
 6. Press the "Enter" key
 
 **Expected Results:**
@@ -221,7 +221,7 @@ The NAKIVO Partner Portal is an Odoo-based web application that provides access 
 **Steps:**
 1. Navigate to https://sign-off.nakivo.site/web/login
 2. Click in the "Password" input field
-3. Type the password: `TPUaT@0123456789012`
+3. Type the password: `<valid password - see config/users.secrets.json (git-ignored)>`
 4. Observe the characters as they are typed
 5. Inspect the password field properties using browser DevTools
 
@@ -269,7 +269,7 @@ The NAKIVO Partner Portal is an Odoo-based web application that provides access 
 **Objective:** Verify that already authenticated users are redirected appropriately when accessing the login page.
 
 **Steps:**
-1. Log in with valid credentials (email: `thanh.phan@nakivo.com`, password: `TPUaT@0123456789012`)
+1. Log in with valid credentials (email: `thanh.phan@nakivo.com`, password: `<valid password - see config/users.secrets.json (git-ignored)>`)
 2. Verify successful login and presence on the main portal page
 3. In the same browser session, navigate directly to: https://sign-off.nakivo.site/web/login
 
@@ -313,7 +313,7 @@ The NAKIVO Partner Portal is an Odoo-based web application that provides access 
 
 ### Valid Credentials
 - **Email:** thanh.phan@nakivo.com
-- **Password:** TPUaT@0123456789012
+- **Password:** <valid password - see config/users.secrets.json (git-ignored)>
 
 ### Invalid Test Data Examples
 - **Invalid Email Formats:** `invalid-email`, `@nakivo.com`, `user@`, `user name@nakivo.com`

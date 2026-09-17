@@ -73,13 +73,13 @@ test.describe('Verify-Merge-Log-message-Target-Opportunity', () => {
     // Set variable [Opportunity 2]
     const Opportunity2Name = 'TEST Opp 1 OpportunityMerging-Exploratory_1.1';
     const OpportunityId = '979464';
-    const OpportunityUrl = 'http://10.220.222.100/web?#id=979464&action=682&model=crm.lead&view_type=form&menu_id=111';
+    const OpportunityUrl = 'http://pre-production.nakivo.site/web?#id=979464&action=682&model=crm.lead&view_type=form&menu_id=111';
 
 
     // Set variable [Opportunity 2]
     //const Opportunity2Name = 'TEST Opp 1 OpportunityMerging-Exploratory_1.1';
     const lead2Id = '979465';
-    const lead2Url = 'http://10.220.222.100/web?#id=979465&action=682&model=crm.lead&view_type=form&menu_id=111';
+    const lead2Url = 'http://pre-production.nakivo.site/web?#id=979465&action=682&model=crm.lead&view_type=form&menu_id=111';
     // Step 1: Login
     await test.step('Step 1: Login and navigate to CRM', async () => {
       console.log(`Step 1: Logging in as ${users.admin_crm.displayName}`);

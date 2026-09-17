@@ -12,10 +12,10 @@ import { CommonUtils } from '@helpers/common.utils';
  * npx playwright test --grep "Delete-Contact:" --project=chromium
  *
  * Pre-condition:
- * 1. Have URL_Contact#1 = http://10.220.222.100/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94
+ * 1. Have URL_Contact#1 = http://pre-production.nakivo.site/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94
  *
  * Steps to reproduce:
- * 1. Have URL_Contact#1 = http://10.220.222.100/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94
+ * 1. Have URL_Contact#1 = http://pre-production.nakivo.site/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94
  * 2. Have the variable: selected_Re-assignment_to#1 = "Alan Osseiran"
  * 3. Login as admin_crm, navigate to "Contacts" module and wait
  *
@@ -34,7 +34,7 @@ import { CommonUtils } from '@helpers/common.utils';
 
 test.describe('Delete-Contact - Delete a Contact by URL', () => {
 
-  const url_Contact1 = 'http://10.220.222.100/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94';
+  const url_Contact1 = 'http://pre-production.nakivo.site/web#id=615429&action=118&model=res.partner&view_type=form&menu_id=94';
 
   test.afterEach(async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);

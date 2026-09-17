@@ -132,7 +132,7 @@ export const config = {
   baseUrl: 'https://sign-off.nakivo.site',
   credentials: {
     username: 'thanh.phan@nakivo.com',
-    password: 'TPUaT@0123456789012',
+    password: '<valid password - see config/users.secrets.json (git-ignored)>',
   },
   timeouts: {
     navigation: 15000,
@@ -146,7 +146,7 @@ export const config = {
 
 ### Valid Credentials
 - **Email:** `thanh.phan@nakivo.com`
-- **Password:** `TPUaT@0123456789012`
+- **Password:** `<valid password - see config/users.secrets.json (git-ignored)>`
 
 ### Test Scenarios Use
 - Invalid email formats: `invalid-email`, `@nakivo.com`, `user@`

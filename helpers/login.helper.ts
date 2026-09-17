@@ -1,12 +1,17 @@
 import { Page, expect } from '@playwright/test';
+import { baseUrl } from '../config/users.config';
 
 /**
  * Login Page Helper
  * Provides reusable methods for interacting with the NAKIVO Partner Portal login page
  */
 export class LoginHelper {
-  private readonly LOGIN_URL = 'http://10.220.222.100/weblogin';
-  private readonly RESET_PASSWORD_URL = 'http://10.220.222.100/web/reset_password';
+  // Quoc Anh: (Sep 17, 26) Hostname, not the raw IP: the IP resolves to the same box but serves a
+  // different dbfilter, so every login here came back "Wrong login/password". The old value also
+  // had a typo - "/weblogin" instead of "/web/login" - which is why the page title assertion saw
+  // "Odoo" rather than the login page.
+  private readonly LOGIN_URL = `${baseUrl}web/login`;
+  private readonly RESET_PASSWORD_URL = `${baseUrl}web/reset_password`;
   private readonly DASHBOARD_URL_PATTERN = '**/web?*';
 
   constructor(private page: Page) {}
@@ -239,7 +244,7 @@ export class LoginHelper {
    * Logout user
    */
   async logout(): Promise<void> {
-    await this.page.goto('https://sign-off.nakivo.site/web/session/logout');
+    await this.page.goto(`${baseUrl}web/session/logout`);
     await expect(this.page).toHaveURL(this.LOGIN_URL);
   }
 }

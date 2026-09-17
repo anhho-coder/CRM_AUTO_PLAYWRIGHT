@@ -1,19 +1,24 @@
 const { chromium } = require('@playwright/test');
 const path = require('path');
 
+// Quoc Anh: (Sep 17, 26) The password used to be hardcoded here and is therefore in the git history.
+// It now comes from the git-ignored config/users.secrets.json, the same store config/users.config.ts
+// reads. The old literal must be rotated on pre-production - deleting it from this file is not enough.
+const secrets = require(path.resolve(__dirname, '..', 'config', 'users.secrets.json'));
+
 (async () => {
   const browser = await chromium.launch({ headless: false, slowMo: 300 });
   const page = await (await browser.newContext({ viewport: { width: 1920, height: 1080 } })).newPage();
 
   // Login
-  await page.goto('http://10.220.222.100/web', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://pre-production.nakivo.site/web', { waitUntil: 'domcontentloaded' });
   await page.locator('input[name="login"]').fill('anh.ho@nakivo.com');
-  await page.locator('input[name="password"]').fill('AUaT@H0123456789012');
+  await page.locator('input[name="password"]').fill(secrets.admin_crm);
   await page.locator('button[type="submit"]').click();
   await page.waitForTimeout(3000);
 
   // Navigate to Re-assignation form
-  await page.goto('http://10.220.222.100/web?#id=8&action=1705&model=nakivo.crm.re.assignation&view_type=form&menu_id=111', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://pre-production.nakivo.site/web?#id=8&action=1705&model=nakivo.crm.re.assignation&view_type=form&menu_id=111', { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(4000);
 
   // Extract field labels

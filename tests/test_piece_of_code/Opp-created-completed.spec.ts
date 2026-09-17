@@ -73,7 +73,7 @@ test.describe('Verify-Merge-Log-message-Target-Opportunity', () => {
     // Set variable [Opportunity 2]
     const Opportunity2Name = 'TEST Opp 1 OpportunityMerging-Exploratory_1.1';
     const OpportunityId = '979228';
-    const OpportunityUrl = 'http://10.220.222.100/web?#id=979228&action=152&model=crm.lead&view_type=form&menu_id=111';
+    const OpportunityUrl = 'http://pre-production.nakivo.site/web?#id=979228&action=152&model=crm.lead&view_type=form&menu_id=111';
 
     // Step 1: Login
     await test.step('Step 1: Login and navigate to CRM', async () => {

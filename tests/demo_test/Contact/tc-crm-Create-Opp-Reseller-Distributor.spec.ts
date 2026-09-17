@@ -14,13 +14,13 @@ import { CommonUtils } from '@helpers/common.utils';
  * npx playwright test --grep "CMR-Opp-Reseller-Distributor:" --project=chromium
  *
  * I. Condition#1 - Pre-existing hardcoded data:
- * 1. URL_Opp#2          = http://10.220.222.100/web?#id=992250&action=152&model=crm.lead&view_type=form&menu_id=111
+ * 1. URL_Opp#2          = http://pre-production.nakivo.site/web?#id=992250&action=152&model=crm.lead&view_type=form&menu_id=111
  *    Name_Opp#2         = TEST Opp 1 CRM-2338_1.1.1
- * 2. URL_Distributor#1  = http://10.220.222.100/web?#id=618010&model=res.partner
+ * 2. URL_Distributor#1  = http://pre-production.nakivo.site/web?#id=618010&model=res.partner
  *    Name_Distributor#1 = TEST-Distributor#1_CRM-2338_1.1.1_2026-04-22-115121
- * 3. URL_Reseller#1     = http://10.220.222.100/web#id=618011&action=118&model=res.partner&view_type=form&menu_id=94
+ * 3. URL_Reseller#1     = http://pre-production.nakivo.site/web#id=618011&action=118&model=res.partner&view_type=form&menu_id=94
  *    Name_Reseller#1    = TEST-Reseller#1_CRM-2338_1.1.1_2026-04-22-115121
- * 4. URL_EndUser#1      = http://10.220.222.100/web#id=618012&action=118&model=res.partner&view_type=form&menu_id=94
+ * 4. URL_EndUser#1      = http://pre-production.nakivo.site/web#id=618012&action=118&model=res.partner&view_type=form&menu_id=94
  *    Name_EndUser#1     = TEST-EndUser#1_CRM-2338_1.1.1_2026-04-22-115121
  *    Email_EndUser#1    = Test-EndUser@EndUser-company2026-04-22-115121.com
  * 5. Login as admin_crm
@@ -46,16 +46,16 @@ test.describe('CMR-Opp-Reseller-Distributor - Verify the Opp has Reseller and Di
   // ==============================================================
   // I. Condition#1 - Pre-existing hardcoded data
   // ==============================================================
-  const url_Opp2          = 'http://10.220.222.100/web?#id=992250&action=152&model=crm.lead&view_type=form&menu_id=111';
+  const url_Opp2          = 'http://pre-production.nakivo.site/web?#id=992250&action=152&model=crm.lead&view_type=form&menu_id=111';
   const name_Opp2         = 'TEST Opp 1 CRM-2338_1.1.1';
 
-  const url_Distributor1  = 'http://10.220.222.100/web#id=618014&action=118&model=res.partner&view_type=form&menu_id=94';
+  const url_Distributor1  = 'http://pre-production.nakivo.site/web#id=618014&action=118&model=res.partner&view_type=form&menu_id=94';
   const name_Distributor1 = 'TEST-Distributor#1_CMR-Create-Distributor_2026-04-22-142546';
 
-  const url_Reseller1     = 'http://10.220.222.100/web#id=618011&action=118&model=res.partner&view_type=form&menu_id=94';
+  const url_Reseller1     = 'http://pre-production.nakivo.site/web#id=618011&action=118&model=res.partner&view_type=form&menu_id=94';
   const name_Reseller1    = 'TEST-Reseller#1_CRM-2338_1.1.1_2026-04-22-115121';
 
-  const url_EndUser1      = 'http://10.220.222.100/web#id=618012&action=118&model=res.partner&view_type=form&menu_id=94';
+  const url_EndUser1      = 'http://pre-production.nakivo.site/web#id=618012&action=118&model=res.partner&view_type=form&menu_id=94';
   const name_EndUser1     = 'TEST-EndUser#1_CRM-2338_1.1.1_2026-04-22-115121';
   const email_EndUser1    = 'Test-EndUser@EndUser-company2026-04-22-115121.com';
 

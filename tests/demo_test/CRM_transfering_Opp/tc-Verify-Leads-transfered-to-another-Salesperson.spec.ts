@@ -39,7 +39,7 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 
 // Pre-existing lead URL (fixed, no creation needed)
-const URL_LEAD1 = 'http://10.220.222.100/web?#id=989315&action=149&model=crm.lead&view_type=form&menu_id=111';
+const URL_LEAD1 = 'http://pre-production.nakivo.site/web?#id=989315&action=149&model=crm.lead&view_type=form&menu_id=111';
 
 test.describe('CRM-Verify-re-assigment - Verify qualified Leads with Stage=New transferred to another Salesperson', () => {
 

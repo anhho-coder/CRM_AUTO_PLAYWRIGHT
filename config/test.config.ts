@@ -1,11 +1,21 @@
 /**
  * Test environment configuration
+ *
+ * Quoc Anh: (Sep 17, 26) The host and the credentials are NOT written here any more.
+ *  - host: taken from `baseUrl` in users.config.ts. The hostname resolves to the same pre-production
+ *    box as the old hardcoded 10.220.222.100, but the IP alone hits the wrong dbfilter, so the
+ *    legacy login specs kept failing with "Wrong login/password".
+ *  - password: taken from users.admin_crm, i.e. from the git-ignored config/users.secrets.json.
+ *    The literal that used to sit here was committed, so it is exposed in the repo history -
+ *    it has to be rotated on pre-production, not just deleted from this file.
  */
+import { users, baseUrl } from './users.config';
+
 export const config = {
-  baseUrl: 'http://10.220.222.100/web?debug=assets',
+  baseUrl: `${baseUrl}web?debug=assets`,
   credentials: {
-    username: 'anh.ho@nakivo.com',
-    password: 'W3lcome@VN012345678901234',
+    username: users.admin_crm.username,
+    password: users.admin_crm.password,
   },
   timeouts: {
     navigation: 15000,
@@ -22,7 +32,7 @@ export const config = {
     },
   },
   crm: {
-    leadFormUrl: 'http://10.220.222.100/web?debug=assets',
+    leadFormUrl: `${baseUrl}web?debug=assets`,
   },
 } as const;
 

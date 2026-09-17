@@ -17,7 +17,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * 1. After login successful
  * 2. Have the following variables and their values:
  *    - Quotation Number = SO198097
- *    - URL              = http://10.220.222.100/web?debug#id=231300&active_id=231294&model=sale.order&view_type=form&menu_id=111
+ *    - URL              = http://pre-production.nakivo.site/web?debug#id=231300&active_id=231294&model=sale.order&view_type=form&menu_id=111
  *    - Company Name     = TEST_company_name_2026-03-16-182832
  *    - Company Email    = Test@company2026-03-16182832.com
  *    - Quotation Status = Quotation
@@ -36,7 +36,7 @@ test.describe('tc-verify-fields-on-Quotation - Verify the field on Quotation pag
 
   // Pre-condition variables
   const QUOTATION_NUMBER                       = 'SO198097';
-  const QUOTATION_URL                          = 'http://10.220.222.100/web?debug#id=231300&active_id=231294&model=sale.order&view_type=form&menu_id=111';
+  const QUOTATION_URL                          = 'http://pre-production.nakivo.site/web?debug#id=231300&active_id=231294&model=sale.order&view_type=form&menu_id=111';
   const COMPANY_NAME                           = 'TEST_company_name_2026-03-16-182832';
   const COMPANY_EMAIL                          = 'Test@company2026-03-16182832.com';
   const TOTAL_IN_COMPANY_CURRENCY              = '329.00';
