@@ -40,7 +40,19 @@ export class LoginPage extends BasePage {
    * Fill in password field
    */
   async fillPassword(password: string) {
-    await this.passwordInput().fill(password);
+    // Quoc Anh: (Sep 17, 26) NOT `fill(password)` on purpose. Playwright writes the filled value into
+    // the step title, so the password ended up readable in the HTML report AND inside trace.zip.
+    // Setting the value through the DOM keeps the step title at "Evaluate locator(...)" and keeps the
+    // value out of the trace params; the input/change events keep the form behaving as if typed.
+    // (config/redact-reporter.js masks whatever still reaches the reporters.)
+    const field = this.passwordInput();
+    await field.waitFor({ state: 'visible' });
+    await field.evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, password);
   }
 
   /**

@@ -66,8 +66,18 @@ export class LoginHelper {
    * Fill password field
    */
   async fillPassword(password: string): Promise<void> {
-    await this.getPasswordField().click();
-    await this.getPasswordField().fill(password);
+    // Quoc Anh: (Sep 17, 26) NOT `fill(password)` on purpose - Playwright writes the filled value
+    // into the step title, so the password shows up in the HTML report and inside trace.zip.
+    // Setting it through the DOM keeps the step title at "Evaluate locator(...)"; the input/change
+    // events keep the form behaving as if typed. Same treatment as LoginPage.fillPassword().
+    const field = this.getPasswordField();
+    await field.click();
+    await field.evaluate((el, value) => {
+      const input = el as HTMLInputElement;
+      input.value = value;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+    }, password);
   }
 
   /**

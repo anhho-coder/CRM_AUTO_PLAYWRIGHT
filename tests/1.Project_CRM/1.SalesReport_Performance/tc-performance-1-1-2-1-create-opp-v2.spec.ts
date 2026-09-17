@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
-import { HomePage } from '@pages';
+import { HomePage, LoginPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -74,6 +74,7 @@ test.describe('TC.Performance.1.1.2.1 - Create CRM Opportunity Performance', () 
     await page.setViewportSize({ width: 1920, height: 1080 });
         // Initialize page object
     const homePage = new HomePage(page);
+    const loginPage = new LoginPage(page);
         const performanceMetrics: { [key: string]: number } = {};
     let stepStartTime: number;
     
@@ -82,7 +83,9 @@ test.describe('TC.Performance.1.1.2.1 - Create CRM Opportunity Performance', () 
     console.log('Step 1: Logging in to NAKIVO Partner Portal');
     await page.goto(`${baseUrl}web/login`);
     await page.getByRole('textbox', { name: 'Email' }).fill(users.admin_crm.username);
-    await page.getByRole('textbox', { name: 'Password' }).fill(users.admin_crm.password);
+    // Quoc Anh: (Sep 17, 26) Password goes through LoginPage.fillPassword() on purpose - a raw
+    // fill() would print the password into the step title of the report and into trace.zip.
+    await loginPage.fillPassword(users.admin_crm.password);
     await page.getByRole('button', { name: 'Log in' }).click();
     
     // Dismiss location permission dialog if present

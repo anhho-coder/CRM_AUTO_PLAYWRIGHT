@@ -1,5 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { config } from '../config/test.config';
+// Quoc Anh: (Sep 17, 26) The REAL password goes through LoginPage.fillPassword(): a raw fill()
+// prints the value into the report step title and into trace.zip. The FAKE passwords used by the
+// negative test cases below are filled directly on purpose - there is nothing to hide there.
+import { LoginPage } from '../pages/LoginPage';
 
 /**
  * Login Test Suite
@@ -49,7 +53,7 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
 
     // Step 3: Enter valid password
     await page.getByRole('textbox', { name: 'Password' }).click();
-    await page.getByRole('textbox', { name: 'Password' }).fill(config.credentials.password);
+    await new LoginPage(page).fillPassword(config.credentials.password);
 
     // Step 4: Click login button
     await page.getByRole('button', { name: 'Log in' }).click();
@@ -204,7 +208,7 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.keyboard.press('Tab');
 
     // Step 3: Enter valid password
-    await page.getByRole('textbox', { name: 'Password' }).fill(config.credentials.password);
+    await new LoginPage(page).fillPassword(config.credentials.password);
 
     // Step 4: Press Enter key
     await page.keyboard.press('Enter');
@@ -220,7 +224,7 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
     await page.getByRole('textbox', { name: 'Password' }).click();
 
     // Step 2: Type password
-    await page.getByRole('textbox', { name: 'Password' }).fill(config.credentials.password);
+    await new LoginPage(page).fillPassword(config.credentials.password);
 
     // Expected Results: Verify password field properties
     const passwordInput = page.getByRole('textbox', { name: 'Password' });
@@ -265,7 +269,7 @@ test.describe('NAKIVO Partner Portal - Login Functionality', () => {
   test('TC-11: Session Persistence - Already Logged In User', async ({ page }) => {
     // Step 1: Login with valid credentials
     await page.getByRole('textbox', { name: 'Email' }).fill(config.credentials.username);
-    await page.getByRole('textbox', { name: 'Password' }).fill(config.credentials.password);
+    await new LoginPage(page).fillPassword(config.credentials.password);
     await page.getByRole('button', { name: 'Log in' }).click();
 
     // Step 2: Verify successful login

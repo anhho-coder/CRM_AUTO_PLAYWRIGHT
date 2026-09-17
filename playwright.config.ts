@@ -6,6 +6,10 @@ const customReporterPath = path.resolve(__dirname, 'config', 'custom-reporter.js
 // Merges per-Page videos into one full-video.webm and rewrites attachments.
 // MUST come before 'html' so the report shows a single video (see reporter[] below).
 const videoMergeReporterPath = path.resolve(__dirname, 'config', 'video-merge-reporter.js');
+// Masks the passwords from config/users.secrets.json in step titles, errors and stdout.
+// MUST be the FIRST entry of reporter[] - reporters share the same step objects and are called in
+// array order, so anything listed before it still reads the raw value (see reporter[] below).
+const redactReporterPath = path.resolve(__dirname, 'config', 'redact-reporter.js');
 
 // Per-project video mode.
 //   LOCAL  -> 'on'                : keep the video of EVERY test, passing ones included, so a green
@@ -151,6 +155,7 @@ export default defineConfig({
   timeout: 30000,
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: [
+    [redactReporterPath],     // MUST be first: masks account secrets for every reporter below
     [videoMergeReporterPath], // MUST run before 'html': merges per-Page videos -> one full-video.webm
     ['html', {
       open: 'never',
