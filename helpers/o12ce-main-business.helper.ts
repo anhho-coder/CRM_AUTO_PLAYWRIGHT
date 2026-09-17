@@ -669,28 +669,14 @@ const CANCEL_BEFORE_UNLINK: Record<string, { action: string; deletableStates: st
 };
 
 /**
- * Delete everything the chain registered on crm-mig, newest first (License -> Invoice ->
- * Quotation/Sale Order -> Deal Element -> Opportunity), so a child never blocks its parent.
- *
- * Never throws: a teardown failure must not overwrite the test's real verdict. It logs a
- * "TEARDOWN INCOMPLETE" block naming every record it could not remove and returns them, so a
- * caller can assert on it if it wants to, and the 16:00 check has something to match against.
+ * Delete one already-ordered list of records over RPC, cancelling first where Odoo 12 refuses to
+ * unlink a posted/confirmed document. Shared by the ledger teardown and the afterAll sweep so both
+ * obey the same order-and-cancel rules. Never throws - it collects what it could not remove.
  */
-export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRecord[]> {
-  const queued = [...migCreated].reverse();
-  if (queued.length === 0) return [];
-
-  if (process.env.SKIP_CLEANUP_MIG === '1') {
-    console.log(
-      `\n[mig-cleanup] SKIPPED by SKIP_CLEANUP_MIG=1 - ${queued.length} record(s) LEFT on crm-mig:\n` +
-      queued.map((r) => `  kept ${r.model}#${r.id} (${r.label})`).join('\n'),
-    );
-    resetMigCreatedRecords();
-    return [];
-  }
-
-  console.log(`\n[mig-cleanup] deleting ${queued.length} record(s) created on crm-mig`);
-  const platform = new MigPlatformPage(page);
+async function unlinkMigRecords(
+  platform: MigPlatformPage,
+  queued: MigCreatedRecord[],
+): Promise<MigCreatedRecord[]> {
   const failed: MigCreatedRecord[] = [];
 
   for (const record of queued) {
@@ -715,6 +701,34 @@ export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRe
     }
   }
 
+  return failed;
+}
+
+/**
+ * Delete everything the chain registered on crm-mig, newest first (License -> Invoice ->
+ * Quotation/Sale Order -> Deal Element -> Opportunity), so a child never blocks its parent.
+ *
+ * Never throws: a teardown failure must not overwrite the test's real verdict. It logs a
+ * "TEARDOWN INCOMPLETE" block naming every record it could not remove and returns them, so a
+ * caller can assert on it if it wants to, and the 16:00 check has something to match against.
+ */
+export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRecord[]> {
+  const queued = [...migCreated].reverse();
+  if (queued.length === 0) return [];
+
+  if (process.env.SKIP_CLEANUP_MIG === '1') {
+    console.log(
+      `\n[mig-cleanup] SKIPPED by SKIP_CLEANUP_MIG=1 - ${queued.length} record(s) LEFT on crm-mig:\n` +
+      queued.map((r) => `  kept ${r.model}#${r.id} (${r.label})`).join('\n'),
+    );
+    resetMigCreatedRecords();
+    return [];
+  }
+
+  console.log(`\n[mig-cleanup] deleting ${queued.length} record(s) created on crm-mig`);
+  const platform = new MigPlatformPage(page);
+  const failed = await unlinkMigRecords(platform, queued);
+
   if (failed.length > 0) {
     console.log(
       `\n[mig-cleanup] TEARDOWN INCOMPLETE - ${failed.length} record(s) still on crm-mig:\n` +
@@ -736,6 +750,124 @@ export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRe
  * created, true keeps it for hand-debugging and says so, so the 16:00 leftover-data check has a
  * matching explanation instead of an unexplained pile of records.
  */
+/**
+ * Find and delete everything a TC left on crm-mig, by NAME MARKER instead of by ledger.
+ *
+ * CLAUDE.md ("CRM Migration server (crm-mig): writes ALLOWED, cleanup MANDATORY") wants an
+ * `afterAll` sweep on top of the per-test `afterEach` teardown, and the two catch different
+ * things: the ledger only knows ids a test managed to REGISTER, so a test that dies between SAVE
+ * and `registerMigRecord` leaves a record nothing will ever delete. Every spec in this suite
+ * stamps `TEST <TC_ID> ...` (the contact: `TEST Contact <TC_ID> ...`) on what it creates, so the
+ * sweep can find those orphans by name and walk the chain down from them.
+ *
+ * Chain walked: Lead/Opportunity + Contact (they carry the marker) -> Deal Element + Quotation
+ * (`sale.order.opportunity_id`) -> Invoice (`account.invoice.origin` = the order name) -> License
+ * (the `license_management.license` many2one that points at `account.invoice`, discovered via
+ * `fields_get` rather than hard-coded, because the license model name only ever reaches this file
+ * through a form URL). Deleted child-first, so a parent is never blocked by a child.
+ *
+ * Never throws: a sweep failure must not turn a green run red. Bounded at 200 rows per model -
+ * a marker search that matches more than that means something is wrong, not that more should go.
+ */
+export async function sweepMigLeftoversOnO12CE(page: Page, tcId: string): Promise<void> {
+  const platform = new MigPlatformPage(page);
+  // name contains the TC id AND the TEST prefix: matches `TEST <id> ...` and `TEST Contact <id> ...`,
+  // and cannot match a migrated record (none carry a CRM-12325_x.y.z in their name).
+  const marker = [['name', 'like', tcId], ['name', 'like', 'TEST']];
+
+  const search = async (model: string, domain: any[], fields: string[] = ['id', 'name']) => {
+    try {
+      return await platform.callKw<Array<Record<string, any>>>(
+        model, 'search_read', [domain, fields], { limit: 200, context: { active_test: false } },
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.log(`  [mig-sweep] search ${model} failed - ${msg}`);
+      return [];
+    }
+  };
+
+  const leads = await search('crm.lead', marker);
+  const contacts = await search('res.partner', marker);
+
+  const leadIds = leads.map((r) => r.id);
+  const orders = leadIds.length ? await search('sale.order', [['opportunity_id', 'in', leadIds]]) : [];
+
+  const orderNames = orders.map((r) => r.name).filter(Boolean);
+  const invoices = orderNames.length ? await search('account.invoice', [['origin', 'in', orderNames]]) : [];
+
+  const invoiceIds = invoices.map((r) => r.id);
+  let licenses: Array<Record<string, any>> = [];
+  if (invoiceIds.length) {
+    try {
+      const licenseFields = await platform.callKw<Record<string, { type?: string; relation?: string }>>(
+        'license_management.license', 'fields_get', [[], ['type', 'relation']],
+      );
+      const invoiceFk = Object.keys(licenseFields).find(
+        (f) => licenseFields[f]?.type === 'many2one' && licenseFields[f]?.relation === 'account.invoice',
+      );
+      if (invoiceFk) {
+        licenses = await search('license_management.license', [[invoiceFk, 'in', invoiceIds]]);
+      } else {
+        console.log('  [mig-sweep] license_management.license has no account.invoice link - licenses covered by the ledger only');
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.log(`  [mig-sweep] could not inspect license_management.license - ${msg}`);
+    }
+  }
+
+  // Child-first, mirroring the ledger teardown's reversed order.
+  const doomed: MigCreatedRecord[] = [
+    ...licenses.map((r) => ({ model: 'license_management.license', id: r.id, label: 'License (swept)' })),
+    ...invoices.map((r) => ({ model: 'account.invoice', id: r.id, label: 'Invoice (swept)' })),
+    ...orders.map((r) => ({ model: 'sale.order', id: r.id, label: `${r.name || 'Order'} (swept)` })),
+    ...leads.map((r) => ({ model: 'crm.lead', id: r.id, label: `${r.name || 'Lead'} (swept)` })),
+    ...contacts.map((r) => ({ model: 'res.partner', id: r.id, label: `${r.name || 'Contact'} (swept)` })),
+  ];
+
+  if (doomed.length === 0) {
+    console.log(`[mig-sweep] clean - nothing named "TEST ... ${tcId} ..." is left on crm-mig`);
+    return;
+  }
+
+  console.log(`\n[mig-sweep] ${doomed.length} leftover record(s) match "${tcId}" - deleting`);
+  const failed = await unlinkMigRecords(platform, doomed);
+  if (failed.length > 0) {
+    console.log(
+      `[mig-sweep] SWEEP INCOMPLETE - ${failed.length} record(s) still on crm-mig:\n` +
+      failed.map((r) => `  LEFTOVER ${r.model}#${r.id} (${r.label})`).join('\n') +
+      '\nThe 16:00 leftover-data check will report these.',
+    );
+  } else {
+    console.log('[mig-sweep] done - every leftover was deleted');
+  }
+}
+
+/**
+ * The one-liner every section-II spec calls from its `afterAll`.
+ *
+ * `afterAll` gets no `page` fixture (page is test-scoped), so the sweep opens its own context and
+ * logs in again - roughly 10-20 s per spec file, the price of the rule. Logging in directly rather
+ * than via `loginToO12CE` keeps `test.step` out of a hook and leaves the ledger untouched.
+ */
+export async function sweepMigLeftoversAfterAll(browser: Browser, tcId: string): Promise<void> {
+  let context: BrowserContext | undefined;
+  try {
+    context = await browser.newContext();
+    const page = await context.newPage();
+    const loginPage = new LoginPageMig(page);
+    await loginPage.navigateTo(baseUrl_mig);
+    await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
+    await sweepMigLeftoversOnO12CE(page, tcId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+    console.log(`[mig-sweep] SKIPPED - could not open a sweep session: ${msg}`);
+  } finally {
+    await context?.close().catch(() => {});
+  }
+}
+
 export async function teardownMigRecords(page: Page, skip: boolean): Promise<void> {
   if (skip) {
     const kept = listMigCreatedRecords();

@@ -15,6 +15,7 @@ import {
   O12ceQuotationResult,
   O12cePendingApprovalResult,
   teardownMigRecords,
+  sweepMigLeftoversAfterAll,
 } from '@helpers/o12ce-main-business.helper';
 
 /**
@@ -117,6 +118,12 @@ test.describe('CRM-12325_2.5.7 - O12 CE smoke: the requester approves his own Qu
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
     }
     await teardownMigRecords(page, SKIP_CLEANUP_OPP);
+  });
+
+  // CLAUDE.md crm-mig rule: the afterAll sweep also removes what a dying test created but never
+  // got to register. Opens its own session, so it costs one extra login per spec file.
+  test.afterAll(async ({ browser }) => {
+    await sweepMigLeftoversAfterAll(browser, 'CRM-12325_2.5.7');
   });
 
   test('CRM-12325_2.5.7: Verify the Quotation requester can APPROVE his own Quotation on the O12 CE Migration server', async ({ page }, testInfo) => {
