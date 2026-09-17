@@ -267,6 +267,17 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
+      // II.Smoked_Test_Main_Business sub-tree of the O12 CE setup suite (23 specs, titles
+      // CRM-12325_2.x.y) - the main-business smoke chain on the crm-mig server:
+      // Lead -> Opportunity -> Contact -> Deal Element -> Quotation -> Invoice -> License.
+      // Its own project so a dedicated Jenkins job (CRM_O12_MIG_Smoke) can re-run just this
+      // folder via --project=MigSmoke. Overlaps with (is a subset of) the O12 project.
+      // Inventory + last results per TC: CRM-12450.
+      name: 'MigSmoke',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/II.Smoked_Test_Main_Business_Work_On_O12CE',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
       // 3 team sub-folders of 2.Leads_Assignment run as ONE job:
       // Marketing_BDEU (23) + CMR_team (13) + THD_team (32) = 68 async-assignment specs.
       // Its own project so a dedicated Jenkins job (CRM_Leads_Assignment_3Teams) runs
