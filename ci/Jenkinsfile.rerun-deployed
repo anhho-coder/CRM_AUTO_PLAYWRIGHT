@@ -149,16 +149,14 @@ pipeline {
             steps {
                 script {
                     def minGb = (params.MIN_FREE_GB ?: '5').isInteger() ? (params.MIN_FREE_GB ?: '5').toInteger() : 5
-                    // bat(returnStdout) + powershell -Command is the pattern already proven on this
-                    // agent (ci/Jenkinsfile.period-allure); the powershell step's own returnStdout is not
-                    // used anywhere else in this repo.
-                    def out = bat(returnStdout: true, script: '''@echo off
-powershell -NoProfile -Command "Write-Output ('FREE_GB=' + [math]::Round((Get-PSDrive C).Free / 1GB, 1))"''').trim()
-                    def line = out.readLines().find { it.startsWith('FREE_GB=') } ?: 'FREE_GB=0'
-                    def freeGb = Double.parseDouble(line.replace('FREE_GB=', '').trim())
-                    echo "Agent C: free space = ${freeGb} GB (minimum ${minGb} GB)"
-                    if (freeGb < minGb) {
-                        error("ABORTED: only ${freeGb} GB free on C: (min ${minGb}). Playwright media fills C: and takes BOTH nodes offline mid-run - run CRM-Media-Retention-Purge first.")
+                    // The comparison is done INSIDE PowerShell and reported through the exit code:
+                    // the Groovy sandbox rejects Double.parseDouble (build #1), and parsing the number
+                    // on this side buys nothing.
+                    def rc = bat(returnStatus: true, script: """@echo off
+powershell -NoProfile -Command "\$f=[math]::Round((Get-PSDrive C).Free/1GB,1); Write-Host ('C: free = ' + \$f + ' GB (minimum ${minGb} GB)'); if (\$f -lt ${minGb}) { exit 1 }"
+""")
+                    if (rc != 0) {
+                        error("ABORTED: less than ${minGb} GB free on C: (see the line above). Playwright media fills C: and takes BOTH Jenkins nodes offline mid-run (incident 2026-07-31) - run CRM-Media-Retention-Purge first.")
                     }
                 }
             }
@@ -329,8 +327,10 @@ call npx playwright test !FILTERS! --project=chrome-headless --retries=1
                         }
                     }
                     if (skipped) {
-                        currentBuild.description = 'SKIPPED: ' + skipped.join('; ')
                         echo "SKIPPED groups in this build: ${skipped.join('; ')}"
+                        // Best-effort build label; never let it fail a run that otherwise finished.
+                        try { currentBuild.description = 'SKIPPED: ' + skipped.join('; ') }
+                        catch (ignored) { echo 'Could not set the build description (sandbox) - the SKIPPED line above is the record.' }
                     }
                 }
             }
