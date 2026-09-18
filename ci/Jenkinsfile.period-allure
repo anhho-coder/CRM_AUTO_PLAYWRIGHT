@@ -9,9 +9,9 @@
 //   CRM-Allure-Daily      daily       ~05:00 every day      -> yesterday
 //   CRM-Allure-Weekly     weekly      ~05:00 every Monday   -> last ISO week (Mon..Sun)
 //                                     + ~23:00 EVERY day    -> the IN-PROGRESS week (nightly refresh)
-//   CRM-Allure-Monthly    monthly     ~05:00 on the 1st     -> last month
-//   CRM-Allure-Quarterly  quarterly   ~05:00 on 1 Jan/Apr/Jul/Oct -> last quarter
-//   CRM-Allure-Yearly     yearly      ~05:00 on 1 Jan       -> last year
+//   CRM-Allure-Monthly    monthly     ~05:00 on the 1st + ~23:00 EVERY day -> in-progress month
+//   CRM-Allure-Quarterly  quarterly   ~05:00 on 1 Jan/Apr/Jul/Oct + ~23:00 EVERY day -> in-progress quarter
+//   CRM-Allure-Yearly     yearly      ~05:00 on 1 Jan + ~23:00 EVERY day -> in-progress year
 //
 // All five run in the 05:00 hour; the 'H' in the minute field hashes each job to its own
 // fixed minute so they don't all fire at the same instant. Report generation is light
@@ -53,9 +53,12 @@ pipeline {
         cron(
             env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? '''H 5 * * 1
 H(0-9) 23 * * *''' :
-            env.JOB_BASE_NAME == 'CRM-Allure-Monthly'   ? 'H 5 1 * *'        :
-            env.JOB_BASE_NAME == 'CRM-Allure-Quarterly' ? 'H 5 1 1,4,7,10 *' :
-            env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
+            env.JOB_BASE_NAME == 'CRM-Allure-Monthly'   ? '''H 5 1 * *
+H(0-9) 23 * * *''' :
+            env.JOB_BASE_NAME == 'CRM-Allure-Quarterly' ? '''H 5 1 1,4,7,10 *
+H(0-9) 23 * * *''' :
+            env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? '''H 5 1 1 *
+H(0-9) 23 * * *''' :
                                                           'H 5 * * *'          // default: daily
         )
         // LIVE refresh: ALL period reports rebuild after any section job finishes and
@@ -64,7 +67,11 @@ H(0-9) 23 * * *''' :
         // behind a switcher), so they must stay live too. The cron lines above are now just a
         // safety heartbeat / period roll-over on the 1st; day-to-day freshness comes from here.
         upstream(
-            upstreamProjects: 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12',
+            // The six original section jobs were retired in Aug-2026 (last builds Jul/Aug) and the
+            // weekend-regression CHUNK jobs (CRM-WR-*) took over as the jobs that drop the date-stamped
+            // buckets (ci/Jenkinsfile.slow), so this list had gone dead and the reports only refreshed
+            // on their cron. Any NEW job that runs ci/Jenkinsfile.slow must be added here too.
+            upstreamProjects: 'CRM_Investments,CRM_Lead_Merging,CRM_Leads_Assignment,CRM_SalesReport_Perf,CRM_CRM_Module,CRM_O12,CRM-WR-00-Weekend-Regression,CRM-WR-00b-Resume,CRM-WR-01-SalesReport,CRM-WR-02-Contact,CRM-WR-03-SalesModule,CRM-WR-03a-SalesModule-PromoCreation,CRM-WR-03b-SalesModule-ApplyPromo,CRM-WR-03c-SalesModule-Quotations,CRM-WR-04-Investments-2482,CRM-WR-05-Investments-rest,CRM-WR-06-CRMModule-457,CRM-WR-07-CRMModule-2338,CRM-WR-08-CRMModule-4001-464,CRM-WR-09-CRMModule-10601-3523,CRM-WR-10-LeadMerging-CRM1x,CRM-WR-11-LeadMerging-2178-542,CRM-WR-12-LeadMerging-671-9059,CRM-WR-13-LeadMerging-Explor-Manual,CRM-WR-14-LA-Marketing-BDEU,CRM-WR-15-LA-Teams,CRM-WR-16-LA-THD-3-1,CRM-WR-17-LA-THD-3-2-1,CRM-WR-18-LA-THD-3-2-2,CRM-WR-19-LA-THD-3-2-3,CRM-WR-20-O12-UC-A-1-2-3,CRM-WR-21-O12-UC-A-4-to-8,CRM-WR-22-O12-UC-B-1-to-4,CRM-WR-23-O12-UC-B-5-to-8,CRM-WR-24-O12-Chatter-PreSales,CRM-WR-25-O12-Discount-misc,CRM-Rerun-Weekly-Fails,CRM-Rerun-Monthly-Fails,CRM-Run-Weekly-Submitted,CRM_O12_MIG_ReadOnly,CRM_O12_MIG_Smoke,CRM_FixBug_Confirm3x,CRM_Rerun_Skipped_Monthly',
             threshold: hudson.model.Result.FAILURE   // refresh even when some tests failed
         )
     }
