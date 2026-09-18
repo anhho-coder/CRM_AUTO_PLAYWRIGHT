@@ -58,8 +58,8 @@ pipeline {
         )
         string(
             name: 'TIMEOUT_MIN',
-            defaultValue: '300',
-            description: 'Build timeout in minutes for the whole re-run. 300 (5h) fits ~80 specs at the measured ~3.4 min/spec. Raise for GROUPS=all (~160 specs = ~9h, which also needs the 540-min backstop below raised).'
+            defaultValue: '420',
+            description: 'Build timeout in minutes for the whole re-run. 420 (7h) sits just under the 540-min backstop and covers ~120 specs at the measured ~3.4 min/spec (W38 deployed 112 pre-prod specs). GROUPS=all (~190 specs = ~11h) does NOT fit - split it by section or raise the backstop.'
         )
         string(
             name: 'MIN_FREE_GB',
