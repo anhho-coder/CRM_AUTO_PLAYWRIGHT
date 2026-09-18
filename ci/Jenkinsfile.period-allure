@@ -8,6 +8,7 @@
 //   Job name              Scope       Cron (when it freezes the PREVIOUS period)
 //   CRM-Allure-Daily      daily       ~05:00 every day      -> yesterday
 //   CRM-Allure-Weekly     weekly      ~05:00 every Monday   -> last ISO week (Mon..Sun)
+//                                     + ~23:00 EVERY day    -> the IN-PROGRESS week (nightly refresh)
 //   CRM-Allure-Monthly    monthly     ~05:00 on the 1st     -> last month
 //   CRM-Allure-Quarterly  quarterly   ~05:00 on 1 Jan/Apr/Jul/Oct -> last quarter
 //   CRM-Allure-Yearly     yearly      ~05:00 on 1 Jan       -> last year
@@ -50,7 +51,8 @@ pipeline {
     // "Previous" switcher tab (frozen snapshot), so no archival is lost.
     triggers {
         cron(
-            env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? 'H 5 * * 1'        :
+            env.JOB_BASE_NAME == 'CRM-Allure-Weekly'    ? '''H 5 * * 1
+H(0-9) 23 * * *''' :
             env.JOB_BASE_NAME == 'CRM-Allure-Monthly'   ? 'H 5 1 * *'        :
             env.JOB_BASE_NAME == 'CRM-Allure-Quarterly' ? 'H 5 1 1,4,7,10 *' :
             env.JOB_BASE_NAME == 'CRM-Allure-Yearly'    ? 'H 5 1 1 *'        :
@@ -89,7 +91,25 @@ pipeline {
                     else if (view == 'current')     { env.CURRENT = 'true'  }   // force in-progress period
                     else if (view == 'previous')    { env.CURRENT = 'false' }   // force last completed period (e.g. Q2)
                     else if (env.SCOPE in ['monthly', 'quarterly', 'yearly']) { env.CURRENT = 'true' } // auto: calendar-period reports default to the CURRENT period (embed previous behind a switcher)
-                    else                            { env.CURRENT = upstreamHit ? 'true' : 'false' }  // auto: daily/weekly -> live on upstream, else the previous completed period
+                    else {
+                        // auto: daily/weekly -> live CURRENT on upstream, else the previous
+                        // completed period. PLUS a nightly refresh: the section jobs no longer
+                        // all sit in the upstream list, so the weekly report went stale between
+                        // Monday crons. Any build started from 12:00 on (the 23:00 cron, or a
+                        // manual evening run) renders the IN-PROGRESS day/week so that day's
+                        // runs show up the same night; the 05:00 cron keeps its job of freezing
+                        // the just-completed period as the clean archival snapshot.
+                        def eveningRun = false
+                        try {
+                            def hourOut = bat(returnStdout: true,
+                                script: '''@echo off
+powershell -NoProfile -Command "(Get-Date).Hour"''').trim()
+                            eveningRun = Integer.parseInt(hourOut.readLines().last().trim()) >= 12
+                        } catch (err) {
+                            echo "Could not read the local hour (${err}) -> falling back to the upstream rule."
+                        }
+                        env.CURRENT = (upstreamHit || eveningRun) ? 'true' : 'false'
+                    }
                     echo "Job '${env.JOB_BASE_NAME}' -> SCOPE=${env.SCOPE}  VIEW=${view}  CURRENT=${env.CURRENT}  PERIOD='${params.PERIOD}'"
                 }
             }
