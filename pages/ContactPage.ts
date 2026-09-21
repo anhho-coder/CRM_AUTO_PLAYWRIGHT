@@ -1902,4 +1902,690 @@ export class ContactPage extends BasePage {
     await this.wait(CommonUtils.waitTimes.long);
     console.log('  ✓ Opened the contact\'s Opportunities (partner-scoped crm.lead view)');
   }
+
+  // ==========================================================================================
+  //  Structural readers - control-panel / header / smart buttons, information-area field labels
+  //  and values, notebook tabs and the chatter. Added for the Contact screen test cases
+  //  (TC.Performance.1.1.3.3 - 1.1.3.34), which assert the SHAPE of the Contact form. They live
+  //  here because a .spec.ts is not allowed to touch page.locator directly.
+  //
+  //  Grounded on pre-production 2026-09-17 against a saved COMPANY contact (res.partner):
+  //    control panel  : EDIT | CREATE | Print | Action        (read mode)
+  //                     SAVE | DISCARD                        (edit mode)
+  //    header buttons : CREATE OPPORTUNITY (action_create_new_opportunity)
+  //                     MARK HOTSITE       (action_enable_hot_site_concept)
+  //    smart buttons  : Opportunities | Meetings | Sales | Subscriptions | Demo | Followups |
+  //                     Invoiced | More    (8, left to right)
+  //    information    : 17 labels in the left column, 21 in the right one
+  //    notebook       : 19 tabs
+  // ==========================================================================================
+
+  /** x of the boundary between the information area's left and right column (grounded: 50 vs 603). */
+  private static readonly COLUMN_SPLIT_X = 400;
+
+  /**
+   * The control-panel buttons of the form, in screen order.
+   * Read mode returns ["EDIT", "CREATE", "Print", "Action"]; edit mode returns ["SAVE", "DISCARD"].
+   */
+  async getControlPanelButtons(): Promise<string[]> {
+    const panel = this.page.locator('.o_control_panel').first();
+    await panel.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    return await panel
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button, a.btn'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The buttons the form's own header renders above the sheet, in screen order - on a Contact that
+   * is CREATE OPPORTUNITY, MARK HOTSITE. Hidden buttons (Odoo keeps the whole set in the DOM and
+   * hides the ones the current state / user may not use) are dropped, so the result is what a
+   * tester reads on the screen.
+   */
+  async getStatusbarButtons(): Promise<string[]> {
+    return (await this.getStatusbarButtonMap()).map((b) => b.label);
+  }
+
+  /**
+   * The header buttons paired with the Odoo action they call, in screen order, so a failure names
+   * the action (action_create_new_opportunity), not a DOM index.
+   */
+  async getStatusbarButtonMap(): Promise<Array<{ label: string; name: string }>> {
+    const bar = this.page.locator('.o_statusbar_buttons').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ({
+            label: ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim(),
+            name: b.getAttribute('name') || '',
+            left: b.getBoundingClientRect().left,
+          }))
+          .filter((e) => e.label.length > 0)
+          .sort((a, b) => a.left - b.left)
+          .map((e) => ({ label: e.label, name: e.name }))
+      )
+      .catch(() => [] as Array<{ label: string; name: string }>);
+  }
+
+  /**
+   * The stat ("smart") buttons of the sub-menu bar above the sheet, LEFT TO RIGHT, with the raw
+   * caption as the screen prints it ("1 Opportunities", "$ 0.00 Invoiced", "More").
+   *
+   * The `name` attribute is only meaningful for the buttons bound to a python method
+   * (action_view_opportunities, schedule_meeting, action_view_partner_invoices); Sales,
+   * Subscriptions, Demo and Followups are bound to an ir.actions id, so their name reads as a
+   * NUMBER ("354", "429", ...) which changes from one database to the next - assert those on the
+   * CAPTION, never on the name.
+   */
+  async getSmartButtons(): Promise<Array<{ text: string; name: string }>> {
+    const box = this.page.locator('.oe_button_box').first();
+    await box.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await box.count()) === 0) return [];
+    return await box
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ({
+            text: ((b as HTMLElement).innerText || '')
+              .replace(/​/g, '')
+              .replace(/ /g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim(),
+            name: b.getAttribute('name') || '',
+            left: b.getBoundingClientRect().left,
+          }))
+          .filter((e) => e.text.length > 0)
+          .sort((a, b) => a.left - b.left)
+          .map((e) => ({ text: e.text, name: e.name }))
+      )
+      .catch(() => [] as Array<{ text: string; name: string }>);
+  }
+
+  /**
+   * The smart buttons reduced to their NAME, left to right - the count and the currency Odoo
+   * prints in front of the caption are stripped, so "1 Opportunities" -> "Opportunities" and
+   * "$ 0.00 Invoiced" -> "Invoiced". This is the list a tester reads off the screen.
+   */
+  async getSmartButtonNames(): Promise<string[]> {
+    const buttons = await this.getSmartButtons();
+    return buttons.map((b) =>
+      b.text
+        .replace(/^[^A-Za-z]*/, '') // drop a leading count / currency amount ("1 ", "$ 0.00 ")
+        .replace(/\s+/g, ' ')
+        .trim()
+    );
+  }
+
+  /**
+   * The number a smart button prints in front of its caption, e.g. "Opportunities" -> 1.
+   * Returns NaN when no smart button carries that caption, so a MISSING button can never be read
+   * as a legitimate 0.
+   */
+  async getSmartButtonCount(caption: string): Promise<number> {
+    const buttons = await this.getSmartButtons();
+    const hit = buttons.find((b) => b.text.toLowerCase().endsWith(caption.toLowerCase()));
+    if (!hit) return NaN;
+    const m = hit.text.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    return m ? parseFloat(m[0]) : NaN;
+  }
+
+  /** Press a smart button by its caption ("Opportunities", "Meetings", "More", ...). */
+  async clickSmartButtonByCaption(caption: string): Promise<void> {
+    const escaped = caption.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const button = this.page
+      .locator('.oe_button_box button')
+      .filter({ hasText: new RegExp(escaped + '\\s*$', 'i') })
+      .first();
+    await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click();
+    console.log('  - Pressed the smart button "' + caption + '"');
+  }
+
+  /**
+   * The entries of the "More" smart-button dropdown, in order. The dropdown is opened, read and
+   * closed again, so the form is left exactly as it was found.
+   */
+  async getMoreSmartButtonItems(): Promise<string[]> {
+    const more = this.page.locator('.oe_button_box button').filter({ hasText: /More\s*$/ }).first();
+    if (!(await more.count().catch(() => 0))) return [];
+    await more.click().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const items = await this.page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('.dropdown-menu.show a, .dropdown-menu.show button'))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    return items;
+  }
+
+  /**
+   * The entries of a control-panel dropdown ("Print" / "Action"), in order. The menu is opened,
+   * read and closed again.
+   */
+  async getControlPanelMenuItems(toggleLabel: string): Promise<string[]> {
+    const toggle = this.page
+      .locator('.o_control_panel button')
+      .filter({ hasText: new RegExp('^\\s*' + toggleLabel + '\\s*$', 'i') })
+      .first();
+    if (!(await toggle.count().catch(() => 0))) return [];
+    await toggle.click().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const items = await this.page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('.dropdown-menu.show a, .dropdown-menu.show button'))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    return items;
+  }
+
+  /** Press a header button by the Odoo action it calls (e.g. "action_create_new_opportunity"). */
+  async clickStatusbarButtonByName(
+    actionName: string,
+    timeout: number = CommonUtils.waitTimes.pageLoad
+  ): Promise<void> {
+    const button = this.page
+      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]')
+      .filter({ visible: true })
+      .first();
+    await button.waitFor({ state: 'visible', timeout });
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click();
+    console.log('  - Pressed the header button "' + actionName + '"');
+  }
+
+  /** The title of the confirmation dialog currently on screen ('' when there is none). */
+  async getDialogTitle(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<string> {
+    const title = this.page.locator('.modal-dialog .modal-title').first();
+    if (!(await title.isVisible({ timeout }).catch(() => false))) return '';
+    return ((await title.innerText({ timeout }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** The footer buttons of the dialog currently on screen, in order. */
+  async getDialogButtons(): Promise<string[]> {
+    const footer = this.page.locator('.modal-dialog .modal-footer').first();
+    if (!(await footer.count().catch(() => 0))) return [];
+    return await footer
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /** Dismiss the dialog currently on screen with its CANCEL button, leaving the record untouched. */
+  async cancelDialog(): Promise<void> {
+    const cancel = this.page
+      .locator('.modal-dialog .modal-footer button')
+      .filter({ hasText: /^\s*(CANCEL|Cancel|Discard)\s*$/ })
+      .first();
+    if (await cancel.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false)) {
+      await cancel.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      console.log('  - Dialog dismissed with CANCEL');
+    }
+  }
+
+  /** Whether the form is currently in EDIT mode (Odoo marks the view o_form_editable). */
+  async isFormEditable(): Promise<boolean> {
+    const view = this.page.locator('.o_form_view').first();
+    if (!(await view.count().catch(() => 0))) return false;
+    const cls = (await view.getAttribute('class').catch(() => '')) || '';
+    return cls.includes('o_form_editable');
+  }
+
+  /** The breadcrumb of the view currently on screen, left to right. */
+  async getBreadcrumb(): Promise<string[]> {
+    const crumbs = this.page.locator('.breadcrumb li');
+    await crumbs.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    const count = await crumbs.count().catch(() => 0);
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = ((await crumbs.nth(i).innerText({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')) || '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  // --------------------------------------------------------------------------
+  // Information area - labels, order and values
+  // --------------------------------------------------------------------------
+
+  /**
+   * Every VISIBLE label of the information area paired with the technical name and the on-screen
+   * value of the field it captions, plus the column it sits in. Labels inside the notebook are
+   * excluded, and so are the technical fields Odoo keeps hidden via attrs - the result is exactly
+   * what a tester reads on the screen.
+   */
+  async getFieldLabelMap(): Promise<
+    Array<{ label: string; field: string; value: string; column: 'left' | 'right'; y: number }>
+  > {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const split = ContactPage.COLUMN_SPLIT_X;
+    return await sheet
+      .evaluate((el: HTMLElement, splitX: number) => {
+        const clean = (n: Element | null) =>
+          n
+            ? ((n as HTMLElement).innerText || n.textContent || '')
+                .replace(/​/g, '')
+                .replace(/ /g, ' ')
+                .replace(/\s+/g, ' ')
+                .trim()
+            : '';
+        const notebook = el.querySelector('.o_notebook');
+        const out: Array<{ label: string; field: string; value: string; column: 'left' | 'right'; y: number }> = [];
+        Array.from(el.querySelectorAll('label')).forEach((l) => {
+          if (notebook && notebook.contains(l)) return;
+          if (!((l as HTMLElement).offsetParent || l.getClientRects().length)) return;
+          const label = clean(l);
+          if (!label) return;
+          const rect = l.getBoundingClientRect();
+          const row = l.closest('tr');
+          const widget = row ? row.querySelector('[name]') : null;
+          const valueCell = row ? row.querySelector('td.o_td_label + td') : null;
+          out.push({
+            label,
+            field: widget ? widget.getAttribute('name') || '' : '',
+            value: clean(valueCell || (widget as Element | null)),
+            column: rect.left < splitX ? 'left' : 'right',
+            y: Math.round(rect.top),
+          });
+        });
+        return out.sort((a, b) => (a.column === b.column ? a.y - b.y : a.column === 'left' ? -1 : 1));
+      }, split)
+      .catch(() => [] as Array<{ label: string; field: string; value: string; column: 'left' | 'right'; y: number }>);
+  }
+
+  /** The VISIBLE field labels of the information area, in form order (left column then right). */
+  async getVisibleFieldLabels(): Promise<string[]> {
+    return (await this.getFieldLabelMap()).map((e) => e.label);
+  }
+
+  /** The VISIBLE field labels of ONE column of the information area, top to bottom. */
+  async getColumnFieldLabels(column: 'left' | 'right'): Promise<string[]> {
+    return (await this.getFieldLabelMap()).filter((e) => e.column === column).map((e) => e.label);
+  }
+
+  /** The notebook tab names, in order. */
+  async getNotebookTabs(): Promise<string[]> {
+    const notebook = this.page.locator('.o_notebook').first();
+    await notebook.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await notebook
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('.nav-link'))
+          .filter((a) => !!((a as HTMLElement).offsetParent || a.getClientRects().length))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * A field's value as the screen shows it, in READ mode as well as in EDIT mode
+   * (read mode renders text, edit mode renders an input / a select).
+   */
+  async getFieldDisplayValue(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const select = el.matches('select')
+          ? (el as HTMLSelectElement)
+          : (el.querySelector('select') as HTMLSelectElement | null);
+        if (select) {
+          const opt = select.options[select.selectedIndex];
+          return ((opt && opt.text) || '').replace(/\s+/g, ' ').trim();
+        }
+        const input = el.matches('input, textarea')
+          ? (el as HTMLInputElement)
+          : (el.querySelector('input:not([type="hidden"]), textarea') as HTMLInputElement | null);
+        if (input && input.type !== 'checkbox') return (input.value || '').replace(/\s+/g, ' ').trim();
+        return (el.innerText || el.textContent || '')
+          .replace(/​/g, '')
+          .replace(/ /g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      })
+      .catch(() => '');
+  }
+
+  /**
+   * The NAME a many2one field shows, without the address lines Odoo prints under it.
+   * Read mode renders the name as a link followed by the partner's address; this returns the link
+   * text only. Edit mode returns the input value.
+   */
+  async getFieldPartnerName(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const clean = (s: string) =>
+          (s || '').replace(/​/g, '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        const input = el.querySelector('input:not([type="hidden"])') as HTMLInputElement | null;
+        if (input) return clean(input.value);
+        const link = el.querySelector('a');
+        if (link) return clean((link as HTMLElement).innerText);
+        return clean((el.innerText || '').split('\n')[0]);
+      })
+      .catch(() => '');
+  }
+
+  /** The numeric part of a monetary / integer field, e.g. "$ 0.00" -> 0. */
+  async getFieldNumber(fieldName: string): Promise<number> {
+    const raw = await this.getFieldDisplayValue(fieldName);
+    const match = raw.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    return match ? parseFloat(match[0]) : NaN;
+  }
+
+  /**
+   * Whether a boolean field's checkbox is ticked. Returns null when the form carries no VISIBLE
+   * checkbox for that field, so "absent" can never be read as "unticked".
+   */
+  async isFieldChecked(fieldName: string): Promise<boolean | null> {
+    const box = this.page.locator('.o_form_sheet [name="' + fieldName + '"] input[type="checkbox"]').first();
+    if ((await box.count().catch(() => 0)) === 0) return null;
+    return await box.isChecked().catch(() => null);
+  }
+
+  /** The value cell of the row a LABEL captions, as the screen shows it. */
+  async getFieldRowTextByLabel(label: string): Promise<string> {
+    const map = await this.getFieldLabelMap();
+    const hit = map.find((entry) => entry.label === label);
+    return hit ? hit.value : '';
+  }
+
+  /** The tags (category_id) the contact carries, in screen order. */
+  async getTagList(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<string[]> {
+    const holder = this.page.locator('.o_form_sheet [name="category_id"]').first();
+    await holder.waitFor({ state: 'visible', timeout }).catch(() => {});
+    if ((await holder.count().catch(() => 0)) === 0) return [];
+    return await holder
+      .evaluate((el: HTMLElement) => {
+        // ONE entry per tag. Odoo nests the caption inside the chip
+        // (<span class="badge"><span class="o_badge_text">Name</span></span>), so a selector list
+        // that names both matches every tag TWICE - which is how TC.Performance.1.1.3.18 read
+        // "1 Man Company | 1 Man Company" and reported 2 tags for 1 (run of 2026-09-18).
+        // Keep only the OUTERMOST chip of each tag, then fall back to the caption spans for a
+        // layout that renders no chip at all.
+        const chips = Array.from(el.querySelectorAll('.badge, .o_tag'));
+        const outermost = chips.filter((c) => !chips.some((other) => other !== c && other.contains(c)));
+        const nodes = outermost.length > 0 ? outermost : Array.from(el.querySelectorAll('.o_badge_text'));
+        return nodes
+          .map((t) => ((t as HTMLElement).innerText || '').replace(/×/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0);
+      })
+      .catch(() => [] as string[]);
+  }
+
+  // --------------------------------------------------------------------------
+  // Edit-mode writers used by the Contact information test cases
+  // --------------------------------------------------------------------------
+
+  /** Type a value into a plain text / char field of the sheet, keyed on its technical name. */
+  async fillTextFieldByName(fieldName: string, value: string): Promise<void> {
+    const input = this.page
+      .locator('.o_form_sheet [name="' + fieldName + '"] input:not([type="hidden"])')
+      .or(this.page.locator('.o_form_sheet input[name="' + fieldName + '"]'))
+      .first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await input.click();
+    await input.fill(value);
+    console.log('  - ' + fieldName + ': ' + value);
+  }
+
+  /**
+   * Pick an option of a selection field of the sheet, keyed on its technical name, and return the
+   * value the widget shows afterwards.
+   *
+   * `verify` (default true) re-reads the widget and THROWS when the pick did not take, so a spec
+   * fails at the cause instead of far away from it. Pass `{ verify: false }` for a field the form
+   * legitimately overwrites - `tz` is derived from the Address Country/State, so a pick there is
+   * expected to be replaced (see TC.Performance.1.1.3.21).
+   */
+  async selectOptionByName(
+    fieldName: string,
+    label: string,
+    options: { verify?: boolean } = {}
+  ): Promise<string> {
+    const select = this.page
+      .locator('.o_form_sheet select[name="' + fieldName + '"]')
+      .or(this.page.locator('.o_form_sheet [name="' + fieldName + '"] select'))
+      .first();
+    await select.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await select.selectOption({ label });
+    await this.wait(CommonUtils.waitTimes.medium);
+    // Read the widget back: a selectOption that does not reach the Odoo field leaves the record on
+    // its default, and the spec would then fail far away from the cause. Fail here instead.
+    const shown = await this.getFieldDisplayValue(fieldName);
+    if (options.verify !== false && shown !== label) {
+      throw new Error(
+        'Selecting "' + label + '" on the field "' + fieldName + '" did not take - the widget shows "' + shown + '"'
+      );
+    }
+    console.log(
+      '  - ' + fieldName + ': picked "' + label + '"' + (shown === label ? '' : ', the widget shows "' + shown + '"')
+    );
+    return shown;
+  }
+
+  /** Add one EXISTING tag to the many2many "Tags" field (nothing is created). */
+  async addTag(tagName: string): Promise<void> {
+    const input = this.page.locator('.o_form_sheet [name="category_id"] input').first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await input.click();
+    await input.fill(tagName);
+    await this.wait(CommonUtils.waitTimes.long);
+    const option = this.page.locator('.ui-menu-item, li[role="option"]').filter({ hasText: tagName }).first();
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await option.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log('  - Tag added: ' + tagName);
+  }
+
+  // --------------------------------------------------------------------------
+  // Chatter / Log note
+  // --------------------------------------------------------------------------
+
+  /** One entry per chatter message, NEWEST FIRST, line breaks preserved. */
+  async getChatterMessages(timeout: number = CommonUtils.waitTimes.checkingChatterLog): Promise<string[]> {
+    const messages = this.page.locator('.o_thread_message .o_thread_message_content');
+    await messages.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await messages.count();
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = await messages
+        .nth(i)
+        .evaluate((el: HTMLElement) => el.innerText.replace(/ /g, ' ').trim())
+        .catch(() => '');
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  /** The author Odoo prints above each chatter message, NEWEST FIRST. */
+  async getChatterAuthors(timeout: number = CommonUtils.waitTimes.checkingChatterLog): Promise<string[]> {
+    const messages = this.page.locator('.o_thread_message');
+    await messages.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await messages.count();
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = await messages
+        .nth(i)
+        .evaluate((el: HTMLElement) => {
+          const a = el.querySelector('.o_thread_author');
+          return a ? ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim() : '';
+        })
+        .catch(() => '');
+      out.push(text);
+    }
+    return out;
+  }
+
+  /** The first chatter message matching, or null. */
+  async findChatterMessage(pattern: string | RegExp, timeout?: number): Promise<string | null> {
+    const messages = await this.getChatterMessages(timeout);
+    const hit = messages.find((m) => (typeof pattern === 'string' ? m.includes(pattern) : pattern.test(m)));
+    return hit ?? null;
+  }
+
+  /**
+   * Poll the chatter (reloading the form) until a message matches. The creation notes are written
+   * by the server as the record is stored, so a single read straight after the Contact is saved
+   * can land before they are rendered.
+   */
+  async waitForChatterMessage(
+    pattern: string | RegExp,
+    maxWaitTime: number = CommonUtils.waitTimes.savingPage,
+    checkInterval: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string | null> {
+    const deadline = Date.now() + maxWaitTime;
+    let attempt = 1;
+    let hit = await this.findChatterMessage(pattern);
+    while (!hit && Date.now() < deadline) {
+      console.log('  ... log note ' + pattern + ' not in the chatter yet - attempt #' + attempt + ', reloading');
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.wait(checkInterval);
+      hit = await this.findChatterMessage(pattern);
+      attempt++;
+    }
+    return hit;
+  }
+
+  /** Turn a "<key>: <value>" log note into a map. */
+  parseLogNoteFields(note: string): Record<string, string> {
+    const fields: Record<string, string> = {};
+    note.split('\n').forEach((line) => {
+      const m = line.match(/^\s*([^:]+?):\s*(.*)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    });
+    return fields;
+  }
+
+
+  /**
+   * Click one entry of the OPEN form Action dropdown by its exact label (e.g. "Duplicate").
+   * Throws when the entry is not offered, so a renamed / removed action fails the test instead of
+   * letting it carry on against an untouched record.
+   */
+  async clickOpenActionMenuOption(label: string): Promise<void> {
+    const option = this.page
+      .locator('.dropdown-menu.show a, .dropdown-menu.show button')
+      .filter({ hasText: new RegExp('^\\s*' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$') })
+      .first();
+    if (!(await option.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false))) {
+      const offered = await this.getOpenActionMenuOptionLabels().catch(() => [] as string[]);
+      throw new Error(
+        'The Action menu does not offer "' + label + '". It offers: ' + (offered.join(' | ') || '(nothing)')
+      );
+    }
+    await option.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Action menu entry pressed: "' + label + '"');
+  }
+
+  /**
+   * Add the FIRST existing tag the "Tags" dropdown offers and return its name, so a test case can
+   * assert the tag it really picked instead of depending on a tag name that may not exist on the
+   * environment. Throws when no existing tag can be picked - a spec must never silently carry on
+   * with no tag.
+   *
+   * EVERY action is bounded. The first version left the option click without a timeout and hung
+   * for the whole 10-minute test budget (TC.Performance.1.1.3.18, runs of 2026-09-18): the
+   * jQuery-UI autocomplete menu re-renders after its debounce, so the option captured a moment
+   * earlier detaches and an untimed click waits for an element that never comes back. The config
+   * sets no actionTimeout, so "waits forever" is the default here - never omit the timeout.
+   * Typing a search term first makes the menu deterministic, and the pick is retried once.
+   */
+  async addFirstAvailableTag(searchText: string = 'a'): Promise<string> {
+    const input = this.page.locator('.o_form_sheet [name="category_id"] input').first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await input.scrollIntoViewIfNeeded().catch(() => {});
+      await input.click({ timeout: CommonUtils.waitTimes.elementVisibility });
+      await input.fill(searchText, { timeout: CommonUtils.waitTimes.elementVisibility });
+      await this.wait(CommonUtils.waitTimes.extraLong);
+
+      const options = this.page.locator('.ui-menu-item:visible, li[role="option"]:visible');
+      const total = await options.count().catch(() => 0);
+      const offered: string[] = [];
+      for (let i = 0; i < total; i++) {
+        const text = (
+          (await options
+            .nth(i)
+            .innerText({ timeout: CommonUtils.waitTimes.elementVisibility })
+            .catch(() => '')) || ''
+        )
+          .replace(/\s+/g, ' ')
+          .trim();
+        if (!text) continue;
+        offered.push(text);
+        // "Create ...", "Search More..." are actions, not existing tags.
+        if (/^(Create|Search More|Start typing)/i.test(text)) continue;
+        try {
+          await options.nth(i).click({ timeout: CommonUtils.waitTimes.elementVisibility });
+        } catch (error) {
+          console.log(`  - the Tags menu moved under the pick on attempt #${attempt}, re-opening it`);
+          break;
+        }
+        await this.wait(CommonUtils.waitTimes.long);
+        console.log('  - Tag added: ' + text);
+        return text;
+      }
+      if (attempt === 2) {
+        throw new Error(
+          'The Tags dropdown offered no existing partner tag for "' +
+            searchText +
+            '". It offered: ' +
+            (offered.join(' | ') || '(nothing)')
+        );
+      }
+    }
+    throw new Error('The Tags dropdown could not be used to pick an existing partner tag');
+  }
+
+
+  /**
+   * Click the control-panel CREATE button while a Contact FORM is on screen.
+   *
+   * clickCreate() cannot be used here: it looks the button up by role with /CREATE/i, and a SAVED
+   * Contact also carries the header button "CREATE OPPORTUNITY" - the lookup then resolves to two
+   * elements and Playwright refuses it in strict mode. This one is scoped to the control panel and
+   * matches the caption exactly.
+   */
+  async clickCreateOnFormView(): Promise<void> {
+    const button = this.page
+      .locator('.o_control_panel button')
+      .filter({ hasText: /^\s*CREATE\s*$/i })
+      .first();
+    await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility });
+    await button.click();
+    await this.page
+      .locator('.o_form_editable')
+      .first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log('  - Pressed the control-panel CREATE button on the form view');
+  }
+
 }
