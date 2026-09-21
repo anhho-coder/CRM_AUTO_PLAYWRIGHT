@@ -910,7 +910,7 @@ export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRe
 export async function sweepMigLeftoversOnO12CE(page: Page, tcId: string): Promise<void> {
   const platform = new MigPlatformPage(page);
   // name contains the TC id AND the TEST prefix: matches `TEST <id> ...` and `TEST Contact <id> ...`,
-  // and cannot match a migrated record (none carry a CRM-12325_x.y.z in their name).
+  // and cannot match a migrated record (none carry a CRM-12370_x.y.z in their name).
   const marker = [['name', 'like', tcId], ['name', 'like', 'TEST']];
 
   const search = async (model: string, domain: any[], fields: string[] = ['id', 'name']) => {

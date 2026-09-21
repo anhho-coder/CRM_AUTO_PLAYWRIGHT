@@ -249,7 +249,7 @@ export class CommonUtils {
 
       const screenshot = await page.screenshot({ fullPage: true });
       // The HTML reporter derives a body-attachment's file extension from path.extname(name)
-      // (reporters/html.js). Our names carry the TC id, so "CRM-12325_2.5.1 - Quotation created"
+      // (reporters/html.js). Our names carry the TC id, so "CRM-12370_1.5.1 - Quotation created"
       // yields the extension ".1 - Quotation created" and the downloaded file has no .png - Windows
       // then cannot open it. Ending the name in .png makes extname() return ".png".
       const fileSafeName = /\.png$/i.test(attachmentName) ? attachmentName : `${attachmentName}.png`;

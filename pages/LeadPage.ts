@@ -742,7 +742,7 @@ export class LeadPage extends BasePage {
    * Odoo's autocomplete searches res.country.state by NAME ("CA"), so typing the whole display value
    * returns "No results to show...". Search with the bare name, then pick the option by its full
    * display text. A missing option returns false instead of clicking a never-visible element, which
-   * used to hang until the TEST timeout (15 min on CRM-12325_2.1.2).
+   * used to hang until the TEST timeout (15 min on CRM-12370_1.1.2).
    * @returns true when an option was picked
    */
   async selectState(state: string): Promise<boolean> {

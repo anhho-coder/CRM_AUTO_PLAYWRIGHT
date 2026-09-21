@@ -32,7 +32,7 @@ export class QuotationPage extends BasePage {
   private readonly emailDialog = () => this.page.locator('.o_dialog, .modal').filter({ visible: true }).last();
   private readonly sendButtonInDialog = () => this.emailDialog().getByRole('button', { name: /^\s*SEND\s*$/i }).or(this.emailDialog().getByRole('button', { name: /^\s*Send\s*$/i })).first();
   private readonly successNotification = () => this.page.locator('.o_notification_manager, .o_notification, .o_toast').filter({ hasText: /sent|success/i }).first();
-  // --- CRM-12415 regression guard (used by CRM-12325_2.5.40): the "Recipients" row of the
+  // --- CRM-12415 regression guard (used by CRM-12370_1.5.40): the "Recipients" row of the
   // Send-by-Email composer. On crm-mig the mail.compose.message form renders it as
   //   <label for="partner_ids" string="Recipients"/>
   //   <span name="document_followers_text">Followers of the document and</span>
@@ -59,7 +59,7 @@ export class QuotationPage extends BasePage {
   // `not(@disabled)` matters as much as the visibility filter: Odoo keeps a DISABLED copy of these
   // buttons in the DOM while an RPC is in flight, and clicking a disabled element never becomes
   // actionable - Playwright then waits for it forever (a click with no explicit timeout ate the
-  // whole 15-min test budget of CRM-12325_2.5.5).
+  // whole 15-min test budget of CRM-12370_1.5.5).
   private readonly approveButton = () => this.page.locator("xpath=//button[@name='action_approve' and not(@disabled)]")
     .or(this.page.locator('button').filter({ hasText: /^APPROVE$/i }))
     .filter({ visible: true })
@@ -71,14 +71,14 @@ export class QuotationPage extends BasePage {
   // Header "Cancel" (`action_cancel`). The Mig sale.order form shows it with
   // states="approved,pending_approval" (view 1365) ON TOP of the base states="draft,sent,sale"
   // (view 787), so a Quotation waiting for approval carries a live Cancel for its OWNER - that is
-  // what CRM-12325_2.5.43 exercises. Same visible+not(@disabled) discipline as APPROVE/REJECT.
+  // what CRM-12370_1.5.43 exercises. Same visible+not(@disabled) discipline as APPROVE/REJECT.
   private readonly cancelButton = () => this.page.locator("xpath=//button[@name='action_cancel' and not(@disabled)]")
     .or(this.page.locator('button').filter({ hasText: /^\s*Cancel\s*$/i }))
     .filter({ visible: true })
     .first();
   // Header "Duplicate" (`action_duplicate`) - added by view 1398 with NO attrs, i.e. always shown.
   // The same view sets create="false" on the form, so Duplicate is the sanctioned way to copy a
-  // Quotation on O12 CE. Exercised by CRM-12325_2.5.44.
+  // Quotation on O12 CE. Exercised by CRM-12370_1.5.44.
   private readonly duplicateButton = () => this.page.locator("xpath=//button[@name='action_duplicate' and not(@disabled)]")
     .or(this.page.locator('button').filter({ hasText: /^\s*Duplicate\s*$/i }))
     .filter({ visible: true })
@@ -692,7 +692,7 @@ export class QuotationPage extends BasePage {
     
     // Wait for the "Reject Reason" dialog to appear. Use waitFor, NOT isVisible({timeout}):
     // isVisible() is an IMMEDIATE check - it never retries and its `timeout` option does not make it
-    // poll. That is why CRM-12325_2.5.5 logged "dialog did not appear" 1s after the click while the
+    // poll. That is why CRM-12370_1.5.5 logged "dialog did not appear" 1s after the click while the
     // evidence screenshot taken moments later showed the wizard wide open, so the reason was never
     // filled, the dialog stayed open and APPROVE/REJECT were never consumed.
     // The Mig backend theme re-labels the wizard, so fall back to any visible modal when the

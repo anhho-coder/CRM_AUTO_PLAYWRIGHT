@@ -334,7 +334,7 @@ export class MigPlatformPage extends BasePage {
    * already loaded, so a page opened as `/web#...` keeps that shape for every later action - and the
    * shared page objects wait on the glob `**\/web?*view_type=form*`, in which Playwright treats `?` as
    * a LITERAL character. Seeding `/web?#...` (the pre-prod URL shape) makes every base page-object URL
-   * wait work unchanged on the Migration server. See CRM-12325_2.x (section II) for the failure this
+   * wait work unchanged on the Migration server. See CRM-12370_1.x (section II) for the failure this
    * fixes: "CREATE" navigated to `/web#...view_type=form` and the wait timed out anyway.
    */
   static appUrl(hash: string): string {

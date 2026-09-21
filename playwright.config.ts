@@ -297,7 +297,7 @@ export default defineConfig({
     },
     {
       // II.Smoked_Test_Main_Business sub-tree of the O12 CE setup suite (23 specs, titles
-      // CRM-12325_2.x.y) - the main-business smoke chain on the crm-mig server:
+      // CRM-12370_1.x.y) - the main-business smoke chain on the crm-mig server:
       // Lead -> Opportunity -> Contact -> Deal Element -> Quotation -> Invoice -> License.
       // Its own project so a dedicated Jenkins job (CRM_O12_MIG_Smoke) can re-run just this
       // folder via --project=MigSmoke. Overlaps with (is a subset of) the O12 project.
