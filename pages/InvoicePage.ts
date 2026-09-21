@@ -57,6 +57,16 @@ export class InvoicePage extends BasePage {
     .filter({ visible: true })
     .first();
   private readonly createLicenseButton         = () => this.page.getByRole('button', { name: 'CREATE LICENSE' }).or(this.page.getByRole('button', { name: 'Create License' })).first();
+  // "License" stat button in the invoice button box (form view 2005: name="action_view_license", hidden
+  // while count_license = 0). XPath primary, CSS fallback.
+  private readonly licenseSmartButton          = () =>
+    this.page.locator('xpath=//button[@name="action_view_license"]').or(this.page.locator('button[name="action_view_license"]')).first();
+  private readonly licenseSmartButtonCount     = () =>
+    this.page.locator('xpath=//button[@name="action_view_license"]//*[@name="count_license"]')
+      .or(this.page.locator('button[name="action_view_license"] [name="count_license"]')).first();
+  private readonly licenseListFirstRow         = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_list_view")]//tr[contains(@class,"o_data_row")]')
+      .or(this.page.locator('.o_list_view tr.o_data_row')).first();
 
   // ─── Dialog / overlay ─────────────────────────────────────────────────────
   private readonly invoiceDialog               = () => this.page.locator('.o_dialog, .modal');
@@ -2428,11 +2438,638 @@ export class InvoicePage extends BasePage {
     }
     
     // Wait for License screen to appear - URL should change to license model
-    await this.page.waitForURL('**/web?*model=license_management.license*', { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 15000 
+    await this.page.waitForURL('**/web?*model=license_management.license*', {
+      waitUntil: 'domcontentloaded',
+      timeout: 15000
     }).catch(() => {
       console.log('  - URL did not change to license model, checking for form...');
     });
+  }
+
+  /**
+   * Number shown on the invoice's "License" stat button (field count_license).
+   * @returns 0 when the button is not rendered - Odoo hides it while the invoice has no licence
+   */
+  async getLicenseSmartButtonCount(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    const shown = await this.licenseSmartButton().isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+    if (!shown) {
+      console.log('  - "License" stat button not rendered (count_license = 0)');
+      return 0;
+    }
+    const text = ((await this.licenseSmartButtonCount().textContent({ timeout }).catch(() => '')) || '').trim();
+    const count = parseInt(text.replace(/[^\d]/g, '') || '0', 10);
+    console.log(`  - "License" stat button count: ${count}`);
+    return count;
+  }
+
+  /**
+   * Click the invoice's "License" stat button and land on the licence FORM. The server action opens a
+   * form straight away for one record; when it opens a list instead, the first row is opened.
+   * @param timeout - max time to wait for the licence screen (default: pageLoad)
+   */
+  async clickLicenseSmartButton(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    const button = this.licenseSmartButton();
+    await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log('  - Clicked the "License" stat button');
+    await this.page.waitForURL(/model=license_management\.license/, { waitUntil: 'domcontentloaded', timeout }).catch(() => {
+      console.log('  - URL did not switch to the licence model yet, checking the screen...');
+    });
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    const listRow = this.licenseListFirstRow();
+    const onList = await listRow.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+    if (onList) {
+      console.log('  - Landed on the licence LIST - opening its first row');
+      await listRow.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.waitForFormView(timeout).catch(() => {});
+    }
+    // A hash-route landing can still show the PREVIOUS record while the new one loads (the stale-form
+    // trap). The URL now carries the licence id, so a real reload pins the reads to that record.
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForFormView(timeout);
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  // ==========================================================================================
+  //  SCREEN-SHAPE READERS - buttons, stages, field labels, notebook tabs, Invoice Lines and the
+  //  chatter. Added for the CRM Invoice test cases (TC.Performance.1.1.6.4 - 1.1.6.39), which
+  //  assert the SHAPE of the Invoice screen. They live here because a .spec.ts is not allowed to
+  //  touch page.locator directly.
+  //
+  //  Grounded on pre-production 2026-09-17 against account.invoice form view 814 and the
+  //  invoice_line_ids sub-view (see the comment block at the end of this file).
+  // ==========================================================================================
+
+  /**
+   * The control-panel buttons of the form, in screen order.
+   * Read mode returns ["EDIT", "CREATE", "Print", "Action"]; edit mode returns ["SAVE", "DISCARD"].
+   */
+  async getControlPanelButtons(): Promise<string[]> {
+    const panel = this.page.locator('.o_control_panel').first();
+    await panel.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    return await panel
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button, a.btn'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The buttons the invoice header renders above the sheet, in screen order - VALIDATE / PREVIEW /
+   * CANCEL on a draft. Odoo keeps the WHOLE header set in the DOM and hides the ones the current
+   * state may not use (Send & Print, Register Payment, Add Credit Note, Reset to Draft, Create
+   * license, ...), so the hidden ones are dropped and the result is what a tester reads.
+   */
+  async getStatusbarButtons(): Promise<string[]> {
+    const bar = this.page.locator('.o_statusbar_buttons').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The header buttons paired with the Odoo action they call, in screen order, so a failure names
+   * the action (action_invoice_open) instead of a DOM index. An `action` type button carries the
+   * act_window id in @name (Register Payment = "227", Add Credit Note = "281").
+   */
+  async getStatusbarButtonMap(): Promise<Array<{ label: string; name: string }>> {
+    const bar = this.page.locator('.o_statusbar_buttons').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ({
+            label: ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim(),
+            name: b.getAttribute('name') || '',
+          }))
+          .filter((e) => e.label.length > 0)
+      )
+      .catch(() => [] as Array<{ label: string; name: string }>);
+  }
+
+  /**
+   * The stages the statusbar offers, LEFT TO RIGHT as a tester reads them - DRAFT / OPEN / PAID
+   * (the form pins the statusbar to statusbar_visible="draft,open,paid"; In Payment and Cancelled
+   * only join the bar while the record is in them).
+   *
+   * The DOM order is NOT the screen order: Odoo 12 floats the statusbar right, so querySelectorAll
+   * returns the stages reversed. They are sorted on their on-screen x position, otherwise every
+   * stage-order assertion would assert the reverse of what the screen shows.
+   */
+  async getStatusBarStages(): Promise<string[]> {
+    const bar = this.page.locator('.o_statusbar_status').first();
+    await bar.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .filter((b) => !!((b as HTMLElement).offsetParent || b.getClientRects().length))
+          .map((b) => ({
+            left: b.getBoundingClientRect().left,
+            text: ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim(),
+          }))
+          .filter((e) => e.text.length > 0)
+          .sort((a, b) => a.left - b.left)
+          .map((e) => e.text)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The stage the statusbar highlights, i.e. the state the record is in, as the screen prints it.
+   * Unlike getInvoiceStatus() this does NOT normalise the caption - the stage test cases assert
+   * the caption a tester reads.
+   */
+  async getActiveStatusBarStage(): Promise<string> {
+    const bar = this.page.locator('.o_statusbar_status').first();
+    await bar.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await bar.count()) === 0) return '';
+    return await bar
+      .evaluate((el: HTMLElement) => {
+        const active = el.querySelector(
+          'button.btn-primary, button[aria-checked="true"], button[aria-selected="true"]'
+        );
+        return active
+          ? ((active as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim()
+          : '';
+      })
+      .catch(() => '');
+  }
+
+  /**
+   * The VISIBLE field labels of the Invoice information area, in form order.
+   * Labels inside the notebook (Invoice Lines / Other Info / Payments / Licenses / Zoho /
+   * Transactions Payment), the "Draft Invoice" title and the stat-button box are excluded, and so
+   * are the technical fields Odoo keeps hidden via attrs - the result is exactly what a tester
+   * reads on the screen, top-left down then top-right down.
+   */
+  async getVisibleFieldLabels(): Promise<string[]> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const notebook = el.querySelector('.o_notebook');
+        const title = el.querySelector('.oe_title');
+        const buttonBox = el.querySelector('.oe_button_box');
+        return Array.from(el.querySelectorAll('label'))
+          .filter((l) => !(notebook && notebook.contains(l)))
+          .filter((l) => !(title && title.contains(l)))
+          .filter((l) => !(buttonBox && buttonBox.contains(l)))
+          .filter((l) => !!l.closest('td.o_td_label'))
+          .filter((l) => !!((l as HTMLElement).offsetParent || l.getClientRects().length))
+          .map((l) => ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0);
+      })
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The information-area labels split into the two columns the form draws them in, each in screen
+   * order: { left: [Payer ... PO], right: [Invoice Date ... Postpone Date] }.
+   *
+   * The split is made on the label's on-screen x position against the middle of the sheet rather
+   * than on the DOM group index, because Odoo 12 renders the two groups as sibling tables whose
+   * class names carry no left/right marker.
+   */
+  async getInformationAreaColumns(): Promise<{ left: string[]; right: string[] }> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const notebook = el.querySelector('.o_notebook');
+        const title = el.querySelector('.oe_title');
+        const buttonBox = el.querySelector('.oe_button_box');
+        const sheetBox = el.getBoundingClientRect();
+        const middle = sheetBox.left + sheetBox.width / 2;
+        const entries = Array.from(el.querySelectorAll('label'))
+          .filter((l) => !(notebook && notebook.contains(l)))
+          .filter((l) => !(title && title.contains(l)))
+          .filter((l) => !(buttonBox && buttonBox.contains(l)))
+          .filter((l) => !!l.closest('td.o_td_label'))
+          .filter((l) => !!((l as HTMLElement).offsetParent || l.getClientRects().length))
+          .map((l) => ({
+            text: ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim(),
+            left: l.getBoundingClientRect().left,
+            top: l.getBoundingClientRect().top,
+          }))
+          .filter((e) => e.text.length > 0);
+        const byScreenOrder = (a: { top: number }, b: { top: number }) => a.top - b.top;
+        return {
+          left: entries.filter((e) => e.left < middle).sort(byScreenOrder).map((e) => e.text),
+          right: entries.filter((e) => e.left >= middle).sort(byScreenOrder).map((e) => e.text),
+        };
+      })
+      .catch(() => ({ left: [] as string[], right: [] as string[] }));
+  }
+
+  /** The notebook tab names, in order. */
+  async getNotebookTabs(): Promise<string[]> {
+    const notebook = this.page.locator('.o_notebook').first();
+    await notebook.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await notebook
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('.nav-link'))
+          .filter((a) => !!((a as HTMLElement).offsetParent || a.getClientRects().length))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * The column headers of the Invoice Lines list, in order.
+   * Columns Odoo renders without a caption (the drag handle, the trash column) carry no text and
+   * are dropped, so the result is the list of NAMED columns a tester reads on screen.
+   */
+  async getInvoiceLineColumns(): Promise<string[]> {
+    const table = this.page.locator('div[name="invoice_line_ids"] table').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('thead th'))
+          .map((th) => ((th as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * One Invoice Lines row read as { column caption -> cell text }.
+   * Cells are zipped onto the header row, so a column that moved could not silently shift a value
+   * onto its neighbour's assertion.
+   */
+  async getInvoiceLineRowCells(rowIndex: number = 0): Promise<Record<string, string>> {
+    const table = this.page.locator('div[name="invoice_line_ids"] table').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement, index: number) => {
+        const clean = (n: Element) => ((n as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        const headers = Array.from(el.querySelectorAll('thead th')).map(clean);
+        const row = el.querySelectorAll('tbody tr.o_data_row')[index];
+        if (!row) return {} as Record<string, string>;
+        const cells = Array.from(row.querySelectorAll('td')).map(clean);
+        const out: Record<string, string> = {};
+        headers.forEach((h, i) => {
+          if (h.length > 0) out[h] = cells[i] !== undefined ? cells[i] : '';
+        });
+        return out;
+      }, rowIndex)
+      .catch(() => ({} as Record<string, string>));
+  }
+
+  /** The number of product rows the Invoice Lines list carries. */
+  async getInvoiceLineRowCount(): Promise<number> {
+    return await this.page
+      .locator('div[name="invoice_line_ids"] table tbody tr.o_data_row')
+      .count()
+      .catch(() => 0);
+  }
+
+  /**
+   * The totals block under the Invoice Lines list read as { caption -> value }, in screen order.
+   * On a DRAFT invoice it carries Subtotal / Partner Discount / Total; "Amount Due" only joins it
+   * once the invoice has been validated (attrs invisible when state == draft).
+   */
+  async getInvoiceTotalsFooter(): Promise<Array<{ label: string; value: string }>> {
+    const footer = this.page.locator('.oe_subtotal_footer').first();
+    await footer.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await footer.count()) === 0) return [];
+    return await footer
+      .evaluate((el: HTMLElement) => {
+        const clean = (n: Element | null) =>
+          n ? ((n as HTMLElement).innerText || n.textContent || '').replace(/​/g, '').replace(/\s+/g, ' ').trim() : '';
+        const out: Array<{ label: string; value: string }> = [];
+        Array.from(el.querySelectorAll('tr')).forEach((row) => {
+          if (!((row as HTMLElement).offsetParent || row.getClientRects().length)) return;
+          if (row.classList.contains('o_invisible_modifier')) return;
+          if (row.querySelector('.o_invisible_modifier')) return;
+          const labelCell = row.querySelector('td.o_td_label, .o_td_label');
+          const label = clean(labelCell);
+          if (!label) return;
+          const cells = Array.from(row.querySelectorAll('td'));
+          const valueCell = cells[cells.length - 1];
+          out.push({ label, value: clean(valueCell === labelCell ? null : valueCell) });
+        });
+        return out;
+      })
+      .catch(() => [] as Array<{ label: string; value: string }>);
+  }
+
+  /**
+   * Every VISIBLE label of the information area paired with the technical name and the on-screen
+   * value of the field it captions, in form order. Used by the layout test cases so an assertion
+   * names the field, not a DOM index.
+   */
+  async getFieldLabelMap(): Promise<Array<{ label: string; field: string; value: string }>> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const clean = (n: Element | null) =>
+          n
+            ? ((n as HTMLElement).innerText || n.textContent || '')
+                .replace(/​/g, '')
+                .replace(/\s+/g, ' ')
+                .trim()
+            : '';
+        const notebook = el.querySelector('.o_notebook');
+        const title = el.querySelector('.oe_title');
+        const buttonBox = el.querySelector('.oe_button_box');
+        const out: Array<{ label: string; field: string; value: string }> = [];
+        Array.from(el.querySelectorAll('label')).forEach((l) => {
+          if (notebook && notebook.contains(l)) return;
+          if (title && title.contains(l)) return;
+          if (buttonBox && buttonBox.contains(l)) return;
+          if (!l.closest('td.o_td_label')) return;
+          if (!((l as HTMLElement).offsetParent || l.getClientRects().length)) return;
+          const label = clean(l);
+          if (!label) return;
+          const row = l.closest('tr');
+          const widget = row ? row.querySelector('td.o_td_label + td [name]') : null;
+          const valueCell = row ? row.querySelector('td.o_td_label + td') : null;
+          out.push({
+            label,
+            field: widget ? widget.getAttribute('name') || '' : '',
+            value: clean(valueCell || (widget as Element | null)),
+          });
+        });
+        return out;
+      })
+      .catch(() => [] as Array<{ label: string; field: string; value: string }>);
+  }
+
+  /**
+   * A field's value as the screen shows it, in READ mode as well as in EDIT mode
+   * (read mode renders text, edit mode renders an input).
+   */
+  async getFieldDisplayValue(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const input = el.matches('input, textarea')
+          ? (el as HTMLInputElement)
+          : (el.querySelector('input:not([type="hidden"]), textarea') as HTMLInputElement | null);
+        if (input && input.type !== 'checkbox') return (input.value || '').replace(/\s+/g, ' ').trim();
+        return (el.innerText || el.textContent || '').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+      })
+      .catch(() => '');
+  }
+
+  /**
+   * The NAME a many2one field shows, without the address lines Odoo prints under it.
+   * Read mode renders the name as a link followed by the partner's address, so a plain innerText
+   * read of "Payer" returns "company<ts>.com Connecticut United States"; this returns
+   * "company<ts>.com". Edit mode returns the input value.
+   */
+  async getFieldPartnerName(fieldName: string): Promise<string> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const clean = (s: string) => (s || '').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+        const input = el.querySelector('input:not([type="hidden"])') as HTMLInputElement | null;
+        if (input) return clean(input.value);
+        const link = el.querySelector('a');
+        if (link) return clean((link as HTMLElement).innerText);
+        return clean((el.innerText || '').split('\n')[0]);
+      })
+      .catch(() => '');
+  }
+
+  /** The numeric part of a monetary / percent field, e.g. "0.00 ( $ 0.00 )" -> 0. */
+  async getFieldNumber(fieldName: string): Promise<number> {
+    const raw = await this.getFieldDisplayValue(fieldName);
+    const match = raw.replace(/,/g, '').match(/-?\d+(\.\d+)?/);
+    return match ? parseFloat(match[0]) : NaN;
+  }
+
+  /**
+   * The invoice number as the sheet prints it, or '' when the record carries none.
+   *
+   * Unlike getInvoiceNumber() this does NOT wait for the widget to be VISIBLE: Odoo renders the
+   * number span with o_field_empty (display:none) while the invoice is draft or cancelled, so a
+   * visibility wait times out on exactly the state a test case wants to assert is empty.
+   */
+  async getInvoiceNumberOrEmpty(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const span = this.page.locator('xpath=(//span[@name="number"])[1]');
+    await span.waitFor({ state: 'attached', timeout }).catch(() => {});
+    if ((await span.count()) === 0) return '';
+    const value = await span
+      .evaluate((el: HTMLElement) => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim())
+      .catch(() => '');
+    return value || '';
+  }
+
+  /**
+   * Poll the statusbar until the stage it HIGHLIGHTS is the expected one, reloading the form
+   * between passes. Returns the last stage read.
+   *
+   * Odoo 12 does not re-render the statusbar or the header buttons in place when a state-changing
+   * action returns: straight after action_invoice_cancel the bar can still highlight OPEN, and
+   * straight after action_invoice_draft it can still highlight CANCELLED. A fixed wait therefore
+   * reads the PREVIOUS render and fails a flow that actually worked, which is what happened to
+   * TC.Performance.1.1.6.12. This waits for the screen to catch up instead of guessing how long it
+   * takes - it never changes WHAT is asserted, only when it is read.
+   *
+   * @param expected - the stage caption to wait for, e.g. "DRAFT" / "CANCELLED" (case-insensitive)
+   * @param maxAttempts - number of poll/reload cycles (default 6)
+   */
+  async waitForActiveStage(expected: string, maxAttempts: number = 6): Promise<string> {
+    const wanted = expected.trim().toUpperCase();
+    let stage = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      // EVERY pass starts from a fresh render, the first one included. Odoo can update the
+      // statusbar in place while leaving the HEADER BUTTONS on the previous state's set - the
+      // grounding probe read stage "CANCELLED" next to the full OPEN button list - so a pass that
+      // skipped the reload could hand a caller a correct stage beside a stale button list.
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForPageLoad(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+      await this.dismissErrorDialog().catch(() => {});
+      stage = await this.getActiveStatusBarStage().catch(() => '');
+      console.log(`  - Stage poll ${attempt}/${maxAttempts}: "${stage}" (waiting for "${wanted}")`);
+      if (stage.trim().toUpperCase() === wanted) return stage;
+      if (attempt === maxAttempts) break;
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    return stage;
+  }
+
+  /** Whether a boolean field's checkbox is ticked. */
+  async isFieldChecked(fieldName: string): Promise<boolean> {
+    const box = this.page.locator('.o_form_sheet [name="' + fieldName + '"] input[type="checkbox"]').first();
+    if ((await box.count()) === 0) return false;
+    return await box.isChecked().catch(() => false);
+  }
+
+  /**
+   * Whether a field is RENDERED VISIBLY on the sheet at all.
+   * Odoo keeps attrs-hidden fields in the DOM, so count() > 0 is not the same question - this one
+   * answers "does a tester see it", which is what the layout test cases assert.
+   */
+  async isFieldVisibleOnSheet(fieldName: string): Promise<boolean> {
+    const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]');
+    const count = await field.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      if (await field.nth(i).isVisible().catch(() => false)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * The value cell of the row a LABEL captions, as the screen shows it.
+   * Keyed on the label rather than the field name because the form carries hidden duplicate
+   * widgets under the same name, and because a row can hold two fields in one cell
+   * ("Distributor Discount (%)" prints the percent next to the money it grants).
+   */
+  async getFieldRowTextByLabel(label: string): Promise<string> {
+    const map = await this.getFieldLabelMap();
+    const hit = map.find((entry) => entry.label === label);
+    return hit ? hit.value : '';
+  }
+
+  /** The caption the sheet prints where the invoice number goes - "Draft Invoice" while draft. */
+  async getInvoiceTitleCaption(): Promise<string> {
+    const sheet = this.page.locator('.o_form_sheet').first();
+    await sheet.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await sheet.count()) === 0) return '';
+    return await sheet
+      .evaluate((el: HTMLElement) => {
+        const notebook = el.querySelector('.o_notebook');
+        const buttonBox = el.querySelector('.oe_button_box');
+        const captions = Array.from(el.querySelectorAll('label'))
+          .filter((l) => !(notebook && notebook.contains(l)))
+          .filter((l) => !(buttonBox && buttonBox.contains(l)))
+          .filter((l) => !l.closest('td.o_td_label'))
+          .filter((l) => !!((l as HTMLElement).offsetParent || l.getClientRects().length))
+          .map((l) => ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0);
+        return captions.join(' ').trim();
+      })
+      .catch(() => '');
+  }
+
+  /** The items a control-panel dropdown ("Print" / "Action") offers, in order. */
+  async getControlPanelMenuItems(menuLabel: string): Promise<string[]> {
+    const toggle = this.page
+      .locator('.o_control_panel button.dropdown-toggle, .o_control_panel a.dropdown-toggle')
+      .filter({ hasText: new RegExp('^\\s*' + menuLabel + '\\s*$', 'i') })
+      .first();
+    if (!(await toggle.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false))) return [];
+    await toggle.click().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
+    const items = await this.page
+      .locator('.dropdown-menu.show a, .o_dropdown_menu.show a')
+      .evaluateAll((els: Element[]) =>
+        els
+          .filter((a) => !!((a as HTMLElement).offsetParent || a.getClientRects().length))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
+    return items;
+  }
+
+  // --------------------------------------------------------------------------
+  // Chatter / Log note
+  // --------------------------------------------------------------------------
+
+  /** One entry per chatter message, NEWEST FIRST, line breaks preserved. */
+  async getChatterMessages(timeout: number = CommonUtils.waitTimes.checkingChatterLog): Promise<string[]> {
+    const messages = this.page.locator('.o_thread_message .o_thread_message_content');
+    await messages.first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    const count = await messages.count();
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = await messages
+        .nth(i)
+        .evaluate((el: HTMLElement) => el.innerText.replace(/ /g, ' ').trim())
+        .catch(() => '');
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  /** The first chatter message matching, or null. */
+  async findChatterMessage(pattern: string | RegExp, timeout?: number): Promise<string | null> {
+    const messages = await this.getChatterMessages(timeout);
+    const hit = messages.find((m) => (typeof pattern === 'string' ? m.includes(pattern) : pattern.test(m)));
+    return hit ?? null;
+  }
+
+  /**
+   * Poll the chatter (reloading the form) until a message matches. The creation notes are written
+   * by the server as the record is stored, so a single read straight after the invoice is created
+   * can land before they are rendered.
+   */
+  async waitForChatterMessage(
+    pattern: string | RegExp,
+    maxWaitTime: number = CommonUtils.waitTimes.savingPage,
+    checkInterval: number = CommonUtils.waitTimes.checkingChatterLog
+  ): Promise<string | null> {
+    const deadline = Date.now() + maxWaitTime;
+    let attempt = 1;
+    let hit = await this.findChatterMessage(pattern);
+    while (!hit && Date.now() < deadline) {
+      console.log('  ... log note ' + pattern + ' not in the chatter yet - attempt #' + attempt + ', reloading');
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.wait(checkInterval);
+      hit = await this.findChatterMessage(pattern);
+      attempt++;
+    }
+    return hit;
+  }
+
+  /** Turn a "<key>: <value>" log note into a map. */
+  parseLogNoteFields(note: string): Record<string, string> {
+    const fields: Record<string, string> = {};
+    note.split('\n').forEach((line) => {
+      const m = line.match(/^\s*([^:]+?):\s*(.*)$/);
+      if (m) fields[m[1].trim()] = m[2].trim();
+    });
+    return fields;
+  }
+
+  /**
+   * Press a header button by the Odoo action it calls (e.g. "action_invoice_open",
+   * "preview_invoice", "action_invoice_cancel", "action_invoice_draft").
+   * The VISIBLE, non-disabled match is taken: Odoo renders the whole header set for everyone and
+   * hides what the current state / user may not use, and it keeps a DISABLED copy of a button in
+   * the DOM while its RPC is in flight.
+   */
+  async clickStatusbarButtonByName(actionName: string, timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    const button = this.page
+      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]')
+      .filter({ visible: true })
+      .first();
+    await button.waitFor({ state: 'visible', timeout });
+    await button.scrollIntoViewIfNeeded().catch(() => {});
+    await button.click({ timeout });
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+  }
+
+  /** Whether a header button is on screen for the state the invoice is in. */
+  async isStatusbarButtonVisible(actionName: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    return await this.page
+      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '"]')
+      .filter({ visible: true })
+      .first()
+      .isVisible({ timeout })
+      .catch(() => false);
   }
 }
