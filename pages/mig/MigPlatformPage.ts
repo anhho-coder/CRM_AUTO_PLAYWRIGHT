@@ -523,6 +523,108 @@ export class MigPlatformPage extends BasePage {
     await this.wait(CommonUtils.waitTimes.short);
   }
 
+  /**
+   * Set a many2one field and VERIFY it committed.
+   *
+   * Typing into a many2one and pressing Enter is not reliable here: on CRM-12326_3.6.1 the customer
+   * looked set (the log said so) while `partner_id` had in fact stayed empty, so the save was
+   * rejected for six required fields at once - `partner_id` plus the five Odoo derives from it
+   * (partner_invoice_id, partner_shipping_id, partner_end_user_id, currency_id, pricelist_id).
+   * Nothing on screen said the field had not taken.
+   *
+   * So: type, prefer clicking a real suggestion from the dropdown, fall back to Enter, then CHECK
+   * the input actually holds a value and is not flagged invalid. Returns what the field ended up
+   * holding so the caller can assert rather than assume.
+   */
+  async setMany2One(fieldName: string, query: string): Promise<{ committed: boolean; value: string }> {
+    const input = this.page
+      .locator(`.o_form_view .o_field_widget[name="${fieldName}"] input`)
+      .or(this.page.locator(`.o_form_view input[name="${fieldName}"]`))
+      .first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await input.click({ timeout: CommonUtils.waitTimes.standard }).catch(() => {});
+    await input.fill('');
+    await input.type(query.slice(0, 40), { delay: 30 });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // Prefer a real suggestion. Skip the "Create ..." / "Search More" entries - picking those opens a
+    // dialog instead of setting the value.
+    const option = this.page
+      .locator('.ui-autocomplete li.ui-menu-item, .o_input_dropdown li, ul.ui-autocomplete li')
+      .filter({ hasNotText: /Create|Search More/i })
+      .first();
+    if (await option.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false)) {
+      await option.click({ timeout: CommonUtils.waitTimes.standard }).catch(() => {});
+    } else {
+      await this.page.keyboard.press('Enter').catch(() => {});
+    }
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    const value = ((await input.inputValue().catch(() => '')) || '').trim();
+    const invalid = await this.page
+      .locator(`.o_form_view .o_field_widget[name="${fieldName}"].o_field_invalid`)
+      .first().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
+    return { committed: value.length > 0 && !invalid, value };
+  }
+
+  /**
+   * Fill a field that may live on a notebook page which is not the one currently open.
+   *
+   * An Odoo form hides every notebook page except the active one, so a plain `fill()` on a field
+   * such as `client_order_ref` (Sales > Other Information) waits for a permanently-hidden element
+   * until the test times out. That is what hung CRM-12326_3.6.1 for the full 240s. This clicks
+   * through the notebook tabs until the field becomes visible, then fills it.
+   */
+  async fillFormFieldAnyTab(fieldName: string, value: string): Promise<boolean> {
+    const target = this.page.locator(`.o_form_view .o_field_widget[name="${fieldName}"]`).first();
+    if (await target.isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false)) {
+      await this.fillFormField(fieldName, value);
+      return true;
+    }
+    const tabs = this.page.locator('.o_notebook .nav-link, .o_notebook li > a');
+    const count = await tabs.count().catch(() => 0);
+    for (let i = 0; i < count; i++) {
+      await tabs.nth(i).click({ timeout: CommonUtils.waitTimes.standard }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+      if (await target.isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false)) {
+        await this.fillFormField(fieldName, value);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Add one line to a one2many editable list on the open form (e.g. a Quotation's order lines).
+   *
+   * Returns false when the list offers no "Add a line" control, so a caller can report that instead
+   * of hanging. Kept generic: the o2m field name and the column field names are the caller's.
+   */
+  async addOneToManyLine(
+    o2mFieldName: string,
+    cells: Array<{ field: string; value: string }>,
+  ): Promise<boolean> {
+    const list = this.page.locator(`.o_form_view .o_field_widget[name="${o2mFieldName}"]`).first();
+    if (!(await list.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false))) return false;
+    const addLink = list
+      .locator('a.o_field_x2many_list_row_add, .o_field_x2many_list_row_add a')
+      .or(list.locator('xpath=.//a[contains(normalize-space(),"Add a line")]'))
+      .first();
+    if (!(await addLink.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false))) return false;
+    await addLink.click({ timeout: CommonUtils.waitTimes.standard });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    for (const c of cells) {
+      const cell = list.locator(`.o_selected_row .o_field_widget[name="${c.field}"] input`).first();
+      if (!(await cell.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false))) continue;
+      await cell.fill(c.value);
+      // No JS autocomplete dropdown in this app - Enter commits a many2one cell.
+      await this.page.keyboard.press('Enter').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+    }
+    return true;
+  }
+
   /** Read back a form field's current value by its Odoo `name=` attribute. */
   async readFormField(fieldName: string): Promise<string> {
     const widget = this.page.locator(`.o_form_view .o_field_widget[name="${fieldName}"]`).first();
@@ -558,6 +660,33 @@ export class MigPlatformPage extends BasePage {
     await this.page.locator('.o_form_editable').first()
       .waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Press SAVE and REPORT what happened, instead of assuming it worked.
+   *
+   * `saveForm()` swallows the outcome: it clicks, waits for the editable class to disappear with a
+   * `.catch(() => {})`, and returns regardless - so a save blocked by a required field looks
+   * identical to a successful one, and the caller only finds out later with a confusing "no record
+   * id in the URL". Odoo does not raise a modal for a missing required field; it marks the field
+   * `o_field_invalid` and leaves the form editable, which is invisible to a plain click-and-hope.
+   */
+  async saveFormAndReport(): Promise<{ saved: boolean; invalidFields: string[]; dialogText: string }> {
+    const save = this.page.locator('.o_form_button_save, button.o_form_button_save').first();
+    await save.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await save.click({ timeout: CommonUtils.waitTimes.standard });
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    const stillEditable = await this.page.locator('.o_form_editable').first()
+      .isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
+    const invalidFields = await this.page.evaluate(() =>
+      Array.from(document.querySelectorAll('.o_field_invalid, .o_form_invalid [name]'))
+        .map((e) => e.getAttribute('name') || (e.closest('[name]')?.getAttribute('name') ?? ''))
+        .filter(Boolean),
+    ).catch(() => [] as string[]);
+    const dialogText = await this.getErrorDialogText().catch(() => '');
+
+    return { saved: !stillEditable && !dialogText, invalidFields: [...new Set(invalidFields)], dialogText };
   }
 
   /** The record id currently open on the form, read from the URL hash (0 when unsaved). */

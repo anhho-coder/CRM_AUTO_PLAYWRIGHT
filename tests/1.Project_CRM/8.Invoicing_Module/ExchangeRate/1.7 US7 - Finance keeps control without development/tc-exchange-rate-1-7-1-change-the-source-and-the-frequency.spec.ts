@@ -9,7 +9,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US7: change the source and the frequency
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.7.1
+ *  Test Case ID    : Exchange-rate_1.7.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    entirely, checks each choice survives a reload, and puts everything back.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.7\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.7\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -81,7 +81,7 @@ const OFF_INTERVAL = 'Manually';
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.7.1 - US7: change the source and the frequency', () => {
+describeBlock('Exchange-rate_1.7.1 - US7: change the source and the frequency', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -99,7 +99,7 @@ describeBlock('CRM-11857_1.7.1 - US7: change the source and the frequency', () =
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.7.1: US7 - An administrator can change the rate source and the update frequency without any development work', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.7.1: US7 - An administrator can change the rate source and the update frequency without any development work', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

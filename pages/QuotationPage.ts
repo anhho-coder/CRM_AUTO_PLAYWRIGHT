@@ -32,7 +32,7 @@ export class QuotationPage extends BasePage {
   private readonly emailDialog = () => this.page.locator('.o_dialog, .modal').filter({ visible: true }).last();
   private readonly sendButtonInDialog = () => this.emailDialog().getByRole('button', { name: /^\s*SEND\s*$/i }).or(this.emailDialog().getByRole('button', { name: /^\s*Send\s*$/i })).first();
   private readonly successNotification = () => this.page.locator('.o_notification_manager, .o_notification, .o_toast').filter({ hasText: /sent|success/i }).first();
-  // --- CRM-12415 regression guard (used by CRM-12325_2.5.6): the "Recipients" row of the
+  // --- CRM-12415 regression guard (used by CRM-12325_2.5.40): the "Recipients" row of the
   // Send-by-Email composer. On crm-mig the mail.compose.message form renders it as
   //   <label for="partner_ids" string="Recipients"/>
   //   <span name="document_followers_text">Followers of the document and</span>
@@ -71,14 +71,14 @@ export class QuotationPage extends BasePage {
   // Header "Cancel" (`action_cancel`). The Mig sale.order form shows it with
   // states="approved,pending_approval" (view 1365) ON TOP of the base states="draft,sent,sale"
   // (view 787), so a Quotation waiting for approval carries a live Cancel for its OWNER - that is
-  // what CRM-12325_2.5.9 exercises. Same visible+not(@disabled) discipline as APPROVE/REJECT.
+  // what CRM-12325_2.5.43 exercises. Same visible+not(@disabled) discipline as APPROVE/REJECT.
   private readonly cancelButton = () => this.page.locator("xpath=//button[@name='action_cancel' and not(@disabled)]")
     .or(this.page.locator('button').filter({ hasText: /^\s*Cancel\s*$/i }))
     .filter({ visible: true })
     .first();
   // Header "Duplicate" (`action_duplicate`) - added by view 1398 with NO attrs, i.e. always shown.
   // The same view sets create="false" on the form, so Duplicate is the sanctioned way to copy a
-  // Quotation on O12 CE. Exercised by CRM-12325_2.5.10.
+  // Quotation on O12 CE. Exercised by CRM-12325_2.5.44.
   private readonly duplicateButton = () => this.page.locator("xpath=//button[@name='action_duplicate' and not(@disabled)]")
     .or(this.page.locator('button').filter({ hasText: /^\s*Duplicate\s*$/i }))
     .filter({ visible: true })

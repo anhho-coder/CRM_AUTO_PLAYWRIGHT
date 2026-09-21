@@ -8,9 +8,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.1. - Discount calculation
+ *  10.Sales_Module / Discount / 9.1 Discount calculation
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.1.4
+ *  Test Case ID    : Discount_9.1.4
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -21,7 +21,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    (Qty 10, kept under the ~$4k no-approval threshold): Discount = (UnitPrice x 10) x 15%.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.1\.4:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.1\.4:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -56,7 +56,7 @@ const parsePercentInLabel = (label: string | undefined | null): number => {
   return m ? parseFloat(m[1]) : NaN;
 };
 
-test.describe('Discount-A.1.2.1.4 - Bronze partner discount on a high-quantity line', () => {
+test.describe('Discount_9.1.4 - Bronze partner discount on a high-quantity line', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -75,7 +75,7 @@ test.describe('Discount-A.1.2.1.4 - Bronze partner discount on a high-quantity l
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.1.4: Bronze 15% discount applies to the summed subtotal on a high-quantity line', async ({ page }, testInfo) => {
+  test('Discount_9.1.4: Bronze 15% discount applies to the summed subtotal on a high-quantity line', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -84,7 +84,7 @@ test.describe('Discount-A.1.2.1.4 - Bronze partner discount on a high-quantity l
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.1.4 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.1.4 - ${compactDateTime}`;
 
     let lineQty = 0;
     let subtotal1 = 0;

@@ -17,6 +17,8 @@ export { InvestmentPage } from './InvestmentPage';
 export { ReAssignationPage } from './ReAssignationPage';
 export { PromotionPage } from './PromotionPage';
 export { ResellerPortalPage } from './ResellerPortalPage';
+export { PortalShopPage } from './PortalShopPage';
+export type { ShopLicenseType, ShopEdition, ShopLicenseConfig, ShopEndUserAddress } from './PortalShopPage';
 export { PaymentPage } from './PaymentPage';
 export { CurrencyPage } from './CurrencyPage';
 export type { CurrencyRateRow } from './CurrencyPage';

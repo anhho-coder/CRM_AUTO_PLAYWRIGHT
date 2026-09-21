@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US2: editing a past rate must not touch issued documents
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.2.2
+ *  Test Case ID    : Exchange-rate_1.2.2
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    rewrite accounting that has already been reported. The rate is then restored and the figure re-read.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.2\.2:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.2\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -78,7 +78,7 @@ const money = (s: string | undefined | null): number => parseFloat((s || '').rep
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.2.2 - US2: editing a past rate must not touch issued documents', () => {
+describeBlock('Exchange-rate_1.2.2 - US2: editing a past rate must not touch issued documents', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -96,7 +96,7 @@ describeBlock('CRM-11857_1.2.2 - US2: editing a past rate must not touch issued 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.2.2: US2 - Changing the rate of a past date does not alter an invoice already issued on that date', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.2.2: US2 - Changing the rate of a past date does not alter an invoice already issued on that date', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

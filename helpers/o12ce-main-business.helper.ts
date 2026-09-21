@@ -201,7 +201,11 @@ export async function openOpportunitiesListOnO12CE(page: Page): Promise<void> {
  * Company/Contact creation. Asserts the record was saved and both partner fields are populated
  * (required before the Deal Element opens - an empty End User blocks its save).
  */
-export async function createOpportunityOnO12CE(page: Page, tcId: string): Promise<O12ceOpportunity> {
+export async function createOpportunityOnO12CE(
+  page: Page,
+  tcId: string,
+  opts: { reseller?: string; distributor?: string } = {}
+): Promise<O12ceOpportunity> {
   const opportunityPage = new OpportunityPage(page);
   const result: O12ceOpportunity = {
     oppName: '', contactName: '', email: '', oppUrl: '', oppId: '',
@@ -231,6 +235,25 @@ export async function createOpportunityOnO12CE(page: Page, tcId: string): Promis
     await opportunityPage.fillEmail(result.email);
     await opportunityPage.selectCountry(O12CE_DATA.country);
     await opportunityPage.selectState(O12CE_DATA.state);
+    // Partner-driven TCs (2.5.21 "Reseller / Distributor come from the Opportunity" and
+    // 2.5.38 "the addresses follow the Distributor") need these two on the Opportunity; every
+    // other spec leaves them unset, which is what 2.5.28 asserts.
+    if (opts.reseller) {
+      const resellerSet = await opportunityPage.fillReseller(opts.reseller);
+      console.log(`  Reseller     : ${opts.reseller} (set=${resellerSet})`);
+      expect(
+        resellerSet,
+        `the Reseller "${opts.reseller}" must be selectable on the O12 CE Opportunity`
+      ).toBeTruthy();
+    }
+    if (opts.distributor) {
+      const distributorSet = await opportunityPage.fillDistributor(opts.distributor);
+      console.log(`  Distributor  : ${opts.distributor} (set=${distributorSet})`);
+      expect(
+        distributorSet,
+        `the Distributor "${opts.distributor}" must be selectable on the O12 CE Opportunity`
+      ).toBeTruthy();
+    }
     const teamCleared = await opportunityPage.clearSalesTeam();
     console.log(`  Sales Team cleared        : ${teamCleared}`);
     const salespersonCleared = await opportunityPage.clearSalesperson();
@@ -288,11 +311,13 @@ export async function createOpportunityOnO12CE(page: Page, tcId: string): Promis
  */
 export async function addDealElementOnO12CE(
   page: Page,
-  opts: { productQty?: number; paymentTerm?: string } = {}
+  opts: { productQty?: number; paymentTerm?: string; pricelist?: string } = {}
 ): Promise<{ productName: string; paymentTerm: string }> {
   const opportunityPage = new OpportunityPage(page);
   const dealElementPage = new DealElementPage(page);
   const paymentTerm = opts.paymentTerm ?? O12CE_DATA.paymentTerm;
+  // 2.5.26 needs a foreign-currency Quotation, so it passes the EUR pricelist here.
+  const pricelist = opts.pricelist ?? O12CE_DATA.pricelist;
   let productName = '';
 
   await test.step('Step 8: Create "DEAL ELEMENT" - press the "DEAL ELEMENT" button', async () => {
@@ -305,13 +330,13 @@ export async function addDealElementOnO12CE(
   await test.step('Step 9: On the "Deal Element" screen - select Pricelist and Payment Term', async () => {
     console.log('\n--- Step 9: Pricelist + Payment Term ---');
     await dealElementPage.waitForAutoPopulate();
-    const pricelistSet = await dealElementPage.selectPricelist(O12CE_DATA.pricelist);
-    console.log(`  Pricelist    : ${O12CE_DATA.pricelist} (set=${pricelistSet})`);
+    const pricelistSet = await dealElementPage.selectPricelist(pricelist);
+    console.log(`  Pricelist    : ${pricelist} (set=${pricelistSet})`);
     const paymentTermSet = await dealElementPage.selectPaymentTerm(paymentTerm);
     console.log(`  Payment Term : ${paymentTerm} (set=${paymentTermSet})`);
     expect(
       pricelistSet,
-      `the Pricelist "${O12CE_DATA.pricelist}" must be selectable on the O12 CE Deal Element`
+      `the Pricelist "${pricelist}" must be selectable on the O12 CE Deal Element`
     ).toBeTruthy();
     expect(
       paymentTermSet,
@@ -353,28 +378,56 @@ export interface O12ceQuotationResult {
   chatterFound: boolean;
   /** Chatter text read when the action did not navigate ("" otherwise). */
   chatterText: string;
-  /** sale.order record id the form switched to ('' when it did not switch). */
+  /** sale.order record id of the created Quotation ('' when it could not be resolved). */
   quotationId: string;
+  /** name_get of the created Quotation, e.g. "SO217712" ('' when it could not be resolved). */
+  quotationName: string;
+  /** True once the form is showing the Quotation - by navigation, or by the lookup below. */
+  landedOnQuotation: boolean;
 }
 
 /**
  * Press "NEW QUOTATION" on the saved Deal Element and resolve the outcome.
  *
- * Two behaviours have been observed on pre-production for this button: it either navigates to the
- * newly created Quotation (the performance-suite behaviour) or creates the Sale Order in place and
- * logs it in the Deal Element chatter (TC.-A.5.1). Both count as "the Quotation was created"; the
- * caller gets `navigated` so a chained spec can report which variant O12 CE took.
+ * Two behaviours have been observed for this button: it either navigates to the newly created
+ * Quotation (the pre-production performance-suite behaviour) or creates the Sale Order in place and
+ * leaves the form on the Deal Element. `navigated` reports which variant the server took.
  *
  * "Navigated" is decided by the form's RECORD ID changing, not by the URL model: a Deal Element is
  * itself a `sale.order`, so a model-only URL wait would match before anything happened.
+ *
+ * O12 CE (crm-mig, grounded 2026-09-21) takes the SECOND variant every time, and two things about
+ * it broke every 2.5.x spec built on this helper:
+ *
+ *  1. The chatter signal was a FALSE POSITIVE. `waitForQuotationCreatedInChatter` matches
+ *     /Sale Order created/ or /Status: Quotation/ - but the Deal Element's OWN creation already
+ *     posts both notes, so `chatterFound` came back true on attempt 1 whether or not a Quotation
+ *     had been created. It is kept for reporting and is no longer the landing signal.
+ *  2. The created Quotation was never registered for teardown. `quotationId` stayed '' because the
+ *     form never switched, so `registerMigRecord` recorded nothing and every run leaked one
+ *     sale.order - ids 257530 / 257532 / 257534 of 2026-09-21 were found that way and deleted by
+ *     hand.
+ *
+ * The fix is to LOOK THE RECORD UP instead of hoping the form moves: the Quotation is the
+ * sale.order that carries this chain's `opportunity_id` and is not itself a Deal Element
+ * (`is_deal_element = false`). It appears ~45s after the click, so the lookup polls. Once found the
+ * helper registers it for teardown and puts the form on it, which is what every 2.5.x verification
+ * step needs.
  */
-export async function pressNewQuotationOnO12CE(page: Page): Promise<O12ceQuotationResult> {
+export async function pressNewQuotationOnO12CE(
+  page: Page,
+  opts: { opportunityId?: string } = {}
+): Promise<O12ceQuotationResult> {
   const opportunityPage = new OpportunityPage(page);
   const dealElementPage = new DealElementPage(page);
   const quotationPage = new QuotationPage(page);
   const outcome: O12ceQuotationResult = {
     elapsedMs: 0, navigated: false, chatterFound: false, chatterText: '', quotationId: '',
+    quotationName: '', landedOnQuotation: false,
   };
+  // The Deal Element form is opened from the Opportunity, so its hash carries `active_id=<opp id>`.
+  // A caller that already holds the id can pass it and skip the parse.
+  const opportunityId = opts.opportunityId ?? (page.url().match(/[#&]active_id=(\d+)/) || [])[1] ?? '';
 
   const hasButton = await opportunityPage.hasNewQuotationButton();
   expect(
@@ -392,24 +445,109 @@ export async function pressNewQuotationOnO12CE(page: Page): Promise<O12ceQuotati
   outcome.quotationId = quotationId;
   console.log(`  Deal Element record id : ${dealElementId || '(none)'}`);
   console.log(`  Record id after click  : ${quotationId || '(unchanged)'}`);
-  // Both the Deal Element and the Quotation are sale.order records created by this run.
+  // The Deal Element is a sale.order this run created, so it is torn down like any other record.
   registerMigRecord('sale.order', dealElementId, 'Deal Element');
-  registerMigRecord('sale.order', quotationId, 'Quotation');
 
   if (outcome.navigated) {
+    outcome.landedOnQuotation = true;
     await quotationPage.waitForFormView(CommonUtils.waitTimes.savingPage);
     await quotationPage.waitForEditButton(CommonUtils.waitTimes.savingPage);
   } else {
-    const chatter = await dealElementPage.waitForQuotationCreatedInChatter(CommonUtils.waitTimes.savingPage);
+    // Reported, not trusted - see the false-positive note above. One pass only, so a helper that no
+    // longer decides anything does not also cost a minute of polling.
+    const chatter = await dealElementPage.waitForQuotationCreatedInChatter(CommonUtils.waitTimes.standard);
     outcome.chatterFound = chatter.found;
     outcome.chatterText = chatter.chatterText;
+
+    const found = await findQuotationRaisedFromDealElement(page, opportunityId, dealElementId);
+    outcome.quotationId = found.id;
+    outcome.quotationName = found.name;
+    if (found.id) {
+      await page.goto(`${baseUrl_mig}web#id=${found.id}&model=sale.order&view_type=form`);
+      await quotationPage.waitForFormView(CommonUtils.waitTimes.savingPage);
+      await quotationPage.waitForEditButton(CommonUtils.waitTimes.savingPage);
+      outcome.landedOnQuotation = true;
+    }
   }
+
+  // Registered AFTER the lookup, so the record the server actually created is the one torn down.
+  registerMigRecord('sale.order', outcome.quotationId, 'Quotation');
   outcome.elapsedMs = Date.now() - start;
 
   console.log(`  NEW QUOTATION elapsed : ${(outcome.elapsedMs / 1000).toFixed(2)}s`);
   console.log(`  Navigated to the Quotation form : ${outcome.navigated}`);
-  console.log(`  Creation logged in the Deal Element chatter : ${outcome.chatterFound}`);
+  console.log(
+    `  Creation logged in the Deal Element chatter : ${outcome.chatterFound} ` +
+      '(reported only - the Deal Element posts the same notes itself)'
+  );
+  console.log(`  Quotation record id : ${outcome.quotationId || '(NOT FOUND)'}`);
+  console.log(`  Quotation name      : ${outcome.quotationName || '(unknown)'}`);
+  console.log(`  Form is on the Quotation : ${outcome.landedOnQuotation}`);
   return outcome;
+}
+
+/**
+ * Find the Quotation that "NEW QUOTATION" raised from a Deal Element, over the SAME authenticated
+ * session (JSON-RPC), and wait for it to appear.
+ *
+ * The Quotation is the `sale.order` that shares the chain's `opportunity_id` and is not itself a
+ * Deal Element. Measured on crm-mig it lands ~45s after the click, so this polls on a 5s beat for
+ * up to 2 minutes - a 1s beat over 16 tries gives up at 16s and reports NOT FOUND on a record that
+ * was simply not committed yet. The domain is bounded by the Opportunity and returns at most 5 rows.
+ */
+async function findQuotationRaisedFromDealElement(
+  page: Page,
+  opportunityId: string,
+  dealElementId: string
+): Promise<{ id: string; name: string }> {
+  if (!opportunityId) {
+    console.log('  [quotation-lookup] SKIPPED - the chain carries no Opportunity id to search by');
+    return { id: '', name: '' };
+  }
+  const attempts = 24;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    const rows = await page
+      .evaluate(
+        async ([oppId, deId]) => {
+          const res = await fetch('/web/dataset/call_kw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'call',
+              params: {
+                model: 'sale.order',
+                method: 'search_read',
+                args: [
+                  [
+                    ['opportunity_id', '=', Number(oppId)],
+                    ['is_deal_element', '=', false],
+                    ['id', '!=', Number(deId)],
+                  ],
+                  ['id', 'name'],
+                ],
+                kwargs: { limit: 5, order: 'id desc' },
+              },
+            }),
+          });
+          const json = await res.json();
+          return (json.result as Array<{ id: number; name: string }>) ?? [];
+        },
+        [opportunityId, dealElementId || '0'] as [string, string]
+      )
+      .catch(() => [] as Array<{ id: number; name: string }>);
+
+    if (rows.length > 0) {
+      console.log(
+        `  [quotation-lookup] found after attempt ${attempt}: sale.order#${rows[0].id} "${rows[0].name}"`
+      );
+      return { id: String(rows[0].id), name: rows[0].name };
+    }
+    console.log(`  [quotation-lookup] attempt ${attempt}/${attempts} - not visible yet`);
+    await page.waitForTimeout(CommonUtils.waitTimes.searchOppWait);
+  }
+  console.log('  [quotation-lookup] NOT FOUND - no sale.order carries this Opportunity besides the Deal Element');
+  return { id: '', name: '' };
 }
 
 /** Outcome of driving a freshly created Quotation into the Pending Approval state. */

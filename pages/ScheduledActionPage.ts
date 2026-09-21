@@ -184,6 +184,51 @@ export class ScheduledActionPage extends BasePage {
   }
 
   /**
+   * Open one scheduled action straight by its record id, with developer mode switched on in the URL
+   * (`debug=1`), so the "RUN MANUALLY" button - which Odoo renders for `base.group_no_one` only - is on
+   * screen. Used by CRM-12501_7.1.4 for job id 37 "License Manager: Website Invoice to License", which
+   * is DISABLED on pre-production and therefore has to be fired by hand (on Production it runs every
+   * 15 minutes). The URL is the one the tester drove by hand on 2026-09-10.
+   * @param cronId - the ir.cron record id (37 = Website Invoice to License on pre-production)
+   * @param timeout - max time to wait for the form (default: pageLoad)
+   * @returns true when the job's form opened
+   */
+  async openScheduledActionById(cronId: number, timeout: number = CommonUtils.waitTimes.pageLoad): Promise<boolean> {
+    const origin = new URL(this.page.url()).origin;
+    console.log(`  - Opening scheduled action #${cronId} in developer mode`);
+    await this.discardFormIfInEditMode().catch(() => {});
+    await this.dismissDiscardChangesDialog().catch(() => {});
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(`${origin}/web?debug=1#id=${cronId}&action=11&model=ir.cron&view_type=form&menu_id=4`, { waitUntil: 'domcontentloaded' });
+    // A hash route is a same-document navigation - reload so the client really loads this record.
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    const onForm = await this.formView().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ${onForm ? '✓' : '!'} Scheduled action #${cronId} opened (form visible: ${onForm})`);
+    return onForm;
+  }
+
+  /** The open scheduled action's "Action Name" (readonly text or the edit-mode input). */
+  async getActionName(): Promise<string> {
+    const readonly = this.fieldReadonly('name');
+    if (await readonly.count().catch(() => 0) > 0) {
+      const text = ((await readonly.textContent().catch(() => '')) || '').trim();
+      if (text) return text;
+    }
+    const input = this.fieldInput('name');
+    if (await input.count().catch(() => 0) > 0) {
+      return ((await input.inputValue().catch(() => '')) || '').trim();
+    }
+    return '';
+  }
+
+  /** Whether the "RUN MANUALLY" button is currently rendered (developer mode + group_no_one). */
+  async isRunManuallyVisible(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    return await this.runManuallyBtn().isVisible({ timeout }).catch(() => false);
+  }
+
+  /**
    * Press "RUN MANUALLY" on the open scheduled action and wait for the run to come back.
    * The job is synchronous, so the button returns only once the run has finished.
    * @param timeout - max time to wait for the run (default: elementAppear, a rate fetch can take minutes)

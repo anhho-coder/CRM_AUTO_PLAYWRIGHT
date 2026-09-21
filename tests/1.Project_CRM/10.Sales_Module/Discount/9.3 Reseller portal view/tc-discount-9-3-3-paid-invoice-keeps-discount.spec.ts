@@ -12,9 +12,9 @@ import {
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.3. - Reseller portal view
+ *  10.Sales_Module / Discount / 9.3 Reseller portal view
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.3.3
+ *  Test Case ID    : Discount_9.3.3
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -25,7 +25,7 @@ import {
  *    "Amount Due" drops to $0 and the "This invoice is paid" message appears.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.3\.3:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.3\.3:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -52,7 +52,7 @@ const parsePercentInLabel = (label: string | undefined | null): number => {
   return m ? parseFloat(m[1]) : NaN;
 };
 
-test.describe('Discount-A.1.2.3.3 - Paid Bronze invoice keeps its discount breakdown on the portal', () => {
+test.describe('Discount_9.3.3 - Paid Bronze invoice keeps its discount breakdown on the portal', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -71,7 +71,7 @@ test.describe('Discount-A.1.2.3.3 - Paid Bronze invoice keeps its discount break
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.3.3: A fully-paid Bronze invoice still shows the Partner Discount(15%) breakdown', async ({ page }, testInfo) => {
+  test('Discount_9.3.3: A fully-paid Bronze invoice still shows the Partner Discount(15%) breakdown', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -79,7 +79,7 @@ test.describe('Discount-A.1.2.3.3 - Paid Bronze invoice keeps its discount break
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.3.3 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.3.3 - ${compactDateTime}`;
 
     // Pre-condition #1: create + validate the invoice as Thomas.
     const invoice = await createValidatedInvoiceAsThomas(page, {

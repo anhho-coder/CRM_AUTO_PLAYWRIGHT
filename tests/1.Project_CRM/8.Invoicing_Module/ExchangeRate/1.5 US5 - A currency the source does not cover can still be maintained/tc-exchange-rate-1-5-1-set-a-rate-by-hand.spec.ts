@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US5: an administrator can set a rate by hand
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.5.1
+ *  Test Case ID    : Exchange-rate_1.5.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -18,7 +18,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    Currencies list, and that the rows already on file are untouched.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.5\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.5\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -83,7 +83,7 @@ const TEMP_DATE_ISO = '2030-12-31';
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.5.1 - US5: an administrator can set a rate by hand', () => {
+describeBlock('Exchange-rate_1.5.1 - US5: an administrator can set a rate by hand', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -101,7 +101,7 @@ describeBlock('CRM-11857_1.5.1 - US5: an administrator can set a rate by hand', 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.5.1: US5 - An administrator can set and hold a rate by hand for a currency the source does not publish', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.5.1: US5 - An administrator can set and hold a rate by hand for a currency the source does not publish', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

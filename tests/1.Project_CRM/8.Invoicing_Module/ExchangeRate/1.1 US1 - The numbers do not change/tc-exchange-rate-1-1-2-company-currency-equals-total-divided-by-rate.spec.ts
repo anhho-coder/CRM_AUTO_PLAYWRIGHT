@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US1: the company-currency figure equals amount / date's rate
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.1.2
+ *  Test Case ID    : Exchange-rate_1.1.2
  *  Automation-Type : new
  *  Automation-Date : 2026-08-18
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    rate, and the rate used is the one applicable to the document's own date.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.1\.2:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.1\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -87,7 +87,7 @@ interface InvoiceFacts {
   rate: number;
 }
 
-test.describe('CRM-11857_1.1.2 - US1: company-currency figure equals Total / the date rate', () => {
+test.describe('Exchange-rate_1.1.2 - US1: company-currency figure equals Total / the date rate', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -106,7 +106,7 @@ test.describe('CRM-11857_1.1.2 - US1: company-currency figure equals Total / the
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.1.2: US1 - The company-currency figure on an issued invoice equals its amount divided by the rate of its invoice date', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.1.2: US1 - The company-currency figure on an issued invoice equals its amount divided by the rate of its invoice date', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -195,7 +195,7 @@ test.describe('CRM-11857_1.1.2 - US1: company-currency figure equals Total / the
       }
 
       expect(facts.length, 'All three transacting currencies should have been checked').toBe(CURRENCIES.length);
-      console.log(`✅ CRM-11857_1.1.2 verified for ${facts.map((f) => f.currency).join(', ')}: the company-currency figure = Total / the rate applicable to the invoice date`);
+      console.log(`✅ Exchange-rate_1.1.2 verified for ${facts.map((f) => f.currency).join(', ')}: the company-currency figure = Total / the rate applicable to the invoice date`);
     });
   });
 });

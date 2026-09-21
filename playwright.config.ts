@@ -263,16 +263,27 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
+      // Invoicing module specs. The Exchange-rate suite (20 specs, master-file tab "Invoicing module",
+      // formerly "Migration - Exchange rate") moved here out of O12_CE_to_O12_CC on 2026-09-18, so it
+      // needs its own project the way PreSales did - without it these specs match no section project
+      // and only run under the catch-all `chromium`. They run on PRE-PRODUCTION, not crm-mig.
+      name: 'Invoicing_Module',
+      testDir: './tests/1.Project_CRM/8.Invoicing_Module',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
       name: 'O12',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
-      // 7.Pre-sales sub-tree of the O12 migration suite (16 specs, titles pre-sale-7.x).
-      // Its own project so a dedicated Jenkins job (CRM_O12_PreSales) can run just this
-      // folder via --project=PreSales. Overlaps with (is a subset of) the O12 project.
+      // 7.Pre-sales sub-tree (16 specs, titles pre-sale-7.x). Moved 2026-09-18 out of the O12
+      // migration tree into 9.CRM_Module - these specs run against PRE-PRODUCTION, not crm-mig,
+      // so they never belonged under O12_CE_to_O12_CC. Its own project so the dedicated Jenkins
+      // job (CRM_O12_PreSales) can run just this folder via --project=PreSales. Now overlaps
+      // with (is a subset of) the CRM_Module project instead of O12.
       name: 'PreSales',
-      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/7.Pre-sales',
+      testDir: './tests/1.Project_CRM/9.CRM_Module/7.Pre-sales',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
@@ -292,7 +303,7 @@ export default defineConfig({
       // folder via --project=MigSmoke. Overlaps with (is a subset of) the O12 project.
       // Inventory + last results per TC: CRM-12450.
       name: 'MigSmoke',
-      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/II.Smoked_Test_Main_Business_Work_On_O12CE',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {

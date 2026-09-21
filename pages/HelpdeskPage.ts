@@ -457,6 +457,23 @@ export class HelpdeskPage extends BasePage {
   }
 
   /**
+   * Open the UNFILTERED ticket list (action 455 - "All Tickets"), the list a ticket created by this
+   * suite is guaranteed to appear in regardless of which team it landed on.
+   */
+  async openAllTicketsListDirect(baseUrl: string): Promise<void> {
+    const url = `${baseUrl.replace(/\/$/, '')}/web#action=455&model=helpdesk.ticket&view_type=list`;
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.page
+      .waitForSelector('.o_list_view, .o_content', { timeout: CommonUtils.waitTimes.pageLoad })
+      .catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog();
+    console.log('  - Opened All Tickets list (direct URL)');
+  }
+
+  /**
    * In the ticket LIST, select the row matching `subject` and Archive it via the list "Action" menu
    * (helpdesk tickets cannot be deleted - only archived). The row selector is a Bootstrap custom-
    * checkbox, so it is selected by FORCE-clicking the label / custom-control / cell (the hidden input
@@ -573,5 +590,73 @@ export class HelpdeskPage extends BasePage {
       meetingType: clean[3] ?? '',
       state: clean[4] ?? '',
     };
+  }
+
+  // ═════════════════════════════════════════════════════════════════════════════════════════════
+  //  CRM-12540 - chatter carrying characters PostgreSQL cannot store
+  // ═════════════════════════════════════════════════════════════════════════════════════════════
+  //  The composer paste, the server-path post and the stored-body readback are model-agnostic and
+  //  live on BasePage (openRecordFormById / pasteAndPostLogNote / pasteAndSendMessage /
+  //  postChatterMessageViaServerPath / getStoredChatterMessageText), so the same scenario can be
+  //  proven on a lead and an invoice too. What stays here is helpdesk-specific: creating a ticket,
+  //  opening the unfiltered ticket list, and the two ticket-scoped delegates.
+
+  private readonly listCreateButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_list_button_add')]").first();
+  private readonly formSaveButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_save')]").first();
+  private readonly subjectField = () =>
+    this.page.locator("xpath=//input[@name='name'] | //div[@name='name']//input").first();
+
+  /** Open a ticket form straight by record id, with its chatter ready. */
+  async openTicketById(baseUrl: string, ticketId: number | string): Promise<void> {
+    await this.openRecordFormById(baseUrl, 'helpdesk.ticket', ticketId);
+  }
+
+  /**
+   * Create a helpdesk ticket with the given Subject through the Tickets list (action 455 -
+   * "All Tickets", the unfiltered ticket action) and return its record id.
+   * THROWS when the ticket cannot be created - a setup step must never fail silently.
+   */
+  async createTicket(baseUrl: string, subject: string): Promise<string> {
+    const listUrl = `${baseUrl.replace(/\/$/, '')}/web#action=455&model=helpdesk.ticket&view_type=list`;
+    await this.page.goto(listUrl, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+
+    const create = this.listCreateButton();
+    await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await create.click();
+    await this.waitForFormView(CommonUtils.waitTimes.abnormalWait);
+
+    const subj = this.subjectField();
+    await subj.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await subj.click();
+    await subj.fill(subject);
+    await this.wait(CommonUtils.waitTimes.short);
+
+    const save = this.formSaveButton();
+    await save.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await save.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+
+    const popup = await this.getBlockingPopupText(CommonUtils.waitTimes.long);
+    if (popup) throw new Error(`createTicket("${subject}") was blocked by a dialog: ${popup}`);
+
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.abnormalWait);
+    if (!/^\d+$/.test(id)) throw new Error(`createTicket("${subject}") did not yield a record id (got "${id}")`);
+    console.log(`  - Created helpdesk ticket #${id} - Subject "${subject}"`);
+    return id;
+  }
+
+  /** Ticket-scoped delegate: post through the server path on this ticket. */
+  async postMessageViaServerPath(ticketId: number | string, text: string): Promise<number> {
+    return this.postChatterMessageViaServerPath('helpdesk.ticket', ticketId, text);
+  }
+
+  /** Ticket-scoped delegate: newest stored chatter body on this ticket, as plain text. */
+  async getStoredLastMessageText(ticketId: number | string): Promise<string> {
+    return this.getStoredChatterMessageText('helpdesk.ticket', ticketId);
   }
 }

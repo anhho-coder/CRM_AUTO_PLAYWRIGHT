@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US8: a currency's rate history is reachable and readable
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.8.1
+ *  Test Case ID    : Exchange-rate_1.8.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-18
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    its own under Invoicing > Configuration (it is reachable only from a currency).
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.8\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.8\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -54,7 +54,7 @@ import { CommonUtils } from '@helpers/common.utils';
 /** The currency whose history is inspected. EUR is the busiest transacting currency on pre-prod. */
 const CURRENCY_CODE = 'EUR';
 
-test.describe('CRM-11857_1.8.1 - US8: rate history is reachable from the currency', () => {
+test.describe('Exchange-rate_1.8.1 - US8: rate history is reachable from the currency', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -74,7 +74,7 @@ test.describe('CRM-11857_1.8.1 - US8: rate history is reachable from the currenc
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.8.1: US8 - A currency rate history is reachable from the currency itself', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.8.1: US8 - A currency rate history is reachable from the currency itself', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -176,7 +176,7 @@ test.describe('CRM-11857_1.8.1 - US8: rate history is reachable from the currenc
         'No rate / rate-history entry of its own should exist under Invoicing > Configuration - the history is reachable only from a currency'
       ).toHaveLength(0);
       console.log('  Result: PASS - the rate history is reachable only from the currency itself');
-      console.log('✅ CRM-11857_1.8.1 verified: the rate history is its own "Currency Rates" list, opened from the currency, with no menu entry of its own');
+      console.log('✅ Exchange-rate_1.8.1 verified: the rate history is its own "Currency Rates" list, opened from the currency, with no menu entry of its own');
     });
   });
 });

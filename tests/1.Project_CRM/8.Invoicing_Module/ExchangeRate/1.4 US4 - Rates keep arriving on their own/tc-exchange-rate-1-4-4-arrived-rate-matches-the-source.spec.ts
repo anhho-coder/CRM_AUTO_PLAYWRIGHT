@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US4: the arrived rate matches the source, re-based to USD
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.4.4
+ *  Test Case ID    : Exchange-rate_1.4.4
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    itself must be stored as exactly 1.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.4\.4:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.4\.4:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -79,7 +79,7 @@ const COMPANY_CURRENCY = 'USD';
  */
 const RELATIVE_TOLERANCE = 0.01; // 1%
 
-test.describe('CRM-11857_1.4.4 - US4: the arrived rate matches the source, re-based onto the company currency', () => {
+test.describe('Exchange-rate_1.4.4 - US4: the arrived rate matches the source, re-based onto the company currency', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -98,7 +98,7 @@ test.describe('CRM-11857_1.4.4 - US4: the arrived rate matches the source, re-ba
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.4.4: US4 - The rate that arrives equals the value the source published, re-based from the euro onto the company currency', async ({ page, request }, testInfo) => {
+  test('Exchange-rate_1.4.4: US4 - The rate that arrives equals the value the source published, re-based from the euro onto the company currency', async ({ page, request }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -210,7 +210,7 @@ test.describe('CRM-11857_1.4.4 - US4: the arrived rate matches the source, re-ba
         }
         console.log(`    Result: PASS - ${code} is stored as the published value re-based onto ${COMPANY_CURRENCY}`);
       }
-      console.log('✅ CRM-11857_1.4.4 verified: arriving rates are the source publication re-based from the euro onto the company currency');
+      console.log('✅ Exchange-rate_1.4.4 verified: arriving rates are the source publication re-based from the euro onto the company currency');
     });
   });
 });

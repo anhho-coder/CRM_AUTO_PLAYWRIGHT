@@ -8,9 +8,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.5. - Partner-level comparison
+ *  10.Sales_Module / Discount / 9.4 Partner-level comparison
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.5.1
+ *  Test Case ID    : Discount_9.4.1
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -21,7 +21,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    (This spans two partner levels, so it lives at A.1 - Reseller partner, not inside A.1.2 - Bronze.)
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.5\.1:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.4\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -48,7 +48,7 @@ const BASIC_PERCENT = 10;
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 const effectivePct = (gross: number, net: number): number => (gross > 0 ? (1 - net / gross) * 100 : NaN);
 
-test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 10%', () => {
+test.describe('Discount_9.4.1 - Partner-level comparison: Bronze 15% vs Basic 10%', () => {
   let oppUrlBronze: string | null = null;
   let oppUrlBasic: string | null = null;
 
@@ -69,7 +69,7 @@ test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 
     await deleteCreatedOpportunityAsAdmin(page, oppUrlBasic, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.5.1: The same product is discounted 15% for a Bronze partner and 10% for a Basic partner', async ({ page }, testInfo) => {
+  test('Discount_9.4.1: The same product is discounted 15% for a Bronze partner and 10% for a Basic partner', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test * 2); // two invoices
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -81,7 +81,7 @@ test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 
     // Pre-condition A (Bronze): assign the Bronze reseller.
     const noteA = generateDealRegistrationNote();
     const invBronze = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount - Discount-A.1.5.1-Bronze - ${noteA.compactDateTime}`,
+      oppName: `TEST Discount - Discount_9.4.1-Bronze - ${noteA.compactDateTime}`,
       contactName: noteA.leadName, companyEmail: noteA.companyEmail, internalNote: noteA.note,
       assignedPartner: BRONZE_PARTNER, stepPrefix: 'Pre-condition A (Bronze)',
     });
@@ -106,7 +106,7 @@ test.describe('Discount-A.1.5.1 - Partner-level comparison: Bronze 15% vs Basic 
       partnerBusinessEmail: users.reseller_basic.username, // Test-Reseller@Reseller-company-automation-basic.com
     });
     const invBasic = await createValidatedInvoiceAsThomas(page, {
-      oppName: `TEST Discount - Discount-A.1.5.1-Basic - ${noteB.compactDateTime}`,
+      oppName: `TEST Discount - Discount_9.4.1-Basic - ${noteB.compactDateTime}`,
       contactName: noteB.leadName, companyEmail: noteB.companyEmail, internalNote: noteB.note,
       assignedPartner: BASIC_PARTNER, stepPrefix: 'Pre-condition B (Basic)',
     });

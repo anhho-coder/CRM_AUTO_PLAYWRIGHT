@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US1: record the company-currency baseline
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.1.1
+ *  Test Case ID    : Exchange-rate_1.1.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    is why the Invoice Date is part of the record.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.1\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.1\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -80,7 +80,7 @@ interface BaselineRow {
   rowsInList: number;
 }
 
-test.describe('CRM-11857_1.1.1 - US1: record the company-currency baseline', () => {
+test.describe('Exchange-rate_1.1.1 - US1: record the company-currency baseline', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -99,7 +99,7 @@ test.describe('CRM-11857_1.1.1 - US1: record the company-currency baseline', () 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.1.1: US1 - Record the company-currency figure of issued invoices in every currency the business transacts in', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.1.1: US1 - Record the company-currency figure of issued invoices in every currency the business transacts in', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -176,7 +176,7 @@ test.describe('CRM-11857_1.1.1 - US1: record the company-currency baseline', () 
       const distinctCurrencies = new Set(baseline.map((b) => b.currency));
       expect(distinctCurrencies.size, 'The three baseline rows should cover three DIFFERENT currencies').toBe(CURRENCIES.length);
       console.log('  Result: PASS - the baseline holds one complete row per transacting currency');
-      console.log('✅ CRM-11857_1.1.1 verified: the pre-move company-currency baseline is recorded for EUR, GBP and CHF');
+      console.log('✅ Exchange-rate_1.1.1 verified: the pre-move company-currency baseline is recorded for EUR, GBP and CHF');
     });
   });
 });

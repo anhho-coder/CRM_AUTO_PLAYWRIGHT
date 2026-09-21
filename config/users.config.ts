@@ -161,6 +161,33 @@ export const users = {
     username: 'max.zaprykutenko@nakivo.com',
     password: pw('manager_max_crm_mig'),
     displayName: 'Max Zaprykutenko',
+  },
+  // ---- Pre-Sales Application (pre-sales-crm-mig.nakivo.site, Odoo 19 / db odoo19), CRM-12135.
+  // The shared sign-in matches a person by LOGIN, so the same login reaches the same person on
+  // both sites - that is why these entries repeat a username already used above.
+  anh_ho_presales_mig: {
+    username: 'anh.ho@nakivo.com',
+    password: pw('anh_ho_presales_mig'),
+    displayName: 'Ho Quoc Anh',
+    createdByName: 'Ho Quoc Anh',
+  },
+  // The three accounts handed over in "Pre-sale Migration Instructions.pdf" (CRM-12135, section 6).
+  // Every address is on yopmail.com - a PUBLIC inbox: never send anything confidential to one and
+  // never point a real customer record at one.
+  qa_se_manager_presales_mig: {
+    username: 'qa.se.manager@yopmail.com',
+    password: pw('qa_se_manager_presales_mig'),
+    displayName: 'QA SE Manager',
+  },
+  qa_no_helpdesk_mig: {
+    username: 'qa.no.helpdesk@yopmail.com',
+    password: pw('qa_no_helpdesk_mig'),
+    displayName: 'QA No Helpdesk Role',
+  },
+  qa_portal_presales_mig: {
+    username: 'qa.portal@yopmail.com',
+    password: pw('qa_portal_presales_mig'),
+    displayName: 'QA Portal Customer',
   }
 } as const;
 // Base URL of the CRM Pre-production environment
@@ -173,3 +200,12 @@ export const baseUrl = 'http://pre-production.nakivo.site/';
 // screens re-created under new naming). Pass this explicitly to loginPage.navigateTo(...) in Mig
 // specs; the default baseUrl (pre-prod) above is unchanged, so existing specs are unaffected.
 export const baseUrl_mig = 'https://crm-mig.nakivo.site/';
+
+// Pre-Sales Application (CRM-12135) - the NEW helpdesk the pre-sale requests are worked on, a
+// SEPARATE Odoo 19 instance from the CRM above. A pre-sale spec drives BOTH hosts in one run:
+// the request is raised on baseUrl_mig and lands on this one.
+export const baseUrl_presales_mig = 'https://pre-sales-crm-mig.nakivo.site/';
+
+// The Pre-Sales instance answers /web/session/authenticate only when the database is named
+// explicitly - every other value returns "Database not found", so this is not optional.
+export const presalesDb_mig = 'odoo19';

@@ -515,4 +515,290 @@ await newPage.close();
     }
     return false;
   }
+
+  // ═════════════════════════════════════════════════════════════════════════════════════════════
+  //  Chatter carrying characters PostgreSQL cannot store (CRM-12540)
+  // ═════════════════════════════════════════════════════════════════════════════════════════════
+  //  Lives on BasePage because the scenario is model-agnostic: the same body has to be provable on a
+  //  helpdesk ticket, a lead and an invoice.
+  //
+  //  A NUL byte (U+0000) and a lone UTF-16 surrogate (U+D800-U+DFFF) cannot be delivered through
+  //  locator.fill() / keyboard.type() - Playwright's input pipeline drops them - so the composer is
+  //  filled by simulating the PASTE the reporter actually performed. The payload crosses into the page
+  //  as CODE POINTS: numbers survive the evaluate() JSON transport intact, whereas a lone surrogate
+  //  inside a JSON string does not.
+
+  private readonly chatterPanel_basePage = () => this.page.locator('.o_chatter, .oe_chatter').first();
+  private readonly chatterLogNoteBtn_basePage = () => this.page.locator('.o_chatter_button_log_note').first();
+  private readonly chatterNewMessageBtn_basePage = () => this.page.locator('.o_chatter_button_new_message').first();
+  private readonly chatterComposerTextarea_basePage = () =>
+    this.page.locator('.o_thread_composer textarea.o_composer_text_field, .o_chatter textarea.o_composer_text_field, .o_chatter textarea.o_input').first();
+  private readonly chatterSendBtn_basePage = () => this.page.locator('.o_composer_button_send').first();
+  private readonly chatterSuggestedRecipients_basePage = () =>
+    this.page.locator('.o_thread_composer .o_composer_suggested_partners input[type=checkbox]');
+  private readonly chatterMessages_basePage = () => this.page.locator('.o_thread_message');
+  private readonly chatterMessageWithText_basePage = (text: string) =>
+    this.page.locator('.o_thread_message', { hasText: text });
+  private readonly chatterNotification_basePage = () =>
+    this.page.locator('.o_notification_manager .o_notification, .o_notification, .o_dialog_warning, .modal-dialog .modal-title').first();
+
+  /** Split a string into code points - a lone surrogate keeps its own value. */
+  protected static toCodePoints(text: string): number[] {
+    return Array.from(text).map((c) => c.codePointAt(0) as number);
+  }
+
+  /**
+   * Open any record's form straight by model + id, with its chatter ready.
+   * goto() on a hash route is a SAME-DOCUMENT navigation, so the previously open record can still be
+   * on screen while every read silently comes off the wrong record - reload() forces a real load.
+   */
+  async openRecordFormById(baseUrl: string, model: string, recordId: number | string): Promise<void> {
+    const url = `${baseUrl.replace(/\/$/, '')}/web#id=${recordId}&model=${model}&view_type=form`;
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad);
+    await this.chatterPanel_basePage().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Opened ${model}#${recordId}`);
+  }
+
+  /** Number of messages currently rendered in the chatter. */
+  async getChatterMessageCount(): Promise<number> {
+    return this.chatterMessages_basePage().count();
+  }
+
+  /** Whether a chatter message containing `text` is rendered on the open record. */
+  async isChatterMessageVisible(text: string): Promise<boolean> {
+    return (await this.chatterMessageWithText_basePage(text).count()) > 0;
+  }
+
+  /** Text of any Odoo notification toast / warning dialog on screen ("Connection lost", ...). */
+  async getNotificationText(): Promise<string> {
+    const n = this.chatterNotification_basePage();
+    if ((await n.count()) === 0) return '';
+    if (!(await n.isVisible().catch(() => false))) return '';
+    const t = await n.innerText().catch(() => '');
+    return (t ?? '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Paste `text` into the currently open composer, preserving unstorable characters. */
+  private async pasteIntoChatterComposer_basePage(text: string): Promise<{ nulHeld: boolean; surrogateHeld: boolean }> {
+    const ta = this.chatterComposerTextarea_basePage();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.page.evaluate((codes: number[]) => {
+      const el = document.querySelector(
+        '.o_thread_composer textarea.o_composer_text_field, .o_chatter textarea.o_composer_text_field, .o_chatter textarea.o_input',
+      ) as HTMLTextAreaElement | null;
+      if (!el) throw new Error('chatter composer textarea not found');
+      const payload = codes.map((c) => String.fromCodePoint(c)).join('');
+      el.focus();
+      try {
+        const dt = new DataTransfer();
+        dt.setData('text/plain', payload);
+        el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+      } catch (e) {
+        /* older Chrome - the direct value assignment below still reproduces the paste */
+      }
+      el.value = payload;
+      el.dispatchEvent(new Event('input', { bubbles: true }));
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      let lone = false;
+      for (let i = 0; i < el.value.length; i++) {
+        const c = el.value.charCodeAt(i);
+        if (c >= 0xd800 && c <= 0xdbff) {
+          const next = i + 1 < el.value.length ? el.value.charCodeAt(i + 1) : 0;
+          if (next >= 0xdc00 && next <= 0xdfff) { i++; continue; }
+          lone = true;
+        } else if (c >= 0xdc00 && c <= 0xdfff) {
+          lone = true;
+        }
+      }
+      return { nulHeld: el.value.indexOf(String.fromCharCode(0)) >= 0, surrogateHeld: lone };
+    }, BasePage.toCodePoints(text));
+  }
+
+  /** Click the composer's send button and wait until the thread grows or an error surfaces. */
+  private async sendChatterComposer_basePage(before: number): Promise<{ posted: boolean; notification: string }> {
+    const send = this.chatterSendBtn_basePage();
+    await send.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await send.click();
+
+    const deadline = Date.now() + CommonUtils.waitTimes.checkingChatterLog;
+    let notification = '';
+    while (Date.now() < deadline) {
+      if ((await this.getChatterMessageCount()) > before) return { posted: true, notification: '' };
+      notification = await this.getNotificationText();
+      if (notification) break;
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    return { posted: (await this.getChatterMessageCount()) > before, notification };
+  }
+
+  /**
+   * Paste `text` into the "Log note" composer and post it, preserving characters that
+   * locator.fill() would drop. Reports what the composer actually held and what the UI answered.
+   */
+  async pasteAndPostLogNote(text: string): Promise<{
+    posted: boolean;
+    notification: string;
+    nulHeld: boolean;
+    surrogateHeld: boolean;
+  }> {
+    await this.dismissErrorDialog();
+    const before = await this.getChatterMessageCount();
+    const btn = this.chatterLogNoteBtn_basePage();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    const held = await this.pasteIntoChatterComposer_basePage(text);
+    const sent = await this.sendChatterComposer_basePage(before);
+    console.log(`  - Log note posted=${sent.posted} notification="${sent.notification}"`);
+    return { ...sent, ...held };
+  }
+
+  /**
+   * Paste `text` into the customer-visible "Send message" composer and send it.
+   * The auto-added customer-email recipient makes Send a silent no-op, so every suggested recipient
+   * is unchecked first.
+   */
+  async pasteAndSendMessage(text: string): Promise<{
+    posted: boolean;
+    notification: string;
+    nulHeld: boolean;
+    surrogateHeld: boolean;
+  }> {
+    await this.dismissErrorDialog();
+    const before = await this.getChatterMessageCount();
+    const btn = this.chatterNewMessageBtn_basePage();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    const held = await this.pasteIntoChatterComposer_basePage(text);
+
+    const boxes = this.chatterSuggestedRecipients_basePage();
+    const n = await boxes.count();
+    for (let i = 0; i < n; i++) {
+      const box = boxes.nth(i);
+      if (await box.isChecked().catch(() => false)) await box.uncheck({ force: true }).catch(() => {});
+    }
+
+    const sent = await this.sendChatterComposer_basePage(before);
+    console.log(`  - Send message posted=${sent.posted} notification="${sent.notification}"`);
+    return { ...sent, ...held };
+  }
+
+  /**
+   * Post a chatter message through the SERVER path (message_post) instead of the screen.
+   * This is deliberate, not a shortcut: a NUL byte cannot be delivered from the browser at all - the
+   * Odoo web client strips it before the request is built - so the mail-gateway / API path is the only
+   * way to exercise it end to end. Returns the new message id; THROWS with the server error text when
+   * the post is rejected.
+   */
+  async postChatterMessageViaServerPath(model: string, recordId: number | string, text: string): Promise<number> {
+    const res = await this.page.evaluate(
+      async ([model, id, codes]: [string, string, number[]]) => {
+        const body = codes.map((c) => String.fromCodePoint(c)).join('');
+        const r = await fetch('/web/dataset/call_kw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'call',
+            params: {
+              model,
+              method: 'message_post',
+              args: [[Number(id)]],
+              kwargs: { body, message_type: 'comment', subtype: 'mail.mt_note' },
+            },
+          }),
+        });
+        const j = await r.json();
+        if (j.error) {
+          const d = j.error.data || {};
+          return {
+            error: `${d.name || ''} :: ${(d.message || j.error.message || '').toString()}`.replace(/\s+/g, ' ').trim(),
+          };
+        }
+        return { id: j.result as number };
+      },
+      [model, String(recordId), BasePage.toCodePoints(text)] as [string, string, number[]],
+    );
+    const err = (res as { error?: string }).error;
+    if (err) throw new Error(`message_post rejected: ${err}`);
+    const newId = (res as { id: number }).id;
+    console.log(`  - Server-path message_post created mail.message #${newId}`);
+    return newId;
+  }
+
+  /**
+   * Id of the newest record of `model` that the LOGGED-IN user can actually reach, or 0 when there is
+   * none. Setup-only lookup, deliberately not a list-view walk: Odoo's own record rules already filter
+   * a search to what this user may read, so this returns a record the actor is guaranteed to be able
+   * to open - which a "click the first row" navigation cannot promise. The behaviour under test is
+   * still driven through the screen.
+   * THROWS when the model itself is not readable by this user, so a permission problem is reported as
+   * a permission problem instead of an empty result.
+   */
+  async findFirstRecordId(model: string, domain: unknown[] = []): Promise<number> {
+    return this.page.evaluate(async ([model, domain]: [string, unknown[]]) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: { model, method: 'search_read', args: [domain, ['id']], kwargs: { limit: 1, order: 'id desc' } },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) {
+        const d = j.error.data || {};
+        throw new Error(`search_read on ${model} rejected: ${d.name || ''} :: ${d.message || j.error.message || ''}`);
+      }
+      const rows = j.result as { id: number }[];
+      return rows && rows.length ? rows[0].id : 0;
+    }, [model, domain] as [string, unknown[]]);
+  }
+
+  /**
+   * PLAIN TEXT of the newest chatter message stored on the record, read back from the record so the
+   * assertion is made against what actually landed in the database - not against the screen.
+   */
+  async getStoredChatterMessageText(model: string, recordId: number | string): Promise<string> {
+    const html = await this.page.evaluate(async ([model, id]: [string, string]) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'mail.message',
+            method: 'search_read',
+            args: [
+              [['model', '=', model], ['res_id', '=', Number(id)]],
+              ['id', 'body'],
+            ],
+            kwargs: { limit: 1, order: 'id desc' },
+          },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) {
+        const d = j.error.data || {};
+        throw new Error(`mail.message read rejected: ${d.name || ''} :: ${d.message || j.error.message || ''}`);
+      }
+      const rows = j.result as { id: number; body: string }[];
+      return rows && rows.length ? rows[0].body || '' : '';
+    }, [model, String(recordId)] as [string, string]);
+
+    return html
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;|&apos;/g, "'");
+  }
 }

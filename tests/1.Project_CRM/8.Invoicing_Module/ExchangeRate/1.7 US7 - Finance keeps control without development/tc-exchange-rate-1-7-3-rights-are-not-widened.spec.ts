@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US7: control over rates is not handed to everyone
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.7.3
+ *  Test Case ID    : Exchange-rate_1.7.3
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    and the "Currency Rates" list has no "CREATE" button. The rates themselves stay readable.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.7\.3:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.7\.3:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -60,7 +60,7 @@ import { CommonUtils } from '@helpers/common.utils';
 /** The currency whose form and rate list are inspected. */
 const CURRENCY_CODE = 'EUR';
 
-test.describe('CRM-11857_1.7.3 - US7: control over rates is not handed to everyone', () => {
+test.describe('Exchange-rate_1.7.3 - US7: control over rates is not handed to everyone', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -79,7 +79,7 @@ test.describe('CRM-11857_1.7.3 - US7: control over rates is not handed to everyo
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.7.3: US7 - A user without accounting-configuration rights can read rates but change neither the source nor a rate', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.7.3: US7 - A user without accounting-configuration rights can read rates but change neither the source nor a rate', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -170,7 +170,7 @@ test.describe('CRM-11857_1.7.3 - US7: control over rates is not handed to everyo
       expect(editPresent, 'No "EDIT" button should be available on the currency form for this user').toBe(false);
       expect(createPresent, 'No "CREATE" button should be available on the "Currency Rates" list for this user').toBe(false);
       console.log('  Result: PASS - this user can look but cannot change; control stays with the same people who hold it today');
-      console.log('✅ CRM-11857_1.7.3 verified: rate configuration is neither widened nor exposed to a user without accounting-configuration rights');
+      console.log('✅ Exchange-rate_1.7.3 verified: rate configuration is neither widened nor exposed to a user without accounting-configuration rights');
     });
   });
 });

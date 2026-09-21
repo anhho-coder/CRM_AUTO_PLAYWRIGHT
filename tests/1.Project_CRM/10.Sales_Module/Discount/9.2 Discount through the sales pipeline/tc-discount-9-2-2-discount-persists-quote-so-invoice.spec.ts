@@ -7,9 +7,9 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.2. - Discount through the sales pipeline
+ *  10.Sales_Module / Discount / 9.2 Discount through the sales pipeline
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.2.2
+ *  Test Case ID    : Discount_9.2.2
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -21,7 +21,7 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  *    no Sales Manager approval.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.2\.2:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.2\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -45,7 +45,7 @@ const BRONZE_PERCENT = 15;
 
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('Discount-A.1.2.2.2 - Bronze discount persists Quote -> Sale Order -> Invoice', () => {
+test.describe('Discount_9.2.2 - Bronze discount persists Quote -> Sale Order -> Invoice', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -64,7 +64,7 @@ test.describe('Discount-A.1.2.2.2 - Bronze discount persists Quote -> Sale Order
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.2.2: The Bronze 15% discount persists across Quotation -> Sales Order -> Invoice', async ({ page }, testInfo) => {
+  test('Discount_9.2.2: The Bronze 15% discount persists across Quotation -> Sales Order -> Invoice', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -74,7 +74,7 @@ test.describe('Discount-A.1.2.2.2 - Bronze discount persists Quote -> Sale Order
     const invoicePage = new InvoicePage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.2.2 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.2.2 - ${compactDateTime}`;
 
     // Steps 1-9: create the deal-registration Opportunity as Thomas.
     createdOppUrl = await createDealRegistrationOpportunityAsThomas(page, {

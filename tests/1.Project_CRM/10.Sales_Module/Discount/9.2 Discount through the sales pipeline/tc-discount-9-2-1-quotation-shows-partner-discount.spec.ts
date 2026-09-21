@@ -8,9 +8,9 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.2. - Discount through the sales pipeline
+ *  10.Sales_Module / Discount / 9.2 Discount through the sales pipeline
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.2.1
+ *  Test Case ID    : Discount_9.2.1
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -21,7 +21,7 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  *    Discounts" = Unit Price x 0.85, so the discounted total is what would go to approval/invoice.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.2\.1:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.2\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -43,7 +43,7 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
 
 const SKIP_CLEANUP_OPP = true; // opp carries a Deal Element + draft Quotation -> retain (consistent w/ family)
 
-test.describe('Discount-A.1.2.2.1 - Bronze partner discount is shown on the Quotation', () => {
+test.describe('Discount_9.2.1 - Bronze partner discount is shown on the Quotation', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -62,7 +62,7 @@ test.describe('Discount-A.1.2.2.1 - Bronze partner discount is shown on the Quot
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.2.1: The Quotation order line shows the Bronze 15% Partner Discount', async ({ page }, testInfo) => {
+  test('Discount_9.2.1: The Quotation order line shows the Bronze 15% Partner Discount', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -71,7 +71,7 @@ test.describe('Discount-A.1.2.2.1 - Bronze partner discount is shown on the Quot
     const quotationPage = new QuotationPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.2.1 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.2.1 - ${compactDateTime}`;
 
     // Steps 1-9: create the deal-registration Opportunity as Thomas (Assigned Partner = Bronze reseller).
     createdOppUrl = await createDealRegistrationOpportunityAsThomas(page, {

@@ -18,4 +18,9 @@
 export { LoginPageMig } from './LoginPageMig';
 export { HomePageMig } from './HomePageMig';
 export { MigPlatformPage } from './MigPlatformPage';
+export { MigDataParityPage } from './MigDataParityPage';
+export { MigIntegrationHubPage } from './MigIntegrationHubPage';
+export { MigPreSalePage } from './MigPreSalePage';
 export type { VersionInfo, ModuleInfo } from './MigPlatformPage';
+export type { QueueEntry, SimulatorRecord } from './MigIntegrationHubPage';
+export type { PreSaleRequest, PreSaleMail } from './MigPreSalePage';

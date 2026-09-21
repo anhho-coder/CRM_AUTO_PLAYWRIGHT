@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US2: an invoice inside a rate gap keeps the earlier rate
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.2.1
+ *  Test Case ID    : Exchange-rate_1.2.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-18
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    one.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.2\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.2\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -78,7 +78,7 @@ const ISSUED_STATUS = 'Paid';
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('CRM-11857_1.2.1 - US2: an invoice inside a rate gap keeps the earlier rate', () => {
+test.describe('Exchange-rate_1.2.1 - US2: an invoice inside a rate gap keeps the earlier rate', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -97,7 +97,7 @@ test.describe('CRM-11857_1.2.1 - US2: an invoice inside a rate gap keeps the ear
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.2.1: US2 - An invoice dated inside a period with no rate rows keeps the rate of the most recent earlier row', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.2.1: US2 - An invoice dated inside a period with no rate rows keeps the rate of the most recent earlier row', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -224,7 +224,7 @@ test.describe('CRM-11857_1.2.1 - US2: an invoice inside a rate gap keeps the ear
         'The figure must NOT equal the invoice Total - that would mean a rate of 1 had been substituted'
       ).toBeGreaterThan(tolerance);
       console.log('  Result: PASS - the invoice fell back to the last rate published before the gap, not to a rate of 1');
-      console.log('✅ CRM-11857_1.2.1 verified: a document dated where no rate was published converts at the most recent earlier rate');
+      console.log('✅ Exchange-rate_1.2.1 verified: a document dated where no rate was published converts at the most recent earlier rate');
     });
   });
 });

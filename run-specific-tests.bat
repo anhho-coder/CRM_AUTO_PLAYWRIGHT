@@ -36,8 +36,8 @@ REM ============================================================================
 REM OPPORTUNITY TESTS (Uncomment to run)
 REM ============================================================================
 REM echo [TEST SUITE] Opportunity Tests
-REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-2-1-create-opp-v2.spec.ts --project=chromium
-REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/tc-performance-1-1-2-2-edit-opp.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/2.Opportunity/2.1.Performance/tc-performance-1-1-2-1-create-opp-v2.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/2.Opportunity/2.1.Performance/tc-performance-1-1-2-2-edit-opp.spec.ts --project=chromium
 REM echo.
 
 echo.

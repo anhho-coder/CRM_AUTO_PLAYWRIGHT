@@ -1356,6 +1356,11 @@ export class ResellerPortalPage extends BasePage {
    * @param maxAttempts - how many reload/poll rounds (default 10)
    * @param interval - wait between rounds (default: extraLong)
    */
+  /** The portal URL currently open (e.g. the invoice detail /my/invoices/<id>?access_token=...). */
+  getCurrentUrl(): string {
+    return this.page.url();
+  }
+
   async waitForPortalInvoicePaid(
     invoiceUrl: string,
     maxAttempts: number = 10,

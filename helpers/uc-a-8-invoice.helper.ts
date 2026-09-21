@@ -28,7 +28,7 @@ export interface CreateInvoiceInput extends DealRegCreateInput {
   validate?: boolean;
   /**
    * Deal Element Pricelist to select (default "Public Pricelist_USD"). Pass an alternate-currency
-   * pricelist (e.g. "Public Pricelist_EUR") to build a foreign-currency invoice (ExchangeRate-1.1).
+   * pricelist (e.g. "Public Pricelist_EUR") to build a foreign-currency invoice (Exchange-rate_1.1.5).
    * Matched case-insensitively by DealElementPage.selectPricelist, so omit the trailing "(EUR)".
    */
   pricelist?: string;
@@ -43,6 +43,13 @@ export interface CreateInvoiceInput extends DealRegCreateInput {
   /** Optional line-level Discount % to set on the product line (e.g. 10 for 10%). Used by the
    *  line-discount + partner-discount stacking TC. */
   lineDiscountPct?: number;
+  /**
+   * Product to put on the single order line, e.g. "[A2144B]". Default '' = the first product the
+   * "Add a product" dropdown offers (the legacy behaviour). When given, the SAVED order line is
+   * asserted to hold it - a different SKU would silently test a different billing type
+   * (CRM-12501_7.1.4 needs a perpetual SKU).
+   */
+  product?: string;
 }
 
 export interface CreatedInvoice {
@@ -128,8 +135,14 @@ export async function createValidatedInvoiceAsThomas(
     await dealElementPage.dismissErrorDialog();
     // Empty product name -> open the "Add a product" dropdown and select the first option (Qty 1,
     // under the $4k threshold so the Quotation needs no Sales Manager approval).
-    const added = await dealElementPage.addProduct('');
-    console.log(added ? '  - First product selected' : '  - Could not add a product');
+    const productName = input.product ?? '';
+    const added = await dealElementPage.addProduct(productName);
+    console.log(added
+      ? `  - ${productName ? `Product ${productName} selected` : 'First product selected'}`
+      : '  - Could not add a product');
+    if (productName) {
+      expect(added, `The product ${productName} should be added to the Deal Element order lines`).toBeTruthy();
+    }
     // Optional variations (operate on the just-added edit row): quantity + line-level discount.
     if (input.productQty && input.productQty !== 1) {
       await dealElementPage.setLastRowQty(input.productQty);
@@ -144,6 +157,12 @@ export async function createValidatedInvoiceAsThomas(
   await test.step(`${p} - Step 14: Press "SAVE" on the Deal Element and wait`, async () => {
     await dealElementPage.save(CommonUtils.waitTimes.savingPage);
     console.log('✓ Deal Element saved');
+    if (input.product) {
+      // Assert AFTER the save: while the row is still being edited its product cell is an <input>
+      // with no textContent, so a hasText row filter cannot see it (CRM-12501 run, 2026-09-07).
+      const inLines = await dealElementPage.isProductInOrderLines(input.product);
+      expect(inLines, `The saved order line should hold ${input.product}`).toBeTruthy();
+    }
   });
 
   await test.step(`${p} - Step 15: Press "NEW QUOTATION" and wait`, async () => {

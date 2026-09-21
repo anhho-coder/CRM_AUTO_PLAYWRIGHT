@@ -424,6 +424,10 @@ export class CommonUtils {
     seSupportTeardown: 360000,
     /** Timeout for running Test Script - 10 minutes (for complex operations) */
     runningTestScript: 600000,
+    /** Integration Hub inbound processing - 10 seconds (web form submitted -> lead written by the hub) */
+    hubProcessingWait: 10000,
+    /** Integration Hub outbound delivery - 30 seconds (queue entry written -> delivered to the marketing platform) */
+    hubDeliveryWait: 30000,
   };
 
   /**

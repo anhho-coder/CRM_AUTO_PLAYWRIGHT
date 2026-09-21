@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US7: enable and disable a currency without deleting it
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.7.2
+ *  Test Case ID    : Exchange-rate_1.7.2
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -18,7 +18,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    historical document has to keep existing, or every figure that referenced it becomes unreadable.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.7\.2:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.7\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -87,7 +87,7 @@ const UNUSED_CURRENCY = 'JPY';
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.7.2 - US7: enable and disable a currency without deleting it', () => {
+describeBlock('Exchange-rate_1.7.2 - US7: enable and disable a currency without deleting it', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -105,7 +105,7 @@ describeBlock('CRM-11857_1.7.2 - US7: enable and disable a currency without dele
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.7.2: US7 - An administrator can take a currency out of use and put it back without deleting it', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.7.2: US7 - An administrator can take a currency out of use and put it back without deleting it', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

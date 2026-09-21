@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US8: the history explains a historical figure
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.8.2
+ *  Test Case ID    : Exchange-rate_1.8.2
  *  Automation-Type : new
  *  Automation-Date : 2026-08-18
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    development.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.8\.2:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.8\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -67,7 +67,7 @@ const ISSUED_STATUS = 'Paid';
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('CRM-11857_1.8.2 - US8: the rate history explains a historical figure', () => {
+test.describe('Exchange-rate_1.8.2 - US8: the rate history explains a historical figure', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -86,7 +86,7 @@ test.describe('CRM-11857_1.8.2 - US8: the rate history explains a historical fig
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.8.2: US8 - A past rate can be found in the history and used to explain an issued figure', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.8.2: US8 - A past rate can be found in the history and used to explain an issued figure', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -170,7 +170,7 @@ test.describe('CRM-11857_1.8.2 - US8: the rate history explains a historical fig
         `The issued figure (${invoiceTotalCompany}) should be re-derivable as Total / the history rate (${expectedUSD.toFixed(2)})`
       ).toBeLessThanOrEqual(tolerance);
       console.log('  Result: PASS - the issued figure is fully accounted for by one row of the rate history');
-      console.log('✅ CRM-11857_1.8.2 verified: a finance user can explain a historical company-currency figure from the rate history alone');
+      console.log('✅ Exchange-rate_1.8.2 verified: a finance user can explain a historical company-currency figure from the rate history alone');
     });
   });
 });

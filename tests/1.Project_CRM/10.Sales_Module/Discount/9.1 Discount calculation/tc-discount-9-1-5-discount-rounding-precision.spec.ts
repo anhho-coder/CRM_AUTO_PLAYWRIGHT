@@ -8,9 +8,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.1. - Discount calculation
+ *  10.Sales_Module / Discount / 9.1 Discount calculation
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.1.5
+ *  Test Case ID    : Discount_9.1.5
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -22,7 +22,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    off-by-a-cent drift.
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.1\.5:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.1\.5:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -53,7 +53,7 @@ const parsePercentInLabel = (label: string | undefined | null): number => {
   return m ? parseFloat(m[1]) : NaN;
 };
 
-test.describe('Discount-A.1.2.1.5 - Bronze partner-discount rounding / precision', () => {
+test.describe('Discount_9.1.5 - Bronze partner-discount rounding / precision', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -72,7 +72,7 @@ test.describe('Discount-A.1.2.1.5 - Bronze partner-discount rounding / precision
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.1.5: The Bronze discount amount is correctly rounded to 2 decimals and the total reconciles', async ({ page }, testInfo) => {
+  test('Discount_9.1.5: The Bronze discount amount is correctly rounded to 2 decimals and the total reconciles', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -81,7 +81,7 @@ test.describe('Discount-A.1.2.1.5 - Bronze partner-discount rounding / precision
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.1.5 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.1.5 - ${compactDateTime}`;
 
     let subtotal1 = 0;
 

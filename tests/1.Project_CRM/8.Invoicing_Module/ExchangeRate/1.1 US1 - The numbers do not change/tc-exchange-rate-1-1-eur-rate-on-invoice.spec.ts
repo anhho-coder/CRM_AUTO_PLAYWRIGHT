@@ -10,7 +10,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  * ===========================================================================
  *  ExchangeRate  -  EUR exchange rate works correctly on Invoice
  * ===========================================================================
- *  Test Case ID    : ExchangeRate-1.1
+ *  Test Case ID    : Exchange-rate_1.1.5
  *  Automation-Type : new
  *  Automation-Date : 2026-06-30
  *
@@ -20,7 +20,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    Invoices list verify the invoice's "Total in Company Currency" (USD) = InvoiceTotal#1 / EURRate#1.
  *
  *  Command to run:
- *    npx playwright test --grep "ExchangeRate-1\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.1\.5:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -48,7 +48,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    2.  Click "CRM" > "view list"
  *    3.  On Opp page, click "CREATE"
  *    4.  Enter:
- *          - Opp name                 = TEST ExchangeRate-1.1 <current date time>
+ *          - Opp name                 = TEST Exchange-rate_1.1.5 <current date time>
  *          - Contact name             = Name from Internal Note #1
  *          - CompanyName              = Company Name Lead 1 (from Internal Note #1)
  *          - Email                    = Email from Internal Note #1
@@ -101,7 +101,7 @@ const SKIP_CLEANUP_OPP = true; // true = skip Opp cleanup (validated Invoice can
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('ExchangeRate-1.1 - EUR exchange rate works correctly on Invoice', () => {
+test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoice', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }, testInfo) => {
@@ -124,7 +124,7 @@ test.describe('ExchangeRate-1.1 - EUR exchange rate works correctly on Invoice',
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('ExchangeRate-1.1: EUR exchange rate works correctly on Invoice', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.1.5: EUR exchange rate works correctly on Invoice', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -138,7 +138,7 @@ test.describe('ExchangeRate-1.1 - EUR exchange rate works correctly on Invoice',
 
     // ─── Pre-condition #1: build the deal-registration Internal Note #1 (fresh data each run) ───
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST ExchangeRate-1.1 ${compactDateTime}`;
+    const oppName = `TEST Exchange-rate_1.1.5 ${compactDateTime}`;
 
     await test.step('Pre-condition #1: Build the deal-registration Internal Note #1 from the template (fresh dynamic values)', async () => {
       console.log('Pre-condition #1: Internal Note #1 key fields (one per line):');
@@ -155,7 +155,7 @@ test.describe('ExchangeRate-1.1 - EUR exchange rate works correctly on Invoice',
     });
 
     // ─── Pre-condition #2 (steps 1-19): create + validate the EUR Invoice as Thomas (grouped setup) ───
-    // Pure setup that ExchangeRate-1.1 does not itself verify -> run as ONE grouped block via the shared
+    // Pure setup that Exchange-rate_1.1.5 does not itself verify -> run as ONE grouped block via the shared
     // helper (it still emits one test.step per manual sub-step for traceability). Pricelist = EUR.
     const invoice = await createValidatedInvoiceAsThomas(page, {
       oppName,

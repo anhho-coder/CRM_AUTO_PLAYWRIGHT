@@ -9,7 +9,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US4: the settings screen shows source, frequency and next run
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.4.2
+ *  Test Case ID    : Exchange-rate_1.4.2
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -20,7 +20,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    working schedule from a stalled one.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.4\.2:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.4\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -86,7 +86,7 @@ const todayForCronField = (): string => `${asDateField(new Date())} 00:00:00`;
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.4.2 - US4: the settings screen shows source, frequency and next run', () => {
+describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, frequency and next run', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -104,7 +104,7 @@ describeBlock('CRM-11857_1.4.2 - US4: the settings screen shows source, frequenc
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.4.2: US4 - The settings screen shows which source is used, how often it runs and when it next runs, and the next run moves forward after a run', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.4.2: US4 - The settings screen shows which source is used, how often it runs and when it next runs, and the next run moves forward after a run', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

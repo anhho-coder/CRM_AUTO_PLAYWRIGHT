@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US9: only the currencies in use are enabled
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.9.1
+ *  Test Case ID    : Exchange-rate_1.9.1
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -18,7 +18,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    currencies were disabled rather than deleted, so the starting set is clean while nothing was lost.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.9\.1:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.9\.1:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -56,7 +56,7 @@ import { CommonUtils } from '@helpers/common.utils';
 /** The currencies the business transacts in - the set that must be enabled, and nothing else. */
 const CURRENCIES_IN_USE = ['USD', 'EUR', 'GBP', 'CHF', 'IDR', 'INR', 'UAH'];
 
-test.describe('CRM-11857_1.9.1 - US9: only the currencies in use are enabled', () => {
+test.describe('Exchange-rate_1.9.1 - US9: only the currencies in use are enabled', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -75,7 +75,7 @@ test.describe('CRM-11857_1.9.1 - US9: only the currencies in use are enabled', (
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.9.1: US9 - Only the currencies the business uses are enabled, and the unused ones remain on file but disabled', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.9.1: US9 - Only the currencies the business uses are enabled, and the unused ones remain on file but disabled', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -146,7 +146,7 @@ test.describe('CRM-11857_1.9.1 - US9: only the currencies in use are enabled', (
         'At least one archived currency should be outside the in-use set, proving those records still exist'
       ).toBe(true);
       console.log('  Result: PASS - the unused currencies are still on file, just disabled');
-      console.log('✅ CRM-11857_1.9.1 verified: only the currencies in use are enabled; the rest are disabled rather than deleted');
+      console.log('✅ Exchange-rate_1.9.1 verified: only the currencies in use are enabled; the rest are disabled rather than deleted');
     });
   });
 });

@@ -8,9 +8,9 @@ import { createMultiProductInvoiceAsThomas, deleteCreatedOpportunityAsAdmin, mon
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.1. - Discount calculation
+ *  10.Sales_Module / Discount / 9.1 Discount calculation
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.1.2
+ *  Test Case ID    : Discount_9.1.2
  *  Jira            : N/A   (distinct scenario alongside TC.-B.1.5, which checks the totals-block sums)
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -22,7 +22,7 @@ import { createMultiProductInvoiceAsThomas, deleteCreatedOpportunityAsAdmin, mon
  *    (TC.-B.1.5 checks the Subtotal/Discount/Total block; this checks the per-line placement of the discount.)
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.1\.2:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.1\.2:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -47,7 +47,7 @@ const parsePercentInLabel = (label: string | undefined | null): number => {
   return m ? parseFloat(m[1]) : NaN;
 };
 
-test.describe('Discount-A.1.2.1.2 - Multi-product: Bronze 15% applied once at order level', () => {
+test.describe('Discount_9.1.2 - Multi-product: Bronze 15% applied once at order level', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -66,7 +66,7 @@ test.describe('Discount-A.1.2.1.2 - Multi-product: Bronze 15% applied once at or
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.1.2: On a multi-product invoice the 15% discount is order-level and each line stays gross', async ({ page, browser }, testInfo) => {
+  test('Discount_9.1.2: On a multi-product invoice the 15% discount is order-level and each line stays gross', async ({ page, browser }, testInfo) => {
     test.setTimeout(config.timeouts.test * 2); // multi-product + Sales Manager approval
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -74,7 +74,7 @@ test.describe('Discount-A.1.2.1.2 - Multi-product: Bronze 15% applied once at or
     const resellerPortalPage = new ResellerPortalPage(page);
 
     const { leadName, companyEmail, compactDateTime, note } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.1.2 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.1.2 - ${compactDateTime}`;
 
     const invoice = await createMultiProductInvoiceAsThomas(page, {
       oppName, contactName: leadName, companyEmail, internalNote: note, browser, testInfo,

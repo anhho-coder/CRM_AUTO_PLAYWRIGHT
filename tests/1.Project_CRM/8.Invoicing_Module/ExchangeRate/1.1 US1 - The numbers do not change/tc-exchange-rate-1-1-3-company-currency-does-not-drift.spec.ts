@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US1: the company-currency figure does not drift on re-read
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.1.3
+ *  Test Case ID    : Exchange-rate_1.1.3
  *  Automation-Type : new
  *  Automation-Date : 2026-08-18
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    recalculated on every read.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.1\.3:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.1\.3:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -60,7 +60,7 @@ const ISSUED_STATUS = 'Paid';
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('CRM-11857_1.1.3 - US1: the company-currency figure does not drift on re-read', () => {
+test.describe('Exchange-rate_1.1.3 - US1: the company-currency figure does not drift on re-read', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -79,7 +79,7 @@ test.describe('CRM-11857_1.1.3 - US1: the company-currency figure does not drift
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.1.3: US1 - Re-reading an issued invoice returns exactly the same company-currency figure', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.1.3: US1 - Re-reading an issued invoice returns exactly the same company-currency figure', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -154,7 +154,7 @@ test.describe('CRM-11857_1.1.3 - US1: the company-currency figure does not drift
       expect(readTwo, 'The value after a browser reload should be identical to the first read').toBe(readOne);
       expect(readThree, 'The value after logging out and back in should be identical to the first read').toBe(readOne);
       console.log('  Result: PASS - the figure did not drift across a reload or a new session');
-      console.log('✅ CRM-11857_1.1.3 verified: the company-currency figure is stored on the document, not recalculated per read');
+      console.log('✅ Exchange-rate_1.1.3 verified: the company-currency figure is stored on the document, not recalculated per read');
     });
   });
 });

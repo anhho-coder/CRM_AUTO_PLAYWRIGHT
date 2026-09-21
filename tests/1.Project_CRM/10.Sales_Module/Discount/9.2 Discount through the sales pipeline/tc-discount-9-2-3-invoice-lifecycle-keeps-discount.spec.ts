@@ -7,9 +7,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
 
 /**
  * ===========================================================================
- *  Discount / A.1. - Reseller partner / A.1.2. - Bronze level / A.1.2.2. - Discount through the sales pipeline
+ *  10.Sales_Module / Discount / 9.2 Discount through the sales pipeline
  * ===========================================================================
- *  Test Case ID    : Discount-A.1.2.2.3
+ *  Test Case ID    : Discount_9.2.3
  *  Jira            : N/A
  *  Automation-Type : new
  *  Automation-Date : 2026-07-13
@@ -20,7 +20,7 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    stays = line gross Subtotal x 0.85 (the discount is neither dropped nor re-applied).
  *
  *  Command to run:
- *    npx playwright test --grep "Discount-A\.1\.2\.2\.3:" --project=chromium
+ *    npx playwright test --grep "Discount_9\.2\.3:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -42,7 +42,7 @@ const BRONZE_PERCENT = 15;
 
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
 
-test.describe('Discount-A.1.2.2.3 - Bronze discount survives the invoice state lifecycle', () => {
+test.describe('Discount_9.2.3 - Bronze discount survives the invoice state lifecycle', () => {
   let createdOppUrl: string | null = null;
 
   test.beforeEach(async ({ context, page }) => {
@@ -61,14 +61,14 @@ test.describe('Discount-A.1.2.2.3 - Bronze discount survives the invoice state l
     await deleteCreatedOpportunityAsAdmin(page, createdOppUrl, SKIP_CLEANUP_OPP, testInfo);
   });
 
-  test('Discount-A.1.2.2.3: The 15% Partner Discount persists across Open -> Cancel -> Draft', async ({ page }, testInfo) => {
+  test('Discount_9.2.3: The 15% Partner Discount persists across Open -> Cancel -> Draft', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const invoicePage = new InvoicePage(page);
 
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
-    const oppName = `TEST Discount - Discount-A.1.2.2.3 - ${compactDateTime}`;
+    const oppName = `TEST Discount - Discount_9.2.3 - ${compactDateTime}`;
 
     let subtotal1 = 0;
     const expectNet = () => subtotal1 * (1 - BRONZE_PERCENT / 100);

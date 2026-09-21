@@ -9,7 +9,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * ===========================================================================
  *  ExchangeRate  -  US4: a manual refresh, without waiting for the next run
  * ===========================================================================
- *  Test Case ID    : CRM-11857_1.4.3
+ *  Test Case ID    : Exchange-rate_1.4.3
  *  Automation-Type : new
  *  Automation-Date : 2026-08-19
  *
@@ -19,7 +19,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    missing and waiting until tomorrow is not an option.
  *
  *  Command to run:
- *    npx playwright test --grep "CRM-11857_1\.4\.3:" --project=chromium
+ *    npx playwright test --grep "Exchange-rate_1\.4\.3:" --project=chromium
  *
  * ---------------------------------------------------------------------------
  *  Source manual TC  (mirrors the manual steps - same order, same content)
@@ -87,7 +87,7 @@ const tomorrowForDateField = (): string => {
 
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
-describeBlock('CRM-11857_1.4.3 - US4: a manual refresh without waiting for the next run', () => {
+describeBlock('Exchange-rate_1.4.3 - US4: a manual refresh without waiting for the next run', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -105,7 +105,7 @@ describeBlock('CRM-11857_1.4.3 - US4: a manual refresh without waiting for the n
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.4.3: US4 - The refresh control on the settings screen fetches rates at once, without waiting for the next scheduled run', async ({ page }, testInfo) => {
+  test('Exchange-rate_1.4.3: US4 - The refresh control on the settings screen fetches rates at once, without waiting for the next scheduled run', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
