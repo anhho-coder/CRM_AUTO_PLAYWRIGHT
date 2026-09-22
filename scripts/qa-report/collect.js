@@ -370,6 +370,17 @@ async function main() {
     : statuses.some((s) => s === 'ok') ? 'degraded' : 'failed';
   fs.writeFileSync(path.join(cfg.DATA_DIR, 'status.txt'), overall);
 
+  // WHICH and HOW MANY sources failed. status.txt alone cannot tell a run that lost one
+  // source from a run that lost five, so the Jenkins retry loop used to publish whichever
+  // attempt happened to run LAST — on build #114 that threw away five good attempts to
+  // publish a sixth that had lost jiraAutomationTc to a transient Jira 400.
+  // See the best-attempt selection in Jenkinsfile.qa-report.
+  const failedNames = Object.entries(data.sources)
+    .filter(([, s]) => s.status !== 'ok').map(([k]) => k).sort();
+  fs.writeFileSync(path.join(cfg.DATA_DIR, 'failed-sources.txt'), failedNames.join(','));
+  console.log(`[collect] ${failedNames.length} source(s) failed` +
+    (failedNames.length ? `: ${failedNames.join(', ')}` : ''));
+
   console.log(`[collect] status=${overall}; default range lastWeek ${ranges.lastWeek.from}..${ranges.lastWeek.to}`);
   for (const m of [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_TRANSITION_METRICS]) {
     const v = data.metrics[m.key];

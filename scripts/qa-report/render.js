@@ -2382,6 +2382,21 @@ function main() {
   // Quarterly KPI + By range sub-views but renders ONLY that section's metrics.
   const metricsPageHtml = (section, navKey, title) => {
     const metrics = section.metricKeys.map((k) => metaByKey[k]).filter(Boolean);
+    // A failed source does not render an error — it renders NOTHING. The filters below
+    // drop the metric and the card simply is not there, which reads as "this metric was
+    // never built" rather than "its source failed today". That is exactly how a degraded
+    // build came to be reported as the report being out of date. The banner above names
+    // the SOURCE, but nobody maps a source id to the cards it feeds, so name the missing
+    // CARDS on the page they belong to. Derived from this section's own metric list, so
+    // there is no source-name-to-label guessing: absent from BOTH data.metrics and
+    // data.quarterly is exactly "this card could not be built this run".
+    const missingMetrics = metrics.filter((m) =>
+      !(data.metrics && data.metrics[m.key]) && !(data.quarterly && data.quarterly[m.key]));
+    const missingHtml = missingMetrics.length
+      ? `<div class="warn">⚠ ${missingMetrics.length} card${missingMetrics.length > 1 ? 's' : ''} could not be built in this run: `
+        + missingMetrics.map((m) => `<b>${esc(m.label)}</b>`).join(', ')
+        + ` — the feeding source failed during collect, so this is <b>not</b> a zero and <b>not</b> a removed metric.</div>`
+      : '';
     const quarterlyMetrics = metrics.filter((m) => data.quarterly && data.quarterly[m.key]);
     const quarterlySections = quarterlyMetrics
       .map((m, i) => withAnchor(m, quarterlySection(m, data.quarterly[m.key], i === 0), '-q')).join('\n');
@@ -2414,6 +2429,7 @@ function main() {
 </div>
 <div class="wrap">
   ${sourceBanner(data.sources)}
+  ${missingHtml}
   <div class="viewtabs">
     <button type="button" data-viewbtn="quarterly" class="${defView === 'quarterly' ? 'active' : ''}">Quarterly KPI</button>
     <button type="button" data-viewbtn="range" class="${defView === 'range' ? 'active' : ''}">By range</button>

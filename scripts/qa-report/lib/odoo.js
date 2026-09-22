@@ -10,11 +10,25 @@
 
 async function jsonRpc(baseUrl, params) {
   const url = baseUrl.replace(/\/+$/, '') + '/jsonrpc';
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params, id: 1 }),
-  });
+  let res;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params, id: 1 }),
+    });
+  } catch (e) {
+    // Node/undici collapses EVERY transport failure into the useless message
+    // "fetch failed" and hides the real reason in e.cause. Two Jenkins outages
+    // (builds #105-#108 and #114) lost the Odoo sources for hours and the log never
+    // said whether it was DNS, TLS, a refused connection or a timeout. Unwrap it —
+    // on ONE line, so the existing "[collect] ... source failed" console greps match.
+    const c = (e && e.cause) || null;
+    const detail = c ? [c.code, c.syscall, c.hostname || c.host, c.errno, c.message]
+      .filter(Boolean).join(' ') : '';
+    throw new Error(`Odoo transport failure on POST ${url} — ${e.message || e}` +
+      (detail ? ` (cause: ${detail})` : ' (no e.cause available)'));
+  }
   if (!res.ok) throw new Error(`Odoo HTTP ${res.status} ${res.statusText}`);
   const data = await res.json();
   if (data.error) {

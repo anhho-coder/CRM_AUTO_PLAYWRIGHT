@@ -59,7 +59,8 @@ class JiraClient {
     // SHARED Jira DC, so transient 429/503/timeout become likely; left unhandled, one
     // rejection bubbles through mapLimit -> Promise.all and drops the whole metric.
     // Retry the retryable ones with backoff (honouring Retry-After) and bound each
-    // attempt with a timeout. Non-retryable HTTP (e.g. 400/401/404) throws at once.
+    // attempt with a timeout. Non-retryable HTTP (e.g. 401/404, and any 400 that is a
+    // genuinely bad JQL) throws at once.
     const MAX_RETRIES = 4, TIMEOUT_MS = 45000;
     for (let attempt = 0; ; attempt++) {
       let res;
@@ -73,14 +74,29 @@ class JiraClient {
         continue;
       }
       if (res.ok) return res.json();
-      const retryable = res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
+      // Read the body BEFORE deciding retryability. This shared Jira DC intermittently
+      // answers a perfectly valid JQL with HTTP 400 "Field '<x>' does not exist or this
+      // field cannot be viewed by anonymous users" WHILE the same process is
+      // authenticated (the identical JQL re-run by hand returns 200, and the field name
+      // it names differs run to run). It is a transient auth-context flake, not a bad
+      // query — and because only 429/5xx retried, ONE such response out of a thousand
+      // killed a whole metric and silently removed its cards from the published report.
+      // Retry it like a 429; a genuine bad-JQL 400 (any other message) still fails fast.
+      const text = await res.text().catch(() => '');
+      const loginReason = res.headers.get('x-seraph-loginreason') || 'n/a';
+      const anonFlake = res.status === 400 && /cannot be viewed by anonymous users/i.test(text);
+      const retryable = anonFlake ||
+        res.status === 429 || res.status === 502 || res.status === 503 || res.status === 504;
       if (retryable && attempt < MAX_RETRIES) {
+        console.warn(`[jira] retryable HTTP ${res.status}${anonFlake ? ' (anonymous-users flake)' : ''}` +
+          ` on ${method} ${apiPath} — try ${attempt + 1}/${MAX_RETRIES + 1},` +
+          ` login-reason=${loginReason}, rate-limit-remaining=${res.headers.get('x-ratelimit-remaining') || 'n/a'}`);
         const ra = Number(res.headers.get('retry-after'));
         await sleep(Number.isFinite(ra) && ra > 0 ? Math.min(ra * 1000, 30000) : backoffMs(attempt));
         continue;
       }
-      const text = await res.text().catch(() => '');
       throw new Error(`Jira HTTP ${res.status} ${res.statusText} on ${method} ${apiPath}` +
+        ` [login-reason=${loginReason}]` +
         (text ? ` — ${text.slice(0, 300)}` : ''));
     }
   }

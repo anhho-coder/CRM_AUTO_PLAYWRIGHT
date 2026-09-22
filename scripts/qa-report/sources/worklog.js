@@ -15,11 +15,11 @@
 const fs = require('fs');
 const path = require('path');
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES, DATA_DIR } = require('../config');
+const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES, CACHE_DIR } = require('../config');
 const { isoDate } = require('../lib/ranges');
 
 const FETCH_CONCURRENCY = 8;       // simultaneous per-issue worklog reads
-const CACHE_FILE = path.join(DATA_DIR, 'worklog-cache.json');
+const CACHE_FILE = path.join(CACHE_DIR, 'worklog-cache.json');
 const MS_DAY = 86400000;
 const addDaysIso = (iso, n) => isoDate(new Date(Date.parse(iso + 'T00:00:00Z') + n * MS_DAY));
 const minIso = (a, b) => (a <= b ? a : b);
@@ -78,7 +78,7 @@ function loadCache() {
 }
 
 function saveCache(obj) {
-  try { fs.mkdirSync(DATA_DIR, { recursive: true }); fs.writeFileSync(CACHE_FILE, JSON.stringify(obj)); }
+  try { fs.mkdirSync(CACHE_DIR, { recursive: true }); fs.writeFileSync(CACHE_FILE, JSON.stringify(obj)); }
   catch (e) { console.error('[worklog] cache write failed:', e.message || e); }
 }
 

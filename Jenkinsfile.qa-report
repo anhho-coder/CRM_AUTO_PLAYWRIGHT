@@ -36,6 +36,14 @@ pipeline {
         ODOO_URL = 'https://crm.nakivo.com'
         ODOO_DB  = 'Nakivo01'
         JIRA_URL = 'http://jira.nakivo.com'
+        // Cross-build cache dir, deliberately OUTSIDE the workspace: this job checks out
+        // with WipeWorkspace + CleanBeforeCheckout, so the workspace — qa-report-out and
+        // its data/ included — is deleted and re-cloned before every build. With the cache
+        // inside it the worklog source re-fetched the WHOLE YEAR on every single run
+        // ("[worklog] full fetch 2026-01-01..") at ~25-30 min per collect attempt, which is
+        // what made a 6-attempt build take 112 min. Kept outside, only the last
+        // WORKLOG_REFRESH_DAYS are re-read and the rest comes from cache.
+        QA_REPORT_CACHE_DIR = 'E:/jenkins-cache/crm-qa-report'
         // QA_REPORT_WINDOW_DAYS = '7'   // uncomment to override the rolling window
     }
 
@@ -61,8 +69,21 @@ pipeline {
                     // if degraded), never blank. The bat is wrapped so a collect crash can't
                     // fail the stage either. Raise maxAttempts only if you also raise the timeout.
                     script {
+                        // Keep the BEST attempt, not the LAST one. Every collect run overwrites
+                        // qa-report-out/data/, so this loop used to publish whatever the final
+                        // attempt happened to leave behind. On build #114 that discarded five
+                        // good attempts in favour of a sixth that had lost jiraAutomationTc to a
+                        // transient Jira 400 — and the Automation cards silently disappeared from
+                        // the report, which reads as "the metric was never built".
+                        // collect.js now writes failed-sources.txt; we snapshot latest.json +
+                        // status.txt after any attempt that beats the best so far, and restore
+                        // that snapshot before Render. worklog-cache.json is NOT snapshotted: it
+                        // is a cross-build cache (and now lives outside the workspace), not report data.
                         def maxAttempts = 6
                         def st = 'failed'
+                        def bestFailed = 100000
+                        def bestSt = 'failed'
+                        def bestAttempt = 0
                         for (int attempt = 1; attempt <= maxAttempts; attempt++) {
                             if (attempt > 1) {
                                 echo "Collect attempt ${attempt}/${maxAttempts}: previous run was '${st}', retrying for complete data…"
@@ -74,7 +95,41 @@ pipeline {
                                 echo "Collect attempt ${attempt} crashed: ${err}"
                             }
                             try { st = readFile(file: 'qa-report-out/data/status.txt').trim() } catch (e) { st = 'failed' }
+                            // 99999 = "could not tell"; it still ranks below any real count, so an
+                            // unreadable attempt never beats a readable one but does beat nothing.
+                            def failed = 99999
+                            try {
+                                def f = readFile(file: 'qa-report-out/data/failed-sources.txt').trim()
+                                failed = f ? f.split(',').length : 0
+                            } catch (e) { failed = 99999 }
+                            echo "Collect attempt ${attempt}: status=${st}, failed sources=${failed == 99999 ? 'unknown' : failed}"
+                            if (failed < bestFailed) {
+                                // Only count it as the new best if the snapshot actually succeeded,
+                                // otherwise a crashed attempt could leave us with nothing to restore.
+                                try {
+                                    writeFile file: 'collect-best/latest.json', encoding: 'UTF-8',
+                                        text: readFile(file: 'qa-report-out/data/latest.json', encoding: 'UTF-8')
+                                    writeFile file: 'collect-best/status.txt', encoding: 'UTF-8',
+                                        text: readFile(file: 'qa-report-out/data/status.txt', encoding: 'UTF-8')
+                                    bestFailed = failed; bestSt = st; bestAttempt = attempt
+                                    echo "Collect attempt ${attempt} is the best so far (${failed == 99999 ? 'unknown' : failed} failed source(s)) — snapshotted."
+                                } catch (e) {
+                                    echo "Collect attempt ${attempt}: snapshot failed (${e.message}); keeping the previous best."
+                                }
+                            }
                             if (st == 'ok') break
+                        }
+                        if (bestAttempt > 0) {
+                            try {
+                                writeFile file: 'qa-report-out/data/latest.json', encoding: 'UTF-8',
+                                    text: readFile(file: 'collect-best/latest.json', encoding: 'UTF-8')
+                                writeFile file: 'qa-report-out/data/status.txt', encoding: 'UTF-8',
+                                    text: readFile(file: 'collect-best/status.txt', encoding: 'UTF-8')
+                                st = bestSt
+                                echo "Restored attempt #${bestAttempt} (${bestFailed == 99999 ? 'unknown' : bestFailed} failed source(s)) for rendering."
+                            } catch (e) {
+                                echo "Could not restore the best snapshot (${e.message}); publishing the last attempt instead."
+                            }
                         }
                         echo "Collect data status: ${st}"
                     }

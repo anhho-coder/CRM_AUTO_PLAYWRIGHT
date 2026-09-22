@@ -19,6 +19,14 @@ const REPO_ROOT = path.resolve(__dirname, '..', '..');
 const OUT_DIR = path.join(REPO_ROOT, 'qa-report-out'); // published by Jenkins (HTML Publisher)
 const DATA_DIR = path.join(OUT_DIR, 'data');
 const HISTORY_DIR = path.join(DATA_DIR, 'history');
+// Cross-build cache (the worklog year store). On CI this MUST resolve outside the
+// workspace: the Jenkins job checks out with WipeWorkspace + CleanBeforeCheckout, so the
+// whole workspace — qa-report-out included — is deleted and re-cloned before every build
+// ("Wiping out workspace first." in the console). That is why the incremental worklog
+// path below (WORKLOG_REFRESH_DAYS) has never once taken effect on Jenkins and every
+// build re-fetched the entire year. Jenkinsfile.qa-report sets QA_REPORT_CACHE_DIR to a
+// path outside the workspace; locally it falls back to DATA_DIR, exactly as before.
+const CACHE_DIR = process.env.QA_REPORT_CACHE_DIR || DATA_DIR;
 
 // --- Odoo connection (source of the daily KPI database) ----------------------
 // CI: set ODOO_URL / ODOO_DB / ODOO_USER / ODOO_PASSWORD (Jenkins credentials).
@@ -779,7 +787,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 // Selectable ranges (last week / this month / quarter / year) are defined in lib/ranges.js.
 
 module.exports = {
-  REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR,
+  REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR, CACHE_DIR,
   loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
