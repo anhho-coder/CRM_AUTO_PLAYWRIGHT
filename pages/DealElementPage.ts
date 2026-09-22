@@ -159,7 +159,7 @@ export class DealElementPage extends BasePage {
   async addProduct(productName: string): Promise<boolean> {
     try {
       // Bounded click with an anchor fallback: an untimed click() here retries until the whole TEST
-      // times out (15 min burned on CRM-12370_1.4.1 with not a single log line), so fail in seconds
+      // times out (15 min burned on CRM-12370_4.1.1 with not a single log line), so fail in seconds
       // and say what the screen was showing instead.
       let clicked = await this.addProductButton()
         .click({ timeout: CommonUtils.waitTimes.abnormalWait })
