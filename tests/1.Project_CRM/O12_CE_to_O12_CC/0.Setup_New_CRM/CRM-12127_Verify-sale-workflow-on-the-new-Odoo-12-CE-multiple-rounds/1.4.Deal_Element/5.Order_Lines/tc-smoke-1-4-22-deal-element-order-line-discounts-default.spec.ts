@@ -63,7 +63,7 @@ import {
  *      Partner Discount Amount all read 0.00.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.22:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.22:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.22';

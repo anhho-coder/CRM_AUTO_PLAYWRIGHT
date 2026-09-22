@@ -56,7 +56,7 @@ import {
  * the test dies mid-way.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\\.1\\.17:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\\.1\\.17:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.1.17';

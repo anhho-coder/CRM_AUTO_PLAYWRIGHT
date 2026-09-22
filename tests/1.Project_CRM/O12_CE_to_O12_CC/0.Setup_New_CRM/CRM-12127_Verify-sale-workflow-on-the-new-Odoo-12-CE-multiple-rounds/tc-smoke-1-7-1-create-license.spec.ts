@@ -62,7 +62,7 @@ import {
  *   2. The License saves and the "for monitoring" value reads "sockets" (SOCKET).
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.7\.1:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.7\.1:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

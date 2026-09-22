@@ -57,7 +57,7 @@ import {
  *   1. Payment Terms reads "Immediate Payment" on the saved Deal Element.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.14:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.14:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.14';

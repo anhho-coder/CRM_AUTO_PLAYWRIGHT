@@ -62,7 +62,7 @@ import {
  *   2. The "Send Invoice" composer completes and the Invoice form returns to readonly.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.6\.3:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.6\.3:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

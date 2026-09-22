@@ -58,7 +58,7 @@ import {
  *   2. Validity lands 30 days after today (29-31 accepted, so a run across midnight cannot flap).
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.15:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.15:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.15';

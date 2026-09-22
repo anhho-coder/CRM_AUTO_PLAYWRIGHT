@@ -78,7 +78,7 @@ import { baseUrl_mig } from '@config/users.config';
  *   - reopen the record with ?debug on to read it at all.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.5\.26:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.5\.26:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.5.26';

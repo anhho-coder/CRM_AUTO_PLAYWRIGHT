@@ -53,7 +53,7 @@ import {
  *   2. After the edit + SAVE, the saved Address shows the State "CA".
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.2\.2:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.2\.2:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

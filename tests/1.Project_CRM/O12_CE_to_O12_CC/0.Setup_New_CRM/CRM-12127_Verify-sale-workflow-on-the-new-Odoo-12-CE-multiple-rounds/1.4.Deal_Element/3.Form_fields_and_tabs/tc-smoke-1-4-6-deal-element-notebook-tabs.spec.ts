@@ -59,7 +59,7 @@ import {
  *   2. They read Order Lines, Optional Products, Other Information, in that order.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.6:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.6:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.6';

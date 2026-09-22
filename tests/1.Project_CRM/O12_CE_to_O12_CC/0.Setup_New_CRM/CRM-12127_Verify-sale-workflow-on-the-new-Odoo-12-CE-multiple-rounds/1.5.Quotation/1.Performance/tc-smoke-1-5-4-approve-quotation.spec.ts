@@ -73,7 +73,7 @@ import {
  *      forward action - CONFIRM / SEND BY EMAIL - is available).
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.5\.4:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.5\.4:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

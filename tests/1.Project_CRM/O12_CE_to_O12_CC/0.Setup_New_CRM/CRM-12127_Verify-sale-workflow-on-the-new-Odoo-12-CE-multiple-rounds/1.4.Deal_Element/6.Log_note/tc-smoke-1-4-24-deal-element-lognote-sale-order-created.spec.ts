@@ -58,7 +58,7 @@ import {
  *   2. A newly created Deal Element carries exactly 2 log notes.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.24:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.24:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.24';

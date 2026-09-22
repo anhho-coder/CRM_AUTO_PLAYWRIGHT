@@ -58,7 +58,7 @@ import {
  *   1. Pricelist reads "Public Pricelist_USD (USD)" on the saved Deal Element.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.13:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.13:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.13';

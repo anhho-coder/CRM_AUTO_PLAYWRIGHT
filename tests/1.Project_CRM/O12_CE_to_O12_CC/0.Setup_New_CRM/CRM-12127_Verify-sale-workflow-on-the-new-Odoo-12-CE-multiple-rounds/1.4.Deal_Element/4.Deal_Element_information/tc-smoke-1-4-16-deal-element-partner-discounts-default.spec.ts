@@ -59,7 +59,7 @@ import {
  *   2. Reseller Discount (%) reads 0.00 ( $ 0.00 ).
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.16:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.16:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.16';

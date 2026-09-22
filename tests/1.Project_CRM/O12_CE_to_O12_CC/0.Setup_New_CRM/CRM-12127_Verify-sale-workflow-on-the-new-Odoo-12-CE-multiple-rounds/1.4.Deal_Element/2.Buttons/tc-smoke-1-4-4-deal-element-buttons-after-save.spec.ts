@@ -64,7 +64,7 @@ import {
  *   2. The form header carries exactly one button, reading "NEW QUOTATION".
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.4:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.4:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.4';

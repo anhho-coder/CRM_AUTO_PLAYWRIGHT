@@ -50,7 +50,7 @@ import {
  *   3. The Order Line is still present after the edit.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.2:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.4\.2:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

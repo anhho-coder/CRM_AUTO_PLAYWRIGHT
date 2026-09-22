@@ -75,7 +75,7 @@ import { baseUrl_mig } from '@config/users.config';
  *   - normal-session read above it is what guards against reading the debug view as the real one.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.5\.39:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.5\.39:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.5.39';

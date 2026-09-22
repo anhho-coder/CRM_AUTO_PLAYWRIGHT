@@ -58,7 +58,7 @@ import {
  *   2. Online Payment is ticked.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.18:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.18:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.18';

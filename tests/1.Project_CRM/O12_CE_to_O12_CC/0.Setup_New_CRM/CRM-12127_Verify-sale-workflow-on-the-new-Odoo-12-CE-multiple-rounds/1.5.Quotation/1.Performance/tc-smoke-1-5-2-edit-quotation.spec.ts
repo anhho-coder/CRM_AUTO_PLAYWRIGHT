@@ -58,7 +58,7 @@ import {
  *   2. After the edit + SAVE, the Quotation "Payment Terms" reads "15 Days".
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.5\.2:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_1\.5\.2:" --project=chromium
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

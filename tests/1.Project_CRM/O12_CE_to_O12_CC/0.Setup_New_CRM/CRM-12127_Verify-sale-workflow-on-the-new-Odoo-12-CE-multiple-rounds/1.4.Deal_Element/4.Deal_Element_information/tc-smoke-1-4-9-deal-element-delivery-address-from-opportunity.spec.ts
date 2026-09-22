@@ -59,7 +59,7 @@ import {
  *   2. Delivery Address is the Company the Opportunity carries.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.9:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.9:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.9';

@@ -64,7 +64,7 @@ import {
  *   2. Total in Company Currency equals the Subtotal of the order line.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.17:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.17:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.17';

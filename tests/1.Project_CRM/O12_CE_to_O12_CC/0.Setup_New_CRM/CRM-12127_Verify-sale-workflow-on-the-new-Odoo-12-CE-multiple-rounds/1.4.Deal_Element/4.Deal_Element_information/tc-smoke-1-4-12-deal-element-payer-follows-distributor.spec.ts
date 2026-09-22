@@ -70,7 +70,7 @@ import {
  *   4. End User stays the Company created for the Opportunity.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.12:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.12:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.12';

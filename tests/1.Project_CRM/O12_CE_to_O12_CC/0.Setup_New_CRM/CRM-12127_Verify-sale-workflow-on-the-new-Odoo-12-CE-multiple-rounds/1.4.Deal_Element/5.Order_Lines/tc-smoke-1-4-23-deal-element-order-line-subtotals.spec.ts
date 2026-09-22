@@ -66,7 +66,7 @@ import {
  *   4. Subtotal = Unit Price x Ordered Qty (no tax applies).
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12325_2\.4\.23:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_1\.4\.23:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_1.4.23';
