@@ -34,11 +34,20 @@ try {
   );
 }
 
-/** Look a password up by account key; fails loudly rather than logging in with an empty string. */
+/**
+ * Look a password up by account key; fails loudly rather than logging in with an empty string.
+ *
+ * A miss is COLLECTED, not thrown on the spot, so one run reports EVERY key that is absent.
+ * Throwing on the first miss cost four build cycles on 2026-09-22: the Jenkins credential was
+ * four keys behind the code, and each build named only the next one. The throw still happens at
+ * module load, right after the `users` object below - validation stays eager on purpose.
+ */
+const missingKeys: string[] = [];
 const pw = (key: string): string => {
   const value = secrets[key];
   if (!value) {
-    throw new Error(`No password for "${key}" in ${secretsPath} - add that key to the file.`);
+    missingKeys.push(key);
+    return '';          // never reaches a login: the check below throws before this file is usable
   }
   return value;
 };
@@ -190,6 +199,20 @@ export const users = {
     displayName: 'QA Portal Customer',
   }
 } as const;
+
+// Eager validation, reported in one shot. Every pw() above has run by now, so `missingKeys` holds
+// the COMPLETE set of absent account keys - fix them all in one edit instead of one per build.
+if (missingKeys.length > 0) {
+  throw new Error(
+    `No password for ${missingKeys.length} account key(s) in "${secretsPath}":\n` +
+    missingKeys.map(k => `  - ${k}`).join('\n') +
+    `\n\nAdd EVERY key listed above in one go.\n` +
+    `  local  : add them to config/users.secrets.json\n` +
+    `  Jenkins: re-upload the "Secret file" credential \`crm-users-secrets\`, which the ` +
+    `Jenkinsfile binds to CRM_SECRETS_FILE - the workspace has no copy to edit.\n` +
+    `config/users.secrets.example.json lists every key this suite needs.`
+  );
+}
 // Base URL of the CRM Pre-production environment
 // IMPORTANT: Need to connect to VPN before accessing this URL http://10.220.222.100/
 //export const baseUrl = 'http://pre-production.nakivo.site/';
