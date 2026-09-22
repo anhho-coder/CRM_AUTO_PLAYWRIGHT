@@ -279,7 +279,7 @@ echo ffmpeg OK
                         runPlaywright = { bat "npx playwright test --project=${project} --retries=1" }
                     } else {
                         echo "Job '${env.JOB_BASE_NAME}' | no PROJECT/SPEC set - running smoke spec"
-                        runPlaywright = { bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-1-create-lead.spec.ts" --project=chrome-headless --retries=1' }
+                        runPlaywright = { bat 'npx playwright test "tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-create-lead.spec.ts" --project=chrome-headless --retries=1' }
                     }
                     // --- Mid-run pre-prod VPN gate (see main Jenkinsfile) --------------------
                     // Abort (NOT_BUILT) if CRM-Connectivity-Check raises the VPN-down flag mid-run

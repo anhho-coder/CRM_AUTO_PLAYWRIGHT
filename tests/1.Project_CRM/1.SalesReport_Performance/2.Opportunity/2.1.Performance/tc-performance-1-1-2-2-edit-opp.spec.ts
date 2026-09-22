@@ -10,7 +10,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Command to run:
  * npx playwright test --grep "TC\.Performance\.1\.1\.2\.2:" --project=chromium
  *
- * Objective: Verify the consumer time for editing Opp is less than 1 minute
+ * Objective: Verify consumer time for editing Opp is less than 1 minute
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button

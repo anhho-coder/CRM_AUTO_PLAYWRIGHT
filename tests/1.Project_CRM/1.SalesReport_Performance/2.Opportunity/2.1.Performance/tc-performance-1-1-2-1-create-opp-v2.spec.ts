@@ -7,7 +7,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * Performance Test - Create CRM Opportunity
  * Test Case ID: TC.Performance.1.1.2.1
  * 
- * Summary: Verify the consumer time for creating Opp is less than 1 min
+ * Summary: Verify consumer time for creating Opp is less than 1 min
  * 
  * Command to run:
  * npx playwright test --grep "TC\.Performance\.1\.1\.2\.1:" --project=chromium

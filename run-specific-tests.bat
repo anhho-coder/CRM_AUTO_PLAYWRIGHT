@@ -28,8 +28,8 @@ REM ============================================================================
 REM PERFORMANCE TESTS (Uncomment to run)
 REM ============================================================================
 REM echo [TEST SUITE] Performance Tests
-REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-1-create-lead.spec.ts --project=chromium
-REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-2-edit-lead.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-1-create-lead.spec.ts --project=chromium
+REM call npx playwright test tests/1.Project_CRM/1.SalesReport_Performance/1.Lead/1.1.Performance/tc-performance-1-1-2-edit-lead.spec.ts --project=chromium
 REM echo.
 
 REM ============================================================================
