@@ -39,10 +39,12 @@ pipeline {
         // Cross-build cache dir, deliberately OUTSIDE the workspace: this job checks out
         // with WipeWorkspace + CleanBeforeCheckout, so the workspace — qa-report-out and
         // its data/ included — is deleted and re-cloned before every build. With the cache
-        // inside it the worklog source re-fetched the WHOLE YEAR on every single run
-        // ("[worklog] full fetch 2026-01-01..") at ~25-30 min per collect attempt, which is
-        // what made a 6-attempt build take 112 min. Kept outside, only the last
-        // WORKLOG_REFRESH_DAYS are re-read and the rest comes from cache.
+        // inside it, the FIRST collect attempt of every build re-fetched the whole year
+        // ("[worklog] full fetch 2026-01-01.."). Within one build the cache did work — on
+        // build #114 attempt 1 was full and attempts 2-6 were incremental (1218 cached rows
+        // kept) — so this costs the full-vs-incremental difference once per build, not per
+        // attempt. Kept outside the workspace, even the first attempt reads only the last
+        // WORKLOG_REFRESH_DAYS and the rest comes from cache.
         QA_REPORT_CACHE_DIR = 'E:/jenkins-cache/crm-qa-report'
         // QA_REPORT_WINDOW_DAYS = '7'   // uncomment to override the rolling window
     }

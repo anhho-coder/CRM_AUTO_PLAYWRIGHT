@@ -22,10 +22,11 @@ const HISTORY_DIR = path.join(DATA_DIR, 'history');
 // Cross-build cache (the worklog year store). On CI this MUST resolve outside the
 // workspace: the Jenkins job checks out with WipeWorkspace + CleanBeforeCheckout, so the
 // whole workspace — qa-report-out included — is deleted and re-cloned before every build
-// ("Wiping out workspace first." in the console). That is why the incremental worklog
-// path below (WORKLOG_REFRESH_DAYS) has never once taken effect on Jenkins and every
-// build re-fetched the entire year. Jenkinsfile.qa-report sets QA_REPORT_CACHE_DIR to a
-// path outside the workspace; locally it falls back to DATA_DIR, exactly as before.
+// ("Wiping out workspace first." in the console). That is why the FIRST collect attempt
+// of every Jenkins build re-fetched the entire year: the cache a previous build wrote was
+// already gone. Inside a single build it did work — later retry attempts read the cache
+// attempt 1 had just written. Jenkinsfile.qa-report sets QA_REPORT_CACHE_DIR to a path
+// outside the workspace; locally it falls back to DATA_DIR, exactly as before.
 const CACHE_DIR = process.env.QA_REPORT_CACHE_DIR || DATA_DIR;
 
 // --- Odoo connection (source of the daily KPI database) ----------------------
