@@ -430,7 +430,44 @@ export class ContactPage extends BasePage {
    * Click save button
    */
   async clickSave() {
-    await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // Retry the WAIT, not the click. Under host contention the Contact form can still be painting
+    // when SAVE is first looked for, and a single 30 s waitFor then fails although the form is
+    // perfectly healthy - CRM-12370_3.3.3 failed exactly this way on 2 of 4 runs (2026-09-22) while
+    // its siblings 3.3.1/3.3.2/3.3.4 passed with identical setup. The selector and the click
+    // semantics below are unchanged, so a healthy run behaves exactly as it did before and only a
+    // slow one spends the extra attempts.
+    const waitAttempts = 3;
+    let waitError: Error | null = null;
+    for (let attempt = 1; attempt <= waitAttempts; attempt++) {
+      try {
+        await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+        if (attempt > 1) console.log(`  OK - SAVE button appeared on attempt ${attempt}/${waitAttempts}`);
+        waitError = null;
+        break;
+      } catch (error) {
+        waitError = error as Error;
+        // A blocking dialog covering the toolbar is a RESULT, not slowness - report it at once so the
+        // negative-path cases (e.g. "The email is invalid!") still fail in seconds, not in 3 x 30 s.
+        const blocking = await this.getBlockingPopupText().catch(() => '');
+        if (blocking) {
+          throw new Error(`SAVE never became visible - a blocking dialog is open: "${blocking.trim()}"`);
+        }
+        if (attempt < waitAttempts) {
+          console.log(`  WARN - SAVE not visible after ${CommonUtils.waitTimes.abnormalWait}ms ` +
+            `(attempt ${attempt}/${waitAttempts}) - letting the page settle, then retrying`);
+          await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+          await this.wait(CommonUtils.waitTimes.long);
+        }
+      }
+    }
+    if (waitError) {
+      throw new Error(
+        `SAVE button never became visible after ${waitAttempts} attempts of ` +
+        `${CommonUtils.waitTimes.abnormalWait}ms - the form is still rendering or the toolbar is ` +
+        `covered by something this page object does not recognise as a dialog. ` +
+        `Original: ${waitError.message.split('\n')[0]}`,
+      );
+    }
     try {
       // Explicit timeout on purpose: when a validation modal is up (e.g. "The email is invalid!") it
       // covers the toolbar, and an untimed click keeps retrying until the whole TEST times out (seen
