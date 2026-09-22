@@ -6,12 +6,12 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Performance Test - Create License
- * Test Case ID: TC.Performance.1.1.7.1
+ * Test Case ID: TC.Performance.7.1.1
  * 
- * Summary: Verify the consumer time for creating License is less than 1 min
+ * Summary: Verify consumer time for creating License is less than 1 min
  *
  * Command to run:
- * npx playwright test --grep "TC\.Performance\.1\.1\.7\.1:" --project=chromium
+ * npx playwright test --grep "TC\.Performance\.7\.1\.1:" --project=chromium
  *
  * Pre-condition:
  * 1. Use the account of admin crm to login successful
@@ -52,7 +52,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * - Time consuming after pressing "SAVE" button takes less than 1 minute
  */
 
-test.describe('TC.Performance.1.1.7.1 - Create License Performance', () => {
+test.describe('TC.Performance.7.1.1 - Create License Performance', () => {
   const PERFORMANCE_THRESHOLD = 60000; // 1 minute in milliseconds
         
         test.beforeEach(async ({ context }) => {
@@ -83,7 +83,7 @@ test.describe('TC.Performance.1.1.7.1 - Create License Performance', () => {
             console.log('  ✓ Page stabilized for screenshot capture');
           }
         });
-        test('TC.Performance.1.1.7.1: Verify consumer time for creating License is less than 1 min', async ({ page, browser }, testInfo) => {
+        test('TC.Performance.7.1.1: Verify consumer time for creating License is less than 1 min', async ({ page, browser }, testInfo) => {
           test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
           
           // Maximize browser window

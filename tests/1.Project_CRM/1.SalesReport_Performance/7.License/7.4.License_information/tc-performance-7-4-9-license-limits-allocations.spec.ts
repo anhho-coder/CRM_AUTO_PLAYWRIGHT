@@ -5,20 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The stat buttons above the License sheet - Invoiced amount and Active
+ *  Limits - the nine Allocate rows, the sockets the product licences and the two totals below them
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.6
+ *  Test Case ID    : TC.Performance.7.4.9
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the two stat buttons the licence sheet draws above itself:
- *    the invoiced amount (action_view_invoice) and the archive toggle, captioned Active.
+ *    Creates its own licence and verifies the Limits allocations: nine Allocate rows are drawn, the
+ *    sockets row carries the quantity the order licensed, every other row allocates nothing, and
+ *    both totals below them read zero.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.6:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.4\.9:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,12 +46,15 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the stat buttons the licence sheet shows above the form, left to right
+ *   1. Read the nine "Allocate" rows of the Limits group, top to bottom
+ *   2. Read the "Total file share (TB)" and "Grace period (days)" fields below them
  *
  *  Verification
- *   - The sheet carries exactly 2 stat buttons
- *   - The first one is captioned "$ <amount> Invoiced" and calls action_view_invoice
- *   - The second one is captioned "Active" and calls toggle_active
+ *   - The Limits group draws exactly 9 Allocate rows
+ *   - The first row allocates a positive number of sockets
+ *   - The other eight Allocate rows allocate 0
+ *   - "Total file share (TB)" reads 0.00
+ *   - "Grace period (days)" reads 0
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -64,12 +68,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.6';
+const TC = 'TC.Performance.7.4.9';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -80,11 +84,12 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the stat buttons the licence sheet shows above the form, left to right',
+  s1: 'Step 1: Read the nine "Allocate" rows of the Limits group, top to bottom',
+  s2: 'Step 2: Read the "Total file share (TB)" and "Grace period (days)" fields below them',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amount and Active`, () => {
+test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product licences and the two totals below them`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -119,7 +124,7 @@ test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amoun
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The stat buttons above the License sheet - Invoiced amount and Active`, async ({ page }, testInfo) => {
+  test(`${TC}: Limits - the nine Allocate rows, the sockets the product licences and the two totals below them`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -139,6 +144,8 @@ test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amoun
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -150,7 +157,9 @@ test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amoun
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let statButtons: Array<{ label: string; name: string }> = [];
+    let allocations: Array<{ text: string; number: string; unit: string }> = [];
+    let totalFileShare = '';
+    let gracePeriod = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -287,28 +296,41 @@ test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amoun
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      statButtons = await licensePage.getButtonBoxButtons();
-      statButtons.forEach((b, i) => console.log(`  - Stat button #${i + 1}   : "${b.label}"   (calls ${b.name})`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - stat buttons read');
+      allocations = await licensePage.getLimitsAllocationRows();
+      allocations.forEach((a, i) => console.log(`  - Allocate row #${i + 1}   : "${a.text}"   (number=${a.number || '-'}, unit=${a.unit})`));
+    });
+
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
+      totalFileShare = await licensePage.getFieldDisplayText('total_file_share');
+      gracePeriod = await licensePage.getFieldDisplayText('grace_period_days');
+      console.log(`  - Total file share (TB) : "${totalFileShare}"`);
+      console.log(`  - Grace period (days)   : "${gracePeriod}"`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Limits allocations read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const labels = statButtons.map((b) => b.label);
-      const methods = statButtons.map((b) => b.name);
-      const invoicedCaption = labels[0] || '';
-      const invoicedMatches = /^\$\s?[\d,]+\.\d{2}\s+Invoiced$/.test(invoicedCaption);
+      const socketRow = allocations[0] || { text: '', number: '', unit: '' };
+      const socketCount = Number(socketRow.number || '0');
+      const others = allocations.slice(1);
+      const othersAllZero = others.every((a) => Number(a.number || '0') === 0);
+      const othersReport = others.map((a, i) => `#${i + 2}=${a.number || '-'}`).join(' ');
 
-      record('Number of stat buttons above the sheet', 2, statButtons.length);
-      record('Stat button #1 caption reads "$ <amount> Invoiced"', 'matches "$ <amount> Invoiced"', invoicedCaption, invoicedMatches);
-      record('Stat button #2 caption', 'Active', labels[1] || '');
-      record('The Odoo method each stat button calls', 'action_view_invoice | toggle_active', methods.join(' | '));
+      record('Number of Allocate rows in the Limits group', 9, allocations.length);
+      record('The first Allocate row licences sockets', 'a row whose unit is "sockets"', socketRow.unit, /^sockets$/i.test(socketRow.unit));
+      record('The sockets row allocates a positive number', '> 0', String(socketCount), socketCount > 0);
+      record('Every other Allocate row allocates 0', 'all 0', othersReport || '(none)', othersAllZero);
+      record('"Total file share (TB)"', '0.00', totalFileShare);
+      record('"Grace period (days)"', '0', gracePeriod);
       printVerify();
 
-      expect(statButtons, 'the licence sheet must carry exactly 2 stat buttons').toHaveLength(2);
-      expect(invoicedMatches, `the first stat button must read "$ <amount> Invoiced", it read "${invoicedCaption}"`).toBe(true);
-      expect(labels[1], 'the second stat button must be captioned Active').toBe('Active');
-      expect(methods, 'the stat buttons must call action_view_invoice then toggle_active').toEqual(['action_view_invoice', 'toggle_active']);
+      expect(allocations, 'the Limits group must draw exactly 9 Allocate rows').toHaveLength(9);
+      expect(socketRow.unit, 'the first Allocate row must licence sockets').toMatch(/^sockets$/i);
+      expect(socketCount, 'the sockets row must allocate the quantity the order licensed').toBeGreaterThan(0);
+      expect(othersAllZero, `every Allocate row after the sockets row must allocate 0, they read ${othersReport}`).toBe(true);
+      expect(totalFileShare, '"Total file share (TB)" must read 0.00').toBe('0.00');
+      expect(gracePeriod, '"Grace period (days)" must read 0').toBe('0');
     });
   });
 });

@@ -5,20 +5,22 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  Info - the Email of the License is the e-mail entered on the Opportunity
+ *  The SET TO DRAFT button returns a cancelled License to Draft
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.22
+ *  Test Case ID    : TC.Performance.7.2.6
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies that the "Email" field of the Info group carries, unchanged,
- *    the e-mail address the Opportunity was created with at the start of the chain.
+ *    Creates its own licence, cancels it through the reason window, then presses SET TO DRAFT and
+ *    verifies that the licence returns to Draft and that its header carries the four Draft buttons
+ *    again. The route runs through CANCEL on purpose - APPROVE generates a real licence and is not
+ *    a button automation may press on a shared environment.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.22:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.6:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,11 +47,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the "Email" field of the Info group and compare it with the Opportunity e-mail
+ *   1. Press the "CANCEL" button and confirm the window with Cancel reason = Expired
+ *   2. Press the "SET TO DRAFT" button of the cancelled licence
+ *   3. Reload the licence record and read its state and its header buttons
  *
  *  Verification
- *   - "Email" is filled
- *   - It matches the e-mail entered on the Opportunity
+ *   - The licence is CANCEL after step 1 and DRAFT again after step 2
+ *   - The header carries exactly 4 buttons
+ *   - They read APPROVE, CANCEL, SET TO DRAFT, TEST CREATING LICENSE FROM LM in that order
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -63,12 +68,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.22';
+const TC = 'TC.Performance.7.2.6';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -79,11 +84,13 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the "Email" field of the Info group and compare it with the Opportunity e-mail',
+  s1: 'Step 1: Press the "CANCEL" button and confirm the window with Cancel reason = Expired',
+  s2: 'Step 2: Press the "SET TO DRAFT" button of the cancelled licence',
+  s3: 'Step 3: Reload the licence record and read its state and its header buttons',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - Info - the Email of the License is the e-mail entered on the Opportunity`, () => {
+test.describe(`${TC} - The SET TO DRAFT button returns a cancelled License to Draft`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -118,7 +125,7 @@ test.describe(`${TC} - Info - the Email of the License is the e-mail entered on 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: Info - the Email of the License is the e-mail entered on the Opportunity`, async ({ page }, testInfo) => {
+  test(`${TC}: The SET TO DRAFT button returns a cancelled License to Draft`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -138,6 +145,8 @@ test.describe(`${TC} - Info - the Email of the License is the e-mail entered on 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -149,7 +158,9 @@ test.describe(`${TC} - Info - the Email of the License is the e-mail entered on 
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let emailOnLicense = '';
+    let stateCancelled = '';
+    let stateAfter = '';
+    let headerLabels: string[] = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -286,20 +297,43 @@ test.describe(`${TC} - Info - the Email of the License is the e-mail entered on 
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      emailOnLicense = await licensePage.getFieldDisplayText('email_from');
-      console.log(`  - Opportunity e-mail : "${oppEmail}"`);
-      console.log(`  - Email on licence   : "${emailOnLicense}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Email field read');
+      await licensePage.cancelLicenseWithReason(DATA.cancelReason);
+      await licensePage.reloadForm();
+      stateCancelled = await licensePage.getActiveStatusBarStage();
+      console.log(`  - Cancel reason       : ${DATA.cancelReason}`);
+      console.log(`  - State after CANCEL  : ${stateCancelled}`);
+    });
+
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
+      await licensePage.clickSetToDraft();
+      console.log('  - SET TO DRAFT pressed');
+    });
+
+    await test.step(STEP.s3, async () => {
+      console.log(`\n--- ${STEP.s3} ---`);
+      await licensePage.reloadForm();
+      stateAfter = await licensePage.getActiveStatusBarStage();
+      headerLabels = await licensePage.getStatusbarButtons();
+      console.log(`  - State after         : ${stateAfter}`);
+      headerLabels.forEach((b, i) => console.log(`  - Button #${i + 1}          : ${b}`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence back in Draft');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      record('"Email" is filled', 'a non-empty value', emailOnLicense || '(empty)', emailOnLicense.length > 0);
-      record('"Email" matches the e-mail entered on the Opportunity', oppEmail, emailOnLicense);
+      const EXPECTED = ['APPROVE', 'CANCEL', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
+
+      record('The licence was cancelled before SET TO DRAFT', 'CANCEL', stateCancelled);
+      record('The licence state after SET TO DRAFT', 'DRAFT', stateAfter);
+      record('Number of buttons in the Draft licence header', EXPECTED.length, headerLabels.length);
+      record('Button names and their order', EXPECTED.join(' | '), headerLabels.join(' | '));
       printVerify();
 
-      expect(emailOnLicense, '"Email" must not be empty').not.toBe('');
-      expect(emailOnLicense, '"Email" must carry the e-mail entered on the Opportunity').toBe(oppEmail);
+      expect(stateCancelled, 'the licence must be cancelled first').toBe('CANCEL');
+      expect(stateAfter, 'SET TO DRAFT must return the licence to Draft').toBe('DRAFT');
+      expect(headerLabels, 'the Draft licence header must carry exactly 4 buttons').toHaveLength(EXPECTED.length);
+      expect(headerLabels, 'the Draft button names and their order must match the documented list').toEqual(EXPECTED);
     });
   });
 });

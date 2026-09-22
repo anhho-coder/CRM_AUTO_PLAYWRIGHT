@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  General - the Owner Name of the License matches the Company of the Opportunity it came from
+ *  The tabs at the bottom of the License form, and their order
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.16
+ *  Test Case ID    : TC.Performance.7.5.2
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies that "Owner Name" is filled with the very Company Odoo
- *    created for the Opportunity out of its e-mail domain - the record the whole chain was built on.
+ *    Creates its own licence and verifies the tabs the licence form draws under the Description area -
+ *    that "Invoices" is the first of them and that the four tabs appear in the documented order.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.16:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.5\.2:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,11 +45,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the "Owner Name" field of the General group and compare it with the Opportunity Company
+ *   1. Read the tabs at the bottom of the licence form, left to right
  *
  *  Verification
- *   - "Owner Name" is filled
- *   - It matches the Company Odoo created for the Opportunity
+ *   - The form carries exactly 4 tabs
+ *   - "Invoices" is one of them, and it comes first
+ *   - They read Invoices, Technical Info, Renewal Licenses, CRM Technical in that order
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -63,12 +64,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.16';
+const TC = 'TC.Performance.7.5.2';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -79,11 +80,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the "Owner Name" field of the General group and compare it with the Opportunity Company',
+  s1: 'Step 1: Read the tabs at the bottom of the licence form, left to right',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - General - the Owner Name of the License matches the Company of the Opportunity it came from`, () => {
+test.describe(`${TC} - The tabs at the bottom of the License form, and their order`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -118,7 +119,7 @@ test.describe(`${TC} - General - the Owner Name of the License matches the Compa
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: General - the Owner Name of the License matches the Company of the Opportunity it came from`, async ({ page }, testInfo) => {
+  test(`${TC}: The tabs at the bottom of the License form, and their order`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -138,6 +139,8 @@ test.describe(`${TC} - General - the Owner Name of the License matches the Compa
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -149,7 +152,7 @@ test.describe(`${TC} - General - the Owner Name of the License matches the Compa
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let ownerName = '';
+    let tabs: string[] = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -286,20 +289,25 @@ test.describe(`${TC} - General - the Owner Name of the License matches the Compa
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ownerName = await licensePage.getFieldDisplayText('owner_name');
-      console.log(`  - Opportunity Company : "${oppCompany}"`);
-      console.log(`  - Owner Name          : "${ownerName}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Owner Name read');
+      tabs = await licensePage.getNotebookTabs();
+      tabs.forEach((t, i) => console.log(`  - Tab #${i + 1}           : ${t}`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence form tabs read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      record('"Owner Name" is filled', 'a non-empty value', ownerName || '(empty)', ownerName.length > 0);
-      record('"Owner Name" matches the Company of the Opportunity', oppCompany, ownerName);
+      const EXPECTED = ['Invoices', 'Technical Info', 'Renewal Licenses', 'CRM Technical'];
+
+      record('Number of tabs at the bottom of the licence form', EXPECTED.length, tabs.length);
+      record('"Invoices" is offered', 'present', tabs.includes('Invoices') ? 'present' : 'MISSING', tabs.includes('Invoices'));
+      record('"Invoices" comes first', 'Invoices', tabs[0] || '(none)');
+      record('Tab names and their order', EXPECTED.join(' | '), tabs.join(' | '));
       printVerify();
 
-      expect(ownerName, '"Owner Name" must not be empty').not.toBe('');
-      expect(ownerName, '"Owner Name" must carry the Company Odoo created for the Opportunity').toBe(oppCompany);
+      expect(tabs, 'the licence form must carry exactly 4 tabs').toHaveLength(EXPECTED.length);
+      expect(tabs, 'the licence form must carry the "Invoices" tab').toContain('Invoices');
+      expect(tabs[0], 'the "Invoices" tab must come first').toBe('Invoices');
+      expect(tabs, 'the tab names and their order must match the documented list').toEqual(EXPECTED);
     });
   });
 });

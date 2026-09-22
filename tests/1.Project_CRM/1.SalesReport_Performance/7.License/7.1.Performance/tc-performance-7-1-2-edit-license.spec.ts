@@ -6,12 +6,12 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * Performance Test - Edit License
- * Test Case ID: TC.Performance.1.1.7.2
+ * Test Case ID: TC.Performance.7.1.2
  * 
- * Summary: Verify the consumer time for editing License is less than 1 min
+ * Summary: Verify consumer time for editing License is less than 1 min
  *
  * Command to run:
- * npx playwright test --grep "TC\.Performance\.1\.1\.7\.2:" --project=chromium
+ * npx playwright test --grep "TC\.Performance\.7\.1\.2:" --project=chromium
  *
  * Pre-condition:
  * 1. Use the account of admin crm to login successful
@@ -55,7 +55,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * - Time consuming after pressing "SAVE" button takes less than 1 minute
  */
 
-test.describe('TC.Performance.1.1.7.2 - Edit License Performance', () => {
+test.describe('TC.Performance.7.1.2 - Edit License Performance', () => {
   const PERFORMANCE_THRESHOLD = 60000; // 1 minute in milliseconds
          
          test.beforeEach(async ({ context }) => {
@@ -86,7 +86,7 @@ test.describe('TC.Performance.1.1.7.2 - Edit License Performance', () => {
              console.log('  ✓ Page stabilized for screenshot capture');
            }
          });
-         test('TC.Performance.1.1.7.2: Verify consumer time for editing License is less than 1 min', async ({ page, browser }, testInfo) => {
+         test('TC.Performance.7.1.2: Verify consumer time for editing License is less than 1 min', async ({ page, browser }, testInfo) => {
            test.setTimeout(CommonUtils.waitTimes.runningTestScript); // Increase timeout for performance test
            
            // Maximize browser window

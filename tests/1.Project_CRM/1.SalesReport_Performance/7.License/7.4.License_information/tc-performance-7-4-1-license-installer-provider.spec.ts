@@ -5,21 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The sub-menus of the license Management application, and their order
+ *  General - the Installer provider of a License generated from an Invoice is Nakivo
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.25
+ *  Test Case ID    : TC.Performance.7.4.1
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Opens the "license Management" application on pre-production and verifies the sub-menus its
- *    navbar offers - that "Invoices" is among them and that the five sub-menus appear in the
- *    documented order.
+ *    Creates its own licence and verifies that the "Installer provider" field of the General group is
+ *    filled and reads Nakivo, the provider every licence the CRM chain generates carries.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.25:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.4\.1:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,14 +45,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Open the "license Management" application from the applications home
- *   2. Read the sub-menus the application offers in the navbar, left to right
+ *   1. Read the "Installer provider" field of the General group
  *
  *  Verification
- *   - The application brand reads "license Management"
- *   - The navbar offers exactly 5 sub-menus
- *   - "Invoices" is one of them
- *   - They read licenses, Invoices, Settings, LM license log, Product Registration in that order
+ *   - "Installer provider" is filled
+ *   - It reads Nakivo
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -67,12 +63,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.25';
+const TC = 'TC.Performance.7.4.1';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -83,12 +79,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Open the "license Management" application from the applications home',
-  s2: 'Step 2: Read the sub-menus the application offers in the navbar, left to right',
+  s1: 'Step 1: Read the "Installer provider" field of the General group',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The sub-menus of the license Management application, and their order`, () => {
+test.describe(`${TC} - General - the Installer provider of a License generated from an Invoice is Nakivo`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -123,7 +118,7 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The sub-menus of the license Management application, and their order`, async ({ page }, testInfo) => {
+  test(`${TC}: General - the Installer provider of a License generated from an Invoice is Nakivo`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -143,6 +138,8 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -154,9 +151,7 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let appUrl = '';
-    let brand = '';
-    let subMenus: string[] = [];
+    let installerProvider = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -293,36 +288,19 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      await homePage.returnToHome();
-      await homePage.waitForHomePageLoad();
-      await licensePage.openLicenseManagementApp();
-      appUrl = page.url();
-      brand = await licensePage.getAppBrand();
-      console.log(`  - Application URL   : ${appUrl}`);
-      console.log(`  - Application brand : "${brand}"`);
-    });
-
-    await test.step(STEP.s2, async () => {
-      console.log(`\n--- ${STEP.s2} ---`);
-      subMenus = await licensePage.getAppMenuSections();
-      subMenus.forEach((m, i) => console.log(`  - Sub-menu #${i + 1}      : ${m}`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - license Management sub-menus read');
+      installerProvider = await licensePage.getInstallerProviderValue();
+      console.log(`  - Installer provider : "${installerProvider}"`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Installer provider read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['licenses', 'Invoices', 'Settings', 'LM license log', 'Product Registration'];
-
-      record('The application brand', 'license Management', brand);
-      record('Number of sub-menus in the navbar', EXPECTED.length, subMenus.length);
-      record('"Invoices" is offered', 'present', subMenus.includes('Invoices') ? 'present' : 'MISSING', subMenus.includes('Invoices'));
-      record('Sub-menu names and their order', EXPECTED.join(' | '), subMenus.join(' | '));
+      record('"Installer provider" is filled', 'a non-empty value', installerProvider || '(empty)', installerProvider.length > 0);
+      record('"Installer provider" value', 'Nakivo', installerProvider);
       printVerify();
 
-      expect(brand, 'the application brand must read "license Management"').toBe('license Management');
-      expect(subMenus, 'the licence application must offer exactly 5 sub-menus').toHaveLength(EXPECTED.length);
-      expect(subMenus, 'the licence application must offer the "Invoices" sub-menu').toContain('Invoices');
-      expect(subMenus, 'the sub-menu names and their order must match the documented list').toEqual(EXPECTED);
+      expect(installerProvider, '"Installer provider" must not be empty').not.toBe('');
+      expect(installerProvider, '"Installer provider" must read Nakivo').toBe('Nakivo');
     });
   });
 });

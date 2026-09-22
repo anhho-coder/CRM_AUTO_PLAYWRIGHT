@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  Status - approving a License moves the highlighted stage from DRAFT to APPROVED
+ *  Status - the stages the License statusbar offers, and the one a new License sits in
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.30
+ *  Test Case ID    : TC.Performance.7.7.1
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence, approves it and verifies that the statusbar moves its highlight from
- *    DRAFT to APPROVED while still offering the same two stages.
+ *    Creates its own licence and verifies its status area: the statusbar draws the two documented
+ *    stages, in order, and highlights DRAFT on a licence that has just been generated.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.30:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.7\.1:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,13 +45,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the stage the statusbar highlights on the new licence
- *   2. Press the "APPROVE" button, reload the record and read the statusbar again
+ *   1. Read the stages the licence statusbar offers, left to right, and the one it highlights
  *
  *  Verification
- *   - The statusbar highlights DRAFT before APPROVE
- *   - It highlights APPROVED after APPROVE
- *   - It still offers exactly the two stages DRAFT, APPROVED, in that order
+ *   - The statusbar offers exactly 2 stages
+ *   - They read DRAFT, APPROVED in that order
+ *   - The stage it highlights is DRAFT
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -65,12 +64,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.30';
+const TC = 'TC.Performance.7.7.1';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -81,12 +80,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the stage the statusbar highlights on the new licence',
-  s2: 'Step 2: Press the "APPROVE" button, reload the record and read the statusbar again',
+  s1: 'Step 1: Read the stages the licence statusbar offers, left to right, and the one it highlights',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - Status - approving a License moves the highlighted stage from DRAFT to APPROVED`, () => {
+test.describe(`${TC} - Status - the stages the License statusbar offers, and the one a new License sits in`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -121,7 +119,7 @@ test.describe(`${TC} - Status - approving a License moves the highlighted stage 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: Status - approving a License moves the highlighted stage from DRAFT to APPROVED`, async ({ page }, testInfo) => {
+  test(`${TC}: Status - the stages the License statusbar offers, and the one a new License sits in`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -141,6 +139,8 @@ test.describe(`${TC} - Status - approving a License moves the highlighted stage 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -152,9 +152,8 @@ test.describe(`${TC} - Status - approving a License moves the highlighted stage 
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let stageBefore = '';
-    let stageAfter = '';
     let stages: string[] = [];
+    let activeStage = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -291,35 +290,25 @@ test.describe(`${TC} - Status - approving a License moves the highlighted stage 
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      stageBefore = await licensePage.getActiveStatusBarStage();
-      console.log(`  - Highlighted before : ${stageBefore}`);
-    });
-
-    await test.step(STEP.s2, async () => {
-      console.log(`\n--- ${STEP.s2} ---`);
-      await licensePage.clickApprove();
-      // Odoo does not re-render the statusbar after a state action - the record is reloaded first,
-      // otherwise the stage read back is still the one the form was drawn with.
-      await licensePage.reloadForm();
-      stageAfter = await licensePage.getActiveStatusBarStage();
       stages = await licensePage.getStatusBarStages();
-      console.log(`  - Highlighted after  : ${stageAfter}`);
-      console.log(`  - Stages on the bar  : ${stages.join(' | ')}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - statusbar after APPROVE');
+      activeStage = await licensePage.getActiveStatusBarStage();
+      stages.forEach((s, i) => console.log(`  - Stage #${i + 1}         : ${s}`));
+      console.log(`  - Highlighted stage : ${activeStage}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence statusbar read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
       const EXPECTED = ['DRAFT', 'APPROVED'];
 
-      record('The stage highlighted before APPROVE', 'DRAFT', stageBefore);
-      record('The stage highlighted after APPROVE', 'APPROVED', stageAfter);
-      record('Stage names and their order after APPROVE', EXPECTED.join(' | '), stages.join(' | '));
+      record('Number of stages on the statusbar', EXPECTED.length, stages.length);
+      record('Stage names and their order', EXPECTED.join(' | '), stages.join(' | '));
+      record('The stage a newly created licence sits in', 'DRAFT', activeStage);
       printVerify();
 
-      expect(stageBefore, 'a newly created licence must sit in DRAFT').toBe('DRAFT');
-      expect(stageAfter, 'APPROVE must move the highlight to APPROVED').toBe('APPROVED');
-      expect(stages, 'the statusbar must still offer the same two stages').toEqual(EXPECTED);
+      expect(stages, 'the licence statusbar must offer exactly 2 stages').toHaveLength(EXPECTED.length);
+      expect(stages, 'the stage names and their order must match the documented list').toEqual(EXPECTED);
+      expect(activeStage, 'a newly created licence must sit in DRAFT').toBe('DRAFT');
     });
   });
 });

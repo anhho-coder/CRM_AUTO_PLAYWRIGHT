@@ -5,21 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  Limits - the nine Allocate rows, the sockets the product licences and the two totals below them
+ *  The four e-mail / certificate buttons are not rendered while the License is in Draft
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.23
+ *  Test Case ID    : TC.Performance.7.2.7
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the Limits allocations: nine Allocate rows are drawn, the
- *    sockets row carries the quantity the order licensed, every other row allocates nothing, and
- *    both totals below them read zero.
+ *    Creates its own licence and verifies the negative half of the header contract: SEND BY EMAIL,
+ *    SEND WITH CERTIFICATE, CERTIFICATE and SEND CERTIFICATE are kept out of the screen while the
+ *    licence is in Draft, and so are the two buttons the form never shows in any state.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.23:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.7:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,15 +46,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the nine "Allocate" rows of the Limits group, top to bottom
- *   2. Read the "Total file share (TB)" and "Grace period (days)" fields below them
+ *   1. Read every button the licence header renders on screen while the licence is in Draft
  *
  *  Verification
- *   - The Limits group draws exactly 9 Allocate rows
- *   - The first row allocates a positive number of sockets
- *   - The other eight Allocate rows allocate 0
- *   - "Total file share (TB)" reads 0.00
- *   - "Grace period (days)" reads 0
+ *   - SEND BY EMAIL is not shown
+ *   - SEND WITH CERTIFICATE is not shown
+ *   - CERTIFICATE is not shown
+ *   - SEND CERTIFICATE is not shown
+ *   - FILL DATA and SAVE AS TEMPLATE are not shown
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -68,12 +67,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.23';
+const TC = 'TC.Performance.7.2.7';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -84,12 +83,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the nine "Allocate" rows of the Limits group, top to bottom',
-  s2: 'Step 2: Read the "Total file share (TB)" and "Grace period (days)" fields below them',
+  s1: 'Step 1: Read every button the licence header renders on screen while the licence is in Draft',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product licences and the two totals below them`, () => {
+test.describe(`${TC} - The four e-mail / certificate buttons are not rendered while the License is in Draft`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -124,7 +122,7 @@ test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: Limits - the nine Allocate rows, the sockets the product licences and the two totals below them`, async ({ page }, testInfo) => {
+  test(`${TC}: The four e-mail / certificate buttons are not rendered while the License is in Draft`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -144,6 +142,8 @@ test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -155,9 +155,8 @@ test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product 
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let allocations: Array<{ text: string; number: string; unit: string }> = [];
-    let totalFileShare = '';
-    let gracePeriod = '';
+    let state = '';
+    let headerLabels: string[] = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -294,41 +293,35 @@ test.describe(`${TC} - Limits - the nine Allocate rows, the sockets the product 
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      allocations = await licensePage.getLimitsAllocationRows();
-      allocations.forEach((a, i) => console.log(`  - Allocate row #${i + 1}   : "${a.text}"   (number=${a.number || '-'}, unit=${a.unit})`));
-    });
-
-    await test.step(STEP.s2, async () => {
-      console.log(`\n--- ${STEP.s2} ---`);
-      totalFileShare = await licensePage.getFieldDisplayText('total_file_share');
-      gracePeriod = await licensePage.getFieldDisplayText('grace_period_days');
-      console.log(`  - Total file share (TB) : "${totalFileShare}"`);
-      console.log(`  - Grace period (days)   : "${gracePeriod}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Limits allocations read');
+      state = await licensePage.getActiveStatusBarStage();
+      headerLabels = await licensePage.getStatusbarButtons();
+      console.log(`  - Licence state     : ${state}`);
+      console.log(`  - Buttons on screen : ${headerLabels.join(' | ')}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Draft header read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const socketRow = allocations[0] || { text: '', number: '', unit: '' };
-      const socketCount = Number(socketRow.number || '0');
-      const others = allocations.slice(1);
-      const othersAllZero = others.every((a) => Number(a.number || '0') === 0);
-      const othersReport = others.map((a, i) => `#${i + 2}=${a.number || '-'}`).join(' ');
+      const MUST_NOT_SHOW = [
+        'SEND BY EMAIL',
+        'SEND WITH CERTIFICATE',
+        'CERTIFICATE',
+        'SEND CERTIFICATE',
+        'FILL DATA',
+        'SAVE AS TEMPLATE',
+      ];
 
-      record('Number of Allocate rows in the Limits group', 9, allocations.length);
-      record('The first Allocate row licences sockets', 'a row whose unit is "sockets"', socketRow.unit, /^sockets$/i.test(socketRow.unit));
-      record('The sockets row allocates a positive number', '> 0', String(socketCount), socketCount > 0);
-      record('Every other Allocate row allocates 0', 'all 0', othersReport || '(none)', othersAllZero);
-      record('"Total file share (TB)"', '0.00', totalFileShare);
-      record('"Grace period (days)"', '0', gracePeriod);
+      record('The licence is in Draft', 'DRAFT', state);
+      MUST_NOT_SHOW.forEach((label) => {
+        const shown = headerLabels.includes(label);
+        record(`"${label}" is not rendered in Draft`, 'not shown', shown ? 'SHOWN' : 'not shown', !shown);
+      });
       printVerify();
 
-      expect(allocations, 'the Limits group must draw exactly 9 Allocate rows').toHaveLength(9);
-      expect(socketRow.unit, 'the first Allocate row must licence sockets').toMatch(/^sockets$/i);
-      expect(socketCount, 'the sockets row must allocate the quantity the order licensed').toBeGreaterThan(0);
-      expect(othersAllZero, `every Allocate row after the sockets row must allocate 0, they read ${othersReport}`).toBe(true);
-      expect(totalFileShare, '"Total file share (TB)" must read 0.00').toBe('0.00');
-      expect(gracePeriod, '"Grace period (days)" must read 0').toBe('0');
+      expect(state, 'a freshly created licence must be in Draft').toBe('DRAFT');
+      MUST_NOT_SHOW.forEach((label) => {
+        expect(headerLabels, `"${label}" must not be rendered while the licence is in Draft`).not.toContain(label);
+      });
     });
   });
 });

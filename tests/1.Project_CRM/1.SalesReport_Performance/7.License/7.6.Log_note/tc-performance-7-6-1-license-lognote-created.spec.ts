@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The tabs at the bottom of the License form, and their order
+ *  Log note - creating a License posts two notes, the oldest of which says License created
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.26
+ *  Test Case ID    : TC.Performance.7.6.1
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the tabs the licence form draws under the Description area -
- *    that "Invoices" is the first of them and that the four tabs appear in the documented order.
+ *    Creates its own licence and verifies the chatter of the new record: two log notes are posted, and
+ *    the older of the two is the "License created" note that records the creation itself.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.26:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.6\.1:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,12 +45,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the tabs at the bottom of the licence form, left to right
+ *   1. Read the log notes the licence chatter shows, newest first
  *
  *  Verification
- *   - The form carries exactly 4 tabs
- *   - "Invoices" is one of them, and it comes first
- *   - They read Invoices, Technical Info, Renewal Licenses, CRM Technical in that order
+ *   - The chatter carries exactly 2 log notes
+ *   - The oldest note reads "License created"
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -64,12 +63,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.26';
+const TC = 'TC.Performance.7.6.1';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -80,11 +79,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the tabs at the bottom of the licence form, left to right',
+  s1: 'Step 1: Read the log notes the licence chatter shows, newest first',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The tabs at the bottom of the License form, and their order`, () => {
+test.describe(`${TC} - Log note - creating a License posts two notes, the oldest of which says License created`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -119,7 +118,7 @@ test.describe(`${TC} - The tabs at the bottom of the License form, and their ord
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The tabs at the bottom of the License form, and their order`, async ({ page }, testInfo) => {
+  test(`${TC}: Log note - creating a License posts two notes, the oldest of which says License created`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -139,6 +138,8 @@ test.describe(`${TC} - The tabs at the bottom of the License form, and their ord
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -150,7 +151,7 @@ test.describe(`${TC} - The tabs at the bottom of the License form, and their ord
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let tabs: string[] = [];
+    let notes: string[] = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -287,25 +288,22 @@ test.describe(`${TC} - The tabs at the bottom of the License form, and their ord
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      tabs = await licensePage.getNotebookTabs();
-      tabs.forEach((t, i) => console.log(`  - Tab #${i + 1}           : ${t}`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence form tabs read');
+      notes = await licensePage.getChatterMessages();
+      notes.forEach((n, i) => console.log(`  - Log note #${i + 1} (${i === 0 ? 'newest' : 'older'}):\n      ${n.replace(/\n/g, '\n      ')}`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence log notes read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['Invoices', 'Technical Info', 'Renewal Licenses', 'CRM Technical'];
+      const oldest = notes.length > 0 ? notes[notes.length - 1] : '';
+      const oldestIsCreated = /License created/i.test(oldest);
 
-      record('Number of tabs at the bottom of the licence form', EXPECTED.length, tabs.length);
-      record('"Invoices" is offered', 'present', tabs.includes('Invoices') ? 'present' : 'MISSING', tabs.includes('Invoices'));
-      record('"Invoices" comes first', 'Invoices', tabs[0] || '(none)');
-      record('Tab names and their order', EXPECTED.join(' | '), tabs.join(' | '));
+      record('Number of log notes on the new licence', 2, notes.length);
+      record('The oldest log note records the creation', 'a note containing "License created"', oldest || '(none)', oldestIsCreated);
       printVerify();
 
-      expect(tabs, 'the licence form must carry exactly 4 tabs').toHaveLength(EXPECTED.length);
-      expect(tabs, 'the licence form must carry the "Invoices" tab').toContain('Invoices');
-      expect(tabs[0], 'the "Invoices" tab must come first').toBe('Invoices');
-      expect(tabs, 'the tab names and their order must match the documented list').toEqual(EXPECTED);
+      expect(notes, 'creating a licence must post exactly 2 log notes').toHaveLength(2);
+      expect(oldestIsCreated, `the oldest log note must read "License created", it read "${oldest}"`).toBe(true);
     });
   });
 });

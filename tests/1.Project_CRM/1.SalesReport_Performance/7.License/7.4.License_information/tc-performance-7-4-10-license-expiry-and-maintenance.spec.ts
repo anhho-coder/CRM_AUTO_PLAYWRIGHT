@@ -5,21 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The four e-mail / certificate buttons are not rendered while the License is in Draft
+ *  Limits - the expiry and maintenance values of a perpetual License with one year of maintenance
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.10
+ *  Test Case ID    : TC.Performance.7.4.10
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the negative half of the header contract: SEND BY EMAIL,
- *    SEND WITH CERTIFICATE, CERTIFICATE and SEND CERTIFICATE are kept out of the screen while the
- *    licence is in Draft, and so are the two buttons the form never shows in any state.
+ *    Creates its own licence from a perpetual product and verifies the right column of the Limits
+ *    group: the licence never expires, its maintenance is available, and it runs from today for the
+ *    365 days the product carries.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.10:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.4\.10:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,14 +46,16 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read every button the licence header renders on screen while the licence is in Draft
+ *   1. Read the "Expire Mode" and "Expires" fields of the Limits group
+ *   2. Read the "Maintenance Mode", "Start Date", "End Date" and "Maintenance Days" fields
  *
  *  Verification
- *   - SEND BY EMAIL is not shown
- *   - SEND WITH CERTIFICATE is not shown
- *   - CERTIFICATE is not shown
- *   - SEND CERTIFICATE is not shown
- *   - FILL DATA and SAVE AS TEMPLATE are not shown
+ *   - "Expires" reads never
+ *   - "Expire Mode" is empty (the licence does not expire per licence)
+ *   - "Maintenance Mode" reads available
+ *   - "Start Date" is today
+ *   - "End Date" is one year after the Start Date
+ *   - "Maintenance Days" reads 365
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -67,12 +69,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.10';
+const TC = 'TC.Performance.7.4.10';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -83,11 +85,12 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read every button the licence header renders on screen while the licence is in Draft',
+  s1: 'Step 1: Read the "Expire Mode" and "Expires" fields of the Limits group',
+  s2: 'Step 2: Read the "Maintenance Mode", "Start Date", "End Date" and "Maintenance Days" fields',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The four e-mail / certificate buttons are not rendered while the License is in Draft`, () => {
+test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual License with one year of maintenance`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -122,7 +125,7 @@ test.describe(`${TC} - The four e-mail / certificate buttons are not rendered wh
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The four e-mail / certificate buttons are not rendered while the License is in Draft`, async ({ page }, testInfo) => {
+  test(`${TC}: Limits - the expiry and maintenance values of a perpetual License with one year of maintenance`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -142,6 +145,8 @@ test.describe(`${TC} - The four e-mail / certificate buttons are not rendered wh
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -153,8 +158,12 @@ test.describe(`${TC} - The four e-mail / certificate buttons are not rendered wh
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let state = '';
-    let headerLabels: string[] = [];
+    let expireMode = 'x';
+    let expires = '';
+    let maintenanceMode = '';
+    let startDate = '';
+    let endDate = '';
+    let maintenanceDays = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -291,35 +300,48 @@ test.describe(`${TC} - The four e-mail / certificate buttons are not rendered wh
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      state = await licensePage.getActiveStatusBarStage();
-      headerLabels = await licensePage.getStatusbarButtons();
-      console.log(`  - Licence state     : ${state}`);
-      console.log(`  - Buttons on screen : ${headerLabels.join(' | ')}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Draft header read');
+      expireMode = await licensePage.getFieldDisplayText('expire_mode');
+      expires = await licensePage.getExpiresValue();
+      console.log(`  - Expire Mode        : "${expireMode}"`);
+      console.log(`  - Expires            : "${expires}"`);
+    });
+
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
+      maintenanceMode = await licensePage.getFieldDisplayText('maintenance_mode');
+      startDate = await licensePage.getFieldDisplayText('start_date');
+      endDate = await licensePage.getFieldDisplayText('end_date');
+      maintenanceDays = await licensePage.getFieldDisplayText('maintenance_days');
+      console.log(`  - Maintenance Mode   : "${maintenanceMode}"`);
+      console.log(`  - Start Date         : "${startDate}"`);
+      console.log(`  - End Date           : "${endDate}"`);
+      console.log(`  - Maintenance Days   : "${maintenanceDays}"`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - expiry and maintenance read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const MUST_NOT_SHOW = [
-        'SEND BY EMAIL',
-        'SEND WITH CERTIFICATE',
-        'CERTIFICATE',
-        'SEND CERTIFICATE',
-        'FILL DATA',
-        'SAVE AS TEMPLATE',
-      ];
+      // The licence is generated today, so "Start Date" is today in the MM/DD/YYYY the form prints,
+      // and "End Date" is the same day one year later - the 365 maintenance days the product carries.
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const today = new Date();
+      const expectedStart = `${pad(today.getMonth() + 1)}/${pad(today.getDate())}/${today.getFullYear()}`;
+      const expectedEnd = `${pad(today.getMonth() + 1)}/${pad(today.getDate())}/${today.getFullYear() + 1}`;
 
-      record('The licence is in Draft', 'DRAFT', state);
-      MUST_NOT_SHOW.forEach((label) => {
-        const shown = headerLabels.includes(label);
-        record(`"${label}" is not rendered in Draft`, 'not shown', shown ? 'SHOWN' : 'not shown', !shown);
-      });
+      record('"Expires"', 'never', expires);
+      record('"Expire Mode" is empty on a licence that never expires', '(empty)', expireMode || '(empty)', expireMode === '');
+      record('"Maintenance Mode"', 'available', maintenanceMode);
+      record('"Start Date" is today', expectedStart, startDate);
+      record('"End Date" is one year after the Start Date', expectedEnd, endDate);
+      record('"Maintenance Days"', '365', maintenanceDays);
       printVerify();
 
-      expect(state, 'a freshly created licence must be in Draft').toBe('DRAFT');
-      MUST_NOT_SHOW.forEach((label) => {
-        expect(headerLabels, `"${label}" must not be rendered while the licence is in Draft`).not.toContain(label);
-      });
+      expect(expires, 'a perpetual licence must never expire').toBe('never');
+      expect(expireMode, '"Expire Mode" must stay empty on a licence that never expires').toBe('');
+      expect(maintenanceMode, '"Maintenance Mode" must read available').toBe('available');
+      expect(startDate, '"Start Date" must be the day the licence was generated').toBe(expectedStart);
+      expect(endDate, '"End Date" must be one year after the Start Date').toBe(expectedEnd);
+      expect(maintenanceDays, '"Maintenance Days" must read 365').toBe('365');
     });
   });
 });

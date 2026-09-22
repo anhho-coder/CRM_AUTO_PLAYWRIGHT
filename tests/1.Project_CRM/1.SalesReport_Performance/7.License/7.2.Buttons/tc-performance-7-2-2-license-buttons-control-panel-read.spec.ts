@@ -7,7 +7,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * =============================================================================================
  *  The number and the names of the control-panel buttons of a saved License (read mode)
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.4
+ *  Test Case ID    : TC.Performance.7.2.2
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
@@ -18,7 +18,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    carries exactly the three buttons a tester reads there - EDIT, Print and Action.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.4:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.2:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -63,12 +63,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.4';
+const TC = 'TC.Performance.7.2.2';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -138,6 +138,8 @@ test.describe(`${TC} - The number and the names of the control-panel buttons of 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made

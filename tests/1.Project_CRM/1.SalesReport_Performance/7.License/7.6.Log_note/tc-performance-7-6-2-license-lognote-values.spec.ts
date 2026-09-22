@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The field names and their order in the "Limits left column" group of the License information area
+ *  Log note - the creation note repeats the values the License was generated with
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.13
+ *  Test Case ID    : TC.Performance.7.6.2
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies that the "Limits left column" group of the saved licence carries the
- *    documented fields, in the documented order, exactly as a tester reads them on the screen.
+ *    Creates its own licence and verifies that the newest log note repeats the licence values a tester
+ *    reads on the form itself - its Support Type, Payer, Email, Invoice and state.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.13:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.6\.2:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,11 +45,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the field labels of the "Limits left column" group of the licence, top to bottom
+ *   1. Read the newest log note of the licence chatter and compare it with the licence values
  *
  *  Verification
- *   - The "Limits left column" group carries exactly 11 fields
- *   - They read Allocate, Allocate, Allocate, Allocate, Allocate, Allocate, Allocate, Allocate, Allocate, Total file share (TB), Grace period (days) in that order
+ *   - The newest log note carries "Support Type: standard"
+ *   - It carries the Payer of the licence
+ *   - It carries the e-mail the Opportunity was created with
+ *   - It carries the number of the Invoice the licence came from
+ *   - It carries "State: Draft"
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -63,12 +66,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.13';
+const TC = 'TC.Performance.7.6.2';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -79,11 +82,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the field labels of the "Limits left column" group of the licence, top to bottom',
+  s1: 'Step 1: Read the newest log note of the licence chatter and compare it with the licence values',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The field names and their order in the "Limits left column" group of the License information area`, () => {
+test.describe(`${TC} - Log note - the creation note repeats the values the License was generated with`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -118,7 +121,7 @@ test.describe(`${TC} - The field names and their order in the "Limits left colum
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The field names and their order in the "Limits left column" group of the License information area`, async ({ page }, testInfo) => {
+  test(`${TC}: Log note - the creation note repeats the values the License was generated with`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -138,6 +141,8 @@ test.describe(`${TC} - The field names and their order in the "Limits left colum
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -149,7 +154,7 @@ test.describe(`${TC} - The field names and their order in the "Limits left colum
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let labels: string[] = [];
+    let newestNote = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -286,34 +291,35 @@ test.describe(`${TC} - The field names and their order in the "Limits left colum
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      const columns = await licensePage.getGroupColumns('Limits');
-      labels = columns.left;
-      labels.forEach((l, i) => console.log(`  - Field #${i + 1}         : ${l}`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - "Limits left column" field list read');
+      const notes = await licensePage.getChatterMessages();
+      newestNote = notes.length > 0 ? notes[0] : '';
+      console.log(`  - Opportunity Company : "${oppCompany}"`);
+      console.log(`  - Opportunity e-mail  : "${oppEmail}"`);
+      console.log(`  - Invoice number      : "${invoiceNumber}"`);
+      console.log(`  - Newest log note     :\n      ${newestNote.replace(/\n/g, '\n      ')}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - creation log note read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = [
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Allocate",
-              "Total file share (TB)",
-              "Grace period (days)"
-      ];
+      const hasSupportType = /Support Type:\s*standard/i.test(newestNote);
+      const hasPayer = oppCompany.length > 0 && newestNote.includes(oppCompany);
+      const hasEmail = oppEmail.length > 0 && newestNote.includes(oppEmail);
+      const hasInvoice = invoiceNumber.length > 0 && newestNote.includes(invoiceNumber);
+      const hasState = /State:\s*Draft/i.test(newestNote);
 
-      record('Number of fields in the "Limits left column" group', EXPECTED.length, labels.length);
-      record('Field names and their order', EXPECTED.join(' | '), labels.join(' | '));
+      record('The log note carries the Support Type', 'Support Type: standard', hasSupportType ? 'FOUND' : 'NOT FOUND', hasSupportType);
+      record('The log note carries the Payer', oppCompany, hasPayer ? 'FOUND' : 'NOT FOUND', hasPayer);
+      record('The log note carries the e-mail of the Opportunity', oppEmail, hasEmail ? 'FOUND' : 'NOT FOUND', hasEmail);
+      record('The log note carries the Invoice number', invoiceNumber, hasInvoice ? 'FOUND' : 'NOT FOUND', hasInvoice);
+      record('The log note carries the state of the licence', 'State: Draft', hasState ? 'FOUND' : 'NOT FOUND', hasState);
       printVerify();
 
-      expect(labels, 'the "Limits left column" group must carry exactly ' + EXPECTED.length + ' fields').toHaveLength(EXPECTED.length);
-      expect(labels, 'the field names and their order must match the documented list').toEqual(EXPECTED);
+      expect(hasSupportType, 'the creation log note must repeat the Support Type of the licence').toBe(true);
+      expect(hasPayer, `the creation log note must carry the Payer "${oppCompany}"`).toBe(true);
+      expect(hasEmail, `the creation log note must carry the e-mail "${oppEmail}"`).toBe(true);
+      expect(hasInvoice, `the creation log note must carry the invoice number "${invoiceNumber}"`).toBe(true);
+      expect(hasState, 'the creation log note must record the licence as being in Draft').toBe(true);
     });
   });
 });

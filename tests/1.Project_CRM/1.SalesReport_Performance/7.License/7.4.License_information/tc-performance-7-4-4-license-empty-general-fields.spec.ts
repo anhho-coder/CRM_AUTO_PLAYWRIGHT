@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  General - the Installer provider of a License generated from an Invoice is Nakivo
+ *  General - Uuid, License to Renew and Cancel reason are empty on a new License, and License File is not rendered
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.15
+ *  Test Case ID    : TC.Performance.7.4.4
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies that the "Installer provider" field of the General group is
- *    filled and reads Nakivo, the provider every licence the CRM chain generates carries.
+ *    Creates its own licence and verifies the General fields a brand-new licence is expected to leave
+ *    empty, plus "License File", which Odoo keeps off the screen until the licence actually has one.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.15:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.4\.4:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,11 +45,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the "Installer provider" field of the General group
+ *   1. Read the "Uuid", "License to Renew" and "Cancel reason" fields of the General group
+ *   2. Check whether the licence renders the "License File" field
  *
  *  Verification
- *   - "Installer provider" is filled
- *   - It reads Nakivo
+ *   - "Uuid" is empty
+ *   - "License to Renew" is empty
+ *   - "Cancel reason" is empty
+ *   - "License File" is not rendered (the licence carries no licence file yet)
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -63,12 +66,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.15';
+const TC = 'TC.Performance.7.4.4';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -79,11 +82,12 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the "Installer provider" field of the General group',
+  s1: 'Step 1: Read the "Uuid", "License to Renew" and "Cancel reason" fields of the General group',
+  s2: 'Step 2: Check whether the licence renders the "License File" field',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - General - the Installer provider of a License generated from an Invoice is Nakivo`, () => {
+test.describe(`${TC} - General - Uuid, License to Renew and Cancel reason are empty on a new License, and License File is not rendered`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -118,7 +122,7 @@ test.describe(`${TC} - General - the Installer provider of a License generated f
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: General - the Installer provider of a License generated from an Invoice is Nakivo`, async ({ page }, testInfo) => {
+  test(`${TC}: General - Uuid, License to Renew and Cancel reason are empty on a new License, and License File is not rendered`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -138,6 +142,8 @@ test.describe(`${TC} - General - the Installer provider of a License generated f
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -149,7 +155,10 @@ test.describe(`${TC} - General - the Installer provider of a License generated f
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let installerProvider = '';
+    let uuid = 'x';
+    let renewedLicense = 'x';
+    let cancelReason = 'x';
+    let licenseFileShown = true;
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -286,19 +295,33 @@ test.describe(`${TC} - General - the Installer provider of a License generated f
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      installerProvider = await licensePage.getInstallerProviderValue();
-      console.log(`  - Installer provider : "${installerProvider}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Installer provider read');
+      uuid = await licensePage.getFieldDisplayText('uuid');
+      renewedLicense = await licensePage.getFieldDisplayText('renewed_license');
+      cancelReason = await licensePage.getFieldDisplayText('cancel_reason');
+      console.log(`  - Uuid               : "${uuid}"`);
+      console.log(`  - License to Renew   : "${renewedLicense}"`);
+      console.log(`  - Cancel reason      : "${cancelReason}"`);
+    });
+
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
+      licenseFileShown = await licensePage.isFieldDisplayed('license_file');
+      console.log(`  - License File       : ${licenseFileShown ? 'rendered' : 'not rendered'}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - empty General fields read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      record('"Installer provider" is filled', 'a non-empty value', installerProvider || '(empty)', installerProvider.length > 0);
-      record('"Installer provider" value', 'Nakivo', installerProvider);
+      record('"Uuid" is empty on a new licence', '(empty)', uuid || '(empty)', uuid === '');
+      record('"License to Renew" is empty on a new licence', '(empty)', renewedLicense || '(empty)', renewedLicense === '');
+      record('"Cancel reason" is empty on a licence that was never cancelled', '(empty)', cancelReason || '(empty)', cancelReason === '');
+      record('"License File" is not rendered', 'not rendered', licenseFileShown ? 'rendered' : 'not rendered', !licenseFileShown);
       printVerify();
 
-      expect(installerProvider, '"Installer provider" must not be empty').not.toBe('');
-      expect(installerProvider, '"Installer provider" must read Nakivo').toBe('Nakivo');
+      expect(uuid, '"Uuid" must be empty on a newly created licence').toBe('');
+      expect(renewedLicense, '"License to Renew" must be empty on a licence that renews nothing').toBe('');
+      expect(cancelReason, '"Cancel reason" must be empty on a licence that was never cancelled').toBe('');
+      expect(licenseFileShown, '"License File" must stay off the screen until the licence has a file').toBe(false);
     });
   });
 });

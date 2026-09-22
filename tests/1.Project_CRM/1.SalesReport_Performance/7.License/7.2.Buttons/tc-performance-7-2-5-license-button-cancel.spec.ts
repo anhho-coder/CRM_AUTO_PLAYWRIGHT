@@ -5,21 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  Limits - the expiry and maintenance values of a perpetual License with one year of maintenance
+ *  The CANCEL button asks for a reason, and cancelling the License swaps the header button set
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.24
+ *  Test Case ID    : TC.Performance.7.2.5
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence from a perpetual product and verifies the right column of the Limits
- *    group: the licence never expires, its maintenance is available, and it runs from today for the
- *    365 days the product carries.
+ *    Creates its own licence, presses CANCEL, carries the reason wizard through and verifies the whole
+ *    cancellation: the wizard asks for a reason, the licence ends in Cancel, the reason is stored on
+ *    the form and the header then offers only the three buttons that state allows.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.24:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.5:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,16 +46,15 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the "Expire Mode" and "Expires" fields of the Limits group
- *   2. Read the "Maintenance Mode", "Start Date", "End Date" and "Maintenance Days" fields
+ *   1. Press the "CANCEL" button of the Draft licence
+ *   2. On the "Please indicate the reason for cancelling the license" window, select Cancel reason = Expired and press "OK"
+ *   3. Reload the licence record and read its state, its stages, its Cancel reason and its header buttons
  *
  *  Verification
- *   - "Expires" reads never
- *   - "Expire Mode" is empty (the licence does not expire per licence)
- *   - "Maintenance Mode" reads available
- *   - "Start Date" is today
- *   - "End Date" is one year after the Start Date
- *   - "Maintenance Days" reads 365
+ *   - Pressing CANCEL opens the "Please indicate the reason for cancelling the license" window
+ *   - The statusbar shows the licence in CANCEL, and the bar now offers DRAFT, APPROVED, CANCEL
+ *   - "Cancel reason" carries the reason chosen in the window
+ *   - The header carries exactly 3 buttons: DRAFT, SET TO DRAFT, TEST CREATING LICENSE FROM LM
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -69,12 +68,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.24';
+const TC = 'TC.Performance.7.2.5';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -85,12 +84,13 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the "Expire Mode" and "Expires" fields of the Limits group',
-  s2: 'Step 2: Read the "Maintenance Mode", "Start Date", "End Date" and "Maintenance Days" fields',
+  s1: 'Step 1: Press the "CANCEL" button of the Draft licence',
+  s2: 'Step 2: On the "Please indicate the reason for cancelling the license" window, select Cancel reason = Expired and press "OK"',
+  s3: 'Step 3: Reload the licence record and read its state, its stages, its Cancel reason and its header buttons',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual License with one year of maintenance`, () => {
+test.describe(`${TC} - The CANCEL button asks for a reason, and cancelling the License swaps the header button set`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -125,7 +125,7 @@ test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: Limits - the expiry and maintenance values of a perpetual License with one year of maintenance`, async ({ page }, testInfo) => {
+  test(`${TC}: The CANCEL button asks for a reason, and cancelling the License swaps the header button set`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -145,6 +145,8 @@ test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -156,12 +158,13 @@ test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let expireMode = 'x';
-    let expires = '';
-    let maintenanceMode = '';
-    let startDate = '';
-    let endDate = '';
-    let maintenanceDays = '';
+    let stateBefore = '';
+    let stateAfter = '';
+    let stages: string[] = [];
+    let cancelReasonOnForm = '';
+    let headerLabels: string[] = [];
+    let wizardOpen = false;
+    let wizardTitle = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -298,48 +301,62 @@ test.describe(`${TC} - Limits - the expiry and maintenance values of a perpetual
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      expireMode = await licensePage.getFieldDisplayText('expire_mode');
-      expires = await licensePage.getExpiresValue();
-      console.log(`  - Expire Mode        : "${expireMode}"`);
-      console.log(`  - Expires            : "${expires}"`);
+      stateBefore = await licensePage.getActiveStatusBarStage();
+      console.log(`  - State before      : ${stateBefore}`);
+      await licensePage.clickCancelLicense();
+      wizardOpen = await licensePage.isCancelReasonWizardOpen();
+      wizardTitle = wizardOpen ? await licensePage.getCancelReasonWizardTitle() : '';
+      console.log(`  - Wizard opened     : ${wizardOpen}`);
+      console.log(`  - Wizard title      : "${wizardTitle}"`);
     });
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      maintenanceMode = await licensePage.getFieldDisplayText('maintenance_mode');
-      startDate = await licensePage.getFieldDisplayText('start_date');
-      endDate = await licensePage.getFieldDisplayText('end_date');
-      maintenanceDays = await licensePage.getFieldDisplayText('maintenance_days');
-      console.log(`  - Maintenance Mode   : "${maintenanceMode}"`);
-      console.log(`  - Start Date         : "${startDate}"`);
-      console.log(`  - End Date           : "${endDate}"`);
-      console.log(`  - Maintenance Days   : "${maintenanceDays}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - expiry and maintenance read');
+      await licensePage.confirmCancelReason(DATA.cancelReason);
+      console.log(`  - Cancel reason     : ${DATA.cancelReason}`);
+      console.log('  - OK pressed');
+    });
+
+    await test.step(STEP.s3, async () => {
+      console.log(`\n--- ${STEP.s3} ---`);
+      // Odoo does not re-render the statusbar and the header buttons after a state action, so the
+      // record is reloaded before they are read - otherwise the Draft set is read back unchanged.
+      await licensePage.reloadForm();
+      stateAfter = await licensePage.getActiveStatusBarStage();
+      stages = await licensePage.getStatusBarStages();
+      cancelReasonOnForm = await licensePage.getFieldDisplayText('cancel_reason');
+      headerLabels = await licensePage.getStatusbarButtons();
+      console.log(`  - State after       : ${stateAfter}`);
+      console.log(`  - Stages on the bar : ${stages.join(' | ')}`);
+      console.log(`  - Cancel reason     : "${cancelReasonOnForm}"`);
+      headerLabels.forEach((b, i) => console.log(`  - Button #${i + 1}        : ${b}`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence cancelled');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      // The licence is generated today, so "Start Date" is today in the MM/DD/YYYY the form prints,
-      // and "End Date" is the same day one year later - the 365 maintenance days the product carries.
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const today = new Date();
-      const expectedStart = `${pad(today.getMonth() + 1)}/${pad(today.getDate())}/${today.getFullYear()}`;
-      const expectedEnd = `${pad(today.getMonth() + 1)}/${pad(today.getDate())}/${today.getFullYear() + 1}`;
+      const EXPECTED_BUTTONS = ['DRAFT', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
+      const EXPECTED_STAGES = ['DRAFT', 'APPROVED', 'CANCEL'];
 
-      record('"Expires"', 'never', expires);
-      record('"Expire Mode" is empty on a licence that never expires', '(empty)', expireMode || '(empty)', expireMode === '');
-      record('"Maintenance Mode"', 'available', maintenanceMode);
-      record('"Start Date" is today', expectedStart, startDate);
-      record('"End Date" is one year after the Start Date', expectedEnd, endDate);
-      record('"Maintenance Days"', '365', maintenanceDays);
+      record('The licence was in Draft before CANCEL', 'DRAFT', stateBefore);
+      record('CANCEL opens the reason window', 'Please indicate the reason for cancelling the license', wizardTitle);
+      record('The licence state after the window is confirmed', 'CANCEL', stateAfter);
+      record('The stages the statusbar offers once the licence is cancelled', EXPECTED_STAGES.join(' | '), stages.join(' | '));
+      record('"Cancel reason" carries the reason chosen in the window', DATA.cancelReason, cancelReasonOnForm);
+      record('Number of buttons in the cancelled licence header', EXPECTED_BUTTONS.length, headerLabels.length);
+      record('Button names and their order', EXPECTED_BUTTONS.join(' | '), headerLabels.join(' | '));
       printVerify();
 
-      expect(expires, 'a perpetual licence must never expire').toBe('never');
-      expect(expireMode, '"Expire Mode" must stay empty on a licence that never expires').toBe('');
-      expect(maintenanceMode, '"Maintenance Mode" must read available').toBe('available');
-      expect(startDate, '"Start Date" must be the day the licence was generated').toBe(expectedStart);
-      expect(endDate, '"End Date" must be one year after the Start Date').toBe(expectedEnd);
-      expect(maintenanceDays, '"Maintenance Days" must read 365').toBe('365');
+      expect(stateBefore, 'the licence must start in Draft').toBe('DRAFT');
+      expect(wizardOpen, 'CANCEL must open the cancel-reason window').toBe(true);
+      expect(wizardTitle, 'the window must ask for the reason for cancelling the licence').toBe(
+        'Please indicate the reason for cancelling the license'
+      );
+      expect(stateAfter, 'confirming the window must move the licence to Cancel').toBe('CANCEL');
+      expect(stages, 'the cancelled licence must add CANCEL to the statusbar').toEqual(EXPECTED_STAGES);
+      expect(cancelReasonOnForm, '"Cancel reason" must carry the reason chosen in the window').toBe(DATA.cancelReason);
+      expect(headerLabels, 'the cancelled licence header must carry exactly 3 buttons').toHaveLength(EXPECTED_BUTTONS.length);
+      expect(headerLabels, 'the cancelled button names and their order must match the documented list').toEqual(EXPECTED_BUTTONS);
     });
   });
 });

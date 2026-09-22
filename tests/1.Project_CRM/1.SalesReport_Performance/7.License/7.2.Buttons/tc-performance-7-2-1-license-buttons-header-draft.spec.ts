@@ -5,20 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  Info - Payer, Shipping Address and End User all carry the Company of the Opportunity
+ *  The number and the names of the buttons the License header shows while the licence is in Draft
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.21
+ *  Test Case ID    : TC.Performance.7.2.1
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the three partner fields of the Info group: Payer, Shipping
- *    Address and End User are all filled with the Company Odoo created for the Opportunity.
+ *    Creates its own licence through the Opportunity -> Deal Element -> Quotation -> Sales Order ->
+ *    Invoice chain and verifies that the header of the freshly created (Draft) licence carries
+ *    exactly four buttons, in the documented order, each calling the documented Odoo method.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.21:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.1:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,12 +46,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the "Payer", "Shipping Address" and "End User" fields of the Info group
+ *   1. Read the buttons the licence header shows, left to right, while the licence is in Draft
  *
  *  Verification
- *   - "Payer" is filled and matches the Company of the Opportunity
- *   - "Shipping Address" is filled and matches the Company of the Opportunity
- *   - "End User" is filled and matches the Company of the Opportunity
+ *   - The header carries exactly 4 buttons
+ *   - They read APPROVE, CANCEL, SET TO DRAFT, TEST CREATING LICENSE FROM LM in that order
+ *   - They call set_approved, set_cancel, set_to_draft, test_create_licenses respectively
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -64,12 +65,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.21';
+const TC = 'TC.Performance.7.2.1';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -80,11 +81,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the "Payer", "Shipping Address" and "End User" fields of the Info group',
+  s1: 'Step 1: Read the buttons the licence header shows, left to right, while the licence is in Draft',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - Info - Payer, Shipping Address and End User all carry the Company of the Opportunity`, () => {
+test.describe(`${TC} - The number and the names of the buttons the License header shows while the licence is in Draft`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -119,7 +120,7 @@ test.describe(`${TC} - Info - Payer, Shipping Address and End User all carry the
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: Info - Payer, Shipping Address and End User all carry the Company of the Opportunity`, async ({ page }, testInfo) => {
+  test(`${TC}: The number and the names of the buttons the License header shows while the licence is in Draft`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -139,6 +140,8 @@ test.describe(`${TC} - Info - Payer, Shipping Address and End User all carry the
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -150,9 +153,9 @@ test.describe(`${TC} - Info - Payer, Shipping Address and End User all carry the
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let payer = '';
-    let shippingAddress = '';
-    let endUser = '';
+    let headerLabels: string[] = [];
+    let headerMethods: string[] = [];
+    let state = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -289,28 +292,30 @@ test.describe(`${TC} - Info - Payer, Shipping Address and End User all carry the
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      payer = await licensePage.getFieldDisplayText('partner_id');
-      shippingAddress = await licensePage.getFieldDisplayText('partner_shipping_id');
-      endUser = await licensePage.getFieldDisplayText('partner_end_user_id');
-      console.log(`  - Opportunity Company : "${oppCompany}"`);
-      console.log(`  - Payer               : "${payer}"`);
-      console.log(`  - Shipping Address    : "${shippingAddress}"`);
-      console.log(`  - End User            : "${endUser}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - partner fields read');
+      const buttons = await licensePage.getStatusbarButtonMap();
+      buttons.forEach((b, i) => console.log(`  - Button #${i + 1}        : ${b.label}   (calls ${b.name})`));
+      headerLabels = buttons.map((b) => b.label);
+      headerMethods = buttons.map((b) => b.name);
+      state = await licensePage.getActiveStatusBarStage();
+      console.log(`  - Licence state     : ${state}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Draft header buttons read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      record('"Payer" is filled', 'a non-empty value', payer || '(empty)', payer.length > 0);
-      record('"Payer" matches the Company of the Opportunity', oppCompany, payer);
-      record('"Shipping Address" matches the Company of the Opportunity', oppCompany, shippingAddress);
-      record('"End User" matches the Company of the Opportunity', oppCompany, endUser);
+      const EXPECTED_LABELS = ['APPROVE', 'CANCEL', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
+      const EXPECTED_METHODS = ['set_approved', 'set_cancel', 'set_to_draft', 'test_create_licenses'];
+
+      record('The licence is in Draft', 'DRAFT', state);
+      record('Number of buttons in the licence header', EXPECTED_LABELS.length, headerLabels.length);
+      record('Button names and their order', EXPECTED_LABELS.join(' | '), headerLabels.join(' | '));
+      record('The Odoo method each button calls', EXPECTED_METHODS.join(' | '), headerMethods.join(' | '));
       printVerify();
 
-      expect(payer, '"Payer" must not be empty').not.toBe('');
-      expect(payer, '"Payer" must carry the Company of the Opportunity').toBe(oppCompany);
-      expect(shippingAddress, '"Shipping Address" must carry the Company of the Opportunity').toBe(oppCompany);
-      expect(endUser, '"End User" must carry the Company of the Opportunity').toBe(oppCompany);
+      expect(state, 'a freshly created licence must be in Draft').toBe('DRAFT');
+      expect(headerLabels, 'the Draft licence header must carry exactly 4 buttons').toHaveLength(EXPECTED_LABELS.length);
+      expect(headerLabels, 'the button names and their order must match the documented list').toEqual(EXPECTED_LABELS);
+      expect(headerMethods, 'each button must call the documented Odoo method').toEqual(EXPECTED_METHODS);
     });
   });
 });

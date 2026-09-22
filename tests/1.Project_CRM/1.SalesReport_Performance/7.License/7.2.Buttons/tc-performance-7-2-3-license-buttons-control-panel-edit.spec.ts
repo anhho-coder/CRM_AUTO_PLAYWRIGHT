@@ -5,20 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The CANCEL button moves the License to Cancelled and swaps the header button set
+ *  The control-panel buttons swap to SAVE and DISCARD once EDIT is pressed on a License
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.8
+ *  Test Case ID    : TC.Performance.7.2.3
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence, presses CANCEL on the Draft record and verifies that the licence is
- *    cancelled and that the header then offers only the three buttons the Cancelled state allows.
+ *    Creates its own licence, presses EDIT on the saved record and verifies that the control panel
+ *    swaps its read-mode buttons for exactly SAVE and DISCARD.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.8:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.3:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,13 +45,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Press the "CANCEL" button of the Draft licence
- *   2. Reload the licence record and read its state and its header buttons
+ *   1. Press the "EDIT" button of the saved licence
+ *   2. Read the control-panel buttons of the licence in edit mode, left to right
  *
  *  Verification
- *   - The statusbar shows the licence in CANCELLED
- *   - The header carries exactly 3 buttons
- *   - They read DRAFT, SET TO DRAFT, TEST CREATING LICENSE FROM LM in that order
+ *   - The control panel carries exactly 2 buttons in edit mode
+ *   - They read SAVE, DISCARD in that order
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -65,12 +64,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.8';
+const TC = 'TC.Performance.7.2.3';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -81,12 +80,12 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Press the "CANCEL" button of the Draft licence',
-  s2: 'Step 2: Reload the licence record and read its state and its header buttons',
+  s1: 'Step 1: Press the "EDIT" button of the saved licence',
+  s2: 'Step 2: Read the control-panel buttons of the licence in edit mode, left to right',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The CANCEL button moves the License to Cancelled and swaps the header button set`, () => {
+test.describe(`${TC} - The control-panel buttons swap to SAVE and DISCARD once EDIT is pressed on a License`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -121,7 +120,7 @@ test.describe(`${TC} - The CANCEL button moves the License to Cancelled and swap
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The CANCEL button moves the License to Cancelled and swaps the header button set`, async ({ page }, testInfo) => {
+  test(`${TC}: The control-panel buttons swap to SAVE and DISCARD once EDIT is pressed on a License`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -141,6 +140,8 @@ test.describe(`${TC} - The CANCEL button moves the License to Cancelled and swap
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -152,10 +153,7 @@ test.describe(`${TC} - The CANCEL button moves the License to Cancelled and swap
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let stateBefore = '';
-    let stateAfter = '';
-    let stages: string[] = [];
-    let headerLabels: string[] = [];
+    let panelButtons: string[] = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -292,38 +290,28 @@ test.describe(`${TC} - The CANCEL button moves the License to Cancelled and swap
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      stateBefore = await licensePage.getActiveStatusBarStage();
-      console.log(`  - State before      : ${stateBefore}`);
-      await licensePage.clickCancelLicense();
-      console.log('  - CANCEL pressed');
+      await licensePage.clickEdit();
+      await page.waitForTimeout(CommonUtils.waitTimes.long);
+      console.log('  - EDIT pressed - the licence form is now in edit mode');
     });
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      await licensePage.reloadForm();
-      stateAfter = await licensePage.getActiveStatusBarStage();
-      stages = await licensePage.getStatusBarStages();
-      headerLabels = await licensePage.getStatusbarButtons();
-      console.log(`  - State after       : ${stateAfter}`);
-      console.log(`  - Stages on the bar : ${stages.join(' | ')}`);
-      headerLabels.forEach((b, i) => console.log(`  - Button #${i + 1}        : ${b}`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence cancelled');
+      panelButtons = await licensePage.getControlPanelButtons();
+      panelButtons.forEach((b, i) => console.log(`  - Button #${i + 1}        : ${b}`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - edit-mode control-panel buttons read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['DRAFT', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
+      const EXPECTED = ['SAVE', 'DISCARD'];
 
-      record('The licence was in Draft before CANCEL', 'DRAFT', stateBefore);
-      record('The licence state after CANCEL', 'CANCELLED', stateAfter);
-      record('Number of buttons in the Cancelled licence header', EXPECTED.length, headerLabels.length);
-      record('Button names and their order', EXPECTED.join(' | '), headerLabels.join(' | '));
+      record('Number of control-panel buttons in edit mode', EXPECTED.length, panelButtons.length);
+      record('Control-panel button names and their order', EXPECTED.join(' | '), panelButtons.join(' | '));
       printVerify();
 
-      expect(stateBefore, 'the licence must start in Draft').toBe('DRAFT');
-      expect(stateAfter, 'CANCEL must move the licence to Cancelled').toBe('CANCELLED');
-      expect(headerLabels, 'the Cancelled licence header must carry exactly 3 buttons').toHaveLength(EXPECTED.length);
-      expect(headerLabels, 'the Cancelled button names and their order must match the documented list').toEqual(EXPECTED);
+      expect(panelButtons, 'the licence in edit mode must offer exactly 2 control-panel buttons').toHaveLength(EXPECTED.length);
+      expect(panelButtons, 'the edit-mode control-panel buttons must read SAVE then DISCARD').toEqual(EXPECTED);
     });
   });
 });

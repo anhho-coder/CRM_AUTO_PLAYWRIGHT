@@ -5,20 +5,21 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The SET TO DRAFT button returns an Approved License to Draft
+ *  The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.9
+ *  Test Case ID    : TC.Performance.7.3.4
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence, approves it, then presses SET TO DRAFT and verifies that the licence
- *    returns to Draft and that its header carries the four Draft buttons again.
+ *    Creates its own licence and verifies the right column of the Limits group: the six fields it
+ *    carries and their order, plus the two expiry fields Odoo keeps off the screen unless the
+ *    licence expires per licence.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.9:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.3\.4:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -45,14 +46,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Press the "APPROVE" button of the Draft licence, then reload the record
- *   2. Press the "SET TO DRAFT" button of the Approved licence
- *   3. Reload the licence record and read its state and its header buttons
+ *   1. Read the field labels of the right column of the "Limits" group, top to bottom
+ *   2. Check whether the licence renders "Expire Start Date" and "Expiration End Date"
  *
  *  Verification
- *   - The licence is APPROVED after step 1 and DRAFT again after step 2
- *   - The header carries exactly 4 buttons
- *   - They read APPROVE, CANCEL, SET TO DRAFT, TEST CREATING LICENSE FROM LM in that order
+ *   - The right column of the Limits group carries exactly 6 fields
+ *   - They read Expire Mode, Expires, Maintenance Mode, Start Date, End Date, Maintenance Days in that order
+ *   - "Expire Start Date" is not rendered (the licence does not expire per licence)
+ *   - "Expiration End Date" is not rendered (the licence does not expire per licence)
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -66,12 +67,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.9';
+const TC = 'TC.Performance.7.3.4';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -82,13 +83,12 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Press the "APPROVE" button of the Draft licence, then reload the record',
-  s2: 'Step 2: Press the "SET TO DRAFT" button of the Approved licence',
-  s3: 'Step 3: Reload the licence record and read its state and its header buttons',
+  s1: 'Step 1: Read the field labels of the right column of the "Limits" group, top to bottom',
+  s2: 'Step 2: Check whether the licence renders "Expire Start Date" and "Expiration End Date"',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The SET TO DRAFT button returns an Approved License to Draft`, () => {
+test.describe(`${TC} - The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -123,7 +123,7 @@ test.describe(`${TC} - The SET TO DRAFT button returns an Approved License to Dr
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The SET TO DRAFT button returns an Approved License to Draft`, async ({ page }, testInfo) => {
+  test(`${TC}: The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -143,6 +143,8 @@ test.describe(`${TC} - The SET TO DRAFT button returns an Approved License to Dr
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -154,9 +156,10 @@ test.describe(`${TC} - The SET TO DRAFT button returns an Approved License to Dr
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let stateApproved = '';
-    let stateAfter = '';
-    let headerLabels: string[] = [];
+    let labels: string[] = [];
+    let expireStartShown = true;
+    let expirationEndShown = true;
+    let expireMode = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -293,42 +296,36 @@ test.describe(`${TC} - The SET TO DRAFT button returns an Approved License to Dr
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      await licensePage.clickApprove();
-      await licensePage.reloadForm();
-      stateApproved = await licensePage.getActiveStatusBarStage();
-      console.log(`  - State after APPROVE : ${stateApproved}`);
+      const columns = await licensePage.getGroupColumns('Limits');
+      labels = columns.right;
+      labels.forEach((l, i) => console.log(`  - Field #${i + 1}         : ${l}`));
     });
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      await licensePage.clickSetToDraft();
-      console.log('  - SET TO DRAFT pressed');
-    });
-
-    await test.step(STEP.s3, async () => {
-      console.log(`\n--- ${STEP.s3} ---`);
-      await licensePage.reloadForm();
-      stateAfter = await licensePage.getActiveStatusBarStage();
-      headerLabels = await licensePage.getStatusbarButtons();
-      console.log(`  - State after         : ${stateAfter}`);
-      headerLabels.forEach((b, i) => console.log(`  - Button #${i + 1}          : ${b}`));
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - licence back in Draft');
+      expireStartShown = await licensePage.isFieldDisplayed('expire_start_date');
+      expirationEndShown = await licensePage.isFieldDisplayed('expiration_end_date');
+      expireMode = await licensePage.getFieldDisplayText('expire_mode');
+      console.log(`  - Expire Mode value   : "${expireMode}"`);
+      console.log(`  - expire_start_date   : ${expireStartShown ? 'rendered' : 'not rendered'}`);
+      console.log(`  - expiration_end_date : ${expirationEndShown ? 'rendered' : 'not rendered'}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Limits right column read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['APPROVE', 'CANCEL', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
+      const EXPECTED = ['Expire Mode', 'Expires', 'Maintenance Mode', 'Start Date', 'End Date', 'Maintenance Days'];
 
-      record('The licence was Approved before SET TO DRAFT', 'APPROVED', stateApproved);
-      record('The licence state after SET TO DRAFT', 'DRAFT', stateAfter);
-      record('Number of buttons in the Draft licence header', EXPECTED.length, headerLabels.length);
-      record('Button names and their order', EXPECTED.join(' | '), headerLabels.join(' | '));
+      record('Number of fields in the right column of Limits', EXPECTED.length, labels.length);
+      record('Field names and their order', EXPECTED.join(' | '), labels.join(' | '));
+      record('"Expire Start Date" is not rendered', 'not rendered', expireStartShown ? 'rendered' : 'not rendered', !expireStartShown);
+      record('"Expiration End Date" is not rendered', 'not rendered', expirationEndShown ? 'rendered' : 'not rendered', !expirationEndShown);
       printVerify();
 
-      expect(stateApproved, 'APPROVE must move the licence to Approved first').toBe('APPROVED');
-      expect(stateAfter, 'SET TO DRAFT must return the licence to Draft').toBe('DRAFT');
-      expect(headerLabels, 'the Draft licence header must carry exactly 4 buttons').toHaveLength(EXPECTED.length);
-      expect(headerLabels, 'the Draft button names and their order must match the documented list').toEqual(EXPECTED);
+      expect(labels, 'the right column of Limits must carry exactly 6 fields').toHaveLength(EXPECTED.length);
+      expect(labels, 'the field names and their order must match the documented list').toEqual(EXPECTED);
+      expect(expireStartShown, '"Expire Start Date" must stay off the screen while the licence does not expire per licence').toBe(false);
+      expect(expirationEndShown, '"Expiration End Date" must stay off the screen while the licence does not expire per licence').toBe(false);
     });
   });
 });

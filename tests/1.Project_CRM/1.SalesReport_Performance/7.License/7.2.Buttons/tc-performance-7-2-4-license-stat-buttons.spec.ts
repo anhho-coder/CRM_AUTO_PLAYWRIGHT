@@ -5,21 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render
+ *  The stat buttons above the License sheet - Invoiced amount and Active
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.14
+ *  Test Case ID    : TC.Performance.7.2.4
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence and verifies the right column of the Limits group: the six fields it
- *    carries and their order, plus the two expiry fields Odoo keeps off the screen unless the
- *    licence expires per licence.
+ *    Creates its own licence and verifies the two stat buttons the licence sheet draws above itself:
+ *    the invoiced amount (action_view_invoice) and the archive toggle, captioned Active.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.14:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.2\.4:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,14 +45,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the field labels of the right column of the "Limits" group, top to bottom
- *   2. Check whether the licence renders "Expire Start Date" and "Expiration End Date"
+ *   1. Read the stat buttons the licence sheet shows above the form, left to right
  *
  *  Verification
- *   - The right column of the Limits group carries exactly 6 fields
- *   - They read Expire Mode, Expires, Maintenance Mode, Start Date, End Date, Maintenance Days in that order
- *   - "Expire Start Date" is not rendered (the licence does not expire per licence)
- *   - "Expiration End Date" is not rendered (the licence does not expire per licence)
+ *   - The sheet carries exactly 2 stat buttons
+ *   - The first one is captioned "$ <amount> Invoiced" and calls action_view_invoice
+ *   - The second one is captioned "Active" and calls toggle_active
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -67,12 +64,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.14';
+const TC = 'TC.Performance.7.2.4';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -83,12 +80,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the field labels of the right column of the "Limits" group, top to bottom',
-  s2: 'Step 2: Check whether the licence renders "Expire Start Date" and "Expiration End Date"',
+  s1: 'Step 1: Read the stat buttons the licence sheet shows above the form, left to right',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render`, () => {
+test.describe(`${TC} - The stat buttons above the License sheet - Invoiced amount and Active`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -123,7 +119,7 @@ test.describe(`${TC} - The field names and their order in the RIGHT column of th
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The field names and their order in the RIGHT column of the Limits group, and the two expiry fields a perpetual License does not render`, async ({ page }, testInfo) => {
+  test(`${TC}: The stat buttons above the License sheet - Invoiced amount and Active`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -143,6 +139,8 @@ test.describe(`${TC} - The field names and their order in the RIGHT column of th
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -154,10 +152,7 @@ test.describe(`${TC} - The field names and their order in the RIGHT column of th
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let labels: string[] = [];
-    let expireStartShown = true;
-    let expirationEndShown = true;
-    let expireMode = '';
+    let statButtons: Array<{ label: string; name: string }> = [];
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -294,36 +289,28 @@ test.describe(`${TC} - The field names and their order in the RIGHT column of th
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      const columns = await licensePage.getGroupColumns('Limits');
-      labels = columns.right;
-      labels.forEach((l, i) => console.log(`  - Field #${i + 1}         : ${l}`));
-    });
-
-    await test.step(STEP.s2, async () => {
-      console.log(`\n--- ${STEP.s2} ---`);
-      expireStartShown = await licensePage.isFieldDisplayed('expire_start_date');
-      expirationEndShown = await licensePage.isFieldDisplayed('expiration_end_date');
-      expireMode = await licensePage.getFieldDisplayText('expire_mode');
-      console.log(`  - Expire Mode value   : "${expireMode}"`);
-      console.log(`  - expire_start_date   : ${expireStartShown ? 'rendered' : 'not rendered'}`);
-      console.log(`  - expiration_end_date : ${expirationEndShown ? 'rendered' : 'not rendered'}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Limits right column read');
+      statButtons = await licensePage.getButtonBoxButtons();
+      statButtons.forEach((b, i) => console.log(`  - Stat button #${i + 1}   : "${b.label}"   (calls ${b.name})`));
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - stat buttons read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['Expire Mode', 'Expires', 'Maintenance Mode', 'Start Date', 'End Date', 'Maintenance Days'];
+      const labels = statButtons.map((b) => b.label);
+      const methods = statButtons.map((b) => b.name);
+      const invoicedCaption = labels[0] || '';
+      const invoicedMatches = /^\$\s?[\d,]+\.\d{2}\s+Invoiced$/.test(invoicedCaption);
 
-      record('Number of fields in the right column of Limits', EXPECTED.length, labels.length);
-      record('Field names and their order', EXPECTED.join(' | '), labels.join(' | '));
-      record('"Expire Start Date" is not rendered', 'not rendered', expireStartShown ? 'rendered' : 'not rendered', !expireStartShown);
-      record('"Expiration End Date" is not rendered', 'not rendered', expirationEndShown ? 'rendered' : 'not rendered', !expirationEndShown);
+      record('Number of stat buttons above the sheet', 2, statButtons.length);
+      record('Stat button #1 caption reads "$ <amount> Invoiced"', 'matches "$ <amount> Invoiced"', invoicedCaption, invoicedMatches);
+      record('Stat button #2 caption', 'Active', labels[1] || '');
+      record('The Odoo method each stat button calls', 'action_view_invoice | toggle_active', methods.join(' | '));
       printVerify();
 
-      expect(labels, 'the right column of Limits must carry exactly 6 fields').toHaveLength(EXPECTED.length);
-      expect(labels, 'the field names and their order must match the documented list').toEqual(EXPECTED);
-      expect(expireStartShown, '"Expire Start Date" must stay off the screen while the licence does not expire per licence').toBe(false);
-      expect(expirationEndShown, '"Expiration End Date" must stay off the screen while the licence does not expire per licence').toBe(false);
+      expect(statButtons, 'the licence sheet must carry exactly 2 stat buttons').toHaveLength(2);
+      expect(invoicedMatches, `the first stat button must read "$ <amount> Invoiced", it read "${invoicedCaption}"`).toBe(true);
+      expect(labels[1], 'the second stat button must be captioned Active').toBe('Active');
+      expect(methods, 'the stat buttons must call action_view_invoice then toggle_active').toEqual(['action_view_invoice', 'toggle_active']);
     });
   });
 });

@@ -5,21 +5,20 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * =============================================================================================
- *  The number and the names of the buttons the License header shows while the licence is in Draft
+ *  Info - the Email of the License is the e-mail entered on the Opportunity
  * =============================================================================================
- *  Test Case ID    : TC.Performance.1.1.7.3
+ *  Test Case ID    : TC.Performance.7.4.8
  *  Jira            : -   (authored from the License screen verification scope; no Xray manual TC)
  *  Automation-Type : new
  *  Automation-Date : 2026-09-21
  *  Environment     : PRE-PRODUCTION - https://pre-production.nakivo.site (VPN required)
  * ---------------------------------------------------------------------------------------------
  *  Summary
- *    Creates its own licence through the Opportunity -> Deal Element -> Quotation -> Sales Order ->
- *    Invoice chain and verifies that the header of the freshly created (Draft) licence carries
- *    exactly four buttons, in the documented order, each calling the documented Odoo method.
+ *    Creates its own licence and verifies that the "Email" field of the Info group carries, unchanged,
+ *    the e-mail address the Opportunity was created with at the start of the chain.
  * ---------------------------------------------------------------------------------------------
  *  Command to run
- *    npx playwright test --grep "TC\.Performance\.1\.1\.7\.3:" --project=SalesReport_Performance
+ *    npx playwright test --grep "TC\.Performance\.7\.4\.8:" --project=SalesReport_Performance
  * ---------------------------------------------------------------------------------------------
  *  Source manual TC
  *
@@ -46,12 +45,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *   7. Press "CREATE LICENSE", select "sockets" at the "for monitoring" dropdown and press "SAVE"
  *
  *  Steps to reproduce
- *   1. Read the buttons the licence header shows, left to right, while the licence is in Draft
+ *   1. Read the "Email" field of the Info group and compare it with the Opportunity e-mail
  *
  *  Verification
- *   - The header carries exactly 4 buttons
- *   - They read APPROVE, CANCEL, SET TO DRAFT, TEST CREATING LICENSE FROM LM in that order
- *   - They call set_approved, set_cancel, set_to_draft, test_create_licenses respectively
+ *   - "Email" is filled
+ *   - It matches the e-mail entered on the Opportunity
  * ---------------------------------------------------------------------------------------------
  *  Grounding
  *    The expected values are grounded on PRE-PRODUCTION (2026-09-21) against the
@@ -65,12 +63,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *    depends on a record another test left behind. Nothing is deleted afterwards: the invoice is
  *    VALIDATED and the licence generated from it cannot be removed cleanly, and the
  *    1.SalesReport_Performance family keeps what it creates on pre-production - exactly like the
- *    baseline specs TC.Performance.1.1.7.1 and TC.Performance.1.1.7.2. The URL of every
+ *    baseline specs TC.Performance.7.1.1 and TC.Performance.7.1.2. The URL of every
  *    record a run created is printed in afterEach so it can always be found again.
  * =============================================================================================
  */
 
-const TC = 'TC.Performance.1.1.7.3';
+const TC = 'TC.Performance.7.4.8';
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -81,11 +79,11 @@ const STEP = {
   pre5: 'Pre-condition 5: Press "NEW QUOTATION", then "CONFIRM" to create the Sales Order',
   pre6: 'Pre-condition 6: Press "CREATE INVOICE", "CREATE AND VIEW INVOICES", then "VALIDATE"',
   pre7: 'Pre-condition 7: Press "CREATE LICENSE", select "sockets" for monitoring and press "SAVE"',
-  s1: 'Step 1: Read the buttons the licence header shows, left to right, while the licence is in Draft',
+  s1: 'Step 1: Read the "Email" field of the Info group and compare it with the Opportunity e-mail',
   verify: 'Verification',
 } as const;
 
-test.describe(`${TC} - The number and the names of the buttons the License header shows while the licence is in Draft`, () => {
+test.describe(`${TC} - Info - the Email of the License is the e-mail entered on the Opportunity`, () => {
   let oppUrl = '';
   let dealElementUrl = '';
   let quotationUrl = '';
@@ -120,7 +118,7 @@ test.describe(`${TC} - The number and the names of the buttons the License heade
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC}: The number and the names of the buttons the License header shows while the licence is in Draft`, async ({ page }, testInfo) => {
+  test(`${TC}: Info - the Email of the License is the e-mail entered on the Opportunity`, async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -140,6 +138,8 @@ test.describe(`${TC} - The number and the names of the buttons the License heade
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       forMonitoring: 'sockets',
+      // The reason the cancel window is confirmed with, where a test case cancels the licence.
+      cancelReason: 'Expired',
     };
 
     // What the chain produced - every "matches the Opportunity / the Invoice" check below is made
@@ -151,9 +151,7 @@ test.describe(`${TC} - The number and the names of the buttons the License heade
     let licenseTitle = '';
 
     // What this test case reads on the licence.
-    let headerLabels: string[] = [];
-    let headerMethods: string[] = [];
-    let state = '';
+    let emailOnLicense = '';
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s
     // so it also reaches stdout when a check fails.
@@ -290,30 +288,20 @@ test.describe(`${TC} - The number and the names of the buttons the License heade
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      const buttons = await licensePage.getStatusbarButtonMap();
-      buttons.forEach((b, i) => console.log(`  - Button #${i + 1}        : ${b.label}   (calls ${b.name})`));
-      headerLabels = buttons.map((b) => b.label);
-      headerMethods = buttons.map((b) => b.name);
-      state = await licensePage.getActiveStatusBarStage();
-      console.log(`  - Licence state     : ${state}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Draft header buttons read');
+      emailOnLicense = await licensePage.getFieldDisplayText('email_from');
+      console.log(`  - Opportunity e-mail : "${oppEmail}"`);
+      console.log(`  - Email on licence   : "${emailOnLicense}"`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Email field read');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED_LABELS = ['APPROVE', 'CANCEL', 'SET TO DRAFT', 'TEST CREATING LICENSE FROM LM'];
-      const EXPECTED_METHODS = ['set_approved', 'set_cancel', 'set_to_draft', 'test_create_licenses'];
-
-      record('The licence is in Draft', 'DRAFT', state);
-      record('Number of buttons in the licence header', EXPECTED_LABELS.length, headerLabels.length);
-      record('Button names and their order', EXPECTED_LABELS.join(' | '), headerLabels.join(' | '));
-      record('The Odoo method each button calls', EXPECTED_METHODS.join(' | '), headerMethods.join(' | '));
+      record('"Email" is filled', 'a non-empty value', emailOnLicense || '(empty)', emailOnLicense.length > 0);
+      record('"Email" matches the e-mail entered on the Opportunity', oppEmail, emailOnLicense);
       printVerify();
 
-      expect(state, 'a freshly created licence must be in Draft').toBe('DRAFT');
-      expect(headerLabels, 'the Draft licence header must carry exactly 4 buttons').toHaveLength(EXPECTED_LABELS.length);
-      expect(headerLabels, 'the button names and their order must match the documented list').toEqual(EXPECTED_LABELS);
-      expect(headerMethods, 'each button must call the documented Odoo method').toEqual(EXPECTED_METHODS);
+      expect(emailOnLicense, '"Email" must not be empty').not.toBe('');
+      expect(emailOnLicense, '"Email" must carry the e-mail entered on the Opportunity').toBe(oppEmail);
     });
   });
 });
