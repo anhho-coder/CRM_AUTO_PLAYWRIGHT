@@ -97,6 +97,37 @@ pipeline {
     }
 
     stages {
+        // WHO TRIGGERED THIS BUILD. Read from the build CAUSE rather than the
+        // build-user-vars plugin: that plugin leaves BUILD_USER blank for timer and
+        // upstream builds, which is most of the nightly/weekend/rerun lanes. Exported
+        // as TRIGGERED_BY / TRIGGER_TYPE and picked up by the allure-playwright
+        // reporter's environmentInfo (playwright.config.ts) -> the Allure "Environment"
+        // widget. Must stay the FIRST stage so every later stage sees the vars.
+        stage('Resolve trigger') {
+            steps {
+                script {
+                    def causes = currentBuild.getBuildCauses()
+                    def u  = causes.find { it['_class']?.contains('UserIdCause') }
+                    def t  = causes.find { it['_class']?.contains('TimerTrigger') }
+                    def up = causes.find { it['_class']?.contains('UpstreamCause') }
+                    if (u) {
+                        env.TRIGGERED_BY = (u['userId'] ?: u['userName'] ?: 'unknown-user')
+                        env.TRIGGER_TYPE = 'manual'
+                    } else if (t) {
+                        env.TRIGGERED_BY = 'jenkins-timer'
+                        env.TRIGGER_TYPE = 'schedule'
+                    } else if (up) {
+                        env.TRIGGERED_BY = "upstream:${up['upstreamProject']}#${up['upstreamBuild']}"
+                        env.TRIGGER_TYPE = 'upstream'
+                    } else {
+                        env.TRIGGERED_BY = (causes ? (causes[0]['shortDescription'] ?: 'unknown') : 'unknown')
+                        env.TRIGGER_TYPE = 'other'
+                    }
+                    echo "Triggered by ${env.TRIGGERED_BY} (${env.TRIGGER_TYPE})"
+                }
+            }
+        }
+
         stage('Pre-prod route gate') {
             // Runs on the dedicated 'probe' node (1 executor, EXCLUSIVE) so the route
             // probe can never be starved by the 3 shared executors. Aborting here (instead

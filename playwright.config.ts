@@ -172,7 +172,46 @@ export default defineConfig({
       printSteps: true
     }],
     // Allure raw results (consumed by the combined CRM_Allure_Report job).
-    ['allure-playwright', { resultsDir: 'allure-results' }],
+    ['allure-playwright', {
+      resultsDir: 'allure-results',
+      // WHO TRIGGERED THIS RUN. Written by the reporter into
+      // allure-results/environment.properties and rendered by Allure as the
+      // "Environment" widget on the Overview tab. TRIGGERED_BY / TRIGGER_TYPE are
+      // resolved from the Jenkins build cause in the 'Resolve trigger' stage
+      // (Jenkinsfile) - plugin-free, so timer/upstream builds are attributed too.
+      // Local runs fall back to the OS user, never blank.
+      // CAVEAT: this file has a fixed name at the root of the results dir, so when
+      // CRM_Allure_Report merges every section into one folder the LAST job copied
+      // wins. Per-job reports are correct; the combined report shows one job's
+      // trigger only. Per-test attribution that survives the merge needs
+      // globalLabels, not this.
+      // PER-TEST attribution. environmentInfo above is ONE value for the whole
+      // report, so it cannot answer "how many unique tests did each IC execute" -
+      // and it loses to the last job copied when CRM_Allure_Report merges every
+      // section into one folder. These labels live INSIDE each *-result.json, so
+      // they survive the merge and can be grouped per person.
+      //   owner            -> the IC, rendered on the test page, filterable
+      //   tag by:<ic>      -> chip, so the Suites/Behaviors filter box narrows to one IC
+      //   tag build:J#N    -> which Jenkins build produced this result
+      // Consumed by ci/allure-build-ic-execution.js -> the "Unique test execution
+      // by IC" Overview card.
+      globalLabels: [
+        { name: 'owner', value: process.env.TRIGGERED_BY
+          || process.env.USERNAME || process.env.USER || 'local' },
+        { name: 'tag', value: `by:${process.env.TRIGGERED_BY
+          || process.env.USERNAME || process.env.USER || 'local'}` },
+        { name: 'tag', value: `trigger:${process.env.TRIGGER_TYPE || 'local'}` },
+        { name: 'tag', value: `build:${process.env.JOB_BASE_NAME || 'local'}#${process.env.BUILD_NUMBER || '0'}` },
+      ],
+      environmentInfo: {
+        'Triggered by': process.env.TRIGGERED_BY
+          || process.env.USERNAME || process.env.USER || 'local',
+        'Trigger type': process.env.TRIGGER_TYPE || 'local',
+        'Jenkins job': process.env.JOB_BASE_NAME || '-',
+        'Build': process.env.BUILD_NUMBER || '-',
+        'Build URL': process.env.BUILD_URL || '-',
+      },
+    }],
     [customReporterPath], // Custom reporter runs last to rename folder after all reports are done
   ],
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */

@@ -84,6 +84,12 @@ pipeline {
                 // (timeout / aborted / cascade), with an inferred reason + fix.
                 bat 'node ci/allure-build-didnotrun-index.js allure-report tests'
                 bat 'node ci/allure-inject-skips-card.js allure-report'
+                // Add the "Unique test execution by IC" card: per-IC distinct-test counts,
+                // grouped from the per-test `owner` label (playwright.config.ts globalLabels).
+                // Reads the RAW merged results, not the report, because that is where the
+                // labels live.
+                bat 'node ci/allure-build-ic-execution.js allure-merged allure-report .'
+                bat 'node ci/allure-inject-ic-execution-card.js allure-report'
                 // Add the "Bugs found by automation test" card (Jira query, label QA-CRM_Automation).
                 bat 'node ci/allure-fetch-automation-bugs.js allure-report'
                 bat 'node ci/allure-inject-automation-bugs-card.js allure-report'
