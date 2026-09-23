@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.2 - Verify Current Salesperson combobox displays on R
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const currentSalespersonLabel = reAssignationPage.getCurrentSalespersonLabel();
-      await expect(currentSalespersonLabel).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Current Salesperson" combobox is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Current Salesperson combobox visible');
+      let __verifyPassed = false;
+      try {
+        await expect(currentSalespersonLabel).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Current Salesperson" combobox is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Current Salesperson combobox visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

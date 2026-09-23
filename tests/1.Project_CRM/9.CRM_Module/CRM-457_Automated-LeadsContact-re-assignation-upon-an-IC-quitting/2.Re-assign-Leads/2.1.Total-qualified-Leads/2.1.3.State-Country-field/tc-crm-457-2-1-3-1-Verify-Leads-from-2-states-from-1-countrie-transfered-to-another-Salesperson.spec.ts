@@ -529,10 +529,15 @@ test.describe('CRM-457_2.1.3.1 - Verify qualified Leads from 2 States from 1 cou
 
       // Normalize spaces around "/" to allow "0/2", "0 /2", "0/ 2", "0 / 2"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('0/2');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('0/2');
 
-      console.log('\u2713 IV.1: Total text = "0/2" - qualified Leads from 2 States from 1 country correctly counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'IV.1 - Total 0-2 verified');
+        console.log('\u2713 IV.1: Total text = "0/2" - qualified Leads from 2 States from 1 country correctly counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'IV.1 - Total 0-2 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

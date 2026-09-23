@@ -208,9 +208,14 @@ test.describe('CMR-Opp-Reseller-Distributor - Verify the Opp has Reseller and Di
       const payerValue = await dealElementPage.getPayerValue();
       console.log(`  Payer value received: "${payerValue}"`);
       console.log(`  Expected            : "${name_Distributor1}"`);
-      expect(payerValue).toBe(name_Distributor1);
-      console.log(`\u2713 VIII.1: Payer = "${name_Distributor1}" - Payer correctly set from Distributor`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Payer verified');
+      let __verifyPassed = false;
+      try {
+        expect(payerValue).toBe(name_Distributor1);
+        console.log(`\u2713 VIII.1: Payer = "${name_Distributor1}" - Payer correctly set from Distributor`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Payer verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

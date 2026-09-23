@@ -78,11 +78,16 @@ test.describe('CRM-12060_3.2 - Linked documents are redirected to the ID-selecte
       console.log(`  - Shared Company Name       : ${sharedName}`);
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      expect(c1.id).not.toBe(c2.id);
-      console.log(`  - Destination (keep) = #${c1.id} ; Source (owns Opp, merged away) = #${c2.id}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        expect(c1.id).not.toBe(c2.id);
+        console.log(`  - Destination (keep) = #${c1.id} ; Source (owns Opp, merged away) = #${c2.id}`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition III: Create an Opportunity linked to Contact #2 (the source)', async () => {
@@ -94,8 +99,13 @@ test.describe('CRM-12060_3.2 - Linked documents are redirected to the ID-selecte
       oppUrl = await opportunityPage.openKanbanCardByText(oppName);
       console.log(`  - Opportunity "${oppName}" created and linked to Contact #2`);
       console.log(`      opp url = ${oppUrl}`);
-      expect(oppUrl, 'the Opportunity must be saved (id in URL)').toMatch(/[#?&]id=\d+/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - Opportunity linked to Contact #2 created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(oppUrl, 'the Opportunity must be saved (id in URL)').toMatch(/[#?&]id=\d+/);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - Opportunity linked to Contact #2 created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let chosenOption = '';

@@ -334,40 +334,40 @@ test.describe('CRM-12501_7.1 - Subscription licence must still expire', () => {
       console.log(`  - Licence SAVED in ${(saveMs / 1000).toFixed(2)}s`);
 
       licenseId = licensePage.getRecordIdFromUrl();
-      expect(licenseId, 'Saving the generated licence must produce a record id in the form URL')
-        .not.toBe('');
-      licenseUrl = `${baseUrl.replace(/\/$/, '')}/web#id=${licenseId}&model=${LICENSE_MODEL}&view_type=form`;
+      let __verifyPassed = false;
+      try {
+        expect(licenseId, 'Saving the generated licence must produce a record id in the form URL')
+          .not.toBe('');
+        licenseUrl = `${baseUrl.replace(/\/$/, '')}/web#id=${licenseId}&model=${LICENSE_MODEL}&view_type=form`;
 
-      licenseName = await licensePage.getLicenseNameValue();
-      licensing = await licensePage.getLicensingValue();
-      expires = await licensePage.getExpiresValue();
-      expireMode = await licensePage.getExpireModeValue();
-      expirationDaysShown = await licensePage.isFieldDisplayed('expiration_days');
-      expirationDays = await licensePage.getExpirationDaysValue();
-      expireStartDateShown = await licensePage.isFieldDisplayed('expire_start_date');
-      expireStartDate = await licensePage.getExpireStartDateValue();
-      expirationEndDateShown = await licensePage.isFieldDisplayed('expiration_end_date');
-      expirationEndDate = await licensePage.getExpirationEndDateValue();
-      maintenanceDays = await licensePage.getMaintenanceDaysValue();
+        licenseName = await licensePage.getLicenseNameValue();
+        licensing = await licensePage.getLicensingValue();
+        expires = await licensePage.getExpiresValue();
+        expireMode = await licensePage.getExpireModeValue();
+        expirationDaysShown = await licensePage.isFieldDisplayed('expiration_days');
+        expirationDays = await licensePage.getExpirationDaysValue();
+        expireStartDateShown = await licensePage.isFieldDisplayed('expire_start_date');
+        expireStartDate = await licensePage.getExpireStartDateValue();
+        expirationEndDateShown = await licensePage.isFieldDisplayed('expiration_end_date');
+        expirationEndDate = await licensePage.getExpirationEndDateValue();
+        maintenanceDays = await licensePage.getMaintenanceDaysValue();
 
-      console.log(`  - Licence generated: ${licenseId ? `#${licenseId} - ${licenseUrl}` : '(unsaved form)'}`);
-      console.log(`  - Name                 : ${licenseName}`);
-      console.log(`  - Licensing            : ${licensing}`);
-      console.log(`  - Expires              : ${expires}`);
-      console.log(`  - Expire Mode          : ${expireMode}`);
-      console.log(`  - Expiration Days shown: ${expirationDaysShown}`);
-      console.log(`  - Expiration Days      : ${expirationDays === '' ? '(not rendered)' : expirationDays}`);
-      console.log(`  - Expire Start shown   : ${expireStartDateShown}`);
-      console.log(`  - Expire Start Date    : ${expireStartDate === '' ? '(empty)' : expireStartDate}`);
-      console.log(`  - Expiration End shown : ${expirationEndDateShown}`);
-      console.log(`  - Expiration End Date  : ${expirationEndDate === '' ? '(empty)' : expirationEndDate}`);
-      console.log(`  - Maintenance Days     : ${maintenanceDays}`);
-
-      await CommonUtils.captureAndAttachScreenshot(
-        page,
-        testInfo,
-        `Steps to reproduce I - licence ${licenseId} generated`
-      );
+        console.log(`  - Licence generated: ${licenseId ? `#${licenseId} - ${licenseUrl}` : '(unsaved form)'}`);
+        console.log(`  - Name                 : ${licenseName}`);
+        console.log(`  - Licensing            : ${licensing}`);
+        console.log(`  - Expires              : ${expires}`);
+        console.log(`  - Expire Mode          : ${expireMode}`);
+        console.log(`  - Expiration Days shown: ${expirationDaysShown}`);
+        console.log(`  - Expiration Days      : ${expirationDays === '' ? '(not rendered)' : expirationDays}`);
+        console.log(`  - Expire Start shown   : ${expireStartDateShown}`);
+        console.log(`  - Expire Start Date    : ${expireStartDate === '' ? '(empty)' : expireStartDate}`);
+        console.log(`  - Expiration End shown : ${expirationEndDateShown}`);
+        console.log(`  - Expiration End Date  : ${expirationEndDate === '' ? '(empty)' : expirationEndDate}`);
+        console.log(`  - Maintenance Days     : ${maintenanceDays}`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `Steps to reproduce I - licence ${licenseId} generated`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // -------------------------------------------------------------------------------------------

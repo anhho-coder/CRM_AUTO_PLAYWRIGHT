@@ -137,19 +137,25 @@ test.describe(`${TC_ID} - An overdue cycle bills once, not once per missed month
       await subscriptionPage.openInvoices();
       await invoicePage.openFirstInvoiceRow();
 
-      const totalRaw = await invoicePage.getInvoiceTotal();
-      const total = parseFloat((totalRaw || '').replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
-      const singleCycle = Math.abs(total - recurringPrice) <= 0.05;
+      let __verifyPassed = false;
+      try {
+        const totalRaw = await invoicePage.getInvoiceTotal();
+        const total = parseFloat((totalRaw || '').replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
+        const singleCycle = Math.abs(total - recurringPrice) <= 0.05;
 
-      logVerify(
-        'VP4',
-        `the invoice total equals ONE cycle of the Recurring Price (${recurringPrice}), not three (${recurringPrice * 3})`,
-        `invoice total = "${totalRaw}" -> ${total}`,
-        singleCycle,
-      );
+        logVerify(
+          'VP4',
+          `the invoice total equals ONE cycle of the Recurring Price (${recurringPrice}), not three (${recurringPrice * 3})`,
+          `invoice total = "${totalRaw}" -> ${total}`,
+          singleCycle,
+        );
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - one cycle billed, not three').catch(() => {});
-      expect(total, `VP4: the customer must be billed ONE cycle (${recurringPrice}), not three (${recurringPrice * 3}) - read ${total}`).toBeCloseTo(recurringPrice, 1);
+        expect(total, `VP4: the customer must be billed ONE cycle (${recurringPrice}), not three (${recurringPrice * 3}) - read ${total}`).toBeCloseTo(recurringPrice, 1);
+
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - one cycle billed, not three', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 5: Go back to the subscription and read "Date of Next Invoice"', async () => {

@@ -173,10 +173,14 @@ test.describe(`${TC} - Support Type`, () => {
       console.log('===============================================');
       console.log('OVERALL: a new Contact starts on Support Type Standard with 0 promotion days');
 
-      expect(supportType, 'the Support Type a newly created Contact starts on').toBe('Standard');
-      expect(promoDays, 'the 24/7 support promotion days remaining on a new Contact').toBe(0);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Support Type`);
+      let __verifyPassed = false;
+      try {
+        expect(supportType, 'the Support Type a newly created Contact starts on').toBe('Standard');
+        expect(promoDays, 'the 24/7 support promotion days remaining on a new Contact').toBe(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Support Type`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

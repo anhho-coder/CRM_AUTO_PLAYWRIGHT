@@ -185,11 +185,15 @@ test.describe(`${TC} - Action > Duplicate`, () => {
       console.log('===============================================');
       console.log('OVERALL: Action > Duplicate opens a copy of the Contact in edit mode');
 
-      expect(menuItems, 'the Action menu of a saved Contact offers Duplicate').toContain('Duplicate');
-      expect(editable, 'Duplicate opens the copy in EDIT mode').toBe(true);
-      expect(nameOnCopy, 'the Name the duplicated Contact carries').toContain(DATA.name);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Action > Duplicate`);
+      let __verifyPassed = false;
+      try {
+        expect(menuItems, 'the Action menu of a saved Contact offers Duplicate').toContain('Duplicate');
+        expect(editable, 'Duplicate opens the copy in EDIT mode').toBe(true);
+        expect(nameOnCopy, 'the Name the duplicated Contact carries').toContain(DATA.name);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Action > Duplicate`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

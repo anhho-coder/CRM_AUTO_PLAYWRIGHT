@@ -141,9 +141,14 @@ test.describe('CRM-10780_2.1.1.9 - Apply promotion capped at Max Discount Amount
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -233,40 +238,50 @@ test.describe('CRM-10780_2.1.1.9 - Apply promotion capped at Max Discount Amount
       const lineCount = await dealElementPage.getOrderLineCount();
       const orderTotal = await dealElementPage.getAmountTotal();
       console.log(`✓ Step 3: products added (order lines = ${lineCount}, total = ${orderTotal})`);
-      expect(lineCount, 'Order should contain the added product line(s)').toBeGreaterThan(0);
-      expect(orderTotal, 'Order total should exceed 1000$').toBeGreaterThan(1000);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Products selected (total > 1000$)');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line(s)').toBeGreaterThan(0);
+        expect(orderTotal, 'Order total should exceed 1000$').toBeGreaterThan(1000);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Products selected (total > 1000$)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Apply promotion A', async () => {
       // "Apply promotion A" = add Promotion A in the "Promotion" field (while in edit mode), then SAVE.
-      const totalBefore = await dealElementPage.getAmountTotal();
-      const linesBefore = await dealElementPage.getOrderLineCount();
-      console.log(`  Before applying: total=${totalBefore}, order lines=${linesBefore}`);
+      let __verifyPassed = false;
+      try {
+        const totalBefore = await dealElementPage.getAmountTotal();
+        const linesBefore = await dealElementPage.getOrderLineCount();
+        console.log(`  Before applying: total=${totalBefore}, order lines=${linesBefore}`);
 
-      const set = await dealElementPage.setPromotion(promoName);
-      expect(set, 'The "Promotion" field should be settable while the Deal Element is in edit mode').toBeTruthy();
-      await dealElementPage.save();
+        const set = await dealElementPage.setPromotion(promoName);
+        expect(set, 'The "Promotion" field should be settable while the Deal Element is in edit mode').toBeTruthy();
+        await dealElementPage.save();
 
-      const totalAfter = await dealElementPage.getAmountTotal();
-      const linesAfter = await dealElementPage.getOrderLineCount();
-      const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
-      const discountApplied = totalBefore - totalAfter;
-      console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}, discount=${discountApplied}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Promotion applied (capped at 50$)');
+        const totalAfter = await dealElementPage.getAmountTotal();
+        const linesAfter = await dealElementPage.getOrderLineCount();
+        const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
+        const discountApplied = totalBefore - totalAfter;
+        console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}, discount=${discountApplied}`);
 
-      // Expected (Jira): Promotion A is applied successfully to total order; Maximum discount amount is 50$.
-      //  - Promotion A appears as a discount line in Order Lines (the promo IS applied).
-      //  - The order Total is reduced.
-      //  - The reduction is CAPPED at the 50$ Max Discount Amount (not the full 100$ Fixed Amount).
-      expect(promoLinePresent || linesAfter > linesBefore,
-        'Promotion A should be added as a discount line in Order Lines').toBeTruthy();
-      expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
-      // Cap assertion - the heart of this TC: discount applied must equal the 50$ Max Discount Amount,
-      // not the full 100$ Fixed Amount. Allow a small tolerance for tax-inclusive rounding on the total.
-      expect(Math.abs(discountApplied - MAX_DISCOUNT),
-        `Discount should be capped at the ${MAX_DISCOUNT}$ Max Discount Amount (got ${discountApplied})`).toBeLessThanOrEqual(1);
-      console.log(`✅ Promotion A applied & capped: Total ${totalBefore} -> ${totalAfter} (discount ${discountApplied}, max ${MAX_DISCOUNT})`);
+        // Expected (Jira): Promotion A is applied successfully to total order; Maximum discount amount is 50$.
+        //  - Promotion A appears as a discount line in Order Lines (the promo IS applied).
+        //  - The order Total is reduced.
+        //  - The reduction is CAPPED at the 50$ Max Discount Amount (not the full 100$ Fixed Amount).
+        expect(promoLinePresent || linesAfter > linesBefore,
+          'Promotion A should be added as a discount line in Order Lines').toBeTruthy();
+        expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
+        // Cap assertion - the heart of this TC: discount applied must equal the 50$ Max Discount Amount,
+        // not the full 100$ Fixed Amount. Allow a small tolerance for tax-inclusive rounding on the total.
+        expect(Math.abs(discountApplied - MAX_DISCOUNT),
+          `Discount should be capped at the ${MAX_DISCOUNT}$ Max Discount Amount (got ${discountApplied})`).toBeLessThanOrEqual(1);
+        console.log(`✅ Promotion A applied & capped: Total ${totalBefore} -> ${totalAfter} (discount ${discountApplied}, max ${MAX_DISCOUNT})`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Promotion applied (capped at 50$)', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

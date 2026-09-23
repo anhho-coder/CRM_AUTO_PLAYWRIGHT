@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.4 - Verify Total text displays on Re-assignment page'
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const totalText = reAssignationPage.getTotalText();
-      await expect(totalText).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Total" text is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Total text visible');
+      let __verifyPassed = false;
+      try {
+        await expect(totalText).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Total" text is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Total text visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

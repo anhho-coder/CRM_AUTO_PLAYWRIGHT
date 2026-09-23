@@ -169,9 +169,13 @@ test.describe(`${TC} - Language`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Language of the saved Contact reads "${actual}"`);
 
-      expect(actual, 'the Language a newly created Contact starts on').toBe(expected);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Language`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the Language a newly created Contact starts on').toBe(expected);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Language`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

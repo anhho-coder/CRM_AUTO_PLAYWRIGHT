@@ -573,9 +573,14 @@ test.describe('CRM-2338_1.1.3 - Verify the Deal Element.Reseller getting from Op
       const resellerValue = await dealElementPage.getResellerValue();
       console.log(`  Reseller value received: "${resellerValue}"`);
       console.log(`  Expected               : "${name_Reseller1}"`);
-      expect(resellerValue).toBe(name_Reseller1);
-      console.log(`\u2713 VIII.1: Reseller = "${name_Reseller1}" - Reseller correctly set from Opp.Reseller`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Reseller verified');
+      let __verifyPassed = false;
+      try {
+        expect(resellerValue).toBe(name_Reseller1);
+        console.log(`\u2713 VIII.1: Reseller = "${name_Reseller1}" - Reseller correctly set from Opp.Reseller`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Reseller verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -101,40 +101,45 @@ test.describe('Discount_9.1.2 - Multi-product: Bronze 15% applied once at order 
 
     await test.step('Verification Point: each line is GROSS (no per-line discount) and one order-level 15% discount applies', async () => {
       // 1. Each portal product line Amount equals its GROSS (Qty x list Unit Price) = the backend gross.
-      let portalLineSum = 0;
-      for (const p of invoice.products) {
-        const line = await resellerPortalPage.getDetailProductLine(p.code);
-        const portalAmount = money(line?.amount);
-        portalLineSum += portalAmount;
-        const grossFromQtyPrice = p.quantity * p.unitPrice;
-        console.log(`  - line ${p.code}: portalAmount=${portalAmount} | backendGross=${p.total} | qty*unitPrice=${grossFromQtyPrice.toFixed(2)}`);
-        expect(line, `Line ${p.code} should be shown on the portal`).toBeTruthy();
-        expect(portalAmount, `Line ${p.code} portal Amount should equal its backend gross`).toBeCloseTo(p.total, 1);
-        expect(p.total, `Line ${p.code} gross should equal Qty x list Unit Price (no per-line discount)`).toBeCloseTo(grossFromQtyPrice, 1);
+      let __verifyPassed = false;
+      try {
+        let portalLineSum = 0;
+        for (const p of invoice.products) {
+          const line = await resellerPortalPage.getDetailProductLine(p.code);
+          const portalAmount = money(line?.amount);
+          portalLineSum += portalAmount;
+          const grossFromQtyPrice = p.quantity * p.unitPrice;
+          console.log(`  - line ${p.code}: portalAmount=${portalAmount} | backendGross=${p.total} | qty*unitPrice=${grossFromQtyPrice.toFixed(2)}`);
+          expect(line, `Line ${p.code} should be shown on the portal`).toBeTruthy();
+          expect(portalAmount, `Line ${p.code} portal Amount should equal its backend gross`).toBeCloseTo(p.total, 1);
+          expect(p.total, `Line ${p.code} gross should equal Qty x list Unit Price (no per-line discount)`).toBeCloseTo(grossFromQtyPrice, 1);
+        }
+
+        const rows = await resellerPortalPage.getDetailTotalsBreakdown();
+        const find = (re: RegExp) => rows.find((r) => re.test(r.label));
+        const subtotal = money(find(/^Subtotal/i)?.amount);
+        const discountRows = rows.filter((r) => /Partner Discount/i.test(r.label));
+        const discountRow = discountRows[0];
+        const discount = money(discountRow?.amount);
+        const total = money(rows.filter((r) => /^Total$/i.test(r.label)).pop()?.amount || find(/^Total/i)?.amount);
+        const pct = parsePercentInLabel(discountRow?.label);
+        console.log(`  - portalLineSum=${portalLineSum.toFixed(2)} | Subtotal=${subtotal} | Partner Discount rows=${discountRows.length} (${pct}%)=${discount} | Total=${total}`);
+
+        // 2. Subtotal = sum of the per-line gross Amounts.
+        expect(subtotal, 'Subtotal should equal the sum of the per-line gross Amounts').toBeCloseTo(portalLineSum, 1);
+        expect(subtotal, 'Subtotal should equal the backend gross line sum').toBeCloseTo(grossSum, 1);
+        // 3. Exactly ONE order-level Partner Discount = 15% of the Subtotal.
+        expect(discountRows.length, 'There should be exactly one order-level Partner Discount row').toBe(1);
+        expect(pct, 'The Partner Discount percent should be 15 (Bronze)').toBeCloseTo(BRONZE_PERCENT, 1);
+        expect(discount, 'The Partner Discount should be 15% of the summed Subtotal').toBeCloseTo(subtotal * (BRONZE_PERCENT / 100), 1);
+        // 4. Total = Subtotal - discount = backend NET Total.
+        expect(total, 'Total should equal Subtotal - Partner Discount').toBeCloseTo(subtotal - discount, 1);
+        expect(total, 'Total should equal the backend NET Total').toBeCloseTo(money(invoice.invoiceTotal), 2);
+        console.log('✅ Multi-product: each line stays gross; a single 15% order-level Partner Discount applies');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Multi-product order-level discount', passed: __verifyPassed }).catch(() => {});
       }
-
-      const rows = await resellerPortalPage.getDetailTotalsBreakdown();
-      const find = (re: RegExp) => rows.find((r) => re.test(r.label));
-      const subtotal = money(find(/^Subtotal/i)?.amount);
-      const discountRows = rows.filter((r) => /Partner Discount/i.test(r.label));
-      const discountRow = discountRows[0];
-      const discount = money(discountRow?.amount);
-      const total = money(rows.filter((r) => /^Total$/i.test(r.label)).pop()?.amount || find(/^Total/i)?.amount);
-      const pct = parsePercentInLabel(discountRow?.label);
-      console.log(`  - portalLineSum=${portalLineSum.toFixed(2)} | Subtotal=${subtotal} | Partner Discount rows=${discountRows.length} (${pct}%)=${discount} | Total=${total}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - Multi-product order-level discount');
-
-      // 2. Subtotal = sum of the per-line gross Amounts.
-      expect(subtotal, 'Subtotal should equal the sum of the per-line gross Amounts').toBeCloseTo(portalLineSum, 1);
-      expect(subtotal, 'Subtotal should equal the backend gross line sum').toBeCloseTo(grossSum, 1);
-      // 3. Exactly ONE order-level Partner Discount = 15% of the Subtotal.
-      expect(discountRows.length, 'There should be exactly one order-level Partner Discount row').toBe(1);
-      expect(pct, 'The Partner Discount percent should be 15 (Bronze)').toBeCloseTo(BRONZE_PERCENT, 1);
-      expect(discount, 'The Partner Discount should be 15% of the summed Subtotal').toBeCloseTo(subtotal * (BRONZE_PERCENT / 100), 1);
-      // 4. Total = Subtotal - discount = backend NET Total.
-      expect(total, 'Total should equal Subtotal - Partner Discount').toBeCloseTo(subtotal - discount, 1);
-      expect(total, 'Total should equal the backend NET Total').toBeCloseTo(money(invoice.invoiceTotal), 2);
-      console.log('✅ Multi-product: each line stays gross; a single 15% order-level Partner Discount applies');
     });
   });
 });

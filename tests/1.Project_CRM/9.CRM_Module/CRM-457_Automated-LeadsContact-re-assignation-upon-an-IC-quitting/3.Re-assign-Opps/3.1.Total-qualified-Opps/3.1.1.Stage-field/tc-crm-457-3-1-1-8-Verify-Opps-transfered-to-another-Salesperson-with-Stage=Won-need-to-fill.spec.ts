@@ -537,10 +537,15 @@ test.describe('CRM-457_3.1.1.8 - Verify qualified Opps with Stage=Won have NOT b
 
       // Normalize spaces around "/" to allow "0/0", "0 /0", "0/ 0", "0 / 0"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('0/0');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('0/0');
 
-      console.log('\u2713 III.1: Total text = "0/0" - qualified Opp with Stage=Won correctly NOT counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 0-0 verified - Stage=Won');
+        console.log('\u2713 III.1: Total text = "0/0" - qualified Opp with Stage=Won correctly NOT counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 0-0 verified - Stage=Won', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

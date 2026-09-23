@@ -220,17 +220,21 @@ test.describe(`${TC} - Invalid e-mail accepted (automatic path)`, () => {
       console.log(`  Partner Contact Email  : "${fields['Partner Contact Email'] || '(not in the note)'}"`);
       console.log(`  invalid-email warning in the chatter : ${warning ? warning.replace(/\n/g, ' | ') : 'NONE - expected: the verification belongs to the Contact, not the Lead'}`);
       console.log('===============================================');
-      expect(leadUrl, 'the Lead must be saved on the automatic path').toMatch(/[?#&]id=\d+/);
-      expect(email, 'the address is stored on the Lead exactly as entered').toBe(DATA.email);
-      expect(
-        customerNote,
-        'a Customer must still be created even though the e-mail is invalid'
-      ).not.toBeNull();
-      expect(customerName, 'the created Customer must carry the entered Company Name').toBe(
-        DATA.companyName
-      );
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Invalid e-mail accepted (automatic path)`);
+      let __verifyPassed = false;
+      try {
+        expect(leadUrl, 'the Lead must be saved on the automatic path').toMatch(/[?#&]id=\d+/);
+        expect(email, 'the address is stored on the Lead exactly as entered').toBe(DATA.email);
+        expect(
+          customerNote,
+          'a Customer must still be created even though the e-mail is invalid'
+        ).not.toBeNull();
+        expect(customerName, 'the created Customer must carry the entered Company Name').toBe(
+          DATA.companyName
+        );
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Invalid e-mail accepted (automatic path)`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

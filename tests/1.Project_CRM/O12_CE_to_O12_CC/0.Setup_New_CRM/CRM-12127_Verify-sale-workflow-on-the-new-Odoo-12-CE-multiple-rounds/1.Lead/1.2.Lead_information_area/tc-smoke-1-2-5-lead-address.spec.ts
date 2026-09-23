@@ -180,11 +180,15 @@ test.describe(`${TC} - Address`, () => {
       console.log(`  State   : expected "Texas (US)" | actual "${state}"`);
       console.log(`  Country : expected "${DATA.country}" | actual "${country}"`);
       console.log('===============================================');
-      expect(street, 'Street must keep the entered value').toBe(DATA.street);
-      expect(state, 'State must keep the entered value').toBe('Texas (US)');
-      expect(country, 'Country must keep the entered value').toBe(DATA.country);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Address`);
+      let __verifyPassed = false;
+      try {
+        expect(street, 'Street must keep the entered value').toBe(DATA.street);
+        expect(state, 'State must keep the entered value').toBe('Texas (US)');
+        expect(country, 'Country must keep the entered value').toBe(DATA.country);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Address`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

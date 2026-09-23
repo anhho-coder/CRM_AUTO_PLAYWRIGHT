@@ -178,9 +178,13 @@ test.describe(`${TC} - Email`, () => {
       console.log(`     Actual   : "${email}"`);
       console.log(`     Result   : ${email === DATA.email ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      expect(email, 'Email must keep the entered value').toBe(DATA.email);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Email`);
+      let __verifyPassed = false;
+      try {
+        expect(email, 'Email must keep the entered value').toBe(DATA.email);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Email`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

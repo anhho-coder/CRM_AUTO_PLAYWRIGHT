@@ -485,9 +485,14 @@ test.describe('CRM-457_3.2.1.3 - Verify Opp.Salesperson is changed to the assign
         console.log(`Step III.2: Verifying Salesperson = "${selectedReAssignmentTo1}"`);
         const salespersonValue = await oppPageVerify.getSalespersonValue();
         console.log(`  Salesperson value received: "${salespersonValue}"`);
-        expect(salespersonValue).toBe(selectedReAssignmentTo1);
-        console.log(`\u2713 III.2: Salesperson = "${selectedReAssignmentTo1}" - Opp correctly re-assigned after CONFIRM`);
-        await CommonUtils.captureAndAttachScreenshot(verifyTab, testInfo, 'III.2 - Opp Salesperson verified');
+        let __verifyPassed = false;
+        try {
+          expect(salespersonValue).toBe(selectedReAssignmentTo1);
+          console.log(`\u2713 III.2: Salesperson = "${selectedReAssignmentTo1}" - Opp correctly re-assigned after CONFIRM`);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(verifyTab, testInfo, { name: 'III.2 - Opp Salesperson verified', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await verifyTab.close();

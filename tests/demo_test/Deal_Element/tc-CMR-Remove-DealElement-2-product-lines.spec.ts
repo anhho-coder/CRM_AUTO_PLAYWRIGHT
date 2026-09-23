@@ -135,9 +135,14 @@ test.describe('CMR-Edit-DealElement-2-product-lines - Verify the Opp has Reselle
     await test.step('III.1: Verify product line [A2144B] is no longer present', async () => {
       console.log(`\n=== III. VERIFICATION ===`);
       const stillPresent = await dealElementPage.isProductInOrderLines('[A2144B]');
-      expect(stillPresent, 'III.1: Product line [A2144B] should NOT be present after removal').toBe(false);
-      console.log('\u2713 III.1: Product line [A2144B] confirmed REMOVED from Order Lines');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Product line removed verified');
+      let __verifyPassed = false;
+      try {
+        expect(stillPresent, 'III.1: Product line [A2144B] should NOT be present after removal').toBe(false);
+        console.log('\u2713 III.1: Product line [A2144B] confirmed REMOVED from Order Lines');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Product line removed verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

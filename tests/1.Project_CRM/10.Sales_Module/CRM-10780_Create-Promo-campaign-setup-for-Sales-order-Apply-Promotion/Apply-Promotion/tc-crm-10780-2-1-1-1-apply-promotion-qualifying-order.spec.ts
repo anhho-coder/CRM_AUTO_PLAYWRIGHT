@@ -122,9 +122,14 @@ test.describe('CRM-10780_2.1.1.1 - Apply promotion to a qualifying sale order', 
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -212,8 +217,13 @@ test.describe('CRM-10780_2.1.1.1 - Apply promotion to a qualifying sale order', 
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 3: product added (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Product selected');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Product selected', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Apply promotion A', async () => {
@@ -226,19 +236,24 @@ test.describe('CRM-10780_2.1.1.1 - Apply promotion to a qualifying sale order', 
       expect(set, 'The "Promotion" field should be settable while the Deal Element is in edit mode').toBeTruthy();
       await dealElementPage.save();
 
-      const totalAfter = await dealElementPage.getAmountTotal();
-      const linesAfter = await dealElementPage.getOrderLineCount();
-      const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
-      console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Promotion applied');
+      let __verifyPassed = false;
+      try {
+        const totalAfter = await dealElementPage.getAmountTotal();
+        const linesAfter = await dealElementPage.getOrderLineCount();
+        const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
+        console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}`);
 
-      // Expected (Jira): Promotion A is applied successfully + total calculated correctly with promotion.
-      //  - Promotion A appears as a discount line in Order Lines.
-      //  - The order Total is reduced.
-      expect(promoLinePresent || linesAfter > linesBefore,
-        'Promotion A should be added as a discount line in Order Lines').toBeTruthy();
-      expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
-      console.log(`✅ Promotion A applied successfully: Total ${totalBefore} -> ${totalAfter} (line added=${promoLinePresent})`);
+        // Expected (Jira): Promotion A is applied successfully + total calculated correctly with promotion.
+        //  - Promotion A appears as a discount line in Order Lines.
+        //  - The order Total is reduced.
+        expect(promoLinePresent || linesAfter > linesBefore,
+          'Promotion A should be added as a discount line in Order Lines').toBeTruthy();
+        expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
+        console.log(`✅ Promotion A applied successfully: Total ${totalBefore} -> ${totalAfter} (line added=${promoLinePresent})`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Promotion applied', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

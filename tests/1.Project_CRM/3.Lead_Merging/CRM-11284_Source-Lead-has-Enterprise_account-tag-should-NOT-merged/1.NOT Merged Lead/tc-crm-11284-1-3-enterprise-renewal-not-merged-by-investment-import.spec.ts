@@ -147,86 +147,90 @@ test.describe('CRM-11284_1.3 - Enterprise renewal lead not merged by an Investme
     await test.step('Pre-condition II: Create an Investment and import an audience on the SAME Enterprise email to spawn Lead #2 (the event lead)', async () => {
       console.log(`\n=== ${tcId} : PRE-CONDITION II - INVESTMENT AUDIENCE IMPORT (Lead #2) ===`);
 
-      const now = new Date();
-      const yyyy = now.getFullYear();
-      const mm = String(now.getMonth() + 1).padStart(2, '0');
-      const dd = String(now.getDate()).padStart(2, '0');
-      const currentDate = `${mm}/${dd}/${yyyy}`;
-      const sixMonthsLater = new Date(now);
-      sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-      const dateEndPlus6Months = `${String(sixMonthsLater.getMonth() + 1).padStart(2, '0')}/${String(sixMonthsLater.getDate()).padStart(2, '0')}/${sixMonthsLater.getFullYear()}`;
-      const timestamp = CommonUtils.generateTimestamp();
-      const investmentName = `TEST Investment ${tcId} ${timestamp}`;
-      const investmentID = `TEST-Investment-11284-${timestamp}`;
-
-      // Cross-module switch: after creating Lead #1 in CRM, the Investments app link is not
-      // reliably reachable from the CRM view, and a plain goto(home) restores the CRM action
-      // (so the app-link click routes to the wrong menu_id). Reset to a clean Odoo home via a
-      // fresh re-login (same browser context -> still one video) - the proven entry for
-      // navigateToInvestment (matches the CRM-3902 Investment specs).
-      await page.context().clearCookies();
-      await loginPage.navigateTo(baseUrl);
-      await loginPage.login(users.admin_crm.username, users.admin_crm.password);
-      await loginPage.dismissLocationPermissionDialog();
-      await homePage.navigateToInvestment();
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
-      await investmentPage.navigateToInvestment();
-      await investmentPage.clickCreateButton();
-      await investmentPage.createBlankInvestment({
-        investmentName,
-        investmentID,
-        type: 'Webinar',
-        channel: 'Channel',
-        countries: 'Albania',
-        dateStart: currentDate,
-        dateEnd: currentDate,
-        responsibleSales: 'Aleksey Galbur',
-        responsibleMarketing: 'Nadiia Suprun',
-        nbrProductList: 'M365',
-        completionEvents: 'Attended webinar',
-        conversionEvents: 'Download free trial',
-        trackConversionDateStart: currentDate,
-        trackConversionDateEnd: dateEndPlus6Months,
-      });
-      console.log(`✓ Investment created: ${investmentName}`);
-
-      // Build an audience CSV whose contact email is the SAME Enterprise email as Lead #1.
-      // IMPORTANT: pass investmentId so the CSV's "Investment ID" column is filled - the import
-      // rejects any row with an empty Investment ID ("Lines [2] 'Investment ID' is empty") and
-      // imports 0 rows. Use the proven CRM-3902 config (Created Manually = FALSE, tags = 'Test').
-      // This also mirrors the real incident: neither the renewal nor the event-import lead was
-      // manual/Can_Merge - same-domain leads merged NATURALLY, which the Enterprise tag must block.
-      const csv = await investmentPage.createImportAudienceFile({
-        contactName: `TEST_EVENT_name_${timestamp}`,
-        company: `TEST_company_name_${timestamp}`,
-        email: sharedEmail,
-        tags: 'Test',
-        createManually: 'FALSE',
-        investmentId: investmentID,
-        outputFileName: `CSV-Audience-CRM11284-${timestamp}.csv`,
-      });
-      expect(fs.existsSync(csv.outputPath), 'Audience CSV file must be created').toBeTruthy();
-      console.log(`  - Audience CSV      : ${csv.outputPath}`);
-      console.log(`  - Imported email    : ${csv.emailContact1}`);
-
-      await investmentPage.importCompanyAudience(csv.outputPath);
-      investmentUrl = page.url();
-      console.log(`✓ Audience imported into the Investment - URL_Investment: ${investmentUrl}`);
-
-      // Best-effort evidence: try to confirm the audience row landed. The audience row / downstream
-      // Lead are produced by a slow async cron on pre-prod that may not surface within the window.
+      let __verifyPassed = false;
       try {
-        await investmentPage.clickAudienceTab();
-        audienceImported = await investmentPage.waitForAudienceRowToAppear(2); // evidence-only; short poll
-        importedEmailCell = await investmentPage.getAudienceFirstRowCellText('Partner Email').catch(() => '');
-        if (!importedEmailCell) importedEmailCell = await investmentPage.getAudienceFirstRowCellText('Email').catch(() => '');
-        console.log(`  - Imported audience row present : ${audienceImported}`);
-        console.log(`  - Imported audience email cell  : "${importedEmailCell}"`);
-      } catch (e) {
-        console.log(`  ⚠ Audience row not confirmed (evidence-only): ${e instanceof Error ? e.message : String(e)}`);
-      }
+        const now = new Date();
+        const yyyy = now.getFullYear();
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const currentDate = `${mm}/${dd}/${yyyy}`;
+        const sixMonthsLater = new Date(now);
+        sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+        const dateEndPlus6Months = `${String(sixMonthsLater.getMonth() + 1).padStart(2, '0')}/${String(sixMonthsLater.getDate()).padStart(2, '0')}/${sixMonthsLater.getFullYear()}`;
+        const timestamp = CommonUtils.generateTimestamp();
+        const investmentName = `TEST Investment ${tcId} ${timestamp}`;
+        const investmentID = `TEST-Investment-11284-${timestamp}`;
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Investment audience imported');
+        // Cross-module switch: after creating Lead #1 in CRM, the Investments app link is not
+        // reliably reachable from the CRM view, and a plain goto(home) restores the CRM action
+        // (so the app-link click routes to the wrong menu_id). Reset to a clean Odoo home via a
+        // fresh re-login (same browser context -> still one video) - the proven entry for
+        // navigateToInvestment (matches the CRM-3902 Investment specs).
+        await page.context().clearCookies();
+        await loginPage.navigateTo(baseUrl);
+        await loginPage.login(users.admin_crm.username, users.admin_crm.password);
+        await loginPage.dismissLocationPermissionDialog();
+        await homePage.navigateToInvestment();
+        await page.waitForTimeout(CommonUtils.waitTimes.long);
+        await investmentPage.navigateToInvestment();
+        await investmentPage.clickCreateButton();
+        await investmentPage.createBlankInvestment({
+          investmentName,
+          investmentID,
+          type: 'Webinar',
+          channel: 'Channel',
+          countries: 'Albania',
+          dateStart: currentDate,
+          dateEnd: currentDate,
+          responsibleSales: 'Aleksey Galbur',
+          responsibleMarketing: 'Nadiia Suprun',
+          nbrProductList: 'M365',
+          completionEvents: 'Attended webinar',
+          conversionEvents: 'Download free trial',
+          trackConversionDateStart: currentDate,
+          trackConversionDateEnd: dateEndPlus6Months,
+        });
+        console.log(`✓ Investment created: ${investmentName}`);
+
+        // Build an audience CSV whose contact email is the SAME Enterprise email as Lead #1.
+        // IMPORTANT: pass investmentId so the CSV's "Investment ID" column is filled - the import
+        // rejects any row with an empty Investment ID ("Lines [2] 'Investment ID' is empty") and
+        // imports 0 rows. Use the proven CRM-3902 config (Created Manually = FALSE, tags = 'Test').
+        // This also mirrors the real incident: neither the renewal nor the event-import lead was
+        // manual/Can_Merge - same-domain leads merged NATURALLY, which the Enterprise tag must block.
+        const csv = await investmentPage.createImportAudienceFile({
+          contactName: `TEST_EVENT_name_${timestamp}`,
+          company: `TEST_company_name_${timestamp}`,
+          email: sharedEmail,
+          tags: 'Test',
+          createManually: 'FALSE',
+          investmentId: investmentID,
+          outputFileName: `CSV-Audience-CRM11284-${timestamp}.csv`,
+        });
+        expect(fs.existsSync(csv.outputPath), 'Audience CSV file must be created').toBeTruthy();
+        console.log(`  - Audience CSV      : ${csv.outputPath}`);
+        console.log(`  - Imported email    : ${csv.emailContact1}`);
+
+        await investmentPage.importCompanyAudience(csv.outputPath);
+        investmentUrl = page.url();
+        console.log(`✓ Audience imported into the Investment - URL_Investment: ${investmentUrl}`);
+
+        // Best-effort evidence: try to confirm the audience row landed. The audience row / downstream
+        // Lead are produced by a slow async cron on pre-prod that may not surface within the window.
+        try {
+          await investmentPage.clickAudienceTab();
+          audienceImported = await investmentPage.waitForAudienceRowToAppear(2); // evidence-only; short poll
+          importedEmailCell = await investmentPage.getAudienceFirstRowCellText('Partner Email').catch(() => '');
+          if (!importedEmailCell) importedEmailCell = await investmentPage.getAudienceFirstRowCellText('Email').catch(() => '');
+          console.log(`  - Imported audience row present : ${audienceImported}`);
+          console.log(`  - Imported audience email cell  : "${importedEmailCell}"`);
+        } catch (e) {
+          console.log(`  ⚠ Audience row not confirmed (evidence-only): ${e instanceof Error ? e.message : String(e)}`);
+        }
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Investment audience imported', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // STEP 1: async processing window (also gives the import->lead job time to run)

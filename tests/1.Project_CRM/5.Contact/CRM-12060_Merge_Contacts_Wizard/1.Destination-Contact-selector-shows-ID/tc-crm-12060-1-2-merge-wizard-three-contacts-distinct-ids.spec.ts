@@ -72,9 +72,14 @@ test.describe('CRM-12060_1.2 - Merge Contacts wizard: three same-named contacts 
         expect(c.id).toMatch(/^\d+$/);
         contacts.push(c);
       }
-      const ids = contacts.map((c) => c.id);
-      expect(new Set(ids).size, 'the three contacts must have distinct IDs').toBe(3);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - three same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        const ids = contacts.map((c) => c.id);
+        expect(new Set(ids).size, 'the three contacts must have distinct IDs').toBe(3);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - three same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let options: string[] = [];

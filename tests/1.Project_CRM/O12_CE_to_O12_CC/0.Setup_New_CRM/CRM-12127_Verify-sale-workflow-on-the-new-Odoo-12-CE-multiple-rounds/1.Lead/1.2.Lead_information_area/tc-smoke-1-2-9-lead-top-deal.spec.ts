@@ -183,9 +183,13 @@ test.describe(`${TC} - Top Deal`, () => {
       console.log('     Expected : true');
       console.log(`     Actual   : ${topDeal}`);
       console.log('===============================================');
-      expect(topDeal, 'Top Deal must stay checked after save').toBe(true);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Top Deal`);
+      let __verifyPassed = false;
+      try {
+        expect(topDeal, 'Top Deal must stay checked after save').toBe(true);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Top Deal`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

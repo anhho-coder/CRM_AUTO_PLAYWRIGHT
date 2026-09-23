@@ -516,9 +516,14 @@ test.describe('CRM-3523_2.2.2 - Verify an Individual contact will be created aut
       companyNameFieldValue = await opportunityPage.getCompanyNameReadonly();
       console.log(`  Company Name field value  : "${companyNameFieldValue}"`);
       console.log(`  Expected (Name_EndUser#1) : "${endUserName}"`);
-      expect(companyNameFieldValue, `V.1: Company Name field ("${companyNameFieldValue}") should equal "${endUserName}"`).toContain(endUserName);
-      console.log(`\u2713 V.1: Company Name field = "${endUserName}" - confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'V.1 - Company Name field verified');
+      let __verifyPassed = false;
+      try {
+        expect(companyNameFieldValue, `V.1: Company Name field ("${companyNameFieldValue}") should equal "${endUserName}"`).toContain(endUserName);
+        console.log(`\u2713 V.1: Company Name field = "${endUserName}" - confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'V.1 - Company Name field verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step V.2: Verify Company field is a Hyperlink with value = Name_EndUser#1', async () => {
@@ -528,10 +533,15 @@ test.describe('CRM-3523_2.2.2 - Verify an Individual contact will be created aut
       console.log(`  Company field text        : "${companyFieldText}"`);
       console.log(`  Company field href        : "${companyFieldHref}"`);
       console.log(`  Expected (Name_EndUser#1) : "${endUserName}"`);
-      expect(companyFieldText.trim(), `V.2: Company field text ("${companyFieldText.trim()}") should equal "${endUserName}"`).toContain(endUserName);
-      expect(companyFieldHref, 'V.2: Company field must be a hyperlink (href must be non-empty)').not.toBe('');
-      console.log(`\u2713 V.2: Company field is a hyperlink with text "${companyFieldText.trim()}" - confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'V.2 - Company field hyperlink verified');
+      let __verifyPassed = false;
+      try {
+        expect(companyFieldText.trim(), `V.2: Company field text ("${companyFieldText.trim()}") should equal "${endUserName}"`).toContain(endUserName);
+        expect(companyFieldHref, 'V.2: Company field must be a hyperlink (href must be non-empty)').not.toBe('');
+        console.log(`\u2713 V.2: Company field is a hyperlink with text "${companyFieldText.trim()}" - confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'V.2 - Company field hyperlink verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

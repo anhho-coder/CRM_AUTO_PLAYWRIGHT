@@ -177,9 +177,13 @@ test.describe(`${TC} - Company Name - special characters`, () => {
       console.log(`  Expected : "${DATA.companyName}"`);
       console.log(`  Actual   : "${companyName}"`);
       console.log('===============================================');
-      expect(companyName, 'every special character must survive the save').toBe(DATA.companyName);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Company Name - special characters`);
+      let __verifyPassed = false;
+      try {
+        expect(companyName, 'every special character must survive the save').toBe(DATA.companyName);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name - special characters`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

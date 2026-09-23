@@ -149,9 +149,14 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       console.log(`  - IP                   : 128.183.189.157`);
       console.log(`  - Country              : United States`);
       console.log(`  - Opp name (Opp #1)    : ${oppName}`);
-      expect(internalNote, 'Internal Note #1 should be assembled').toContain('NAKIVO deal registration*');
-      // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #1.
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition I - Internal Note #1 built').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(internalNote, 'Internal Note #1 should be assembled').toContain('NAKIVO deal registration*');
+        // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #1.
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition I - Internal Note #1 built', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ─── Pre-condition #2 (steps 1-19): create + validate the EUR Invoice as Thomas (grouped setup) ───
@@ -176,10 +181,15 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       console.log(`  - InvoiceTotal#1 (EUR) : ${invoice.invoiceTotal} (${invoiceTotalEUR})`);
       console.log(`  - Invoice status       : ${invoice.status}`);
       console.log(`  - Invoice URL          : ${invoice.invoiceUrl}`);
-      expect(invoiceNumber, 'Invoice#1 (a posted invoice number) should be captured').toBeTruthy();
-      expect(invoiceTotalEUR, 'InvoiceTotal#1 (EUR) should be a positive number').toBeGreaterThan(0);
-      // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #2.
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - EUR Invoice#1 validated').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(invoiceNumber, 'Invoice#1 (a posted invoice number) should be captured').toBeTruthy();
+        expect(invoiceTotalEUR, 'InvoiceTotal#1 (EUR) should be a positive number').toBeGreaterThan(0);
+        // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #2.
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - EUR Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ─── Pre-condition #3 (logged in as Faye): read today's EUR rate from Currencies ───
@@ -201,9 +211,14 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       const rateText = await currencyPage.getCurrencyRate('EUR');
       eurRate = money(rateText);
       console.log(`  - EURRate#1 (today's EUR Current Rate / Unit per USD): ${rateText} (${eurRate})`);
-      expect(eurRate, 'EURRate#1 should be a positive number read from the rate column').toBeGreaterThan(0);
-      // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #3.
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - EUR rate read from Currencies').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(eurRate, 'EURRate#1 should be a positive number read from the rate column').toBeGreaterThan(0);
+        // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #3.
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - EUR rate read from Currencies', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ─── Steps to reproduce (still logged in as Faye) ───

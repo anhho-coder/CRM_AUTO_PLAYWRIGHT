@@ -182,9 +182,13 @@ test.describe(`${TC} - Lead Form`, () => {
       console.log(`     Actual   : "${leadForm}"`);
       console.log(`     Result   : ${leadForm === DATA.leadForm ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      expect(leadForm, 'Lead Form must keep the selected value').toBe(DATA.leadForm);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Lead Form`);
+      let __verifyPassed = false;
+      try {
+        expect(leadForm, 'Lead Form must keep the selected value').toBe(DATA.leadForm);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Form`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -178,9 +178,13 @@ test.describe(`${TC} - Create manually`, () => {
       console.log('     Expected : false');
       console.log(`     Actual   : ${createManually}`);
       console.log('===============================================');
-      expect(createManually, 'Create manually must stay unchecked after save').toBe(false);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Create manually`);
+      let __verifyPassed = false;
+      try {
+        expect(createManually, 'Create manually must stay unchecked after save').toBe(false);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Create manually`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

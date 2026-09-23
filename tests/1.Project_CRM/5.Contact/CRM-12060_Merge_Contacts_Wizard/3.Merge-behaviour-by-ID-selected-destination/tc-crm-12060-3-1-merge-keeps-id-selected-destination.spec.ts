@@ -82,11 +82,16 @@ test.describe('CRM-12060_3.1 - Merge keeps the ID-selected destination', () => {
       console.log(`  - Contact #2 (source)       : ${email2}`);
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      expect(c1.id).not.toBe(c2.id);
-      console.log(`  - Destination (keep) = #${c1.id} ; Source (merge away) = #${c2.id}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        expect(c1.id).not.toBe(c2.id);
+        console.log(`  - Destination (keep) = #${c1.id} ; Source (merge away) = #${c2.id}`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------

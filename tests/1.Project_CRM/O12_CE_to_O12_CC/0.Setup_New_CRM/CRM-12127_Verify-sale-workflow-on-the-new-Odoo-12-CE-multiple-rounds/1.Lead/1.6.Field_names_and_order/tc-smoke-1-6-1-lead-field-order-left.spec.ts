@@ -219,14 +219,18 @@ test.describe(`${TC} - Field names and order - left column`, () => {
         console.log(`  MISSING from the O12 CE form (${missing.length}): ${missing.map((e) => `${e.label} [${e.field}]`).join(', ')}`);
       }
       console.log('===============================================');
-      expect(actual.map((r) => r.label), 'the left column field NAMES and their ORDER').toEqual(
-        EXPECTED.map((e) => e.label)
-      );
-      expect(actual.map((r) => r.field), 'the left column field TECHNICAL names and their ORDER').toEqual(
-        EXPECTED.map((e) => e.field)
-      );
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Field names and order - left column`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.map((r) => r.label), 'the left column field NAMES and their ORDER').toEqual(
+          EXPECTED.map((e) => e.label)
+        );
+        expect(actual.map((r) => r.field), 'the left column field TECHNICAL names and their ORDER').toEqual(
+          EXPECTED.map((e) => e.field)
+        );
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Field names and order - left column`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -127,12 +127,17 @@ test.describe('CRM-10601_1.1.1.6 - Cancel Mass Mark as Duplicate', () => {
     // Step 6: Click Cancel -> popup disappears without error
     await test.step('Step 6: Click Cancel', async () => {
       await opportunityPage.cancelMassMarkWizard();
-      const stillOpen = await opportunityPage.isMassMarkWizardOpen();
-      expect(stillOpen, 'The wizard popup should disappear after Cancel').toBeFalsy();
-      const errorText = await opportunityPage.getMassMarkErrorText();
-      console.log(`  - Error popup text after Cancel: "${errorText}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'CRM-10738 - After cancelling Mass Mark wizard');
-      expect(errorText, 'No error popup should appear after Cancel').toBe('');
+      let __verifyPassed = false;
+      try {
+        const stillOpen = await opportunityPage.isMassMarkWizardOpen();
+        expect(stillOpen, 'The wizard popup should disappear after Cancel').toBeFalsy();
+        const errorText = await opportunityPage.getMassMarkErrorText();
+        console.log(`  - Error popup text after Cancel: "${errorText}"`);
+        expect(errorText, 'No error popup should appear after Cancel').toBe('');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'CRM-10738 - After cancelling Mass Mark wizard', passed: __verifyPassed }).catch(() => {});
+      }
       console.log('✅ Wizard cancelled - popup disappeared without error');
     });
   });

@@ -192,13 +192,17 @@ test.describe(`${TC} - Priority applied by the system`, () => {
       console.log(`  star label    : expected "Medium High" | actual "${priority.label}"`);
       console.log(`  filled stars  : expected 2 | actual ${priority.filledStars} of ${priority.totalStars}`);
       console.log('===============================================');
-      expect(change.from, 'the Lead must start at Low').toBe('Low');
-      expect(change.to, 'the system must raise the Priority to Medium High').toBe('Medium High');
-      expect(priority.label, 'the star widget must show Medium High').toBe('Medium High');
-      expect(priority.filledStars, 'Medium High must fill 2 of 4 stars').toBe(2);
-      expect(priority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Priority applied by the system`);
+      let __verifyPassed = false;
+      try {
+        expect(change.from, 'the Lead must start at Low').toBe('Low');
+        expect(change.to, 'the system must raise the Priority to Medium High').toBe('Medium High');
+        expect(priority.label, 'the star widget must show Medium High').toBe('Medium High');
+        expect(priority.filledStars, 'Medium High must fill 2 of 4 stars').toBe(2);
+        expect(priority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Priority applied by the system`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

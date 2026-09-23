@@ -84,8 +84,13 @@ test.describe('CRM-12540_1.4 - A lone half-character reaching the message throug
       console.log('\n=== PRE-CONDITION II: Fresh helpdesk ticket ===');
       console.log(`  - Subject : ${ticketSubject}`);
       ticketId = await helpdeskPage.createTicket(baseUrl, ticketSubject as string);
-      expect(ticketId, 'The ticket must have a record ID').toMatch(/^\d+$/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - ticket created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(ticketId, 'The ticket must have a record ID').toMatch(/^\d+$/);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - ticket created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let messageId = 0;

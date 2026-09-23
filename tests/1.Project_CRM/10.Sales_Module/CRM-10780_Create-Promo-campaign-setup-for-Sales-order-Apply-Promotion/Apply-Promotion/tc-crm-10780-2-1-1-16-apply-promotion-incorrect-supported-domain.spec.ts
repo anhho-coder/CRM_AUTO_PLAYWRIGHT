@@ -144,14 +144,19 @@ test.describe('CRM-10780_2.1.1.16 - Apply promotion to an incorrect supported cu
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
 
-      // TODO (manual): restrict this promotion to "customer domain A". PromotionConfig / createPromotion has
-      // NO setter for the supported-customer-domain rule, so the promotion is created WITHOUT the domain
-      // restriction. Open the just-created Promotion Program (promoUrl), add the "Supported to customer
-      // domain A" rule on the form, and save - so the promotion only qualifies for domain-A customers.
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created (domain restriction TODO)');
+        // TODO (manual): restrict this promotion to "customer domain A". PromotionConfig / createPromotion has
+        // NO setter for the supported-customer-domain rule, so the promotion is created WITHOUT the domain
+        // restriction. Open the just-created Promotion Program (promoUrl), add the "Supported to customer
+        // domain A" rule on the form, and save - so the promotion only qualifies for domain-A customers.
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created (domain restriction TODO)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -247,8 +252,13 @@ test.describe('CRM-10780_2.1.1.16 - Apply promotion to an incorrect supported cu
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`  ✓ Product added to deal (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Deal Element with product');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Deal Element with product', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================

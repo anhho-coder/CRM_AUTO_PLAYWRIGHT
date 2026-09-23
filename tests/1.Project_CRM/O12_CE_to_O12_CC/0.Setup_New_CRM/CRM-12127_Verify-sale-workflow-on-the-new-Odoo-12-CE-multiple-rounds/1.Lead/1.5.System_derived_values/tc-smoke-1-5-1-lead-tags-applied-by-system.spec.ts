@@ -198,11 +198,15 @@ test.describe(`${TC} - Tag applied by the system`, () => {
       console.log(`  Actual    : ${JSON.stringify(tags)}`);
       console.log(`  chatter note : ${note ? note.replace(/\n/g, ' | ') : '(none)'}`);
       console.log('===============================================');
-      expect(note, 'the system must log the tag it applies').not.toBeNull();
-      expect(note as string, 'the log note must name the applied tag').toContain('New: Trial download');
-      expect(tags, 'the Lead Form must drive exactly the Trial download tag').toEqual(['Trial download']);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Tag applied by the system`);
+      let __verifyPassed = false;
+      try {
+        expect(note, 'the system must log the tag it applies').not.toBeNull();
+        expect(note as string, 'the log note must name the applied tag').toContain('New: Trial download');
+        expect(tags, 'the Lead Form must drive exactly the Trial download tag').toEqual(['Trial download']);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tag applied by the system`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

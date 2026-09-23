@@ -168,10 +168,14 @@ test.describe(`${TC} - Log note - Contact created`, () => {
       console.log('===============================================');
       console.log('OVERALL: the Contact carries the "Contact created" log note');
 
-      expect(note, 'the Log note reports "Contact created" when the Contact is created').not.toBeNull();
-      expect((note || '').trim(), 'the text of the creation log note').toBe('Contact created');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Log note - Contact created`);
+      let __verifyPassed = false;
+      try {
+        expect(note, 'the Log note reports "Contact created" when the Contact is created').not.toBeNull();
+        expect((note || '').trim(), 'the text of the creation log note').toBe('Contact created');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Contact created`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

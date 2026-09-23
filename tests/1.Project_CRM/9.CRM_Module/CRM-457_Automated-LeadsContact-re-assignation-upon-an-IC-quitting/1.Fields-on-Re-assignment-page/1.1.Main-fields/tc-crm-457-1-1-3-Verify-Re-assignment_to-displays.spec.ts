@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.3 - Verify Re-assignment to combobox displays on Re-a
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const reAssignmentToLabel = reAssignationPage.getReAssignmentToLabel();
-      await expect(reAssignmentToLabel).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Re-assignment to" combobox is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Re-assignment to combobox visible');
+      let __verifyPassed = false;
+      try {
+        await expect(reAssignmentToLabel).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Re-assignment to" combobox is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Re-assignment to combobox visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

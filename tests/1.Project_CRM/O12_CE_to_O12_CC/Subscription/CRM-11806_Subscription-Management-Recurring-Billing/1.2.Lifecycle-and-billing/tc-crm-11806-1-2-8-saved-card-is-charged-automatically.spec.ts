@@ -151,28 +151,33 @@ test.describe(`${TC_ID} - A saved card is charged automatically`, () => {
       await subscriptionPage.openInvoices();
       await invoicePage.openFirstInvoiceRow();
 
-      const status = await invoicePage.getInvoiceStatus();
-      const numberVisible = await invoicePage.isInvoiceNumberVisible();
-      const amountDue = toNumber(await invoicePage.getAmountDue());
+      let __verifyPassed = false;
+      try {
+        const status = await invoicePage.getInvoiceStatus();
+        const numberVisible = await invoicePage.isInvoiceNumberVisible();
+        const amountDue = toNumber(await invoicePage.getAmountDue());
 
-      const paymentsTabPresent = await invoicePage.hasPaymentsTab();
-      await invoicePage.clickPaymentsTab();
-      const paymentRows = await invoicePage.getPaymentRowCount();
+        const paymentsTabPresent = await invoicePage.hasPaymentsTab();
+        await invoicePage.clickPaymentsTab();
+        const paymentRows = await invoicePage.getPaymentRowCount();
 
-      logVerify(
-        'VP2 + VP4',
-        'the invoice is validated and collected automatically: a real number, PAID, Amount Due = 0.00 and a payment listed',
-        `status = "${status}", number field visible = ${numberVisible}, Amount Due = ${amountDue}, Payments tab present = ${paymentsTabPresent}, payment rows = ${paymentRows}`,
-        numberVisible && /paid/i.test(status) && Math.abs(amountDue) <= 0.005 && paymentsTabPresent && paymentRows >= 1,
-      );
+        logVerify(
+          'VP2 + VP4',
+          'the invoice is validated and collected automatically: a real number, PAID, Amount Due = 0.00 and a payment listed',
+          `status = "${status}", number field visible = ${numberVisible}, Amount Due = ${amountDue}, Payments tab present = ${paymentsTabPresent}, payment rows = ${paymentRows}`,
+          numberVisible && /paid/i.test(status) && Math.abs(amountDue) <= 0.005 && paymentsTabPresent && paymentRows >= 1,
+        );
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - invoice collected from the saved card').catch(() => {});
+        expect(numberVisible, 'VP2: the invoice should be validated and carry a real number, not "Draft Invoice"').toBeTruthy();
+        expect(status, `VP4: the invoice should be PAID after the card is charged (status read: "${status}")`).toMatch(/paid/i);
+        expect(amountDue, 'VP4: Amount Due should be 0.00 once the card has been charged').toBeCloseTo(0, 2);
+        expect(paymentsTabPresent, 'VP4: the Payments tab must be present before its contents mean anything').toBeTruthy();
+        expect(paymentRows, 'VP4: the automatic payment should be listed against the invoice').toBeGreaterThanOrEqual(1);
 
-      expect(numberVisible, 'VP2: the invoice should be validated and carry a real number, not "Draft Invoice"').toBeTruthy();
-      expect(status, `VP4: the invoice should be PAID after the card is charged (status read: "${status}")`).toMatch(/paid/i);
-      expect(amountDue, 'VP4: Amount Due should be 0.00 once the card has been charged').toBeCloseTo(0, 2);
-      expect(paymentsTabPresent, 'VP4: the Payments tab must be present before its contents mean anything').toBeTruthy();
-      expect(paymentRows, 'VP4: the automatic payment should be listed against the invoice').toBeGreaterThanOrEqual(1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - invoice collected from the saved card', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 5: Go back to the subscription and read "Date of Next Invoice"', async () => {

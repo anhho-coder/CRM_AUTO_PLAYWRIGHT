@@ -171,9 +171,13 @@ test.describe(`${TC} - Website`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Website of the saved Contact reads "${actual}"`);
 
-      expect(actual, 'the Website on the saved form matches the entered value').toContain(expected);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Website`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the Website on the saved form matches the entered value').toContain(expected);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Website`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

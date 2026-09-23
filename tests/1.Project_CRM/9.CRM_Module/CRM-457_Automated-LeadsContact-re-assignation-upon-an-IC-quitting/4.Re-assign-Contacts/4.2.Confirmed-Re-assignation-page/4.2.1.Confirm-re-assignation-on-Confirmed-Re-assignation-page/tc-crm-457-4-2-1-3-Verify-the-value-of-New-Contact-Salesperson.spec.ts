@@ -435,10 +435,15 @@ test.describe('CRM-457_4.2.2.3 - Verify Lead.Salesperson is changed to the assig
           console.log(`  Salesperson value received: "${actualSalesperson}"`);
           console.log(`  Expected (selected_Re-assignment_to#1): "${selectedReAssignmentTo}"`);
 
-          expect(actualSalesperson).toBe(selectedReAssignmentTo);
+          let __verifyPassed = false;
+          try {
+            expect(actualSalesperson).toBe(selectedReAssignmentTo);
 
-          console.log(`✓ III.2: Salesperson = "${selectedReAssignmentTo}" - re-assignation confirmed successfully`);
-          await CommonUtils.captureAndAttachScreenshot(contactTab, testInfo, 'III.2 - Salesperson verified');
+            console.log(`✓ III.2: Salesperson = "${selectedReAssignmentTo}" - re-assignation confirmed successfully`);
+            __verifyPassed = true;
+          } finally {
+            await CommonUtils.captureVerifyEvidence(contactTab, testInfo, { name: 'III.2 - Salesperson verified', passed: __verifyPassed }).catch(() => {});
+          }
         });
 
         await contactTab.close();

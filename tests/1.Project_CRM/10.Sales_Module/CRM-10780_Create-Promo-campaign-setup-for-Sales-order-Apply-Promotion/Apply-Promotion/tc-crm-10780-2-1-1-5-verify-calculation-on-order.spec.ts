@@ -128,9 +128,14 @@ test.describe('CRM-10780_2.1.1.5 - Verify calculation for discount_apply_on=on_o
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -218,8 +223,13 @@ test.describe('CRM-10780_2.1.1.5 - Verify calculation for discount_apply_on=on_o
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 3: product added (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Product selected');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Product selected', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Apply promotion A', async () => {
@@ -236,23 +246,28 @@ test.describe('CRM-10780_2.1.1.5 - Verify calculation for discount_apply_on=on_o
       const linesAfter = await dealElementPage.getOrderLineCount();
       const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
       console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Promotion applied');
 
       // Expected (Jira): Promotion A is applied successfully + total calculated correctly with promotion.
       //  - Promotion A appears as an on-order discount line in Order Lines.
       //  - The order Total is reduced.
-      expect(promoLinePresent || linesAfter > linesBefore,
-        'Promotion A should be added as an on-order discount line in Order Lines').toBeTruthy();
-      expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
+      let __verifyPassed = false;
+      try {
+        expect(promoLinePresent || linesAfter > linesBefore,
+          'Promotion A should be added as an on-order discount line in Order Lines').toBeTruthy();
+        expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
 
-      // VERIFY CALCULATION for Discount Apply On = On Order at 10%: the reduction applies to the whole
-      // order, so (totalBefore - totalAfter) should be ~= 10% of totalBefore. Loose tolerance (+/- 2.5
-      // percentage points) absorbs tax/rounding differences between net and gross totals.
-      const reductionPct = totalBefore > 0 ? ((totalBefore - totalAfter) / totalBefore) * 100 : 0;
-      console.log(`  On-order discount reduction = ${reductionPct.toFixed(2)}% (expected ~10%)`);
-      expect(reductionPct, 'On-order 10% discount should reduce the total by ~10%').toBeGreaterThan(7.5);
-      expect(reductionPct, 'On-order 10% discount should not over-reduce the total').toBeLessThan(12.5);
-      console.log(`✅ Promotion A applied & calculated correctly: Total ${totalBefore} -> ${totalAfter} (~${reductionPct.toFixed(2)}% off, line added=${promoLinePresent})`);
+        // VERIFY CALCULATION for Discount Apply On = On Order at 10%: the reduction applies to the whole
+        // order, so (totalBefore - totalAfter) should be ~= 10% of totalBefore. Loose tolerance (+/- 2.5
+        // percentage points) absorbs tax/rounding differences between net and gross totals.
+        const reductionPct = totalBefore > 0 ? ((totalBefore - totalAfter) / totalBefore) * 100 : 0;
+        console.log(`  On-order discount reduction = ${reductionPct.toFixed(2)}% (expected ~10%)`);
+        expect(reductionPct, 'On-order 10% discount should reduce the total by ~10%').toBeGreaterThan(7.5);
+        expect(reductionPct, 'On-order 10% discount should not over-reduce the total').toBeLessThan(12.5);
+        console.log(`✅ Promotion A applied & calculated correctly: Total ${totalBefore} -> ${totalAfter} (~${reductionPct.toFixed(2)}% off, line added=${promoLinePresent})`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Promotion applied', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

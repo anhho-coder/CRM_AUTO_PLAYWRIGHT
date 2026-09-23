@@ -127,9 +127,14 @@ test.describe('CRM-10780_2.1.1.4 - Apply promotion when product quantity is belo
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created (Quantity = 3)');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created (Quantity = 3)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -219,8 +224,13 @@ test.describe('CRM-10780_2.1.1.4 - Apply promotion when product quantity is belo
       await dealElementPage.addProductLine('[A2144B]', 2, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 3: product added at quantity 2 (< 3) (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Product selected (qty 2 < 3)');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Product selected (qty 2 < 3)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Apply promotion A', async () => {
@@ -238,15 +248,20 @@ test.describe('CRM-10780_2.1.1.4 - Apply promotion when product quantity is belo
       const linesAfter = await dealElementPage.getOrderLineCount();
       const promoLinePresent = await dealElementPage.isProductInOrderLines(promoName);
       console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Promotion not applied (qty below min)');
 
       // Expected (Jira CRM-10864, step 4): "Can not apply promotion".
       //  - No "X% discount on total amount" line is added to Order Lines.
       //  - The order Total is unchanged (no discount applied).
-      expect(promoLinePresent, 'Promotion A discount line should NOT be added (order qty 2 < rule min 3)').toBeFalsy();
-      expect(linesAfter, 'Order line count should not increase (no promo line added)').toBe(linesBefore);
-      expect(totalAfter, 'Order Total should be unchanged (promotion not applied)').toBe(totalBefore);
-      console.log(`✅ Promotion A could not be applied (qty 2 < min 3): Total stayed ${totalBefore} -> ${totalAfter} (promo line=${promoLinePresent})`);
+      let __verifyPassed = false;
+      try {
+        expect(promoLinePresent, 'Promotion A discount line should NOT be added (order qty 2 < rule min 3)').toBeFalsy();
+        expect(linesAfter, 'Order line count should not increase (no promo line added)').toBe(linesBefore);
+        expect(totalAfter, 'Order Total should be unchanged (promotion not applied)').toBe(totalBefore);
+        console.log(`✅ Promotion A could not be applied (qty 2 < min 3): Total stayed ${totalBefore} -> ${totalAfter} (promo line=${promoLinePresent})`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Promotion not applied (qty below min)', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

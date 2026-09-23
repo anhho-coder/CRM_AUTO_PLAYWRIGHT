@@ -136,16 +136,26 @@ test.describe('CMR-Edit-DealElement-2-product-lines - Verify the Opp has Reselle
     await test.step('III.1: Verify [A2144B] does NOT display in Order Lines', async () => {
       console.log(`\n=== III. VERIFICATION ===`);
       const a2144bVisible = await dealElementPage.isProductInOrderLines('[A2144B]');
-      expect(a2144bVisible, 'III.1: [A2144B] should NOT be in Order Lines after replacement').toBe(false);
-      console.log('\u2713 III.1: [A2144B] not found in Order Lines - confirmed');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - [A2144B] not present');
+      let __verifyPassed = false;
+      try {
+        expect(a2144bVisible, 'III.1: [A2144B] should NOT be in Order Lines after replacement').toBe(false);
+        console.log('\u2713 III.1: [A2144B] not found in Order Lines - confirmed');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - [A2144B] not present', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('III.2: Verify [A2146C] displays in Order Lines', async () => {
       const a2146cVisible = await dealElementPage.isProductInOrderLines('[A2146C]');
-      expect(a2146cVisible, 'III.2: [A2146C] should be in Order Lines').toBe(true);
-      console.log('\u2713 III.2: [A2146C] found in Order Lines - confirmed');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.2 - [A2146C] present');
+      let __verifyPassed = false;
+      try {
+        expect(a2146cVisible, 'III.2: [A2146C] should be in Order Lines').toBe(true);
+        console.log('\u2713 III.2: [A2146C] found in Order Lines - confirmed');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.2 - [A2146C] present', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

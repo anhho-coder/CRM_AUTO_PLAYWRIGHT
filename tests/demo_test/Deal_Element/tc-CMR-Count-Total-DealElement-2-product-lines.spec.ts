@@ -165,9 +165,14 @@ test.describe('CMR-Count-Total-DealElement-2-product-lines - Verify Total equals
       const orderTotalRaw = await dealElementPage.getOrderLinesTotal();
       const orderTotal = parseFloat(orderTotalRaw.toFixed(2));
       console.log(`  Order Lines Total                     : ${orderTotal}`);
-      expect(orderTotal, `III.1: Order Lines Total (${orderTotal}) should equal Sum_Subtotal_After_All_Discounts (${sumSubtotalAfterAllDiscounts})`).toBe(sumSubtotalAfterAllDiscounts);
-      console.log(`\u2713 III.1: Total ${orderTotal} = Sum_Subtotal_After_All_Discounts ${sumSubtotalAfterAllDiscounts} \u2014 confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total verified');
+      let __verifyPassed = false;
+      try {
+        expect(orderTotal, `III.1: Order Lines Total (${orderTotal}) should equal Sum_Subtotal_After_All_Discounts (${sumSubtotalAfterAllDiscounts})`).toBe(sumSubtotalAfterAllDiscounts);
+        console.log(`\u2713 III.1: Total ${orderTotal} = Sum_Subtotal_After_All_Discounts ${sumSubtotalAfterAllDiscounts} \u2014 confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

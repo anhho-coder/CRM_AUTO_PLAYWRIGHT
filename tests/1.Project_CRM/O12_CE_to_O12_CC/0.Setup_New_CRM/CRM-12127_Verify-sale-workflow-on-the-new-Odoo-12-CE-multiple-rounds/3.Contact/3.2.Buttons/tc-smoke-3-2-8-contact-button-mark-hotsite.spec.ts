@@ -157,36 +157,40 @@ test.describe(`${TC} - MARK HOTSITE button`, () => {
     });
 
     await test.step(STEP.s5, async () => {
-      console.log(`\n--- ${STEP.s5} ---`);
-      await contactPage.clickStatusbarButtonByName('action_enable_hot_site_concept');
-      await page.waitForTimeout(CommonUtils.waitTimes.extraLong);
+      let __verifyPassed = false;
+      try {
+        console.log(`\n--- ${STEP.s5} ---`);
+        await contactPage.clickStatusbarButtonByName('action_enable_hot_site_concept');
+        await page.waitForTimeout(CommonUtils.waitTimes.extraLong);
 
-      const title = await contactPage.getDialogTitle();
-      const buttons = await contactPage.getDialogButtons();
-      const EXPECTED_BUTTONS = ['OK', 'CANCEL'];
+        const title = await contactPage.getDialogTitle();
+        const buttons = await contactPage.getDialogButtons();
+        const EXPECTED_BUTTONS = ['OK', 'CANCEL'];
 
-      console.log('==================== VERIFY ====================');
-      console.log('  Verify #1 - MARK HOTSITE opens a confirmation dialog:');
-      console.log(`     Expected : "Confirmation"`);
-      console.log(`     Actual   : "${title}"`);
-      console.log(`     Result   : ${title === 'Confirmation' ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #2 - the dialog lets the user confirm or back out:');
-      console.log(`     Expected : ${EXPECTED_BUTTONS.join(' | ')}`);
-      console.log(`     Actual   : ${buttons.join(' | ')}`);
-      console.log(`     Result   : ${JSON.stringify(buttons) === JSON.stringify(EXPECTED_BUTTONS) ? 'PASS' : 'FAIL'}`);
-      console.log('===============================================');
-      console.log('OVERALL: MARK HOTSITE asks for confirmation before it changes anything');
+        console.log('==================== VERIFY ====================');
+        console.log('  Verify #1 - MARK HOTSITE opens a confirmation dialog:');
+        console.log(`     Expected : "Confirmation"`);
+        console.log(`     Actual   : "${title}"`);
+        console.log(`     Result   : ${title === 'Confirmation' ? 'PASS' : 'FAIL'}`);
+        console.log('  Verify #2 - the dialog lets the user confirm or back out:');
+        console.log(`     Expected : ${EXPECTED_BUTTONS.join(' | ')}`);
+        console.log(`     Actual   : ${buttons.join(' | ')}`);
+        console.log(`     Result   : ${JSON.stringify(buttons) === JSON.stringify(EXPECTED_BUTTONS) ? 'PASS' : 'FAIL'}`);
+        console.log('===============================================');
+        console.log('OVERALL: MARK HOTSITE asks for confirmation before it changes anything');
 
-      expect(title, 'the title of the dialog MARK HOTSITE opens').toBe('Confirmation');
-      expect(buttons, 'the buttons of the MARK HOTSITE confirmation dialog').toEqual(EXPECTED_BUTTONS);
+        expect(title, 'the title of the dialog MARK HOTSITE opens').toBe('Confirmation');
+        expect(buttons, 'the buttons of the MARK HOTSITE confirmation dialog').toEqual(EXPECTED_BUTTONS);
 
-      // Leave the Contact exactly as it was found - the dialog is dismissed, never confirmed.
-      await contactPage.cancelDialog();
-      const headerAfter = await contactPage.getStatusbarButtons();
-      console.log(`  After CANCEL the header still offers: ${headerAfter.join(' | ')}`);
-      expect(headerAfter, 'the header buttons after the confirmation is dismissed').toContain('MARK HOTSITE');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - MARK HOTSITE button`);
+        // Leave the Contact exactly as it was found - the dialog is dismissed, never confirmed.
+        await contactPage.cancelDialog();
+        const headerAfter = await contactPage.getStatusbarButtons();
+        console.log(`  After CANCEL the header still offers: ${headerAfter.join(' | ')}`);
+        expect(headerAfter, 'the header buttons after the confirmation is dismissed').toContain('MARK HOTSITE');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - MARK HOTSITE button`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -167,37 +167,42 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       }
       console.log(`  ✓ Residue sweep done - ${sweptIds.size} leftover source contact(s) removed`);
 
-      // Open the pinned record straight by URL. openContactFormByUrl (not openContactByUrl) gates on
-      // the record actually being rendered - this Odoo is hash-routed, so a hash hop would otherwise
-      // let the fields be read off the PREVIOUS form. Its name check also proves the pinned id still
-      // points at this contact, so a re-pointed id fails loudly instead of merging into the wrong one.
-      const custUrl = `${new URL(page.url()).origin}/web#id=${HISTORICAL_CONTACT.id}&action=118&model=res.partner&view_type=form&menu_id=94`;
-      const rendered = await contactPage.openContactFormByUrl(custUrl, HISTORICAL_CONTACT.name);
-      expect(rendered, `the pinned contact #${HISTORICAL_CONTACT.id} must render as "${HISTORICAL_CONTACT.name}"`).toBe(true);
+      let __verifyPassed = false;
+      try {
+        // Open the pinned record straight by URL. openContactFormByUrl (not openContactByUrl) gates on
+        // the record actually being rendered - this Odoo is hash-routed, so a hash hop would otherwise
+        // let the fields be read off the PREVIOUS form. Its name check also proves the pinned id still
+        // points at this contact, so a re-pointed id fails loudly instead of merging into the wrong one.
+        const custUrl = `${new URL(page.url()).origin}/web#id=${HISTORICAL_CONTACT.id}&action=118&model=res.partner&view_type=form&menu_id=94`;
+        const rendered = await contactPage.openContactFormByUrl(custUrl, HISTORICAL_CONTACT.name);
+        expect(rendered, `the pinned contact #${HISTORICAL_CONTACT.id} must render as "${HISTORICAL_CONTACT.name}"`).toBe(true);
 
-      // Logged as context, not asserted: Won Opps are archived on this CRM, so the smart button can
-      // read 0 even though the contact does carry the legacy high-stage Opp this TC is about.
-      const oppCount = await contactPage.getOpportunityStatCount().catch(() => 0);
-      console.log(`  - "Opportunities" stat button on the pinned contact: ${oppCount} (active opps only - Won ones are archived)`);
+        // Logged as context, not asserted: Won Opps are archived on this CRM, so the smart button can
+        // read 0 even though the contact does carry the legacy high-stage Opp this TC is about.
+        const oppCount = await contactPage.getOpportunityStatCount().catch(() => 0);
+        console.log(`  - "Opportunities" stat button on the pinned contact: ${oppCount} (active opps only - Won ones are archived)`);
 
-      // Read the merge key (EMAIL DOMAIN) off the contact's own form.
-      const email = ((await contactPage.getEmailReadonly()) || '').trim();
-      const domain = extractEmailDomain(email);
-      console.log(`  - contact email="${email}" -> domain="${domain}"`);
-      expect(domain, `the pinned contact must expose an email domain - it is the merge key (read "${email}")`).not.toBe('');
-      expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
+        // Read the merge key (EMAIL DOMAIN) off the contact's own form.
+        const email = ((await contactPage.getEmailReadonly()) || '').trim();
+        const domain = extractEmailDomain(email);
+        console.log(`  - contact email="${email}" -> domain="${domain}"`);
+        expect(domain, `the pinned contact must expose an email domain - it is the merge key (read "${email}")`).not.toBe('');
+        expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
 
-      // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
-      // must return exactly these two records - this one now, plus the source created next. Polled
-      // (re-search each attempt) because a contact the sweep just deleted keeps showing up in the
-      // Contacts list for a few seconds. A count that stays above 1 means a same-named contact that
-      // is NOT one of this spec's sources exists - the pin then needs replacing.
-      const exactByName = await contactPage.waitForExactNameCount(HISTORICAL_CONTACT.name, 1);
-      expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records (found ${exactByName}; a leftover "crm12059-1-3-src" contact from a crashed run would explain > 1)`).toBe(1);
+        // The name must be exact-unique among contacts: the fresh source reuses it, so the name search
+        // must return exactly these two records - this one now, plus the source created next. Polled
+        // (re-search each attempt) because a contact the sweep just deleted keeps showing up in the
+        // Contacts list for a few seconds. A count that stays above 1 means a same-named contact that
+        // is NOT one of this spec's sources exists - the pin then needs replacing.
+        const exactByName = await contactPage.waitForExactNameCount(HISTORICAL_CONTACT.name, 1);
+        expect(exactByName, `"${HISTORICAL_CONTACT.name}" must be exact-unique among contacts so the merge selection is exactly two records (found ${exactByName}; a leftover "crm12059-1-3-src" contact from a crashed run would explain > 1)`).toBe(1);
 
-      historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
-      console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - pinned historical customer + email domain').catch(() => {});
+        historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
+        console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), email domain = "@${domain}"`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - pinned historical customer + email domain', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------
@@ -209,11 +214,15 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       console.log(`  - Name  : ${historical.name}   (shared with the historical contact)`);
       console.log(`  - Email : ${sourceEmail}   (inside the shared domain "@${historical.domain}")`);
       source = await createCompanyContact(page, contactPage, historical.name, sourceEmail);
-      expect(source.id, 'source contact must have an ID').toMatch(/^\d+$/);
-      expect(source.id).not.toBe(historical.id);
-      expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - fresh source contact created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(source.id, 'source contact must have an ID').toMatch(/^\d+$/);
+        expect(source.id).not.toBe(historical.id);
+        expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - fresh source contact created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------
@@ -232,8 +241,13 @@ test.describe('CRM-12059_1.3 - Merge into a historical contact with a Stage>=Won
       console.log(`  - rows matching "${historical.name}": ${rows} unfiltered -> ${companyRows} company record(s)`);
       const selected = await contactPage.selectContactRowsByExactName(historical.name);
       // Exactly two exact-name records must be selected: the historical destination + the fresh source.
-      expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce I - historical + source selected').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce I - historical + source selected', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let destinationText = '';

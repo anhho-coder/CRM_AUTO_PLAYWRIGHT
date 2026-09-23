@@ -198,10 +198,14 @@ test.describe(`${TC} - Field names and order - right column`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the right column of the Contact information area shows ${actual.length} fields`);
 
-      expect(actual.length, 'the NUMBER of fields in the right column of the Contact information area').toBe(EXPECTED.length);
-      expect(actual, 'the right column field NAMES and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Field names and order - right column`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of fields in the right column of the Contact information area').toBe(EXPECTED.length);
+        expect(actual, 'the right column field NAMES and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Field names and order - right column`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

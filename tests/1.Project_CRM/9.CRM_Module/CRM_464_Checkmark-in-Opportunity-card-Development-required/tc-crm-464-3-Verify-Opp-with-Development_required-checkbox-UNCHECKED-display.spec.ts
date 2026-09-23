@@ -217,9 +217,14 @@ test.describe('CRM-464_3 - Verify Opp with Development required UNCHECKED displa
       await opportunityPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const emailValue = await opportunityPage.getEmailReadonly();
-      expect(emailValue).toBe(emailOpp1);
-      console.log(`  ✓ III.1: "Email" field = "${emailOpp1}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `III.1 - Opp#1 email verified (${emailOpp1})`);
+      let __verifyPassed = false;
+      try {
+        expect(emailValue).toBe(emailOpp1);
+        console.log(`  ✓ III.1: "Email" field = "${emailOpp1}"`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `III.1 - Opp#1 email verified (${emailOpp1})`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

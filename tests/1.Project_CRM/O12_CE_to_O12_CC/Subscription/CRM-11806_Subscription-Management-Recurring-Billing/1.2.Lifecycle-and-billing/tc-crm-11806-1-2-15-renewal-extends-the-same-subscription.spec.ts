@@ -117,11 +117,17 @@ test.describe(`${TC_ID} - A renewal extends the same subscription`, () => {
     await test.step('Step 1: Click "Create A Renewal Quotation"', async () => {
       const visible = await subscriptionPage.isHeaderButtonVisible('Create A Renewal Quotation');
       console.log(`  - "Create A Renewal Quotation" visible: ${visible}`);
-      expect(visible, 'Step 1: with an End Date set and "To Renew" ticked, the renewal button should be offered').toBeTruthy();
 
-      await subscriptionPage.clickHeaderButton('Create A Renewal Quotation');
-      await quotationPage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - renewal quotation created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(visible, 'Step 1: with an End Date set and "To Renew" ticked, the renewal button should be offered').toBeTruthy();
+
+        await subscriptionPage.clickHeaderButton('Create A Renewal Quotation');
+        await quotationPage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1 - renewal quotation created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 2: Read the Customer and the "Order Lines" tab on the renewal quotation', async () => {
@@ -145,9 +151,13 @@ test.describe(`${TC_ID} - A renewal extends the same subscription`, () => {
 
       const status = await quotationPage.getQuotationStatus();
       console.log(`Step 3: renewal quotation status after CONFIRM = "${status}"`);
-      expect(status, `Step 3: the renewal quotation should confirm to a SALE ORDER (status read: "${status}")`).toMatch(/sale\s*order/i);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - renewal order confirmed').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(status, `Step 3: the renewal quotation should confirm to a SALE ORDER (status read: "${status}")`).toMatch(/sale\s*order/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - renewal order confirmed', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Go back to the subscription and read its End Date and status bar', async () => {

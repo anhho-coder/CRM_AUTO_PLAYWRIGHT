@@ -184,11 +184,15 @@ test.describe(`${TC} - CREATE OPPORTUNITY button`, () => {
       console.log('===============================================');
       console.log('OVERALL: CREATE OPPORTUNITY creates an Opportunity for the Contact and opens its form');
 
-      expect(oppsBefore, 'the Opportunities count of a freshly created Contact').toBe(0);
-      expect(opensCrmLead, 'CREATE OPPORTUNITY opens a crm.lead record (URL carries model=crm.lead)').toBe(true);
-      expect(breadcrumb, 'the breadcrumb of the Opportunity that opens names the Contact it was created from').toContain(DATA.name);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - CREATE OPPORTUNITY button`);
+      let __verifyPassed = false;
+      try {
+        expect(oppsBefore, 'the Opportunities count of a freshly created Contact').toBe(0);
+        expect(opensCrmLead, 'CREATE OPPORTUNITY opens a crm.lead record (URL carries model=crm.lead)').toBe(true);
+        expect(breadcrumb, 'the breadcrumb of the Opportunity that opens names the Contact it was created from').toContain(DATA.name);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - CREATE OPPORTUNITY button`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

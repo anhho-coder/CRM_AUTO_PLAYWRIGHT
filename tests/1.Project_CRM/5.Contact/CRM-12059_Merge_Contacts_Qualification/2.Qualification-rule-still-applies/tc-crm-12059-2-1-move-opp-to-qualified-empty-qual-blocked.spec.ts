@@ -95,9 +95,14 @@ test.describe('CRM-12059_2.1 - Empty Qualification info still blocks moving an i
       console.log(`  - Qualification info empty: ${emptyQual}`);
       // Guard: only proceed if the record is genuinely empty-qual and NOT already Qualified, so the
       // move will be blocked (never advancing/mutating the historical Opp).
-      expect(emptyQual, 'the reproducing Opp must have EMPTY Qualification info (repoint REPRO_OPP_URL otherwise)').toBe(true);
-      expect(origStage.toUpperCase(), 'the reproducing Opp must be BELOW the Qualified stage').not.toBe('QUALIFIED');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - empty qual confirmed').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(emptyQual, 'the reproducing Opp must have EMPTY Qualification info (repoint REPRO_OPP_URL otherwise)').toBe(true);
+        expect(origStage.toUpperCase(), 'the reproducing Opp must be BELOW the Qualified stage').not.toBe('QUALIFIED');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - empty qual confirmed', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------

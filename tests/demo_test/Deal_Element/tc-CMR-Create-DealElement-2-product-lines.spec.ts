@@ -137,9 +137,14 @@ test.describe('CMR-Create-DealElement-2-product-lines - Verify the Opp has Resel
       console.log(`\n=== III. VERIFICATION ===`);
       const orderLineCount = await dealElementPage.getOrderLineCount();
       console.log(`  Order line count: ${orderLineCount}`);
-      expect(orderLineCount, 'III.1: Order Lines should contain exactly 2 products').toBe(2);
-      console.log('\u2713 III.1: 2 products confirmed in Order Lines');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - 2 products verified');
+      let __verifyPassed = false;
+      try {
+        expect(orderLineCount, 'III.1: Order Lines should contain exactly 2 products').toBe(2);
+        console.log('\u2713 III.1: 2 products confirmed in Order Lines');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - 2 products verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

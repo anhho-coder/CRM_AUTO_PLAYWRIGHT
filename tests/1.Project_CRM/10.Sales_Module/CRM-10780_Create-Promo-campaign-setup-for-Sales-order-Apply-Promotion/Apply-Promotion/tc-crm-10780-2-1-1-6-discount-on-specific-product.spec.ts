@@ -140,9 +140,14 @@ test.describe('CRM-10780_2.1.1.6 - Verify discount only applies to specific prod
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl} (On Specific Product ${PRODUCT_1})`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -231,10 +236,15 @@ test.describe('CRM-10780_2.1.1.6 - Verify discount only applies to specific prod
       await dealElementPage.addProductLine(PRODUCT_2, 1, 'Socket');   // product #2 = should NOT be discounted
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 3: products added (order lines = ${lineCount})`);
-      expect(await dealElementPage.isProductInOrderLines(PRODUCT_1), `Order should contain product #1 ${PRODUCT_1}`).toBeTruthy();
-      expect(await dealElementPage.isProductInOrderLines(PRODUCT_2), `Order should contain product #2 ${PRODUCT_2}`).toBeTruthy();
-      expect(lineCount, 'Order should contain both product lines').toBeGreaterThanOrEqual(2);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Both products selected');
+      let __verifyPassed = false;
+      try {
+        expect(await dealElementPage.isProductInOrderLines(PRODUCT_1), `Order should contain product #1 ${PRODUCT_1}`).toBeTruthy();
+        expect(await dealElementPage.isProductInOrderLines(PRODUCT_2), `Order should contain product #2 ${PRODUCT_2}`).toBeTruthy();
+        expect(lineCount, 'Order should contain both product lines').toBeGreaterThanOrEqual(2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Both products selected', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Apply promotion A', async () => {
@@ -257,36 +267,41 @@ test.describe('CRM-10780_2.1.1.6 - Verify discount only applies to specific prod
       const p2SubtotalAfter = await dealElementPage.getSubtotalAfterAllDiscountsForProduct(PRODUCT_2);
       console.log(`  After applying: total=${totalAfter}, order lines=${linesAfter}, promo line present=${promoLinePresent}, ` +
         `#1(${PRODUCT_1}) subtotal=${p1SubtotalAfter}, #2(${PRODUCT_2}) subtotal=${p2SubtotalAfter}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - Promotion applied');
 
       // Expected (Jira):
       //  - Promotion A is applied successfully to product #1  -> a discount line is added / total reduced.
       //  - Promotion A is NOT applied to product #2           -> product #2's subtotal is unchanged.
       //  - Total is calculated correctly with applied promotion.
-      expect(promoLinePresent || linesAfter > linesBefore,
-        'Promotion A should be added as a discount line in Order Lines (applied to product #1)').toBeTruthy();
-      expect(totalAfter, 'Order Total should be reduced after applying Promotion A (specific-product discount)').toBeLessThan(totalBefore);
+      let __verifyPassed = false;
+      try {
+        expect(promoLinePresent || linesAfter > linesBefore,
+          'Promotion A should be added as a discount line in Order Lines (applied to product #1)').toBeTruthy();
+        expect(totalAfter, 'Order Total should be reduced after applying Promotion A (specific-product discount)').toBeLessThan(totalBefore);
 
-      // TODO (manual): confirm the per-product distinction on this Nakivo Deal Element. The assertions below
-      // use the "Sub Total After All Discounts" column (getSubtotalAfterAllDiscountsForProduct). Verify once
-      // by hand that (a) product #1's after-discount subtotal drops by 10% while (b) product #2's subtotal is
-      // unchanged, and that the promo discount line targets only product #1. If the column index / rounding
-      // differs from this assumption, harden getSubtotalAfterAllDiscountsForProduct (td[14]) and/or the
-      // tolerance here. Guarded so a column-read miss does not mask the core positive-apply result above.
-      if (p2SubtotalBefore > 0 && p2SubtotalAfter > 0) {
-        expect(Math.abs(p2SubtotalAfter - p2SubtotalBefore),
-          `Promotion A should NOT discount product #2 (${PRODUCT_2}) - its subtotal must be unchanged`).toBeLessThan(0.01);
-      } else {
-        console.log(`  ⚠ Could not read product #2 (${PRODUCT_2}) subtotal column reliably - per-product "not applied" check deferred to manual (see TODO).`);
+        // TODO (manual): confirm the per-product distinction on this Nakivo Deal Element. The assertions below
+        // use the "Sub Total After All Discounts" column (getSubtotalAfterAllDiscountsForProduct). Verify once
+        // by hand that (a) product #1's after-discount subtotal drops by 10% while (b) product #2's subtotal is
+        // unchanged, and that the promo discount line targets only product #1. If the column index / rounding
+        // differs from this assumption, harden getSubtotalAfterAllDiscountsForProduct (td[14]) and/or the
+        // tolerance here. Guarded so a column-read miss does not mask the core positive-apply result above.
+        if (p2SubtotalBefore > 0 && p2SubtotalAfter > 0) {
+          expect(Math.abs(p2SubtotalAfter - p2SubtotalBefore),
+            `Promotion A should NOT discount product #2 (${PRODUCT_2}) - its subtotal must be unchanged`).toBeLessThan(0.01);
+        } else {
+          console.log(`  ⚠ Could not read product #2 (${PRODUCT_2}) subtotal column reliably - per-product "not applied" check deferred to manual (see TODO).`);
+        }
+        if (p1SubtotalBefore > 0 && p1SubtotalAfter > 0) {
+          expect(p1SubtotalAfter,
+            `Promotion A should discount product #1 (${PRODUCT_1}) - its after-discount subtotal must drop`).toBeLessThan(p1SubtotalBefore);
+        } else {
+          console.log(`  ⚠ Could not read product #1 (${PRODUCT_1}) subtotal column reliably - per-product "applied" check deferred to manual (see TODO).`);
+        }
+        console.log(`✅ Specific-product promotion applied: Total ${totalBefore} -> ${totalAfter}; ` +
+          `#1 ${p1SubtotalBefore} -> ${p1SubtotalAfter} (discounted), #2 ${p2SubtotalBefore} -> ${p2SubtotalAfter} (unchanged).`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Promotion applied', passed: __verifyPassed }).catch(() => {});
       }
-      if (p1SubtotalBefore > 0 && p1SubtotalAfter > 0) {
-        expect(p1SubtotalAfter,
-          `Promotion A should discount product #1 (${PRODUCT_1}) - its after-discount subtotal must drop`).toBeLessThan(p1SubtotalBefore);
-      } else {
-        console.log(`  ⚠ Could not read product #1 (${PRODUCT_1}) subtotal column reliably - per-product "applied" check deferred to manual (see TODO).`);
-      }
-      console.log(`✅ Specific-product promotion applied: Total ${totalBefore} -> ${totalAfter}; ` +
-        `#1 ${p1SubtotalBefore} -> ${p1SubtotalAfter} (discounted), #2 ${p2SubtotalBefore} -> ${p2SubtotalAfter} (unchanged).`);
     });
   });
 });

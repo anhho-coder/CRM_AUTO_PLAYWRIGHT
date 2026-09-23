@@ -163,24 +163,52 @@ test.describe(`${TC} - Print menu`, () => {
         'Partner level Certificate',
         'Partner MSP Certificate',
       ];
-      const actual = await contactPage.getControlPanelMenuItems('Print');
+      // keepOpen: the Print menu is left ON SCREEN so the evidence shot below shows the very entries
+      // the assertions read. Letting it close first would leave the report a picture of a closed
+      // menu - no verify point visible, on a PASS as on a FAIL.
+      const actual = await contactPage.getControlPanelMenuItems('Print', { keepOpen: true });
+
+      const entriesMatch = JSON.stringify(actual) === JSON.stringify(EXPECTED);
+      const countMatch = actual.length === EXPECTED.length;
 
       console.log('==================== VERIFY ====================');
       console.log('  Verify #1 - the entries of the Print menu:');
       console.log(`     Expected : ${EXPECTED.join(' | ')}`);
       console.log(`     Actual   : ${actual.join(' | ')}`);
-      console.log(`     Result   : ${JSON.stringify(actual) === JSON.stringify(EXPECTED) ? 'PASS' : 'FAIL'}`);
+      console.log(`     Result   : ${entriesMatch ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #2 - the NUMBER of Print entries:');
       console.log(`     Expected : ${EXPECTED.length}`);
       console.log(`     Actual   : ${actual.length}`);
-      console.log(`     Result   : ${actual.length === EXPECTED.length ? 'PASS' : 'FAIL'}`);
+      console.log(`     Result   : ${countMatch ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
       console.log(`OVERALL: the Print menu of a Contact offers ${actual.length} reports`);
 
+      // EVIDENCE BEFORE ASSERTION. Taken here - menu open, verdict known, expects not yet run - it is
+      // attached on a FAIL exactly as on a PASS. A capture placed AFTER the expect()s is skipped by
+      // the throw, and the report then keeps only the afterEach shot: a closed Print menu that proves
+      // nothing about the finding.
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - Print menu`,
+        passed: entriesMatch && countMatch,
+        highlight: [
+          '.o_control_panel .dropdown-menu.show',
+          '.o_control_panel .dropdown-toggle[aria-expanded="true"]',
+        ],
+        lines: [
+          'Verify #1 - the entries of the Print menu:',
+          `   Expected : ${EXPECTED.join(' | ')}`,
+          `   Actual   : ${actual.join(' | ')}`,
+          `   Result   : ${entriesMatch ? 'PASS' : 'FAIL'}`,
+          'Verify #2 - the NUMBER of Print entries:',
+          `   Expected : ${EXPECTED.length}`,
+          `   Actual   : ${actual.length}`,
+          `   Result   : ${countMatch ? 'PASS' : 'FAIL'}`,
+        ],
+      });
+      await contactPage.closeControlPanelMenu();
+
       expect(actual.length, 'the NUMBER of entries in the Print menu').toBe(EXPECTED.length);
       expect(actual, 'the Print menu entries and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Print menu`);
     });
   });
 });

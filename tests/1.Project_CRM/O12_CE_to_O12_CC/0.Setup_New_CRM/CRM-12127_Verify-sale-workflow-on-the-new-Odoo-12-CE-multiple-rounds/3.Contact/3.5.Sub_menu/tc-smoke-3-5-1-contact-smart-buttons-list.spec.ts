@@ -185,10 +185,14 @@ test.describe(`${TC} - Sub-menu buttons`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Contact sub-menu offers ${actual.length} buttons`);
 
-      expect(actual.length, 'the NUMBER of sub-menu (smart) buttons on a Contact').toBe(EXPECTED.length);
-      expect(actual, 'the sub-menu button NAMES and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Sub-menu buttons`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of sub-menu (smart) buttons on a Contact').toBe(EXPECTED.length);
+        expect(actual, 'the sub-menu button NAMES and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu buttons`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

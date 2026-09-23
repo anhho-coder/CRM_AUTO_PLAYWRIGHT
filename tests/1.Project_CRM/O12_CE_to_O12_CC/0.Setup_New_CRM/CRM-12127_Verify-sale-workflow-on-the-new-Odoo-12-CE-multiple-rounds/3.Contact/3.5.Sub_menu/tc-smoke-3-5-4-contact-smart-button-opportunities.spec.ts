@@ -184,12 +184,16 @@ test.describe(`${TC} - Sub-menu "Opportunities"`, () => {
       console.log('===============================================');
       console.log('OVERALL: the Opportunities sub-menu button opens the Opportunities of the Contact');
 
-      expect(countBefore, 'the Opportunities counter of a newly created Contact').toBe(0);
-      expect(opensCrmLead, 'the Opportunities sub-menu button opens a crm.lead view').toBe(true);
-      expect(breadcrumb, 'the breadcrumb of the view the Opportunities button opens names the Contact').toContain(DATA.name);
-      expect(breadcrumb, 'the breadcrumb of the view the Opportunities button opens ends on Opportunities').toContain('Opportunities');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Sub-menu "Opportunities"`);
+      let __verifyPassed = false;
+      try {
+        expect(countBefore, 'the Opportunities counter of a newly created Contact').toBe(0);
+        expect(opensCrmLead, 'the Opportunities sub-menu button opens a crm.lead view').toBe(true);
+        expect(breadcrumb, 'the breadcrumb of the view the Opportunities button opens names the Contact').toContain(DATA.name);
+        expect(breadcrumb, 'the breadcrumb of the view the Opportunities button opens ends on Opportunities').toContain('Opportunities');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu "Opportunities"`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

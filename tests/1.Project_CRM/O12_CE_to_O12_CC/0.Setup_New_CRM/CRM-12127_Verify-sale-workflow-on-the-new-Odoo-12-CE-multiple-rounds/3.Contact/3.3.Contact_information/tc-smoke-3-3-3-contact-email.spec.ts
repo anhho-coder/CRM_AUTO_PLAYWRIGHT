@@ -169,9 +169,13 @@ test.describe(`${TC} - Email`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Email of the saved Contact reads "${actual}"`);
 
-      expect(actual, 'the Email on the saved form matches the entered value').toBe(expected);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Email`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the Email on the saved form matches the entered value').toBe(expected);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Email`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

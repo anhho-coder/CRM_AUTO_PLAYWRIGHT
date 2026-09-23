@@ -189,14 +189,18 @@ test.describe(`${TC} - Log note - Customer created`, () => {
       console.log(`  linked res.partner id : ${partner.partnerId || '(none)'}`);
       console.log(`  "_contact_automatic_creation CREATE" present : ${systemNote !== null}`);
       console.log('===============================================');
-      expect(customer.fields['Customer'], 'Customer in the note').toBe(DATA.companyName);
-      expect(customer.fields['Partner Contact Email'], 'Partner Contact Email in the note').toBe(
-        DATA.email
-      );
-      expect(customer.fields['Pricelist'], 'Pricelist in the note must be filled').not.toBe('');
-      expect(systemNote, 'the automatic contact creation must log its system note').not.toBeNull();
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Log note - Customer created`);
+      let __verifyPassed = false;
+      try {
+        expect(customer.fields['Customer'], 'Customer in the note').toBe(DATA.companyName);
+        expect(customer.fields['Partner Contact Email'], 'Partner Contact Email in the note').toBe(
+          DATA.email
+        );
+        expect(customer.fields['Pricelist'], 'Pricelist in the note must be filled').not.toBe('');
+        expect(systemNote, 'the automatic contact creation must log its system note').not.toBeNull();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Customer created`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

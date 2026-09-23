@@ -177,11 +177,15 @@ test.describe(`${TC} - Company Name - 200 characters`, () => {
       console.log(`  Expected length : ${DATA.companyName.length}`);
       console.log(`  Actual length   : ${companyName.length}`);
       console.log('===============================================');
-      expect(DATA.companyName.length, 'the test datum must really be 200 characters').toBe(200);
-      expect(companyName.length, 'the saved value must not be truncated').toBe(200);
-      expect(companyName, 'the saved value must equal the entered one').toBe(DATA.companyName);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Company Name - 200 characters`);
+      let __verifyPassed = false;
+      try {
+        expect(DATA.companyName.length, 'the test datum must really be 200 characters').toBe(200);
+        expect(companyName.length, 'the saved value must not be truncated').toBe(200);
+        expect(companyName, 'the saved value must equal the entered one').toBe(DATA.companyName);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name - 200 characters`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

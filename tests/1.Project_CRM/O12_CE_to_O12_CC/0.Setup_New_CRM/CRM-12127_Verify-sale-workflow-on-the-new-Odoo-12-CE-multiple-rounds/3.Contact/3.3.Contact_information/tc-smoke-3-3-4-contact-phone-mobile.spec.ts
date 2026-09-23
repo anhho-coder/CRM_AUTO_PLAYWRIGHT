@@ -181,10 +181,14 @@ test.describe(`${TC} - Phone and Mobile`, () => {
       console.log('===============================================');
       console.log('OVERALL: Phone and Mobile keep the values entered at creation');
 
-      expect(phone, 'the Phone on the saved form matches the entered value').toBe(DATA.phone);
-      expect(mobile, 'the Mobile on the saved form matches the entered value').toBe(DATA.mobile);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Phone and Mobile`);
+      let __verifyPassed = false;
+      try {
+        expect(phone, 'the Phone on the saved form matches the entered value').toBe(DATA.phone);
+        expect(mobile, 'the Mobile on the saved form matches the entered value').toBe(DATA.mobile);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Phone and Mobile`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

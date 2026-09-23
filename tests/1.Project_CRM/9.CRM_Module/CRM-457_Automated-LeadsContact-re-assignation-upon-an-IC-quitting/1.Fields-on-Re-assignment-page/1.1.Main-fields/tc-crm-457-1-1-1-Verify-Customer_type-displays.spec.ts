@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.1 - Verify Customer type combobox displays on Re-assi
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const customerTypeLabel = reAssignationPage.getCustomerTypeLabel();
-      await expect(customerTypeLabel).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Customer type" combobox is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Customer type combobox visible');
+      let __verifyPassed = false;
+      try {
+        await expect(customerTypeLabel).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Customer type" combobox is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Customer type combobox visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

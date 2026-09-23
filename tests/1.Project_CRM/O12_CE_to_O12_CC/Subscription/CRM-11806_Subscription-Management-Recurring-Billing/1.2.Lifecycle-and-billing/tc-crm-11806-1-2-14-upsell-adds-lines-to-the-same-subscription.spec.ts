@@ -115,9 +115,13 @@ test.describe(`${TC_ID} - An upsell adds lines to the same subscription`, () => 
 
       const status = await quotationPage.getQuotationStatus();
       console.log(`Step 4: upsell quotation status after CONFIRM = "${status}"`);
-      expect(status, `Step 4: the upsell quotation should confirm to a SALE ORDER (status read: "${status}")`).toMatch(/sale\s*order/i);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - upsell order confirmed').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(status, `Step 4: the upsell quotation should confirm to a SALE ORDER (status read: "${status}")`).toMatch(/sale\s*order/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - upsell order confirmed', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 5: Go back to the subscription and read its lines and Recurring Price', async () => {

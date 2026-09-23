@@ -174,10 +174,14 @@ test.describe(`${TC} - Sub-menu counters`, () => {
       console.log('===============================================');
       console.log('OVERALL: every sub-menu counter of a newly created Contact reports zero');
 
-      expect(actual, 'the sub-menu counters of a newly created Contact').toEqual(
-        COUNTERS.map((caption) => ({ caption, count: 0 })));
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Sub-menu counters`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the sub-menu counters of a newly created Contact').toEqual(
+          COUNTERS.map((caption) => ({ caption, count: 0 })));
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu counters`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -66,6 +66,13 @@ export class LicensePage extends BasePage {
       .or(this.page.locator(`input[name="${fieldName}"]`))
       .first();
 
+  /** The cancel-reason wizard modal (target="new" dialog opened by set_cancel). */
+  private readonly cancelWizardModal = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal')][.//select[@name='cancel_reason']]")
+      .or(this.page.locator('.modal:has(select[name="cancel_reason"])'))
+      .filter({ visible: true })
+      .first();
+
   constructor(page: Page) {
     super(page);
   }
@@ -576,7 +583,7 @@ export class LicensePage extends BasePage {
   }
 
   /** The items a control-panel dropdown ("Print" / "Action") offers, in order. */
-  async getControlPanelMenuItems(menuLabel: string): Promise<string[]> {
+  async getControlPanelMenuItems(menuLabel: string, opts: { keepOpen?: boolean } = {}): Promise<string[]> {
     const toggle = this.page
       .locator('.o_control_panel button.dropdown-toggle, .o_control_panel a.dropdown-toggle')
       .filter({ hasText: new RegExp('^\\s*' + menuLabel + '\\s*$', 'i') })
@@ -593,9 +600,20 @@ export class LicensePage extends BasePage {
           .filter((t) => t.length > 0)
       )
       .catch(() => [] as string[]);
+    // keepOpen: leave the menu ON SCREEN so the caller can take the VERIFY-POINT evidence shot
+    // with the entries still visible (a shot taken after Escape proves nothing). The caller is
+    // then responsible for closeControlPanelMenu().
+    if (!opts.keepOpen) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    return items;
+  }
+
+  /** Close a control-panel dropdown left open by getControlPanelMenuItems(.., { keepOpen: true }). */
+  async closeControlPanelMenu(): Promise<void> {
     await this.page.keyboard.press('Escape').catch(() => {});
     await this.wait(CommonUtils.waitTimes.standard);
-    return items;
   }
 
   /** One entry per chatter message, NEWEST FIRST, with the inner line breaks preserved. */
@@ -790,5 +808,76 @@ export class LicensePage extends BasePage {
           .filter((r) => r.text.length > 0);
       })
       .catch(() => [] as Array<{ text: string; number: string; unit: string }>);
+  }
+  // ---------------------------------------------------------------------------------------------
+  //  Cancel-reason wizard - grounded on PRE-PRODUCTION 2026-09-22
+  //
+  //  CANCEL does NOT cancel the licence on its own: set_cancel returns an ir.actions.act_window
+  //  that opens the wizard `license.cancel.reason.wizard` ("Please indicate the reason for
+  //  cancelling the license"). Its `cancel_reason` select is REQUIRED, and until OK
+  //  (button[name="action_confirm"]) is pressed the licence stays in DRAFT - which is what a spec
+  //  that clicks CANCEL and asserts straight away reads back.
+  //
+  //  The seven reasons, as the wizard lists them (the stored value is JSON-quoted, e.g. "expired"):
+  //    Expired | Renewed | Generation Error | Split / Joined | Upgrade |
+  //    License regeneration / BUG | Mistaken PO
+  //
+  //  After OK the statusbar reads DRAFT | APPROVED | CANCEL with CANCEL current, the header offers
+  //  DRAFT | SET TO DRAFT | TEST CREATING LICENSE FROM LM, and "Cancel reason" carries the label.
+  // ---------------------------------------------------------------------------------------------
+
+  /** Whether the cancel-reason wizard is on screen. */
+  async isCancelReasonWizardOpen(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<boolean> {
+    return await this.cancelWizardModal()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  /** The wizard's own title, as the modal prints it. */
+  async getCancelReasonWizardTitle(): Promise<string> {
+    const title = this.cancelWizardModal().locator('.modal-title').first();
+    return ((await title.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** The reasons the wizard offers, in order, as a tester reads them. */
+  async getCancelReasonOptions(): Promise<string[]> {
+    const select = this.cancelWizardModal().locator('select[name="cancel_reason"]').first();
+    await select.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    return await select
+      .locator('option')
+      .evaluateAll((os: Element[]) =>
+        os
+          .map((o) => (o.textContent || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * Pick a reason in the cancel wizard and press OK.
+   * @param reasonLabel the reason as the wizard prints it, e.g. "Expired"
+   */
+  async confirmCancelReason(reasonLabel: string, timeout: number = CommonUtils.waitTimes.savingPage): Promise<void> {
+    const modal = this.cancelWizardModal();
+    await modal.waitFor({ state: 'visible', timeout });
+    const select = modal.locator('select[name="cancel_reason"]').first();
+    await select.waitFor({ state: 'visible', timeout });
+    await select.selectOption({ label: reasonLabel });
+    const ok = modal.locator('button[name="action_confirm"]').first();
+    await ok.waitFor({ state: 'visible', timeout });
+    await ok.click({ timeout });
+    await modal.waitFor({ state: 'hidden', timeout }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Press CANCEL and carry the wizard through with the given reason - the whole cancellation, as a
+   * user performs it.
+   */
+  async cancelLicenseWithReason(reasonLabel: string, timeout: number = CommonUtils.waitTimes.savingPage): Promise<void> {
+    await this.clickCancelLicense(timeout);
+    await this.confirmCancelReason(reasonLabel, timeout);
   }
 }

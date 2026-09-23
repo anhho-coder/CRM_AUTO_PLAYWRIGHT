@@ -157,8 +157,13 @@ test.describe('CRM-11806_1.1.1 - One due cycle produces exactly one recurring in
       await subscriptionPage.waitForLoaded();
       reference = await subscriptionPage.getCode();
       console.log(`✓ Subscription saved - Reference = "${reference}"`);
-      expect(reference, 'Pre-condition: the saved subscription should have a Reference (SUBxxx)').toMatch(/SUB\d+/i);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition - subscription saved in DRAFT').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(reference, 'Pre-condition: the saved subscription should have a Reference (SUBxxx)').toMatch(/SUB\d+/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition - subscription saved in DRAFT', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition 6 (NOTE check): while in DRAFT, "Date of Next Invoice" and "=> Generate Invoice" are not rendered', async () => {
@@ -246,11 +251,15 @@ test.describe('CRM-11806_1.1.1 - One due cycle produces exactly one recurring in
         invoiceCountAfter === 1 && diff <= NEXT_DATE_TOLERANCE_DAYS,
       );
 
-      expect(invoiceCountAfter, 'VP5: exactly ONE invoice should exist for the cycle - not 0 and not 2').toBe(1);
-      expect(nextDate, `VP6: "Date of Next Invoice" should be parseable (got "${nextDateRaw}")`).not.toBeNull();
-      expect(diff, `VP6: "Date of Next Invoice" ("${nextDateRaw}") should be one month after today (${expectedNext.toLocaleDateString('en-US')})`).toBeLessThanOrEqual(NEXT_DATE_TOLERANCE_DAYS);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 6 - one invoice, next date advanced').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(invoiceCountAfter, 'VP5: exactly ONE invoice should exist for the cycle - not 0 and not 2').toBe(1);
+        expect(nextDate, `VP6: "Date of Next Invoice" should be parseable (got "${nextDateRaw}")`).not.toBeNull();
+        expect(diff, `VP6: "Date of Next Invoice" ("${nextDateRaw}") should be one month after today (${expectedNext.toLocaleDateString('en-US')})`).toBeLessThanOrEqual(NEXT_DATE_TOLERANCE_DAYS);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 6 - one invoice, next date advanced', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 6 (continued): Click the "Invoices" smart button and verify the invoice details', async () => {
@@ -307,11 +316,15 @@ test.describe('CRM-11806_1.1.1 - One due cycle produces exactly one recurring in
         invoiceTotalNumeric === recurringPriceNumeric,
       );
 
-      expect(invoiceRowCount, 'Exactly one invoice should be listed in the Invoices list').toBe(1);
-      expect(invoiceSourceDoc, `The invoice's Source Document should equal the subscription Reference "${reference}"`).toContain(reference);
-      expect(invoiceTotalNumeric, `The invoice's total should equal the Recurring Price (${recurringPriceNumeric})`).toBe(recurringPriceNumeric);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 6 - invoice detail page, Source Document and Total verified').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(invoiceRowCount, 'Exactly one invoice should be listed in the Invoices list').toBe(1);
+        expect(invoiceSourceDoc, `The invoice's Source Document should equal the subscription Reference "${reference}"`).toContain(reference);
+        expect(invoiceTotalNumeric, `The invoice's total should equal the Recurring Price (${recurringPriceNumeric})`).toBe(recurringPriceNumeric);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 6 - invoice detail page, Source Document and Total verified', passed: __verifyPassed }).catch(() => {});
+      }
 
       console.log(`✅ ${TC_ID}: one due cycle produced exactly one invoice, with correct Source Document and Total`);
     });

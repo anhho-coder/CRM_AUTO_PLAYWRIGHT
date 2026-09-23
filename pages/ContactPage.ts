@@ -2111,7 +2111,7 @@ export class ContactPage extends BasePage {
    * The entries of a control-panel dropdown ("Print" / "Action"), in order. The menu is opened,
    * read and closed again.
    */
-  async getControlPanelMenuItems(toggleLabel: string): Promise<string[]> {
+  async getControlPanelMenuItems(toggleLabel: string, opts: { keepOpen?: boolean } = {}): Promise<string[]> {
     const toggle = this.page
       .locator('.o_control_panel button')
       .filter({ hasText: new RegExp('^\\s*' + toggleLabel + '\\s*$', 'i') })
@@ -2126,9 +2126,20 @@ export class ContactPage extends BasePage {
           .filter((t) => t.length > 0)
       )
       .catch(() => [] as string[]);
+    // keepOpen: leave the menu ON SCREEN so the caller can take the VERIFY-POINT evidence shot
+    // with the entries still visible (a shot taken after Escape proves nothing). The caller is
+    // then responsible for closeControlPanelMenu().
+    if (!opts.keepOpen) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return items;
+  }
+
+  /** Close a control-panel dropdown left open by getControlPanelMenuItems(.., { keepOpen: true }). */
+  async closeControlPanelMenu(): Promise<void> {
     await this.page.keyboard.press('Escape').catch(() => {});
     await this.wait(CommonUtils.waitTimes.medium);
-    return items;
   }
 
   /** Press a header button by the Odoo action it calls (e.g. "action_create_new_opportunity"). */

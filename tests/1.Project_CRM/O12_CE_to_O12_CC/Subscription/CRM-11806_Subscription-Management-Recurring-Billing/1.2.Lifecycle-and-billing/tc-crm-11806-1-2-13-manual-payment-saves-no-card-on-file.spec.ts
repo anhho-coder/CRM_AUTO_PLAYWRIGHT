@@ -110,18 +110,24 @@ test.describe(`${TC_ID} - Manual payment saves no card on file`, () => {
 
       const amountDueRaw = await invoicePage.getAmountDue();
       const amountDue = toNumber(amountDueRaw);
-      expect(amountDue, 'Step 1: the open invoice should show a real outstanding amount').toBeGreaterThan(0);
 
-      await invoicePage.clickRegisterPayment(CommonUtils.waitTimes.abnormalWait);
+      let __verifyPassed = false;
+      try {
+        expect(amountDue, 'Step 1: the open invoice should show a real outstanding amount').toBeGreaterThan(0);
 
-      const journals = await invoicePage.getPaymentJournalOptions();
-      const bankJournal = journals.find(j => /bank/i.test(j)) ?? journals[0] ?? '';
-      console.log(`  - Journals offered: ${journals.join(' | ') || '(none read)'} -> using "${bankJournal}"`);
-      expect(bankJournal, 'Step 2: the Register Payment dialog should offer a Bank journal').not.toBe('');
-      await invoicePage.selectPaymentJournal(bankJournal);
+        await invoicePage.clickRegisterPayment(CommonUtils.waitTimes.abnormalWait);
 
-      await invoicePage.fillPaymentAmount(String(amountDue), CommonUtils.waitTimes.abnormalWait);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - bank transfer registered').catch(() => {});
+        const journals = await invoicePage.getPaymentJournalOptions();
+        const bankJournal = journals.find(j => /bank/i.test(j)) ?? journals[0] ?? '';
+        console.log(`  - Journals offered: ${journals.join(' | ') || '(none read)'} -> using "${bankJournal}"`);
+        expect(bankJournal, 'Step 2: the Register Payment dialog should offer a Bank journal').not.toBe('');
+        await invoicePage.selectPaymentJournal(bankJournal);
+
+        await invoicePage.fillPaymentAmount(String(amountDue), CommonUtils.waitTimes.abnormalWait);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - bank transfer registered', passed: __verifyPassed }).catch(() => {});
+      }
 
       await invoicePage.clickValidate_RegisterPayment(CommonUtils.waitTimes.abnormalWait);
       await invoicePage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);

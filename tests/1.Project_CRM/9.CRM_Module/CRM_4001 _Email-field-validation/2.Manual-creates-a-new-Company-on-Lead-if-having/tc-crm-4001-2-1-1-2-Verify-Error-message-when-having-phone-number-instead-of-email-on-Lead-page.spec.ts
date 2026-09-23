@@ -149,10 +149,14 @@ test.describe('CRM-4001_2.1.1.2 - Verify Error message appears when having phone
       console.log(`  Dialog text: "${dialogText}"`);
       console.log(`  Expected   : "${expectedErrorText}"`);
 
-      expect(dialogText, `Dialog should contain: "${expectedErrorText}"`).toContain(expectedErrorText);
-      console.log(`\u2713 Verification passed: Error message matches expected text`);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - Odoo Server Error dialog');
+      let __verifyPassed = false;
+      try {
+        expect(dialogText, `Dialog should contain: "${expectedErrorText}"`).toContain(expectedErrorText);
+        console.log(`\u2713 Verification passed: Error message matches expected text`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Odoo Server Error dialog', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

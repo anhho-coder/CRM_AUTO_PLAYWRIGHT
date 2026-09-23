@@ -383,10 +383,15 @@ test.describe('CRM-457_4.1.2.1 - Verify qualified Contacts with 1 state transfer
 
       // Normalize spaces around "/" to allow "0/1", "0 /1", "0/ 1", "0 / 1"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('0/1');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('0/1');
 
-      console.log('✓ III.1: Total text = "0/1" - qualified Contact correctly counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 0-1 verified');
+        console.log('✓ III.1: Total text = "0/1" - qualified Contact correctly counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 0-1 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

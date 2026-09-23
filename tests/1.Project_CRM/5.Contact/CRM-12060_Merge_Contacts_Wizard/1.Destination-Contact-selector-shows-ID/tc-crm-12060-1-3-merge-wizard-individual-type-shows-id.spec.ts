@@ -70,10 +70,15 @@ test.describe('CRM-12060_1.3 - Merge Contacts wizard: Individual-type contacts s
       console.log(`  - Shared Name      : ${sharedName}`);
       c1 = await createContactOfType(page, contactPage, 'Individual', sharedName, email1);
       c2 = await createContactOfType(page, contactPage, 'Individual', sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      expect(c1.id).not.toBe(c2.id);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named Individual contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        expect(c1.id).not.toBe(c2.id);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named Individual contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let options: string[] = [];

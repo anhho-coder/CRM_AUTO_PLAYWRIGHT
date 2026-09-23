@@ -102,8 +102,13 @@ test.describe('CRM-12540_1.7 - A normal note is stored byte-identical; the sanit
       console.log('\n=== PRE-CONDITION II: Fresh helpdesk ticket ===');
       console.log(`  - Subject : ${ticketSubject}`);
       ticketId = await helpdeskPage.createTicket(baseUrl, ticketSubject as string);
-      expect(ticketId, 'The ticket must have a record ID').toMatch(/^\d+$/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - ticket created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(ticketId, 'The ticket must have a record ID').toMatch(/^\d+$/);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - ticket created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let posted = false;
@@ -116,9 +121,14 @@ test.describe('CRM-12540_1.7 - A normal note is stored byte-identical; the sanit
       const res = await helpdeskPage.pasteAndPostLogNote(cleanBody);
       posted = res.posted;
       notification = res.notification;
-      expect(res.nulHeld, 'This case must carry NO NUL byte - it is the clean-content regression').toBe(false);
-      expect(res.surrogateHeld, 'This case must carry NO lone surrogate - it is the clean-content regression').toBe(false);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${tcId} - after posting the clean note`).catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(res.nulHeld, 'This case must carry NO NUL byte - it is the clean-content regression').toBe(false);
+        expect(res.surrogateHeld, 'This case must carry NO lone surrogate - it is the clean-content regression').toBe(false);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${tcId} - after posting the clean note`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Verification: the stored body is byte-identical and carries no replacement mark', async () => {

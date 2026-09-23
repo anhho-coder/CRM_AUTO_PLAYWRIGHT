@@ -805,12 +805,17 @@ test.describe('CRM-457_5.1.1.3 - Verify Salesperson is changed to the assigned t
       await contactTab.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log('\u2713 VII.1: Contact#1 page opened');
       await CommonUtils.captureAndAttachScreenshot(contactTab, testInfo, 'VII.1 - Contact#1 opened');
-      const actualContactSalesperson = await contactPageVerify.getSalespersonValue();
-      console.log('  Contact Salesperson received         : "' + actualContactSalesperson + '"');
-      console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
-      expect(actualContactSalesperson).toBe(selectedReAssignmentTo1);
-      console.log('\u2713 VII.1: Contact Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
-      await CommonUtils.captureAndAttachScreenshot(contactTab, testInfo, 'VII.1 - Contact Salesperson verified');
+      let __verifyPassed = false;
+      try {
+        const actualContactSalesperson = await contactPageVerify.getSalespersonValue();
+        console.log('  Contact Salesperson received         : "' + actualContactSalesperson + '"');
+        console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
+        expect(actualContactSalesperson).toBe(selectedReAssignmentTo1);
+        console.log('\u2713 VII.1: Contact Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(contactTab, testInfo, { name: 'VII.1 - Contact Salesperson verified', passed: __verifyPassed }).catch(() => {});
+      }
       await contactTab.close();
     });
 
@@ -823,12 +828,17 @@ test.describe('CRM-457_5.1.1.3 - Verify Salesperson is changed to the assigned t
       await leadTab.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log('\u2713 VII.2: Lead#1 page opened');
       await CommonUtils.captureAndAttachScreenshot(leadTab, testInfo, 'VII.2 - Lead#1 opened');
-      const actualLeadSalesperson = await leadPageVerify.getSalespersonValue();
-      console.log('  Lead Salesperson received            : "' + actualLeadSalesperson + '"');
-      console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
-      expect(actualLeadSalesperson).toBe(selectedReAssignmentTo1);
-      console.log('\u2713 VII.2: Lead Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
-      await CommonUtils.captureAndAttachScreenshot(leadTab, testInfo, 'VII.2 - Lead Salesperson verified');
+      let __verifyPassed = false;
+      try {
+        const actualLeadSalesperson = await leadPageVerify.getSalespersonValue();
+        console.log('  Lead Salesperson received            : "' + actualLeadSalesperson + '"');
+        console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
+        expect(actualLeadSalesperson).toBe(selectedReAssignmentTo1);
+        console.log('\u2713 VII.2: Lead Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(leadTab, testInfo, { name: 'VII.2 - Lead Salesperson verified', passed: __verifyPassed }).catch(() => {});
+      }
       await leadTab.close();
     });
 
@@ -841,12 +851,17 @@ test.describe('CRM-457_5.1.1.3 - Verify Salesperson is changed to the assigned t
       await oppTab.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log('\u2713 VII.3: Opp#1 page opened');
       await CommonUtils.captureAndAttachScreenshot(oppTab, testInfo, 'VII.3 - Opp#1 opened');
-      const actualOppSalesperson = await oppPageVerify.getSalespersonValue();
-      console.log('  Opp Salesperson received             : "' + actualOppSalesperson + '"');
-      console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
-      expect(actualOppSalesperson).toBe(selectedReAssignmentTo1);
-      console.log('\u2713 VII.3: Opp Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
-      await CommonUtils.captureAndAttachScreenshot(oppTab, testInfo, 'VII.3 - Opp Salesperson verified');
+      let __verifyPassed = false;
+      try {
+        const actualOppSalesperson = await oppPageVerify.getSalespersonValue();
+        console.log('  Opp Salesperson received             : "' + actualOppSalesperson + '"');
+        console.log('  Expected (selected_Re-assignment_to#1) : "' + selectedReAssignmentTo1 + '"');
+        expect(actualOppSalesperson).toBe(selectedReAssignmentTo1);
+        console.log('\u2713 VII.3: Opp Salesperson = "' + selectedReAssignmentTo1 + '" - verified');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(oppTab, testInfo, { name: 'VII.3 - Opp Salesperson verified', passed: __verifyPassed }).catch(() => {});
+      }
       await oppTab.close();
     });
 

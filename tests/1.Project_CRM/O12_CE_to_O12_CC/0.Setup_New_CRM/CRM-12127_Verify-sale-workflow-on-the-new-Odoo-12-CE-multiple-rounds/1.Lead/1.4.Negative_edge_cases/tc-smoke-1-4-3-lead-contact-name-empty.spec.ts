@@ -180,12 +180,16 @@ test.describe(`${TC} - Contact Name - left empty`, () => {
       console.log(`  Company Name : "${companyName}"`);
       console.log(`  Email        : "${email}"`);
       console.log('===============================================');
-      expect(leadUrl, 'the Lead must be saved').toMatch(/[?#&]id=\d+/);
-      expect(contactName, 'Contact Name must stay empty').toBe('');
-      expect(companyName, 'Company Name must keep the entered value').toBe(DATA.companyName);
-      expect(email, 'Email must keep the entered value').toBe(DATA.email);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Contact Name - left empty`);
+      let __verifyPassed = false;
+      try {
+        expect(leadUrl, 'the Lead must be saved').toMatch(/[?#&]id=\d+/);
+        expect(contactName, 'Contact Name must stay empty').toBe('');
+        expect(companyName, 'Company Name must keep the entered value').toBe(DATA.companyName);
+        expect(email, 'Email must keep the entered value').toBe(DATA.email);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contact Name - left empty`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

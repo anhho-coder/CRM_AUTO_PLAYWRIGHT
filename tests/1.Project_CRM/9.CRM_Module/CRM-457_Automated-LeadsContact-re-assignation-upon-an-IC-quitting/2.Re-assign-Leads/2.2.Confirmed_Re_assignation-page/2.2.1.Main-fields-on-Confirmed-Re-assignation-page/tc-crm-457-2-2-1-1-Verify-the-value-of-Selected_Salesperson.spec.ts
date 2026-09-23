@@ -435,10 +435,15 @@ test.describe('CRM-457_2.2.1.1 - Verify Selected Salesperson = Current Salespers
       console.log(`  Selected Salesperson received : "${selectedSalespersonText}"`);
       console.log(`  Expected (selected_salesperson#1) : "${selectedSalesperson1}"`);
 
-      expect(selectedSalespersonText).toBe(selectedSalesperson1);
+      let __verifyPassed = false;
+      try {
+        expect(selectedSalespersonText).toBe(selectedSalesperson1);
 
-      console.log(`✓ III.1: "Selected Salesperson" = "${selectedSalesperson1}" - verified correctly on Confirmed Re-assignation page`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Selected Salesperson verified');
+        console.log(`✓ III.1: "Selected Salesperson" = "${selectedSalesperson1}" - verified correctly on Confirmed Re-assignation page`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Selected Salesperson verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

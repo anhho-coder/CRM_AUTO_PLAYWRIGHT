@@ -174,30 +174,34 @@ test.describe(`${TC} - Lead Source - Nakivo (Lead created without an owner)`, ()
     });
 
     await test.step(STEP.s5, async () => {
-      console.log(`\n--- ${STEP.s5} ---`);
-      // Poll duration is the only adaptation (wall-clock): 3 min instead of 8.
-      const DERIVATION_POLL_MS = 180000;
-      const leadSource = await leadPage.waitForFieldValue('lead_source', 'Nakivo', DERIVATION_POLL_MS);
-      const note = await leadPage.findChatterMessage(/^Sales Team:/);
-      const salesTeam = await leadPage.readFieldValue('team_id');
-      const salesperson = await leadPage.readFieldValue('user_id');
-      console.log('==================== VERIFY ====================');
-      console.log(`  Sales Team assigned  : "${salesTeam}"`);
-      console.log(`  Salesperson assigned : "${salesperson}"`);
-      console.log(`  Lead Source          : expected "Nakivo" | actual "${leadSource}"`);
-      console.log(`  assignment note      : ${note ? note.replace(/\n/g, ' | ') : '(none)'}`);
-      console.log('===============================================');
-      expect(salesTeam, 'the assignment job must fill the Sales Team').not.toBe('');
-      expect(salesperson, 'the assignment job must fill the Salesperson').not.toBe('');
-      expect(leadSource, 'an unowned Lead must be classified Nakivo').toBe('Nakivo');
-      expect(note, 'the assignment job must log what it wrote').not.toBeNull();
-      const noteFields = leadPage.parseLogNoteFields(note as string);
-      expect(
-        leadPage.splitTrackedChange(noteFields['Lead Source']).to,
-        'the logged Lead Source must be Nakivo'
-      ).toBe('Nakivo');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Lead Source - Nakivo (Lead created without an owner)`);
+      let __verifyPassed = false;
+      try {
+        console.log(`\n--- ${STEP.s5} ---`);
+        // Poll duration is the only adaptation (wall-clock): 3 min instead of 8.
+        const DERIVATION_POLL_MS = 180000;
+        const leadSource = await leadPage.waitForFieldValue('lead_source', 'Nakivo', DERIVATION_POLL_MS);
+        const note = await leadPage.findChatterMessage(/^Sales Team:/);
+        const salesTeam = await leadPage.readFieldValue('team_id');
+        const salesperson = await leadPage.readFieldValue('user_id');
+        console.log('==================== VERIFY ====================');
+        console.log(`  Sales Team assigned  : "${salesTeam}"`);
+        console.log(`  Salesperson assigned : "${salesperson}"`);
+        console.log(`  Lead Source          : expected "Nakivo" | actual "${leadSource}"`);
+        console.log(`  assignment note      : ${note ? note.replace(/\n/g, ' | ') : '(none)'}`);
+        console.log('===============================================');
+        expect(salesTeam, 'the assignment job must fill the Sales Team').not.toBe('');
+        expect(salesperson, 'the assignment job must fill the Salesperson').not.toBe('');
+        expect(leadSource, 'an unowned Lead must be classified Nakivo').toBe('Nakivo');
+        expect(note, 'the assignment job must log what it wrote').not.toBeNull();
+        const noteFields = leadPage.parseLogNoteFields(note as string);
+        expect(
+          leadPage.splitTrackedChange(noteFields['Lead Source']).to,
+          'the logged Lead Source must be Nakivo'
+        ).toBe('Nakivo');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Source - Nakivo (Lead created without an owner)`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

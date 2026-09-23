@@ -303,10 +303,15 @@ test.describe('CRM-457_2.2.1.6 - Verify Selected Re-assignment to = Re-assignmen
       console.log(`  Selected Re-assignment to received : "${selectedReAssignmentToText}"`);
       console.log(`  Expected (selected_Re-assignment_to#1) : "${selectedReAssignmentTo1}"`);
 
-      expect(selectedReAssignmentToText).toBe(selectedReAssignmentTo1);
+      let __verifyPassed = false;
+      try {
+        expect(selectedReAssignmentToText).toBe(selectedReAssignmentTo1);
 
-      console.log(`✓ III.1: "Selected Re-assignment to" = "${selectedReAssignmentTo1}" - verified correctly on Confirmed Re-assignation page`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Selected Re-assignment to verified');
+        console.log(`✓ III.1: "Selected Re-assignment to" = "${selectedReAssignmentTo1}" - verified correctly on Confirmed Re-assignation page`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Selected Re-assignment to verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

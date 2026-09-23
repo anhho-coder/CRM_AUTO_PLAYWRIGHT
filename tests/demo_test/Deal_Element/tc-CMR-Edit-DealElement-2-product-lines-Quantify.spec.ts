@@ -135,9 +135,14 @@ test.describe('CMR-Edit-DealElement-2-product-lines - Verify the Opp has Reselle
     await test.step('III.1: Verify description at [A2144B] row is changed to "TEST"', async () => {
       console.log(`\n=== III. VERIFICATION ===`);
       const hasDescription = await dealElementPage.isDescriptionInOrderLine('[A2144B]', 'TEST');
-      expect(hasDescription, 'III.1: Description at [A2144B] row should be "TEST"').toBe(true);
-      console.log('\u2713 III.1: Description "TEST" confirmed on [A2144B] row');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Description verified');
+      let __verifyPassed = false;
+      try {
+        expect(hasDescription, 'III.1: Description at [A2144B] row should be "TEST"').toBe(true);
+        console.log('\u2713 III.1: Description "TEST" confirmed on [A2144B] row');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Description verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

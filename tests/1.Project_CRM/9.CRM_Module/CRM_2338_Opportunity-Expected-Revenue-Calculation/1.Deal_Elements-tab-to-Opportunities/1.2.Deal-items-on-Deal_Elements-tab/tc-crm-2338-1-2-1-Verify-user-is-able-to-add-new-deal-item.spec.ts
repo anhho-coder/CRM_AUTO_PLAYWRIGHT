@@ -457,9 +457,14 @@ test.describe('CRM-2338_1.2.1 - Verify that the user is able to add new deal ite
       console.log(`\n=== VIII. VERIFICATION POINTS ===`);
       const orderLineCount = await dealElementPage.getOrderLineCount();
       console.log(`  Order line count: ${orderLineCount}`);
-      expect(orderLineCount, 'VIII.1: Order Lines should contain exactly 2 products').toBe(2);
-      console.log('✓ VIII.1: 2 products confirmed in Order Lines');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - 2 products verified');
+      let __verifyPassed = false;
+      try {
+        expect(orderLineCount, 'VIII.1: Order Lines should contain exactly 2 products').toBe(2);
+        console.log('✓ VIII.1: 2 products confirmed in Order Lines');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - 2 products verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

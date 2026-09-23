@@ -178,10 +178,14 @@ test.describe(`${TC} - Control-panel buttons`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the saved Contact offers ${actual.length} control-panel buttons`);
 
-      expect(actual.length, 'the NUMBER of control-panel buttons on a saved Contact').toBe(EXPECTED.length);
-      expect(actual, 'the control-panel button NAMES and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Control-panel buttons`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of control-panel buttons on a saved Contact').toBe(EXPECTED.length);
+        expect(actual, 'the control-panel button NAMES and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Control-panel buttons`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

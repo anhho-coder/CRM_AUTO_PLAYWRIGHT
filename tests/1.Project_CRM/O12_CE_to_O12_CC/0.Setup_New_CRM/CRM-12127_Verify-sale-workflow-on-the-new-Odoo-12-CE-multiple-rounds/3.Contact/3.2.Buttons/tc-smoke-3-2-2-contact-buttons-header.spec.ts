@@ -177,11 +177,15 @@ test.describe(`${TC} - Header buttons`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the saved Contact offers ${actual.length} header buttons`);
 
-      expect(actual.length, 'the NUMBER of header buttons on a saved Contact').toBe(EXPECTED.length);
-      expect(actual.map((e) => e.label), 'the header button NAMES and their ORDER').toEqual(EXPECTED.map((e) => e.label));
-      expect(actual.map((e) => e.name), 'the Odoo action each header button calls').toEqual(EXPECTED.map((e) => e.name));
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Header buttons`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of header buttons on a saved Contact').toBe(EXPECTED.length);
+        expect(actual.map((e) => e.label), 'the header button NAMES and their ORDER').toEqual(EXPECTED.map((e) => e.label));
+        expect(actual.map((e) => e.name), 'the Odoo action each header button calls').toEqual(EXPECTED.map((e) => e.name));
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Header buttons`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

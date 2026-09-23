@@ -132,8 +132,13 @@ test.describe('pre-sale-7.1.2.2 - REQUEST SE SUPPORT enabled when Expected Reven
       await opportunityPage.openByUrl(createdOppUrl as string);
       const populated = await opportunityPage.waitForCompanyAndContactPopulated();
       console.log(`  - Company: "${populated.companyValue}" | Contact: "${populated.contactValue}"`);
-      expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before editing Expected Revenue').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Opp#1 created (Company + Contact populated)').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before editing Expected Revenue').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Opp#1 created (Company + Contact populated)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ===================== Steps to reproduce =====================
@@ -146,9 +151,14 @@ test.describe('pre-sale-7.1.2.2 - REQUEST SE SUPPORT enabled when Expected Reven
     await test.step('Step 2: Click "EDIT" on the Opp form', async () => {
       console.log('Step 2: Entering EDIT mode on Opp #1');
       const editable = await opportunityPage.clickEdit();
-      expect(editable, 'The Opp form should switch to EDIT mode').toBeTruthy();
-      console.log('✓ Opp #1 in EDIT mode');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Opp in EDIT mode').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(editable, 'The Opp form should switch to EDIT mode').toBeTruthy();
+        console.log('✓ Opp #1 in EDIT mode');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Opp in EDIT mode', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step(`Step 3: Set Expected Revenue = $${EXPECTED_REVENUE_AT_THRESHOLD} (at the $100 threshold)`, async () => {
