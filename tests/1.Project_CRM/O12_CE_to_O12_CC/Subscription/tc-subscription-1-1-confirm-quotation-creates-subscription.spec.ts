@@ -196,8 +196,13 @@ test.describe('Subscription-1.1 - Confirm a subscription quotation auto-creates 
       await opportunityPage.openByUrl(createdOppUrl as string);
       const populated = await opportunityPage.waitForCompanyAndContactPopulated();
       console.log(`  - Company: "${populated.companyValue}" | Contact: "${populated.contactValue}"`);
-      expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before opening the Deal Element').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Opp#1 created (Company + Contact populated)').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before opening the Deal Element').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Opp#1 created (Company + Contact populated)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ===================== Steps to reproduce =====================
@@ -266,11 +271,16 @@ test.describe('Subscription-1.1 - Confirm a subscription quotation auto-creates 
       console.log(`  - line Unit Price   : ${lineUnitPrice}`);
       console.log(`  - line Sub Total    : ${lineSubTotal}`);
 
-      expect(quotationPayer, 'QuotationPayer#1 should be captured (the Reseller)').toBeTruthy();
-      expect(quotationTotal, 'QuotationTotal#1 should be a positive amount').toBeGreaterThan(0);
-      expect(quotationPricelist, 'PriceList#1 should be captured').toBeTruthy();
-      expect(quotationSalesperson, 'Salesperson#1 should be captured').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Quotation created (values captured)').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(quotationPayer, 'QuotationPayer#1 should be captured (the Reseller)').toBeTruthy();
+        expect(quotationTotal, 'QuotationTotal#1 should be a positive amount').toBeGreaterThan(0);
+        expect(quotationPricelist, 'PriceList#1 should be captured').toBeTruthy();
+        expect(quotationSalesperson, 'Salesperson#1 should be captured').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Quotation created (values captured)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 7: Click "Confirm"', async () => {
@@ -287,8 +297,14 @@ test.describe('Subscription-1.1 - Confirm a subscription quotation auto-creates 
 
     await test.step('Step 8: Click the "Subscriptions" smart button to open the subscription detail', async () => {
       console.log('Step 8: Opening the Subscriptions smart button');
-      const hasButton = await quotationPage.hasSubscriptionsSmartButton(CommonUtils.waitTimes.pageLoad);
-      expect(hasButton, 'A "Subscriptions" smart button should appear on the confirmed Sales Order').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        const hasButton = await quotationPage.hasSubscriptionsSmartButton(CommonUtils.waitTimes.pageLoad);
+        expect(hasButton, 'A "Subscriptions" smart button should appear on the confirmed Sales Order').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Subscriptions smart button exists', passed: __verifyPassed }).catch(() => {});
+      }
       await quotationPage.clickSubscriptionsSmartButton(CommonUtils.waitTimes.pageLoad);
       await subscriptionPage.waitForLoaded(CommonUtils.waitTimes.pageLoad);
       console.log('✓ Subscription detail opened');

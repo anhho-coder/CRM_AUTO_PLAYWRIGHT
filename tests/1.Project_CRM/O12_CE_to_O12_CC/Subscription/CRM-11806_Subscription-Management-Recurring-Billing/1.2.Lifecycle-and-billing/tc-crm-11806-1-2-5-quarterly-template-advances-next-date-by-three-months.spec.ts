@@ -169,18 +169,24 @@ test.describe('CRM-11806_1.2.5 - A quarterly subscription advances its next invo
       const diff = after ? Math.abs(dayDiff(after, expectedNext)) : 999;
       const invoiceCount = await subscriptionPage.getInvoiceCount();
 
-      logVerify(
-        'VP2 + VP3',
-        `"Date of Next Invoice" = ${expectedNext.toLocaleDateString('en-US')} (previous due date "${dueDateBefore}" plus exactly three months); exactly one invoice for the quarter`,
-        `"Date of Next Invoice" = "${dueDateAfter}" (diff ${diff} day(s)); "Invoices" smart button = ${invoiceCount}`,
-        diff <= DATE_TOLERANCE_DAYS && invoiceCount === 1,
-      );
-
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 5 - next date advanced by a quarter').catch(() => {});
 
-      expect(after, `VP2: "Date of Next Invoice" should be parseable (got "${dueDateAfter}")`).not.toBeNull();
-      expect(diff, `VP2: the quarterly template should advance the next date by three months (was "${dueDateBefore}", now "${dueDateAfter}")`).toBeLessThanOrEqual(DATE_TOLERANCE_DAYS);
-      expect(invoiceCount, 'VP3: exactly ONE invoice should be created for the quarter').toBe(1);
+      let __verifyPassed = false;
+      try {
+        logVerify(
+          'VP2 + VP3',
+          `"Date of Next Invoice" = ${expectedNext.toLocaleDateString('en-US')} (previous due date "${dueDateBefore}" plus exactly three months); exactly one invoice for the quarter`,
+          `"Date of Next Invoice" = "${dueDateAfter}" (diff ${diff} day(s)); "Invoices" smart button = ${invoiceCount}`,
+          diff <= DATE_TOLERANCE_DAYS && invoiceCount === 1,
+        );
+
+        expect(after, `VP2: "Date of Next Invoice" should be parseable (got "${dueDateAfter}")`).not.toBeNull();
+        expect(diff, `VP2: the quarterly template should advance the next date by three months (was "${dueDateBefore}", now "${dueDateAfter}")`).toBeLessThanOrEqual(DATE_TOLERANCE_DAYS);
+        expect(invoiceCount, 'VP3: exactly ONE invoice should be created for the quarter').toBe(1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 5 - next date advanced by a quarter - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       // The smart button lands on the invoices LIST; the total is read from the invoice FORM.
       await subscriptionPage.openInvoices();

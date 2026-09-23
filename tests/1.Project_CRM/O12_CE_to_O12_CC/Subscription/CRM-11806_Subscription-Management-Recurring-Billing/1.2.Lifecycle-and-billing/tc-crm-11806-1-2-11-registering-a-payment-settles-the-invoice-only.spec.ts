@@ -115,9 +115,13 @@ test.describe(`${TC_ID} - Registering a payment settles the invoice only`, () =>
       const amountDueRaw = await invoicePage.getAmountDue();
       amountDueBefore = toNumber(amountDueRaw);
       console.log(`Step 2: Amount Due before the payment = "${amountDueRaw}" -> ${amountDueBefore}`);
-      expect(amountDueBefore, 'Step 2: the open invoice should show a real outstanding amount').toBeGreaterThan(0);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - open invoice with an amount due').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(amountDueBefore, 'Step 2: the open invoice should show a real outstanding amount').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - open invoice with an amount due', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 3-5: Register the payment on the Bank journal for the full amount and validate', async () => {
@@ -128,7 +132,13 @@ test.describe(`${TC_ID} - Registering a payment settles the invoice only`, () =>
       const journals = await invoicePage.getPaymentJournalOptions();
       const bankJournal = journals.find(j => /bank/i.test(j)) ?? journals[0] ?? '';
       console.log(`  - Journals offered: ${journals.join(' | ') || '(none read)'} -> using "${bankJournal}"`);
-      expect(bankJournal, 'Step 4: the Register Payment dialog should offer a Bank journal').not.toBe('');
+      let __verifyPassed = false;
+      try {
+        expect(bankJournal, 'Step 4: the Register Payment dialog should offer a Bank journal').not.toBe('');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Register Payment dialog - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await invoicePage.selectPaymentJournal(bankJournal);
 
       await invoicePage.fillPaymentAmount(String(amountDueBefore), CommonUtils.waitTimes.abnormalWait);

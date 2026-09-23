@@ -181,24 +181,29 @@ test.describe('CRM-4001_3.1.1.2 [CRM-10617] - Verify Log note shows warning mess
     // ==============================================================
 
     await test.step('Step 6 - Verification: Log area contains the warning message', async () => {
-      console.log(`\n=== VERIFICATION ===`);
-      console.log('Verifying Log area contains the expected warning message');
-      console.log(`  Expected: "${expectedLogText}"`);
-      console.log(`  Found   : ${chatterResult!.found}`);
+      let __verifyPassed = false;
+      try {
+        console.log(`\n=== VERIFICATION ===`);
+        console.log('Verifying Log area contains the expected warning message');
+        console.log(`  Expected: "${expectedLogText}"`);
+        console.log(`  Found   : ${chatterResult!.found}`);
 
-      expect(
-        chatterResult!.chatterText,
-        `Log area should contain: "${expectedLogText}"`
-      ).toContain(expectedLogText);
+        expect(
+          chatterResult!.chatterText,
+          `Log area should contain: "${expectedLogText}"`
+        ).toContain(expectedLogText);
 
-      console.log('\u2713 Verification passed: Log warning message matches expected text');
+        console.log('\u2713 Verification passed: Log warning message matches expected text');
 
-      // Scroll to the log/chatter area to make warning visible in screenshot
-      const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
-      await chatterArea.scrollIntoViewIfNeeded().catch(() => {});
-      await page.waitForTimeout(CommonUtils.waitTimes.short);
+        // Scroll to the log/chatter area to make warning visible in screenshot
+        const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
+        await chatterArea.scrollIntoViewIfNeeded().catch(() => {});
+        await page.waitForTimeout(CommonUtils.waitTimes.short);
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - Log warning message');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Log warning message', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

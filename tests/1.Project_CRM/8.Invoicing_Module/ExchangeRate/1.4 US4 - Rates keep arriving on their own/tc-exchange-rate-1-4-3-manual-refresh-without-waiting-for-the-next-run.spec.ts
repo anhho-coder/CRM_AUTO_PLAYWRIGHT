@@ -133,24 +133,29 @@ describeBlock('Exchange-rate_1.4.3 - US4: a manual refresh without waiting for t
 
     await test.step('Pre-condition: Confirm Interval = Daily and that "Next Run" is later than today', async () => {
       const opened = await settingsPage.openInvoicingSettings();
-      expect(opened, 'The Invoicing settings screen should open').toBe(true);
-      settingsBefore = await settingsPage.readSettings();
-      console.log(`  - Today is ${TODAY_TEXT}; "Next Run" reads ${settingsBefore.nextRun || '(empty)'}`);
-      expect(settingsBefore.interval, `"Interval" should be "${EXPECTED_INTERVAL}" for this case`).toBe(EXPECTED_INTERVAL);
-
-      if (settingsBefore.nextRun === TODAY_TEXT || !settingsBefore.nextRun) {
-        // The point of this case is that the refresh works while the schedule is NOT due, so push the next
-        // run out to tomorrow. Doing it here rather than assuming keeps the case runnable on any day.
-        console.log(`  - "Next Run" is not in the future; setting it to ${tomorrowForDateField()} so the schedule cannot be the trigger`);
-        const ok = await settingsPage.setNextRun(tomorrowForDateField());
-        expect(ok, `"Next Run" should have been moved to ${tomorrowForDateField()}`).toBe(true);
+      let __verifyPassed = false;
+      try {
+        expect(opened, 'The Invoicing settings screen should open').toBe(true);
         settingsBefore = await settingsPage.readSettings();
+        console.log(`  - Today is ${TODAY_TEXT}; "Next Run" reads ${settingsBefore.nextRun || '(empty)'}`);
+        expect(settingsBefore.interval, `"Interval" should be "${EXPECTED_INTERVAL}" for this case`).toBe(EXPECTED_INTERVAL);
+
+        if (settingsBefore.nextRun === TODAY_TEXT || !settingsBefore.nextRun) {
+          // The point of this case is that the refresh works while the schedule is NOT due, so push the next
+          // run out to tomorrow. Doing it here rather than assuming keeps the case runnable on any day.
+          console.log(`  - "Next Run" is not in the future; setting it to ${tomorrowForDateField()} so the schedule cannot be the trigger`);
+          const ok = await settingsPage.setNextRun(tomorrowForDateField());
+          expect(ok, `"Next Run" should have been moved to ${tomorrowForDateField()}`).toBe(true);
+          settingsBefore = await settingsPage.readSettings();
+        }
+        expect(
+          settingsBefore.nextRun,
+          `"Next Run" must be a date LATER than today (${TODAY_TEXT}), or a rate arriving proves nothing about the refresh control`
+        ).not.toBe(TODAY_TEXT);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition - schedule not due', passed: __verifyPassed }).catch(() => {});
       }
-      expect(
-        settingsBefore.nextRun,
-        `"Next Run" must be a date LATER than today (${TODAY_TEXT}), or a rate arriving proves nothing about the refresh control`
-      ).not.toBe(TODAY_TEXT);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition - schedule not due').catch(() => {});
     });
 
     try {
@@ -176,8 +181,13 @@ describeBlock('Exchange-rate_1.4.3 - US4: a manual refresh without waiting for t
       await test.step('Step 2-3: Open the "Currencies" settings block and click the refresh control next to "Next Run"', async () => {
         await settingsPage.openInvoicingSettings();
         refreshed = await settingsPage.clickRefreshRatesNow();
-        expect(refreshed, 'The refresh control next to "Next Run" should have been pressed').toBe(true);
-        await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - refresh pressed').catch(() => {});
+        let __verifyPassed = false;
+        try {
+          expect(refreshed, 'The refresh control next to "Next Run" should have been pressed').toBe(true);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - refresh pressed', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await test.step('Step 4: Read the settings again, then re-open the rate history and the Currencies list', async () => {

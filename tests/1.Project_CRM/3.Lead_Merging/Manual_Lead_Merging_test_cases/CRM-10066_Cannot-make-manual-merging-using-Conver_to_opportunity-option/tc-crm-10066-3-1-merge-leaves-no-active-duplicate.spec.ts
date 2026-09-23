@@ -181,7 +181,13 @@ test.describe('CRM-10066_3.1 - Manual merge leaves no active duplicate (source L
     await test.step('Step 4: Select option "Merge with existing opportunities"', async () => {
       console.log('Step 4: Selecting "Merge with existing opportunities"');
       const mergeAvailable = await leadPage.isMergeOptionAvailable();
-      expect(mergeAvailable, '"Merge with existing opportunities" should be offered (shared domain)').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        expect(mergeAvailable, '"Merge with existing opportunities" should be offered (shared domain)').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Merge option selected - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await leadPage.selectConversionActionMerge();
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Merge option selected');
       console.log('OK - Conversion Action set to "Merge with existing opportunities"');
@@ -191,8 +197,13 @@ test.describe('CRM-10066_3.1 - Manual merge leaves no active duplicate (source L
       console.log(`Step 5: Adding Opp#1 to the merge list (filter by email: ${oppEmail}; select by Sales Team: ${opp1Team})`);
       const pick = await leadPage.addOpportunityToMergeByEmailAndTeam(oppEmail, opp1Team);
       console.log(`  - Opp#1 row selected by its Sales Team: ${pick.selectedByTeam} (rows: ${pick.rowCount})`);
-      expect(pick.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be selectable in the picker`).toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Opp#1 added to merge list');
+      let __verifyPassed = false;
+      try {
+        expect(pick.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be selectable in the picker`).toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Opp#1 added to merge list', passed: __verifyPassed }).catch(() => {});
+      }
       console.log('OK - Opp#1 added to the merge list');
     });
 

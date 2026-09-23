@@ -125,9 +125,14 @@ describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, freq
 
     await test.step('Step 1-2: Open the Invoicing settings, find the "Currencies" block and write down "Service", "Interval" and "Next Run"', async () => {
       const opened = await settingsPage.openInvoicingSettings();
-      expect(opened, 'The Invoicing settings screen should open').toBe(true);
-      recorded = await settingsPage.readSettings();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1-2 - Automatic Currency Rates read').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(opened, 'The Invoicing settings screen should open').toBe(true);
+        recorded = await settingsPage.readSettings();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1-2 - Automatic Currency Rates read', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Verification Point 2: the source, the frequency and the next run are all readable here', async () => {
@@ -154,20 +159,25 @@ describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, freq
       // scheduled action fires but the method returns early, and nothing observable happens.
       console.log(`  - "Next Run" was ${recorded!.nextRun}; setting it to ${todayForNextRun()} so the update is due`);
       const due = await settingsPage.setNextRun(todayForNextRun());
-      expect(
-        due,
-        `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. It did not, so the ` +
-          `scheduled action would fire and return early, and step 4 would be reading a schedule that never moved.`
-      ).toBe(true);
+      let __verifyPassed = false;
+      try {
+        expect(
+          due,
+          `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. It did not, so the ` +
+            `scheduled action would fire and return early, and step 4 would be reading a schedule that never moved.`
+        ).toBe(true);
 
-      // Gate two - the scheduled action's own "Next Execution Date".
-      const opened = await cronPage.openScheduledAction(CRON_NAME);
-      expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
-      const set = await cronPage.setNextExecutionDate(todayForCronField());
-      expect(set, '"Next Execution Date" should have been set to today').toBe(true);
-      ranManually = await cronPage.clickRunManually();
-      expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - job run manually').catch(() => {});
+        // Gate two - the scheduled action's own "Next Execution Date".
+        const opened = await cronPage.openScheduledAction(CRON_NAME);
+        expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
+        const set = await cronPage.setNextExecutionDate(todayForCronField());
+        expect(set, '"Next Execution Date" should have been set to today').toBe(true);
+        ranManually = await cronPage.clickRunManually();
+        expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - job run manually', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Go back to the "Currencies" block and read "Next Run" again', async () => {

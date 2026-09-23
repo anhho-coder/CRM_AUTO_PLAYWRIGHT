@@ -141,26 +141,32 @@ test.describe('CRM-10601_1.1.1.2 - Mass Mark as Lost for multiple records with t
 
     // Step 7: Login with sales manager and review all the Opp (same session) + verify each
     await test.step('Step 7: Login with sales manager and review all the Opp', async () => {
-      for (let i = 0; i < createdOppUrls.length; i++) {
-        const url = createdOppUrls[i];
-        console.log(`  Reviewing Opportunity ${i + 1}/${createdOppUrls.length}: ${url}`);
-        await opportunityPage.goto(url);
-        await opportunityPage.waitForPageReady(CommonUtils.waitTimes.pageLoad);
+      let __verifyPassed = false;
+      try {
+        for (let i = 0; i < createdOppUrls.length; i++) {
+          const url = createdOppUrls[i];
+          console.log(`  Reviewing Opportunity ${i + 1}/${createdOppUrls.length}: ${url}`);
+          await opportunityPage.goto(url);
+          await opportunityPage.waitForPageReady(CommonUtils.waitTimes.pageLoad);
 
-        const { found, chatterText } = await opportunityPage.waitForChatterContaining(
-          'marked as lost',
-          5,
-          CommonUtils.waitTimes.checkingChatterLog
-        );
-        expect(found, `Opp ${i + 1} should have a "marked as lost" log note`).toBeTruthy();
-        expect(chatterText.toLowerCase(), `Opp ${i + 1} log note should record Lost reason "${LOST_REASON}"`)
-          .toContain(LOST_REASON.toLowerCase());
-        expect(chatterText, `Opp ${i + 1} log note should say "Pending approval"`).toMatch(/pending approval/i);
+          const { found, chatterText } = await opportunityPage.waitForChatterContaining(
+            'marked as lost',
+            5,
+            CommonUtils.waitTimes.checkingChatterLog
+          );
+          expect(found, `Opp ${i + 1} should have a "marked as lost" log note`).toBeTruthy();
+          expect(chatterText.toLowerCase(), `Opp ${i + 1} log note should record Lost reason "${LOST_REASON}"`)
+            .toContain(LOST_REASON.toLowerCase());
+          expect(chatterText, `Opp ${i + 1} log note should say "Pending approval"`).toMatch(/pending approval/i);
 
-        await opportunityPage.clickCRMDeveloperTab().catch(() => {});
-        const approvalStatus = await opportunityPage.getApprovalStatus();
-        console.log(`    - Opp ${i + 1} Approval Status = "${approvalStatus}"`);
-        expect(approvalStatus, `Opp ${i + 1} Approval Status should be "Pending Approval"`).toMatch(/Pending Approval/i);
+          await opportunityPage.clickCRMDeveloperTab().catch(() => {});
+          const approvalStatus = await opportunityPage.getApprovalStatus();
+          console.log(`    - Opp ${i + 1} Approval Status = "${approvalStatus}"`);
+          expect(approvalStatus, `Opp ${i + 1} Approval Status should be "Pending Approval"`).toMatch(/Pending Approval/i);
+        }
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'CRM-10734 - Last Opp after Mass Mark as Lost (multiple same team) - verify', passed: __verifyPassed }).catch(() => {});
       }
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'CRM-10734 - Last Opp after Mass Mark as Lost (multiple same team)');
       console.log(`✅ All ${LEAD_COUNT} Opportunities (same team) have a pending approval`);

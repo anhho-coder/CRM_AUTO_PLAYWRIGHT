@@ -145,9 +145,14 @@ test.describe('CRM-10780_2.1.1.18 - Verify deactivate Promotion Program after ap
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -235,13 +240,25 @@ test.describe('CRM-10780_2.1.1.18 - Verify deactivate Promotion Program after ap
       await dealElementPage.selectPaymentTerm('Immediate Payment');
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Product line added - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       // Apply Promotion A: set the "Promotion" field (while in edit mode), then SAVE.
       const totalBefore = await dealElementPage.getAmountTotal();
       const linesBefore = await dealElementPage.getOrderLineCount();
       const set = await dealElementPage.setPromotion(promoName);
-      expect(set, 'The "Promotion" field should be settable while the Deal Element is in edit mode').toBeTruthy();
+      let __verifyPassed2 = false;
+      try {
+        expect(set, 'The "Promotion" field should be settable while the Deal Element is in edit mode').toBeTruthy();
+        __verifyPassed2 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Promotion field settable - verify', passed: __verifyPassed2 }).catch(() => {});
+      }
       await dealElementPage.save();
 
       const totalAfter = await dealElementPage.getAmountTotal();
@@ -250,9 +267,15 @@ test.describe('CRM-10780_2.1.1.18 - Verify deactivate Promotion Program after ap
       console.log(`  After applying: total=${totalAfter} (before ${totalBefore}), lines=${linesAfter} (before ${linesBefore}), promo line present=${promoLinePresent}`);
 
       // Confirm the promo really applied, so the order now REFERENCES Promotion A (the step-7 precondition).
-      expect(promoLinePresent || linesAfter > linesBefore,
-        'Promotion A should be added as a discount line in Order Lines (so the order references it)').toBeTruthy();
-      expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
+      let __verifyPassed3 = false;
+      try {
+        expect(promoLinePresent || linesAfter > linesBefore,
+          'Promotion A should be added as a discount line in Order Lines (so the order references it)').toBeTruthy();
+        expect(totalAfter, 'Order Total should be reduced after applying Promotion A').toBeLessThan(totalBefore);
+        __verifyPassed3 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Deal created + Promotion A applied - verify', passed: __verifyPassed3 }).catch(() => {});
+      }
       console.log('✓ Step 3: Deal created and Promotion A applied (order now references Promotion A)');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Deal created + Promotion A applied');
     });
@@ -293,9 +316,14 @@ test.describe('CRM-10780_2.1.1.18 - Verify deactivate Promotion Program after ap
       const openedName = await promotionPage.getSavedName().catch(() => '');
       console.log(`✓ Step 6: Promotion A opened (form title: "${openedName}")`);
       // Best-effort sanity check that the open record is Promotion A.
-      expect(openedName.length === 0 || openedName.includes(promoName) || promoName.includes(openedName),
-        'The opened Promotion form should be Promotion A').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 6 - Promotion A opened');
+      let __verifyPassed = false;
+      try {
+        expect(openedName.length === 0 || openedName.includes(promoName) || promoName.includes(openedName),
+          'The opened Promotion form should be Promotion A').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 6 - Promotion A opened', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================

@@ -192,14 +192,19 @@ describeBlock('Exchange-rate_1.2.2 - US2: editing a past rate must not touch iss
       await test.step('Step 1-2: Change the Rate of the row that applies to the invoice date, then "SAVE"', async () => {
         const saved = await currencyPage.setRateForDate(rateRowDate, changedRate);
         rateChanged = saved;
-        expect(saved, `The ${CURRENCY_CODE} rate row dated ${rateRowDate} should have accepted ${changedRate}`).toBe(true);
+        let __verifyPassed = false;
+        try {
+          expect(saved, `The ${CURRENCY_CODE} rate row dated ${rateRowDate} should have accepted ${changedRate}`).toBe(true);
 
-        const rows = await currencyPage.getRateRows();
-        const row = rows.find((r) => r.rawDate === rateRowDate);
-        console.log(`  - ${CURRENCY_CODE} rate on file for ${rateRowDate} is now ${row ? row.rate.toFixed(6) : 'row not found'}`);
-        expect(row?.rate, `The stored rate for ${rateRowDate} should be the value just entered`)
-          .toBeCloseTo(parseFloat(changedRate), 6);
-        await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1-2 - past rate changed').catch(() => {});
+          const rows = await currencyPage.getRateRows();
+          const row = rows.find((r) => r.rawDate === rateRowDate);
+          console.log(`  - ${CURRENCY_CODE} rate on file for ${rateRowDate} is now ${row ? row.rate.toFixed(6) : 'row not found'}`);
+          expect(row?.rate, `The stored rate for ${rateRowDate} should be the value just entered`)
+            .toBeCloseTo(parseFloat(changedRate), 6);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1-2 - past rate changed - verify', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await test.step('Step 3: Search the invoice by its Number and read "Total in Company Currency"', async () => {

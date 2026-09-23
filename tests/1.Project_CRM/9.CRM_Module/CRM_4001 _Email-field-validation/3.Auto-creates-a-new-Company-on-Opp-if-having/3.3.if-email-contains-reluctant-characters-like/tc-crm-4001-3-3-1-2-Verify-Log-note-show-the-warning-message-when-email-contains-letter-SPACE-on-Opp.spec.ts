@@ -185,12 +185,18 @@ test.describe('CRM-4001_3.3.1.2 - Verify Error message appears when email contai
       console.log(`  Expected: "${expectedLogText}"`);
       console.log(`  Found   : ${chatterResult!.found}`);
 
-      expect(
-        chatterResult!.chatterText,
-        `Log area should contain: "${expectedLogText}"`
-      ).toContain(expectedLogText);
+      let __verifyPassed = false;
+      try {
+        expect(
+          chatterResult!.chatterText,
+          `Log area should contain: "${expectedLogText}"`
+        ).toContain(expectedLogText);
 
-      console.log('✓ Verification passed: Log warning message matches expected text');
+        console.log('✓ Verification passed: Log warning message matches expected text');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Log warning message - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       // Scroll to the log/chatter area to make warning visible in screenshot
       const chatterArea = page.locator('.o_ChatterTopbar, .o_Chatter, [class*="chatter"]').first();
