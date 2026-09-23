@@ -185,8 +185,14 @@ test.describe('CRM-10601_1.1.1.10 - Mass Mark as Lost for multiple records incl.
         console.log(`    - ${label} Approval Status = "${approvalStatus}"`);
         expect(approvalStatus, `${label} Opp Approval Status should be "Pending Approval"`).toMatch(/Pending Approval/i);
       };
-      await review('fresh', freshOppUrl);
-      await review('pending', pendingOppUrl);
+      let __verifyPassed = false;
+      try {
+        await review('fresh', freshOppUrl);
+        await review('pending', pendingOppUrl);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'CRM-10742 - Opp after Mass Mark as Lost (incl pending approval) - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'CRM-10742 - Opp after Mass Mark as Lost (incl pending approval)');
       console.log('✅ Both Opportunities (fresh + already-pending) have a pending lost approval');
     });

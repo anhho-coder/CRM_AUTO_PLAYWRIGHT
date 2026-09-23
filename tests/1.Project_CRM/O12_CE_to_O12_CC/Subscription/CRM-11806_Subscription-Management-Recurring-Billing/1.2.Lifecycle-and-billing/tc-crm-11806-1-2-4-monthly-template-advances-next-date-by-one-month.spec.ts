@@ -139,13 +139,20 @@ test.describe('CRM-11806_1.2.4 - A monthly subscription advances its next invoic
     await test.step('Step 4-5: Open the invoice and verify it matches the cycle', async () => {
       const invoiceCount = await subscriptionPage.getInvoiceCount();
 
-      logVerify(
-        'VP2',
-        'exactly one invoice was created for the cycle, count = 1',
-        `"Invoices" smart button = ${invoiceCount}`,
-        invoiceCount === 1,
-      );
-      expect(invoiceCount, 'VP2: exactly ONE invoice should be created for the cycle').toBe(1);
+      let __verifyPassed = false;
+      try {
+        logVerify(
+          'VP2',
+          'exactly one invoice was created for the cycle, count = 1',
+          `"Invoices" smart button = ${invoiceCount}`,
+          invoiceCount === 1,
+        );
+
+        expect(invoiceCount, 'VP2: exactly ONE invoice should be created for the cycle').toBe(1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - the invoice raised for the cycle - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       // The smart button lands on the invoices LIST. Every field read below lives on the invoice
       // FORM, so open the row - otherwise the readers resolve list-view spans that are hidden and

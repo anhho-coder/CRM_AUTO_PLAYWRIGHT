@@ -353,9 +353,14 @@ test.describe('CRM-12501_7.1 - Perpetual licence must not carry an expiry', () =
       invoiceId = shop.invoiceIdFromPortalUrl(shop.getCurrentUrl());
       const paidShown = await shop.isInvoicePaidMessageShown(CommonUtils.waitTimes.abnormalWait).catch(() => false);
       console.log(`  - Invoice        : ${invoiceNumber} (#${invoiceId}) - portal reports paid: ${paidShown}`);
-      expect(invoiceId, 'The portal invoice URL must carry the backend invoice id').not.toBe('');
-      expect(paidShown, `The website invoice ${invoiceNumber} must be paid - the job only picks up PAID invoices`).toBe(true);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Pre-condition III - website invoice ${invoiceNumber} paid`);
+      let __verifyPassed = false;
+      try {
+        expect(invoiceId, 'The portal invoice URL must carry the backend invoice id').not.toBe('');
+        expect(paidShown, `The website invoice ${invoiceNumber} must be paid - the job only picks up PAID invoices`).toBe(true);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `Pre-condition III - website invoice ${invoiceNumber} paid - verify`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // -------------------------------------------------------------------------------------------
@@ -407,16 +412,22 @@ test.describe('CRM-12501_7.1 - Perpetual licence must not carry an expiry', () =
       await invoicePage.openRecordFormById(baseUrl, INVOICE_MODEL, invoiceId);
       const sourceDocument = await invoicePage.getSourceDocument(CommonUtils.waitTimes.abnormalWait).catch(() => '');
       console.log(`  - Invoice ${invoiceNumber} source document: ${sourceDocument || '(empty)'}`);
-      expect(sourceDocument, `The website invoice must originate from the paid order ${orderName}`).toContain(orderName);
-      licenseCountOnInvoice = await invoicePage.getLicenseSmartButtonCount();
-      console.log(`  - Licences on invoice ${invoiceNumber}: ${licenseCountOnInvoice}`);
-      expect(licenseCountOnInvoice, `The WebShop job must have generated exactly one licence for invoice ${invoiceNumber}`)
-        .toBe(1);
+      let __verifyPassed = false;
+      try {
+        expect(sourceDocument, `The website invoice must originate from the paid order ${orderName}`).toContain(orderName);
+        licenseCountOnInvoice = await invoicePage.getLicenseSmartButtonCount();
+        console.log(`  - Licences on invoice ${invoiceNumber}: ${licenseCountOnInvoice}`);
+        expect(licenseCountOnInvoice, `The WebShop job must have generated exactly one licence for invoice ${invoiceNumber}`)
+          .toBe(1);
 
-      await invoicePage.clickLicenseSmartButton();
-      await licensePage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
-      licenseId = licensePage.getRecordIdFromUrl();
-      expect(licenseId, 'The generated licence must open as a saved record (a record id must appear in the form URL)').not.toBe('');
+        await invoicePage.clickLicenseSmartButton();
+        await licensePage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+        licenseId = licensePage.getRecordIdFromUrl();
+        expect(licenseId, 'The generated licence must open as a saved record (a record id must appear in the form URL)').not.toBe('');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1: Invoice and licence data verified', passed: __verifyPassed }).catch(() => {});
+      }
       licenseUrl = `${baseUrl.replace(/\/$/, '')}/web#id=${licenseId}&model=${LICENSE_MODEL}&view_type=form`;
 
       licenseName = await licensePage.getLicenseNameValue();

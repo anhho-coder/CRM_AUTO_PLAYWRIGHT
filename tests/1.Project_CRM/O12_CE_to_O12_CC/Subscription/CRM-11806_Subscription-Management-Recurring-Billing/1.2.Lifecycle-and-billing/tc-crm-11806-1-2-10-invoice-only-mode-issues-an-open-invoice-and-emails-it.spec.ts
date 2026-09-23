@@ -129,7 +129,13 @@ test.describe(`${TC_ID} - Invoice-only mode issues an open invoice and emails it
         `"Invoices" smart button = ${invoiceCount}`,
         invoiceCount === 1,
       );
-      expect(invoiceCount, 'VP2: exactly one invoice should be created for the cycle').toBe(1);
+      let __verifyPassed_VP2 = false;
+      try {
+        expect(invoiceCount, 'VP2: exactly one invoice should be created for the cycle').toBe(1);
+        __verifyPassed_VP2 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - invoice count verified', passed: __verifyPassed_VP2 }).catch(() => {});
+      }
 
       await subscriptionPage.openInvoices();
       await invoicePage.openFirstInvoiceRow();
@@ -158,11 +164,17 @@ test.describe(`${TC_ID} - Invoice-only mode issues an open invoice and emails it
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - open invoice, nothing collected').catch(() => {});
 
-      expect(isOpen, `VP4: an invoice-only run should leave the invoice OPEN (status read: "${status}")`).toBeTruthy();
-      expect(numberVisible, 'VP4: a validated invoice should show a real number, not the "Draft Invoice" label').toBeTruthy();
-      expect(amountDue, `VP4: Amount Due (${amountDue}) should equal the full total (${total}) - nothing was collected`).toBeCloseTo(total, 1);
-      expect(paymentsTabPresent, 'VP4: the Payments tab must be present before its emptiness means anything').toBeTruthy();
-      expect(paymentRows, 'VP4: no payment should be listed against the invoice').toBe(0);
+      let __verifyPassed = false;
+      try {
+        expect(isOpen, `VP4: an invoice-only run should leave the invoice OPEN (status read: "${status}")`).toBeTruthy();
+        expect(numberVisible, 'VP4: a validated invoice should show a real number, not the "Draft Invoice" label').toBeTruthy();
+        expect(amountDue, `VP4: Amount Due (${amountDue}) should equal the full total (${total}) - nothing was collected`).toBeCloseTo(total, 1);
+        expect(paymentsTabPresent, 'VP4: the Payments tab must be present before its emptiness means anything').toBeTruthy();
+        expect(paymentRows, 'VP4: no payment should be listed against the invoice').toBe(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - open invoice, nothing collected - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       // VP5 - the email is only observable through the message history, so prove the region was
       // really read before judging what it does or does not contain.
@@ -180,8 +192,14 @@ test.describe(`${TC_ID} - Invoice-only mode issues an open invoice and emails it
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 5 - invoice message history').catch(() => {});
 
-      expect(chatterPresent, 'VP5: the invoice message history must be present before it can be judged').toBeTruthy();
-      expect(emailLogged, `VP5: the "Invoice only" mode should email the invoice to the customer, but no outgoing-mail entry was found in: "${chatterText.slice(0, 400)}"`).toBeTruthy();
+      let __verifyPassed2 = false;
+      try {
+        expect(chatterPresent, 'VP5: the invoice message history must be present before it can be judged').toBeTruthy();
+        expect(emailLogged, `VP5: the "Invoice only" mode should email the invoice to the customer, but no outgoing-mail entry was found in: "${chatterText.slice(0, 400)}"`).toBeTruthy();
+        __verifyPassed2 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 5 - invoice message history - verify', passed: __verifyPassed2 }).catch(() => {});
+      }
 
       console.log(`✅ ${TC_ID}: the invoice was validated, emailed and left fully outstanding`);
     });

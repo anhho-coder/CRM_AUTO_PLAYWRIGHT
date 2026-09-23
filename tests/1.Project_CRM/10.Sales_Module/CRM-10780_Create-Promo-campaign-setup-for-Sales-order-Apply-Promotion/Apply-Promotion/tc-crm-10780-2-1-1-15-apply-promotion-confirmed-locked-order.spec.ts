@@ -139,9 +139,14 @@ test.describe('CRM-10780_2.1.1.15 - Apply promotion to a confirmed/locked order'
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -223,7 +228,13 @@ test.describe('CRM-10780_2.1.1.15 - Apply promotion to a confirmed/locked order'
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`  - product added (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain a product line before confirming').toBeGreaterThan(0);
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain a product line before confirming').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1a - Order with product (before confirm) - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await dealElementPage.save();
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1a - Order with product (before confirm)');
 
@@ -267,10 +278,16 @@ test.describe('CRM-10780_2.1.1.15 - Apply promotion to a confirmed/locked order'
       // below cover the field-hidden and the no-effect outcomes; adjust to match the real product behavior.
       // Expected (Jira): Can not apply promotion.
       //  - No promo discount line is added AND the order total is unchanged.
-      expect(promoLinePresent, 'No promotion discount line should be added on a confirmed/locked order').toBeFalsy();
-      expect(linesAfter, 'Order line count should be unchanged on a confirmed/locked order').toBe(linesBefore);
-      expect(totalAfter, 'Order Total should be unchanged - the promotion was not applied').toBe(totalBefore);
-      console.log(`✅ Promotion could not be applied to the confirmed/locked order: Total stayed ${totalBefore} -> ${totalAfter} (field settable=${set}, promo line=${promoLinePresent})`);
+      let __verifyPassed = false;
+      try {
+        expect(promoLinePresent, 'No promotion discount line should be added on a confirmed/locked order').toBeFalsy();
+        expect(linesAfter, 'Order line count should be unchanged on a confirmed/locked order').toBe(linesBefore);
+        expect(totalAfter, 'Order Total should be unchanged - the promotion was not applied').toBe(totalBefore);
+        console.log(`✅ Promotion could not be applied to the confirmed/locked order: Total stayed ${totalBefore} -> ${totalAfter} (field settable=${set}, promo line=${promoLinePresent})`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - Promotion apply attempted on confirmed order - verify', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

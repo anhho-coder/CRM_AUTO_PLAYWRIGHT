@@ -136,13 +136,18 @@ describeBlock('Exchange-rate_1.7.1 - US7: change the source and the frequency', 
     });
 
     await test.step('Pre-condition: Write down the starting "Service", "Interval" and "Next Run"', async () => {
-      const opened = await settingsPage.openInvoicingSettings();
-      expect(opened, 'The Invoicing settings screen should open').toBe(true);
-      starting = await settingsPage.readSettings();
-      console.log(`  - Starting values: Service="${starting.service}", Interval="${starting.interval}", Next Run="${starting.nextRun}"`);
-      expect(starting.service, 'A starting "Service" must be readable so it can be restored').toBeTruthy();
-      expect(starting.interval, 'A starting "Interval" must be readable so it can be restored').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition - starting settings').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        const opened = await settingsPage.openInvoicingSettings();
+        expect(opened, 'The Invoicing settings screen should open').toBe(true);
+        starting = await settingsPage.readSettings();
+        console.log(`  - Starting values: Service="${starting.service}", Interval="${starting.interval}", Next Run="${starting.nextRun}"`);
+        expect(starting.service, 'A starting "Service" must be readable so it can be restored').toBeTruthy();
+        expect(starting.interval, 'A starting "Interval" must be readable so it can be restored').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition - starting settings', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     try {
@@ -171,8 +176,14 @@ describeBlock('Exchange-rate_1.7.1 - US7: change the source and the frequency', 
 
       await test.step('Step 3: Pick a different "Service", "SAVE", reload and read it again', async () => {
         const saved = await settingsPage.setService(alternativeService);
-        changedAnything = changedAnything || saved;
-        expect(saved, `"Service" should have been saved as "${alternativeService}"`).toBe(true);
+        let __verifyPassed = false;
+        try {
+          changedAnything = changedAnything || saved;
+          expect(saved, `"Service" should have been saved as "${alternativeService}"`).toBe(true);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - Service changed - verify', passed: __verifyPassed }).catch(() => {});
+        }
         afterServiceChange = await reloadAndRead();
         await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - Service changed').catch(() => {});
       });

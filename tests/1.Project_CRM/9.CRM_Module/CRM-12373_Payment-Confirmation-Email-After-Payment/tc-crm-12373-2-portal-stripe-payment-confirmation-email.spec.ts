@@ -151,10 +151,16 @@ test.describe(`${TC_ID} - Portal card payment sends the payer a confirmation ema
     await test.step('Steps to reproduce - Step 4: Click "PAY NOW" and select the Stripe acquirer', async () => {
       await portal.clickPayNow();
       acquirerValues = await portal.getPaymentAcquirerValues();
-      expect(
-        acquirerValues,
-        `The payment block should offer the Stripe acquirer ("${STRIPE_ACQUIRER_VALUE}")`
-      ).toContain(STRIPE_ACQUIRER_VALUE);
+      let __verifyPassed = false;
+      try {
+        expect(
+          acquirerValues,
+          `The payment block should offer the Stripe acquirer ("${STRIPE_ACQUIRER_VALUE}")`
+        ).toContain(STRIPE_ACQUIRER_VALUE);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC_ID} - payment block open (Stripe selected) - verify`, passed: __verifyPassed }).catch(() => {});
+      }
       await portal.selectPaymentAcquirer(STRIPE_ACQUIRER_VALUE);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC_ID} - payment block open (Stripe selected)`);
     });
@@ -169,10 +175,15 @@ test.describe(`${TC_ID} - Portal card payment sends the payer a confirmation ema
       // truthiness check is not enough: a swallowed keystroke leaves "12 / 2", which looks filled but
       // makes Stripe reject the card at submit with "Your expiration date is incomplete".
       const digits = (s: string) => s.replace(/\D/g, '');
-      expect(digits(cardEcho.number), 'Stripe should hold the full card number that was typed').toBe(TEST_CARD.number);
-      expect(digits(cardEcho.expiry), 'Stripe should hold the full expiry date that was typed').toBe(TEST_CARD.expiry);
-      expect(digits(cardEcho.cvc), 'Stripe should hold the full CVC that was typed').toBe(TEST_CARD.cvc);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC_ID} - Stripe card filled`);
+      let __verifyPassed = false;
+      try {
+        expect(digits(cardEcho.number), 'Stripe should hold the full card number that was typed').toBe(TEST_CARD.number);
+        expect(digits(cardEcho.expiry), 'Stripe should hold the full expiry date that was typed').toBe(TEST_CARD.expiry);
+        expect(digits(cardEcho.cvc), 'Stripe should hold the full CVC that was typed').toBe(TEST_CARD.cvc);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC_ID} - Stripe card filled`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Steps to reproduce - Step 6: Press "PAY NOW" to submit the payment', async () => {

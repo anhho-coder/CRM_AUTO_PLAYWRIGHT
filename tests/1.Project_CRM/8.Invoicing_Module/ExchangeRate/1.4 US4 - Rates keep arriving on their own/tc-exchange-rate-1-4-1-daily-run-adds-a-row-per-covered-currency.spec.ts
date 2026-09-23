@@ -218,22 +218,32 @@ describeBlock('Exchange-rate_1.4.1 - US4: the daily run adds a row per covered c
         nextRunBefore = settingsBefore.nextRun;
         console.log(`  - "Next Run" was ${nextRunBefore || '(empty)'}; setting it to ${todayForNextRun()} so the update is due`);
         const due = await settingsPage.setNextRun(todayForNextRun());
-        expect(
-          due,
-          `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. It did not, so the ` +
-            `scheduled action would fire and return early without writing anything.`
-        ).toBe(true);
-        await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 part 1 - update made due').catch(() => {});
+        let __verifyPassed = false;
+        try {
+          expect(
+            due,
+            `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. It did not, so the ` +
+              `scheduled action would fire and return early without writing anything.`
+          ).toBe(true);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 part 1 - update made due', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await test.step('Step 4 (part 2): Set "Next Execution Date" to today, "SAVE", then "RUN MANUALLY"', async () => {
         const opened = await cronPage.openScheduledAction(CRON_NAME);
-        expect(opened, `The scheduled action "${CRON_NAME}" should open again to be run`).toBe(true);
-        const set = await cronPage.setNextExecutionDate(todayForCronField());
-        expect(set, '"Next Execution Date" should have been set to today').toBe(true);
-        ranManually = await cronPage.clickRunManually();
-        expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
-        await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 part 2 - job run manually').catch(() => {});
+        let __verifyPassed = false;
+        try {
+          expect(opened, `The scheduled action "${CRON_NAME}" should open again to be run`).toBe(true);
+          const set = await cronPage.setNextExecutionDate(todayForCronField());
+          expect(set, '"Next Execution Date" should have been set to today').toBe(true);
+          ranManually = await cronPage.clickRunManually();
+          expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 part 2 - job run manually', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await test.step('Step 4 (part 3): Read "Next Run" again - it must have moved forward if the run really worked', async () => {

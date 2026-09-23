@@ -273,8 +273,13 @@ test.describe('CRM-10066_1.1 - Manual merge via "Convert to Opportunity" option 
       const pick = await leadPage.addOpportunityToMergeByEmailAndTeam(oppEmail, opp1Team);
       console.log(`  - Opportunities matched by the email filter : ${pick.rowCount}`);
       console.log(`  - Opp#1 row selected by its Sales Team       : ${pick.selectedByTeam}`);
-      expect(pick.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be found and selected in the "Add: Opportunities" picker`).toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Opp#1 added to merge list');
+      let __verifyPassed = false;
+      try {
+        expect(pick.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be found and selected in the "Add: Opportunities" picker`).toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Opp#1 added to merge list', passed: __verifyPassed }).catch(() => {});
+      }
       console.log('OK - Opp#1 added to the merge list');
     });
 

@@ -202,7 +202,13 @@ test.describe('CRM-10066_2.2 - Manual merge (Convert to Opportunity) into two Op
       console.log('Step 4: Selecting "Merge with existing opportunities"');
       const mergeAvailable = await leadPage.isMergeOptionAvailable();
       console.log(`  - "Merge with existing opportunities" option available: ${mergeAvailable}`);
-      expect(mergeAvailable, '"Merge with existing opportunities" should be offered (shared domain)').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        expect(mergeAvailable, '"Merge with existing opportunities" should be offered (shared domain)').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Merge option selected - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await leadPage.selectConversionActionMerge();
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Merge option selected');
       console.log('OK - Conversion Action set to "Merge with existing opportunities"');
@@ -212,14 +218,25 @@ test.describe('CRM-10066_2.2 - Manual merge (Convert to Opportunity) into two Op
       console.log(`Step 5a: Adding Opp#1 (Sale Team ${opp1Team}) by email ${opp1Email}`);
       const pick1 = await leadPage.addOpportunityToMergeByEmailAndTeam(opp1Email, opp1Team);
       console.log(`  - Opp#1 selected by Sales Team: ${pick1.selectedByTeam} (rows: ${pick1.rowCount})`);
-      expect(pick1.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be selectable in the picker`).toBeTruthy();
+      let __verifyPassed1 = false;
+      try {
+        expect(pick1.selectedByTeam, `Opp#1 (Sales Team ${opp1Team}) should be selectable in the picker`).toBeTruthy();
+        __verifyPassed1 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Opp#1 added to merge list', passed: __verifyPassed1 }).catch(() => {});
+      }
 
       console.log(`Step 5b: Adding Opp#2 (Sale Team ${opp2Team}) by email ${opp2Email}`);
       const pick2 = await leadPage.addOpportunityToMergeByEmailAndTeam(opp2Email, opp2Team);
       console.log(`  - Opp#2 selected by Sales Team: ${pick2.selectedByTeam} (rows: ${pick2.rowCount})`);
-      expect(pick2.selectedByTeam, `Opp#2 (Sales Team ${opp2Team}) should be selectable in the picker`).toBeTruthy();
+      let __verifyPassed2 = false;
+      try {
+        expect(pick2.selectedByTeam, `Opp#2 (Sales Team ${opp2Team}) should be selectable in the picker`).toBeTruthy();
+        __verifyPassed2 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Both Opps added to merge list', passed: __verifyPassed2 }).catch(() => {});
+      }
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Both Opps added to merge list');
       console.log('OK - Opp#1 and Opp#2 added to the merge list');
     });
 

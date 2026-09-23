@@ -140,9 +140,14 @@ test.describe('CRM-10780_2.1.1.17 - Verify order count on Promotion Program afte
       promoName = created.name;
       promoUrl = created.url;
       console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -231,7 +236,13 @@ test.describe('CRM-10780_2.1.1.17 - Verify order count on Promotion Program afte
         const totalBefore = await dealElementPage.getAmountTotal();
 
         const set = await dealElementPage.setPromotion(promoName);
-        expect(set, `Deal #${i}: "Promotion" field should be settable while in edit mode`).toBeTruthy();
+        let __verifyPassed = false;
+        try {
+          expect(set, `Deal #${i}: "Promotion" field should be settable while in edit mode`).toBeTruthy();
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `Step 2-3 - Deal #${i} promotion field - verify`, passed: __verifyPassed }).catch(() => {});
+        }
         await dealElementPage.save();
 
         const linesAfter = await dealElementPage.getOrderLineCount();
@@ -291,11 +302,17 @@ test.describe('CRM-10780_2.1.1.17 - Verify order count on Promotion Program afte
       //     2. Re-open the program after the recompute settles if the count looks low.
       //     3. Assert that count === 3 (=== appliedCount captured above).
       //   When the reader exists, add e.g. `expect(await promotionPage.getOrderCount()).toBe(appliedCount)`.
-      console.log(`ℹ Step 6 (manual): confirm Promotion A detail shows "used in ${appliedCount} deals" (expected 3). appliedCount=${appliedCount}`);
+      let __verifyPassed = false;
+      try {
+        console.log(`ℹ Step 6 (manual): confirm Promotion A detail shows "used in ${appliedCount} deals" (expected 3). appliedCount=${appliedCount}`);
 
-      // Automated guard so the spec is not a silent no-op: the program detail form must have opened and
-      // the deals were built. The exact "used in 3" count assertion is deferred to the manual TODO above.
-      expect(appliedCount, 'Promotion A was applied to the deals; manual reviewer confirms the program shows used in 3 deals').toBeGreaterThanOrEqual(1);
+        // Automated guard so the spec is not a silent no-op: the program detail form must have opened and
+        // the deals were built. The exact "used in 3" count assertion is deferred to the manual TODO above.
+        expect(appliedCount, 'Promotion A was applied to the deals; manual reviewer confirms the program shows used in 3 deals').toBeGreaterThanOrEqual(1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 6 - Promotion A detail screen - verify', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

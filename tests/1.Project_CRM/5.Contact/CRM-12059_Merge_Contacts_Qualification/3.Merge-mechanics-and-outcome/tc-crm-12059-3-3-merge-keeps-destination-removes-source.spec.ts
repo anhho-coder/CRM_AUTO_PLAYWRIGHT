@@ -75,19 +75,30 @@ test.describe('CRM-12059_3.3 - Merge keeps the chosen destination and removes th
       console.log(`  - Shared Company Name : ${sharedName}`);
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      expect(c1.id).not.toBe(c2.id);
-      console.log(`  - Destination (keep) = #${c1.id} | Source (remove) = #${c2.id}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        expect(c1.id).not.toBe(c2.id);
+        console.log(`  - Destination (keep) = #${c1.id} | Source (remove) = #${c2.id}`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1-2: Search, select both, Merge with Destination = Contact #1 (#ID)', async () => {
       await contactPage.openContactsList();
       const rows = await contactPage.searchContactsByName(sharedName);
-      expect(rows).toBe(2);
-      const selected = await contactPage.selectContactRowsByExactName(sharedName);
-      expect(selected).toBe(2);
+      let __verifyPassed = false;
+      try {
+        expect(rows).toBe(2);
+        const selected = await contactPage.selectContactRowsByExactName(sharedName);
+        expect(selected).toBe(2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1-2: Search, select both, Merge with Destination = Contact #1 (#ID) - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await contactPage.openMergeContactsWizard();
       await contactPage.selectDestinationContactById(c1!.id);
       await contactPage.confirmMergeContacts();
