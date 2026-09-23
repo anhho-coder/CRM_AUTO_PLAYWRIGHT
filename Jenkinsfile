@@ -106,24 +106,34 @@ pipeline {
         stage('Resolve trigger') {
             steps {
                 script {
-                    def causes = currentBuild.getBuildCauses()
-                    def u  = causes.find { it['_class']?.contains('UserIdCause') }
-                    def t  = causes.find { it['_class']?.contains('TimerTrigger') }
-                    def up = causes.find { it['_class']?.contains('UpstreamCause') }
-                    if (u) {
-                        env.TRIGGERED_BY = (u['userId'] ?: u['userName'] ?: 'unknown-user')
-                        env.TRIGGER_TYPE = 'manual'
-                    } else if (t) {
-                        env.TRIGGERED_BY = 'jenkins-timer'
-                        env.TRIGGER_TYPE = 'schedule'
-                    } else if (up) {
-                        env.TRIGGERED_BY = "upstream:${up['upstreamProject']}#${up['upstreamBuild']}"
-                        env.TRIGGER_TYPE = 'upstream'
-                    } else {
-                        env.TRIGGERED_BY = (causes ? (causes[0]['shortDescription'] ?: 'unknown') : 'unknown')
-                        env.TRIGGER_TYPE = 'other'
+                    // NEVER let attribution break a test run. This is the first stage of the
+                    // SHARED Jenkinsfile, so anything that throws here (a sandbox rejection of
+                    // getBuildCauses on a locked-down controller, an unexpected cause shape)
+                    // would fail EVERY job. Worst case we lose the IC name, not the build.
+                    try {
+                        def causes = currentBuild.getBuildCauses()
+                        def u  = causes.find { it['_class']?.contains('UserIdCause') }
+                        def t  = causes.find { it['_class']?.contains('TimerTrigger') }
+                        def up = causes.find { it['_class']?.contains('UpstreamCause') }
+                        if (u) {
+                            env.TRIGGERED_BY = (u['userId'] ?: u['userName'] ?: 'unknown-user')
+                            env.TRIGGER_TYPE = 'manual'
+                        } else if (t) {
+                            env.TRIGGERED_BY = 'jenkins-timer'
+                            env.TRIGGER_TYPE = 'schedule'
+                        } else if (up) {
+                            env.TRIGGERED_BY = "upstream:${up['upstreamProject']}#${up['upstreamBuild']}"
+                            env.TRIGGER_TYPE = 'upstream'
+                        } else {
+                            env.TRIGGERED_BY = (causes ? (causes[0]['shortDescription'] ?: 'unknown') : 'unknown')
+                            env.TRIGGER_TYPE = 'other'
+                        }
+                        echo "Triggered by ${env.TRIGGERED_BY} (${env.TRIGGER_TYPE})"
+                    } catch (err) {
+                        env.TRIGGERED_BY = 'unresolved'
+                        env.TRIGGER_TYPE = 'unresolved'
+                        echo "WARNING: could not resolve the build cause (${err.getMessage()}) - the run continues unattributed."
                     }
-                    echo "Triggered by ${env.TRIGGERED_BY} (${env.TRIGGER_TYPE})"
                 }
             }
         }
