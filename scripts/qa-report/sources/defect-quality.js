@@ -11,8 +11,10 @@
  *       AND reporter = T
  *       AND (status in (<bugStatuses>) OR resolution changed to (<bugResolvedTransitions>))
  *
- *   Leaked defects (whole team, by label + the "Leaked defect priority" field + priority):
- *     labels in (<leakLabel>) AND "<leakField>" is not EMPTY
+ *   Leaked defects (whole team, by the QA review's "Support Ticket Type" classification
+ *   + priority — changed 2026-09-23, see config.js JIRA_DEFECT_METRICS):
+ *     project = "<leakProject>" AND issuetype = "<leakTypes>"
+ *       AND "Support Ticket Type" = "Leaked Defect"
  *       AND createdDate >= "<from>" AND createdDate <= "<to>"
  *       AND priority in (<leakPriorities>)
  *
@@ -63,7 +65,11 @@ function bugsCreatedJql(metric, reporterClause, from, to) {
 /** "Leaked defects" JQL over the range (sample-literal form). */
 function leakedJql(metric, from, to) {
   const prios = metric.leakPriorities.map(jqlStr).join(', ');
-  return `labels in (${jqlStr(metric.leakLabel)}) AND ${jqlStr(metric.leakField)} is not EMPTY` +
+  const types = metric.leakTypes.map(jqlStr);
+  const fe = metric.leakFieldEquals;
+  const typeClause = types.length === 1 ? `issuetype = ${types[0]}` : `issuetype in (${types.join(', ')})`;
+  return `project = ${jqlStr(metric.leakProject)} AND ${typeClause}` +
+    ` AND ${jqlStr(fe.field)} = ${jqlStr(fe.value)}` +
     ` AND createdDate >= ${jqlStr(from)} AND createdDate <= ${jqlStr(to)}` +
     ` AND priority in (${prios})`;
 }

@@ -490,27 +490,41 @@ const JIRA_LIST_METRICS = [
 //       AND reporter = T
 //       AND (status in (<bugStatuses>) OR resolution changed to (<bugResolvedTransitions>))
 //   Leaked defects (whole team):
-//     labels in (<leakLabel>) AND "<leakField>" is not EMPTY
+//     project = "<leakProject>" AND issuetype = "<leakTypes>"
+//       AND "Support Ticket Type" = "Leaked Defect"
 //       AND createdDate >= "<from>" AND createdDate <= "<to>" AND priority in (<leakPriorities>)
 // Both JQLs are reproduced VERBATIM from the team's samples (Anh's decision
 // 2026-07-02: match the saved filters literally, INCLUDING their date-boundary
 // behaviour — `created > from−1day` lets in the day before `from` and, as a datetime
 // vs bare-date comparison, drops `to`'s daytime — rather than "correcting" them).
 // Verified live for Last quarter (Q2 2026): bugs created 170 (Anh Ho 30 / Thuat Phung
-// 140), leaked 4 (all P1) → 2.4% leakage. Whole-team (bugs split by reporter; leaked
-// is a whole-team classification, not per-reporter). `kpiName` is the card subtitle.
+// 140), leaked 4 (all P1) → 2.4% leakage — that LEAKED figure was measured under the OLD
+// leak definition (see below); the bugs-created side is unchanged. Whole-team (bugs split
+// by reporter; leaked is a whole-team classification, not per-reporter). `kpiName` is the
+// card subtitle.
 const JIRA_DEFECT_METRICS = [
   {
     key: 'defectQualityCreated',
     label: 'Defect quality — created',
-    kpiName: 'Jira · Bugs created (by reporter) vs leaked defects (QA-Ticket_verification, P1–P3)',
+    kpiName: 'Jira · Bugs created (by reporter) vs leaked defects ("Support Ticket Type" = Leaked Defect, P1–P3)',
     // "Bugs created" definition (the team's saved filter):
     bugTypes: ['Bug [uncategorised]', 'Bug [Maintenance]', 'Bug', 'Sub-Bug', 'Post-EA - Support Ticket'],
     bugStatuses: ['Open', 'Reopened', 'In Progress'],
     bugResolvedTransitions: ['Fixed', 'Done', "Won't fix", 'Unresolved', "Won't Do"],
-    // "Defect leakage" definition (the team's saved filter):
-    leakLabel: 'QA-Ticket_verification',
-    leakField: 'Leaked defect priority', // custom field; `is not EMPTY` marks a classified leak
+    // "Defect leakage" definition. CHANGED 2026-09-23 (Anh's request) to the QA review's
+    // CLASSIFICATION — a "Post-EA - Support Ticket" whose "Support Ticket Type" field reads
+    // "Leaked Defect" — the same field the Support ticket tab's row C (Bug leakage) and the
+    // `leakedDefects` KPI card read, so this card stops disagreeing with them.
+    // It REPLACES `labels in (QA-Ticket_verification) AND "Leaked defect priority" is not
+    // EMPTY`, which read 0 for Q3-2026 while row C listed 2 tickets (CRM-12654 P1,
+    // CRM-12703 P2): after the 2026-08-28 definition change the team stopped filling the
+    // old per-ticket "Leaked defect priority" field, so `is not EMPTY` matched nothing.
+    // The P1–P3 `priority` clause is KEPT here (unlike the `leakedDefects` card, which
+    // counts every classified leak whatever its priority) — this is the deck's defect-
+    // quality slide and it reports P1–P3 leakage.
+    leakProject: 'CRM',
+    leakTypes: ['Post-EA - Support Ticket'],
+    leakFieldEquals: { field: 'Support Ticket Type', value: 'Leaked Defect' },
     leakPriorities: ['Blocker (P1)', 'Critical (P2)', 'Major (P3)'],
   },
 ];

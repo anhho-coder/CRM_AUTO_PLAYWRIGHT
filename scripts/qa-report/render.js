@@ -690,7 +690,7 @@ function defectQualitySection(meta, m, def, jiraBase) {
   return `<section class="metric lead">
     <h2>${esc(meta.label)} <span class="pill">primary</span> <span class="muted">· KPI: ${esc(m.kpiName)}</span></h2>
     ${blocks}
-    <p class="muted frdnote"><b>Bugs created</b> = the team's saved "bugs created" filter, split per tester by reporter and summed. <b>Leaked defects</b> = bugs labelled QA-Ticket_verification whose "Leaked defect priority" is set (a defect that escaped QA), prioritised P1–P3 — a whole-team classification, not per reporter. <b>Leakage rate</b> = leaked ÷ bugs created. Both queries reproduce the team's saved JQL verbatim (bugs created uses <code>created &gt; (from − 1 day)</code>, matching what Jira shows). The list shows every leaked defect in the range, highest priority first.</p>
+    <p class="muted frdnote"><b>Bugs created</b> = the team's saved "bugs created" filter, split per tester by reporter and summed. <b>Leaked defects</b> = CRM support tickets the QA review classified as a leak — <code>issuetype = "Post-EA - Support Ticket"</code> with <code>"Support Ticket Type" = "Leaked Defect"</code> — prioritised P1–P3; a whole-team classification, not per reporter. Same rule as the “Bug leakage” row on the Support ticket tab, so the two agree (that row carries no priority filter, so it also counts leaks outside P1–P3). Changed 2026-09-23 — it previously counted <code>"Leaked defect priority" is not EMPTY</code>, a field the team stopped filling. <b>Leakage rate</b> = leaked ÷ bugs created. Both queries reproduce the team's saved JQL verbatim (bugs created uses <code>created &gt; (from − 1 day)</code>, matching what Jira shows). The list shows every leaked defect in the range, highest priority first.</p>
   </section>`;
 }
 
@@ -708,11 +708,15 @@ function defectJqlNote(meta, ranges, def) {
   const variants = METRIC_RANGE_ORDER.filter((k) => ranges[k]).map((k) => {
     const r = ranges[k];
     const bugs = `type in (${types}) AND created > ${q(dayBefore(r.from))} AND created <= ${q(r.to)} AND reporter in (${users}) AND (status in (${statuses}) OR resolution changed to (${trans}))`;
-    const leaked = `labels in (${q(meta.leakLabel)}) AND ${q(meta.leakField)} is not EMPTY AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND priority in (${prios})`;
+    const leakTypes = meta.leakTypes.map(q);
+    const leakTypeClause = leakTypes.length === 1 ? `issuetype = ${leakTypes[0]}` : `issuetype in (${leakTypes.join(', ')})`;
+    const leaked = `project = ${q(meta.leakProject)} AND ${leakTypeClause}` +
+      ` AND ${q(meta.leakFieldEquals.field)} = ${q(meta.leakFieldEquals.value)}` +
+      ` AND createdDate >= ${q(r.from)} AND createdDate <= ${q(r.to)} AND priority in (${prios})`;
     return `<div class="jqlv${k === def ? ' is-active' : ''}" data-range="${k}"><b>Bugs created</b> (per tester, summed):<br>${code(bugs)}<br><b>Leaked defects</b> (whole team):<br>${code(leaked)}</div>`;
   }).join('');
   const notes = [
-    'Bugs created is split per tester by <b>reporter</b> and summed; leaked defects is a whole-team classification (the “Leaked defect priority” field is set), not per reporter.',
+    'Bugs created is split per tester by <b>reporter</b> and summed; leaked defects is a whole-team classification (the “Support Ticket Type” field reads “Leaked Defect”), not per reporter.',
     'Leakage rate = leaked ÷ bugs created (P1–P3 leaked defects over all bugs created in the range).',
     'These reproduce the team’s saved filters verbatim: <b>bugs created</b> uses <code>created &gt; (from − 1 day)</code>, so it includes the day before the range start and, being a datetime compared to a bare date, drops the end day’s daytime — matching the count seen in Jira.',
     `Team scope: reporter ∈ {${esc(names)}}. Leaked defects sorted highest priority first.`,
@@ -2524,7 +2528,7 @@ function main() {
 <div class="wrap">
   ${sourceBanner(data.sources)}
   ${jiraDashBody}
-  <div class="foot">Source: Jira — “Defect quality — created” (bugs created by reporter vs leaked defects labelled QA-Ticket_verification, P1–P3) and “STUCK — Dev done, QA not tested” (issues still in <code>Resolved</code> awaiting QA) · regenerated daily · self-contained page.</div>
+  <div class="foot">Source: Jira — “Defect quality — created” (bugs created by reporter vs leaked defects classified “Support Ticket Type” = Leaked Defect, P1–P3) and “STUCK — Dev done, QA not tested” (issues still in <code>Resolved</code> awaiting QA) · regenerated daily · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;
