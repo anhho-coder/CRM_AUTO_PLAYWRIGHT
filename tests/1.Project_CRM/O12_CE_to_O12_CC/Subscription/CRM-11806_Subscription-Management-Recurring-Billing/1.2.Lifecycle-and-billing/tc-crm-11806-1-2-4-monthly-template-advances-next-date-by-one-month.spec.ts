@@ -195,34 +195,40 @@ test.describe('CRM-11806_1.2.4 - A monthly subscription advances its next invoic
         sourceDoc.includes(reference),
       );
 
-      expect(sourceDoc, `VP3.1: the invoice should belong to this subscription - its Source Document should be "${reference}" (got "${sourceDoc}")`).toContain(reference);
+      let __verifyVP3 = false;
+      try {
+        expect(sourceDoc, `VP3.1: the invoice should belong to this subscription - its Source Document should be "${reference}" (got "${sourceDoc}")`).toContain(reference);
 
-      // VP3.2: Verify invoice total equals the recurring price (totalRaw was read above, before
-      // the tab switch - amount_total is hidden once "Other Info" is the active page).
-      const total = parseAmount(totalRaw);
-      const amountOk = Math.abs(total - recurringPrice) <= 0.05;
+        // VP3.2: Verify invoice total equals the recurring price (totalRaw was read above, before
+        // the tab switch - amount_total is hidden once "Other Info" is the active page).
+        const total = parseAmount(totalRaw);
+        const amountOk = Math.abs(total - recurringPrice) <= 0.05;
 
-      logVerify(
-        'VP3.2',
-        `the invoice total equals the subscription Recurring Price (${recurringPrice})`,
-        `invoice total read = "${totalRaw}" -> ${total}`,
-        amountOk,
-      );
+        logVerify(
+          'VP3.2',
+          `the invoice total equals the subscription Recurring Price (${recurringPrice})`,
+          `invoice total read = "${totalRaw}" -> ${total}`,
+          amountOk,
+        );
 
-      expect(total, `VP3.2: the invoice total (${total}) should equal the Recurring Price (${recurringPrice})`).toBeCloseTo(recurringPrice, 1);
+        expect(total, `VP3.2: the invoice total (${total}) should equal the Recurring Price (${recurringPrice})`).toBeCloseTo(recurringPrice, 1);
 
-      // VP3.3: Verify invoice currency is USD
-      const currency = await invoicePage.getInvoiceCurrency();
-      const currencyOk = currency.toUpperCase() === 'USD' || currency === '$';
+        // VP3.3: Verify invoice currency is USD
+        const currency = await invoicePage.getInvoiceCurrency();
+        const currencyOk = currency.toUpperCase() === 'USD' || currency === '$';
 
-      logVerify(
-        'VP3.3',
-        'the invoice currency is USD',
-        `invoice currency read = "${currency}"`,
-        currencyOk,
-      );
+        logVerify(
+          'VP3.3',
+          'the invoice currency is USD',
+          `invoice currency read = "${currency}"`,
+          currencyOk,
+        );
 
-      expect(currency.toUpperCase(), `VP3.3: the invoice currency should be USD (got "${currency}")`).toMatch(/^(USD|\$)$/);
+        expect(currency.toUpperCase(), `VP3.3: the invoice currency should be USD (got "${currency}")`).toMatch(/^(USD|\$)$/);
+        __verifyVP3 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3 - invoice VP3.1-3.3 - verify', passed: __verifyVP3 }).catch(() => {});
+      }
 
       console.log(`✅ ${TC_ID}: the monthly cycle billed once and the next date advanced by one month`);
     });
