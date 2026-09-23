@@ -3525,7 +3525,11 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       .first();
     await button.waitFor({ state: 'visible', timeout });
     await button.scrollIntoViewIfNeeded().catch(() => {});
-    await button.click();
+    // Bound the click by the SAME budget as the wait. Without this the click inherits the whole
+    // test timeout, so a header button that is visible but never becomes actionable burns the
+    // entire test (CRM-12370_2.2.9 on crm-mig: 13.8 min on one click, then a timed-out test with
+    // no VERIFY block at all). A bounded click fails with Playwright's actionability reason instead.
+    await button.click({ timeout });
     console.log('  - Pressed the header button "' + actionName + '"');
   }
 
