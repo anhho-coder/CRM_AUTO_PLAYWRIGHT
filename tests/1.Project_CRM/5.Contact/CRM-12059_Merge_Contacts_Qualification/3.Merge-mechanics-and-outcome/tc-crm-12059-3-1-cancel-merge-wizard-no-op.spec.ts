@@ -80,10 +80,15 @@ test.describe('CRM-12059_3.1 - Cancelling the Merge Contacts wizard is a no-op',
       console.log(`  - Contact #2 Email    : ${email2}`);
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      expect(c1.id).not.toBe(c2.id);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        expect(c1.id).not.toBe(c2.id);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------

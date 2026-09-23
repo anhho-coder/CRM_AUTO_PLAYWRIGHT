@@ -515,9 +515,14 @@ test.describe('CRM-2338_1.1.7.2 - Verify the Deal Element.Pricelist getting from
       const pricelistValue = await dealElementPage.getPricelistValue();
       console.log(`  Pricelist value received: "${pricelistValue}"`);
       console.log(`  Expected                : "${pricelist_Reseller1}"`);
-      expect(pricelistValue).toContain(pricelist_Reseller1);
-      console.log(`\u2713 VIII.1: Pricelist = "${pricelist_Reseller1}" - correctly propagated from Opp.Reseller.Pricelist`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Pricelist verified');
+      let __verifyPassed = false;
+      try {
+        expect(pricelistValue).toContain(pricelist_Reseller1);
+        console.log(`\u2713 VIII.1: Pricelist = "${pricelist_Reseller1}" - correctly propagated from Opp.Reseller.Pricelist`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Pricelist verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -2963,7 +2963,7 @@ export class InvoicePage extends BasePage {
   }
 
   /** The items a control-panel dropdown ("Print" / "Action") offers, in order. */
-  async getControlPanelMenuItems(menuLabel: string): Promise<string[]> {
+  async getControlPanelMenuItems(menuLabel: string, opts: { keepOpen?: boolean } = {}): Promise<string[]> {
     const toggle = this.page
       .locator('.o_control_panel button.dropdown-toggle, .o_control_panel a.dropdown-toggle')
       .filter({ hasText: new RegExp('^\\s*' + menuLabel + '\\s*$', 'i') })
@@ -2980,9 +2980,20 @@ export class InvoicePage extends BasePage {
           .filter((t) => t.length > 0)
       )
       .catch(() => [] as string[]);
+    // keepOpen: leave the menu ON SCREEN so the caller can take the VERIFY-POINT evidence shot
+    // with the entries still visible (a shot taken after Escape proves nothing). The caller is
+    // then responsible for closeControlPanelMenu().
+    if (!opts.keepOpen) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    return items;
+  }
+
+  /** Close a control-panel dropdown left open by getControlPanelMenuItems(.., { keepOpen: true }). */
+  async closeControlPanelMenu(): Promise<void> {
     await this.page.keyboard.press('Escape').catch(() => {});
     await this.wait(CommonUtils.waitTimes.standard);
-    return items;
   }
 
   // --------------------------------------------------------------------------

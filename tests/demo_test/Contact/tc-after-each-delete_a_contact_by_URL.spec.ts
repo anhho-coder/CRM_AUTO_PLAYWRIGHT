@@ -152,10 +152,15 @@ test.describe('Delete-Contact - Delete a Contact by URL', () => {
         console.log(`  Salesperson value received: "${actualSalesperson}"`);
         console.log(`  Expected (selected_Re-assignment_to#1): "${selectedReAssignmentTo}"`);
 
-        expect(actualSalesperson).toBe(selectedReAssignmentTo);
+        let __verifyPassed = false;
+        try {
+          expect(actualSalesperson).toBe(selectedReAssignmentTo);
 
-        console.log(`  Salesperson = "${selectedReAssignmentTo}" - verified successfully`);
-        await CommonUtils.captureAndAttachScreenshot(verifyTab, testInfo, 'Verification 2 - Salesperson verified');
+          console.log(`  Salesperson = "${selectedReAssignmentTo}" - verified successfully`);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(verifyTab, testInfo, { name: 'Verification 2 - Salesperson verified', passed: __verifyPassed }).catch(() => {});
+        }
       });
 
       await verifyTab.close();

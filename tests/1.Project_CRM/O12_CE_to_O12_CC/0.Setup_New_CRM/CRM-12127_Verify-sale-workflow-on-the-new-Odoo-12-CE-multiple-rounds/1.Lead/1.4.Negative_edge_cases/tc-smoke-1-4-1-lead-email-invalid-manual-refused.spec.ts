@@ -194,13 +194,17 @@ test.describe(`${TC} - Invalid e-mail refused (manual path)`, () => {
       console.log(`  record id in URL    : ${savedId ? savedId[1] : '(none)'}`);
       console.log(`  form still editable : ${stillEditable > 0}`);
       console.log('===============================================');
-      expect(dialogText, 'the save must raise the e-mail Validation Error').toContain(
-        'The email is invalid!'
-      );
-      expect(savedId, 'no Lead record must be created').toBeNull();
-      expect(stillEditable, 'the form must stay in edit mode').toBeGreaterThan(0);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Invalid e-mail refused (manual path)`);
+      let __verifyPassed = false;
+      try {
+        expect(dialogText, 'the save must raise the e-mail Validation Error').toContain(
+          'The email is invalid!'
+        );
+        expect(savedId, 'no Lead record must be created').toBeNull();
+        expect(stillEditable, 'the form must stay in edit mode').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Invalid e-mail refused (manual path)`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

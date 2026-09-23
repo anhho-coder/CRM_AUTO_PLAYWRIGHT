@@ -179,11 +179,16 @@ test.describe(`${TC} - EDIT button on the Quotation`, () => {
       console.log(`  Quotation URL : ${page.url()}`);
       // O12 CE does not navigate on NEW QUOTATION - the helper looks the created Quotation up and
       // puts the form on it. Either route is fine; what this TC needs is to BE on the Quotation.
-      expect(
-        quotation.landedOnQuotation,
-        'the Quotation raised by "NEW QUOTATION" must be open on screen before this TC can read it'
-      ).toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Quotation created`);
+      let __verifyPassed = false;
+      try {
+        expect(
+          quotation.landedOnQuotation,
+          'the Quotation raised by "NEW QUOTATION" must be open on screen before this TC can read it'
+        ).toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Quotation created`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step(STEP.s13, async () => {

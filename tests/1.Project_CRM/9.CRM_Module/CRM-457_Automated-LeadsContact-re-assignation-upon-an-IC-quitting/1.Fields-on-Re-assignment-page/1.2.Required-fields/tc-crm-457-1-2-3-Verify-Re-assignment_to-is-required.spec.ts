@@ -133,11 +133,16 @@ test.describe('CRM-457_1.2.3 - Verify Re-assignment to is required on Re-assignm
       const errorText = await reAssignationPage.getValidationErrorText();
       console.log(`  Error message received: "${errorText}"`);
 
-      expect(errorText).toContain('following field');
-      expect(errorText).toContain('Re-assignment to');
+      let __verifyPassed = false;
+      try {
+        expect(errorText).toContain('following field');
+        expect(errorText).toContain('Re-assignment to');
 
-      console.log('  ✓ II.1: Error message displays "The following fields are invalid: Re-assignment to"');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Validation error for Re-assignment to');
+        console.log('  ✓ II.1: Error message displays "The following fields are invalid: Re-assignment to"');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Validation error for Re-assignment to', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

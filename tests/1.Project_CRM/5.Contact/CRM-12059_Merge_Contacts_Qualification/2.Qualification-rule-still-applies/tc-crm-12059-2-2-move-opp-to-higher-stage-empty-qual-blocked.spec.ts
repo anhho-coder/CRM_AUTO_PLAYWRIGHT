@@ -81,9 +81,14 @@ test.describe('CRM-12059_2.2 - Empty Qualification info still blocks moving an i
       await opportunityPage.clickQualificationInfoTab().catch(() => {});
       const emptyQual = await opportunityPage.isQualificationInfoEmpty().catch(() => false);
       console.log(`  - Qualification info empty: ${emptyQual}`);
-      expect(emptyQual, 'the reproducing Opp must have EMPTY Qualification info (repoint REPRO_OPP_URL otherwise)').toBe(true);
-      expect(origStage.toUpperCase(), `the reproducing Opp must be below "${TARGET_STAGE}"`).not.toBe(TARGET_STAGE.toUpperCase());
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - empty qual confirmed').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(emptyQual, 'the reproducing Opp must have EMPTY Qualification info (repoint REPRO_OPP_URL otherwise)').toBe(true);
+        expect(origStage.toUpperCase(), `the reproducing Opp must be below "${TARGET_STAGE}"`).not.toBe(TARGET_STAGE.toUpperCase());
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - empty qual confirmed', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------

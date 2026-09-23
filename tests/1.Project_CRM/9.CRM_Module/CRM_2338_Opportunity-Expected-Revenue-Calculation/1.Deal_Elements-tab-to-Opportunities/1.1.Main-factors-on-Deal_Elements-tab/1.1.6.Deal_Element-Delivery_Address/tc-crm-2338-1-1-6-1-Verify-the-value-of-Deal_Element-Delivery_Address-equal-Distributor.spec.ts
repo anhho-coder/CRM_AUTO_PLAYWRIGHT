@@ -573,9 +573,14 @@ test.describe('CRM-2338_1.1.6.1 - Verify the Deal Element.Delivery Address getti
       const deliveryAddressValue = await dealElementPage.getDeliveryAddressValue();
       console.log(`  Delivery Address value received: "${deliveryAddressValue}"`);
       console.log(`  Expected                       : "${name_Distributor1}"`);
-      expect(deliveryAddressValue).toBe(name_Distributor1);
-      console.log(`\u2713 VIII.1: Delivery Address = "${name_Distributor1}" - Delivery Address correctly set from Distributor`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Delivery Address verified');
+      let __verifyPassed = false;
+      try {
+        expect(deliveryAddressValue).toBe(name_Distributor1);
+        console.log(`\u2713 VIII.1: Delivery Address = "${name_Distributor1}" - Delivery Address correctly set from Distributor`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Delivery Address verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

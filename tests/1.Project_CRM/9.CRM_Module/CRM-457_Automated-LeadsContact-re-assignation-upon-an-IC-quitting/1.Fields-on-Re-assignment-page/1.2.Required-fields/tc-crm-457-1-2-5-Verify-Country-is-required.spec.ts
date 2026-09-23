@@ -133,11 +133,16 @@ test.describe('CRM-457_1.2.5 - Verify Country is required on Re-assignment page'
       const errorText = await reAssignationPage.getValidationErrorText();
       console.log(`  Error message received: "${errorText}"`);
 
-      expect(errorText).toContain('following field');
-      expect(errorText).toContain('Country');
+      let __verifyPassed = false;
+      try {
+        expect(errorText).toContain('following field');
+        expect(errorText).toContain('Country');
 
-      console.log('  ✓ II.1: Error message displays "The following fields are invalid: Country"');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Validation error for Country');
+        console.log('  ✓ II.1: Error message displays "The following fields are invalid: Country"');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Validation error for Country', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

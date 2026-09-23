@@ -181,11 +181,15 @@ test.describe(`${TC} - EDIT button`, () => {
       console.log('===============================================');
       console.log('OVERALL: EDIT switches the Contact form from read mode to edit mode');
 
-      expect(editableBefore, 'the saved Contact form opens in READ mode').toBe(false);
-      expect(editableAfter, 'the EDIT button puts the Contact form in EDIT mode').toBe(true);
-      expect(cpAfter, 'the control-panel buttons offered in edit mode').toEqual(EXPECTED_CP);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - EDIT button`);
+      let __verifyPassed = false;
+      try {
+        expect(editableBefore, 'the saved Contact form opens in READ mode').toBe(false);
+        expect(editableAfter, 'the EDIT button puts the Contact form in EDIT mode').toBe(true);
+        expect(cpAfter, 'the control-panel buttons offered in edit mode').toEqual(EXPECTED_CP);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - EDIT button`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

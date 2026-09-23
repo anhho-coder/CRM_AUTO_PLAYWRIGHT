@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.6 - Verify Country combobox displays on Re-assignment
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const countryLabel = reAssignationPage.getCountryLabel();
-      await expect(countryLabel).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Country" combobox is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Country combobox visible');
+      let __verifyPassed = false;
+      try {
+        await expect(countryLabel).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Country" combobox is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Country combobox visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

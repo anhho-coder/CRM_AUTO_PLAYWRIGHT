@@ -473,10 +473,15 @@ test.describe('CRM-2338_1.1.4.4 - Verify the Deal Element.Payer is a required fi
       console.log(`\n=== VIII. VERIFICATION POINTS ===`);
       const errorMessage = await dealElementPage.getValidationErrorMessage();
       console.log(`  Error message received: "${errorMessage}"`);
-      expect(errorMessage).toContain('The following fields are invalid');
-      expect(errorMessage).toContain('Payer');
-      console.log('\u2713 VIII.1: Error message confirmed - "The following fields are invalid: Payer"');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Validation error verified');
+      let __verifyPassed = false;
+      try {
+        expect(errorMessage).toContain('The following fields are invalid');
+        expect(errorMessage).toContain('Payer');
+        console.log('\u2713 VIII.1: Error message confirmed - "The following fields are invalid: Payer"');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Validation error verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

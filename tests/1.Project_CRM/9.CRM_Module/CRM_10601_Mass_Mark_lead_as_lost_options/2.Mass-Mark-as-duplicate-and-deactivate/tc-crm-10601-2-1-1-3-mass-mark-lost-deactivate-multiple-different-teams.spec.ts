@@ -148,34 +148,39 @@ test.describe('CRM-10601_2.1.1.3 - Mass Mark as Duplicate and Deactivate for mul
 
     // Step 7: Login with sales manager and review all the Opp (same session) + verify each
     await test.step('Step 7: Login with sales manager and review all the Opp', async () => {
-      for (let i = 0; i < createdOppUrls.length; i++) {
-        const url = createdOppUrls[i];
-        console.log(`  Reviewing Opportunity ${i + 1}/${createdOppUrls.length} (team ${TEAMS[i]}): ${url}`);
-        await opportunityPage.goto(url);
-        await opportunityPage.waitForPageReady(CommonUtils.waitTimes.pageLoad);
+      let __verifyPassed = false;
+      try {
+        for (let i = 0; i < createdOppUrls.length; i++) {
+          const url = createdOppUrls[i];
+          console.log(`  Reviewing Opportunity ${i + 1}/${createdOppUrls.length} (team ${TEAMS[i]}): ${url}`);
+          await opportunityPage.goto(url);
+          await opportunityPage.waitForPageReady(CommonUtils.waitTimes.pageLoad);
 
-        const { found, chatterText } = await opportunityPage.waitForChatterContaining(
-          'Deactivated',
-          5,
-          CommonUtils.waitTimes.checkingChatterLog
-        );
-        expect(found, `Opp ${i + 1} (team ${TEAMS[i]}) should have a "Marked as Duplicate + Deactivated" log note`).toBeTruthy();
-        expect(chatterText, `Opp ${i + 1} log note should record the bulk deactivate event`)
-          .toMatch(/Marked as .+? \+ Deactivated by .+? \(bulk action\)/i);
-        expect(chatterText, `Opp ${i + 1} log note should record "Opportunity lost"`).toMatch(/Opportunity lost/i);
-        expect(chatterText.toLowerCase(), `Opp ${i + 1} log note should record Lost Reason "${LOST_REASON}"`)
-          .toContain(LOST_REASON.toLowerCase());
+          const { found, chatterText } = await opportunityPage.waitForChatterContaining(
+            'Deactivated',
+            5,
+            CommonUtils.waitTimes.checkingChatterLog
+          );
+          expect(found, `Opp ${i + 1} (team ${TEAMS[i]}) should have a "Marked as Duplicate + Deactivated" log note`).toBeTruthy();
+          expect(chatterText, `Opp ${i + 1} log note should record the bulk deactivate event`)
+            .toMatch(/Marked as .+? \+ Deactivated by .+? \(bulk action\)/i);
+          expect(chatterText, `Opp ${i + 1} log note should record "Opportunity lost"`).toMatch(/Opportunity lost/i);
+          expect(chatterText.toLowerCase(), `Opp ${i + 1} log note should record Lost Reason "${LOST_REASON}"`)
+            .toContain(LOST_REASON.toLowerCase());
 
-        await opportunityPage.clickCRMDeveloperTab().catch(() => {});
-        const active = await opportunityPage.isOpportunityActive();
-        console.log(`    - Opp ${i + 1} active = ${active}`);
-        expect(active, `Opp ${i + 1} should be deactivated/archived (active = false)`).toBeFalsy();
-        const approvalStatus = await opportunityPage.getApprovalStatus();
-        console.log(`    - Opp ${i + 1} Approval Status = "${approvalStatus}"`);
-        expect(approvalStatus, `Opp ${i + 1} should have NO pending approval`).not.toMatch(/Pending Approval/i);
+          await opportunityPage.clickCRMDeveloperTab().catch(() => {});
+          const active = await opportunityPage.isOpportunityActive();
+          console.log(`    - Opp ${i + 1} active = ${active}`);
+          expect(active, `Opp ${i + 1} should be deactivated/archived (active = false)`).toBeFalsy();
+          const approvalStatus = await opportunityPage.getApprovalStatus();
+          console.log(`    - Opp ${i + 1} Approval Status = "${approvalStatus}"`);
+          expect(approvalStatus, `Opp ${i + 1} should have NO pending approval`).not.toMatch(/Pending Approval/i);
+        }
+        console.log('✅ All 3 Opportunities (different teams) were marked lost AND deactivated directly');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'CRM-10752 - Last Opp after Mass Mark as Duplicate and Deactivate (different teams)', passed: __verifyPassed }).catch(() => {});
       }
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'CRM-10752 - Last Opp after Mass Mark as Duplicate and Deactivate (different teams)');
-      console.log('✅ All 3 Opportunities (different teams) were marked lost AND deactivated directly');
     });
   });
 });

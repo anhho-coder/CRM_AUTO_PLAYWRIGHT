@@ -3707,7 +3707,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * The entries of a control-panel dropdown ("Print" / "Action"), in order. The menu is opened,
    * read and closed again, so the form is left exactly as it was found.
    */
-  async getControlPanelMenuItems(toggleLabel: string): Promise<string[]> {
+  async getControlPanelMenuItems(toggleLabel: string, opts: { keepOpen?: boolean } = {}): Promise<string[]> {
     const toggle = this.page
       .locator('.o_control_panel button')
       .filter({ hasText: new RegExp('^\\s*' + toggleLabel + '\\s*$', 'i') })
@@ -3722,9 +3722,20 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
           .filter((t) => t.length > 0)
       )
       .catch(() => [] as string[]);
+    // keepOpen: leave the menu ON SCREEN so the caller can take the VERIFY-POINT evidence shot
+    // with the entries still visible (a shot taken after Escape proves nothing). The caller is
+    // then responsible for closeControlPanelMenu().
+    if (!opts.keepOpen) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return items;
+  }
+
+  /** Close a control-panel dropdown left open by getControlPanelMenuItems(.., { keepOpen: true }). */
+  async closeControlPanelMenu(): Promise<void> {
     await this.page.keyboard.press('Escape').catch(() => {});
     await this.wait(CommonUtils.waitTimes.medium);
-    return items;
   }
 
   /**

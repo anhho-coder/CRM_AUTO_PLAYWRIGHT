@@ -138,14 +138,19 @@ test.describe('CRM-10780_2.1.1.11 - Apply an inactive promotion to an order', ()
       });
       promoName = created.name;
       promoUrl = created.url;
-      console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+      let __verifyPassed = false;
+      try {
+        console.log(`✓ Promotion A created: "${promoName}" @ ${promoUrl}`);
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
 
-      // Make it INACTIVE (Active = False) per the precondition.
-      const archived = await promotionPage.archivePromotionByName(promoName);
-      expect(archived, 'Promotion A should be archived (made inactive) before the apply attempt').toBeTruthy();
-      console.log(`✓ Promotion A is now INACTIVE (archived): "${promoName}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created and archived (inactive)');
+        // Make it INACTIVE (Active = False) per the precondition.
+        const archived = await promotionPage.archivePromotionByName(promoName);
+        expect(archived, 'Promotion A should be archived (made inactive) before the apply attempt').toBeTruthy();
+        console.log(`✓ Promotion A is now INACTIVE (archived): "${promoName}"`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created and archived (inactive)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -230,8 +235,13 @@ test.describe('CRM-10780_2.1.1.11 - Apply an inactive promotion to an order', ()
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 2: Deal Element opened, product added (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - Deal Element with product');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - Deal Element with product', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 3: Try to apply promotion A to the deal', async () => {

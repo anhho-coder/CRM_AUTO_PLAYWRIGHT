@@ -182,17 +182,27 @@ test.describe('CMR-Count-Expected-Revenue-From-DealElement - Verify Expected Rev
     await test.step('III.1: Verify Expected_Revenue_Opp1 = Total_Subtotal_After_All_Discounts_Opp1', async () => {
       console.log(`\n=== III. VERIFICATION ===`);
       console.log(`Step III.1: Expected Revenue (${expectedRevenueOpp1}) should equal Total (${totalSubtotalAfterAllDiscountsOpp1})`);
-      expect(expectedRevenueOpp1, `III.1: Expected_Revenue_Opp1 (${expectedRevenueOpp1}) should equal Total_Subtotal_After_All_Discounts_Opp1 (${totalSubtotalAfterAllDiscountsOpp1})`).toBe(totalSubtotalAfterAllDiscountsOpp1);
-      console.log(`\u2713 III.1: Expected_Revenue_Opp1 ${expectedRevenueOpp1} = Total ${totalSubtotalAfterAllDiscountsOpp1} \u2014 confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Expected Revenue verified');
+      let __verifyPassed = false;
+      try {
+        expect(expectedRevenueOpp1, `III.1: Expected_Revenue_Opp1 (${expectedRevenueOpp1}) should equal Total_Subtotal_After_All_Discounts_Opp1 (${totalSubtotalAfterAllDiscountsOpp1})`).toBe(totalSubtotalAfterAllDiscountsOpp1);
+        console.log(`\u2713 III.1: Expected_Revenue_Opp1 ${expectedRevenueOpp1} = Total ${totalSubtotalAfterAllDiscountsOpp1} \u2014 confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Expected Revenue verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('III.2: Verify Expected_Revenue_After_Probability_Opp1 = Total * Probability / 100', async () => {
       const expectedCalc = parseFloat((totalSubtotalAfterAllDiscountsOpp1 * probability / 100).toFixed(2));
       console.log(`Step III.2: Expected After Probability (${expectedAfterProbabilityOpp1}) should equal Total * Probability / 100 = ${totalSubtotalAfterAllDiscountsOpp1} * ${probability} / 100 = ${expectedCalc}`);
-      expect(expectedAfterProbabilityOpp1, `III.2: Expected_Revenue_After_Probability_Opp1 (${expectedAfterProbabilityOpp1}) should equal Total * Probability / 100 (${expectedCalc})`).toBe(expectedCalc);
-      console.log(`\u2713 III.2: Expected_After_Probability ${expectedAfterProbabilityOpp1} = ${totalSubtotalAfterAllDiscountsOpp1} * ${probability} / 100 = ${expectedCalc} \u2014 confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.2 - Expected After Probability verified');
+      let __verifyPassed = false;
+      try {
+        expect(expectedAfterProbabilityOpp1, `III.2: Expected_Revenue_After_Probability_Opp1 (${expectedAfterProbabilityOpp1}) should equal Total * Probability / 100 (${expectedCalc})`).toBe(expectedCalc);
+        console.log(`\u2713 III.2: Expected_After_Probability ${expectedAfterProbabilityOpp1} = ${totalSubtotalAfterAllDiscountsOpp1} * ${probability} / 100 = ${expectedCalc} \u2014 confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.2 - Expected After Probability verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -174,10 +174,14 @@ test.describe(`${TC} - Lifetime Revenue and Recent engagement`, () => {
       console.log('===============================================');
       console.log('OVERALL: a newly created Contact reports no revenue and no engagement');
 
-      expect(revenue, 'the Lifetime Revenue of a newly created Contact').toBe(0);
-      expect(engagement, 'the Recent engagement (minutes) of a newly created Contact').toBe(0);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Lifetime Revenue and Recent engagement`);
+      let __verifyPassed = false;
+      try {
+        expect(revenue, 'the Lifetime Revenue of a newly created Contact').toBe(0);
+        expect(engagement, 'the Recent engagement (minutes) of a newly created Contact').toBe(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lifetime Revenue and Recent engagement`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

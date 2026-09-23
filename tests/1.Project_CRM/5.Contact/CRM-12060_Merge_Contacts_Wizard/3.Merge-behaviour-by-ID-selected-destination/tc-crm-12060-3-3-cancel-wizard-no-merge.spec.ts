@@ -70,9 +70,14 @@ test.describe('CRM-12060_3.3 - Cancel merge wizard performs no merge', () => {
       console.log(`  - Shared Company Name : ${sharedName}`);
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
-      expect(c1.id).toMatch(/^\d+$/);
-      expect(c2.id).toMatch(/^\d+$/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - two same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(c1.id).toMatch(/^\d+$/);
+        expect(c2.id).toMatch(/^\d+$/);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - two same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Open Contacts, search the shared name, tick both records', async () => {

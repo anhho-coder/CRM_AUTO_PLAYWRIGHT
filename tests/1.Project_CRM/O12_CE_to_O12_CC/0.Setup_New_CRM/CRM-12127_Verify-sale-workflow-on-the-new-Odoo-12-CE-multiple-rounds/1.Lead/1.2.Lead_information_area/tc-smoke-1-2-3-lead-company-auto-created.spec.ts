@@ -187,16 +187,20 @@ test.describe(`${TC} - Customer created automatically`, () => {
       console.log(`  res.partner id              : ${partner.partnerId || '(none)'}`);
       console.log(`  href                        : ${partner.href}`);
       console.log('===============================================');
-      expect(companyNameBefore, 'Company Name must hold the entered value right after save').toBe(
-        DATA.companyName
-      );
-      expect(partner.partnerId, 'the Lead must be linked to a Customer record').not.toBe('');
-      expect(partner.href, 'the Company link must open a res.partner').toContain('model=res.partner');
-      expect(partner.name, 'the created Customer must carry the entered Company Name').toBe(
-        DATA.companyName
-      );
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Customer created automatically`);
+      let __verifyPassed = false;
+      try {
+        expect(companyNameBefore, 'Company Name must hold the entered value right after save').toBe(
+          DATA.companyName
+        );
+        expect(partner.partnerId, 'the Lead must be linked to a Customer record').not.toBe('');
+        expect(partner.href, 'the Company link must open a res.partner').toContain('model=res.partner');
+        expect(partner.name, 'the created Customer must carry the entered Company Name').toBe(
+          DATA.companyName
+        );
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Customer created automatically`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -131,10 +131,15 @@ test.describe('CRM-457_1.2.6 - Verify Country state is NOT required on Re-assign
       const hasError = await reAssignationPage.isValidationErrorVisible();
       console.log(`  Validation error visible: ${hasError}`);
 
-      expect(hasError).toBeFalsy();
+      let __verifyPassed = false;
+      try {
+        expect(hasError).toBeFalsy();
 
-      console.log('✓ II.1: Save is successful - no validation error notification appeared');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Save successful no error');
+        console.log('✓ II.1: Save is successful - no validation error notification appeared');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Save successful no error', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

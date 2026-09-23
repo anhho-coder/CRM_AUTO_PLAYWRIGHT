@@ -185,10 +185,14 @@ test.describe(`${TC} - Salesperson`, () => {
       console.log(`  Salesperson   : "${salesperson}"`);
       console.log(`  assignment job note present : ${jobNote !== null}`);
       console.log('===============================================');
-      expect(salesperson, 'Salesperson must be filled by the assignment job').not.toBe('');
-      expect(jobNote, 'the chatter must carry the assignment job note').not.toBeNull();
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Salesperson`);
+      let __verifyPassed = false;
+      try {
+        expect(salesperson, 'Salesperson must be filled by the assignment job').not.toBe('');
+        expect(jobNote, 'the chatter must carry the assignment job note').not.toBeNull();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Salesperson`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

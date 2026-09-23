@@ -451,9 +451,14 @@ test.describe('CRM-2338_1.1.8.1 - Verify the Deal Element.Validity default value
       const validityValue = await dealElementPage.getValidityValue();
       console.log(`  Validity value received: "${validityValue}"`);
       console.log(`  Expected ((current date + 1 month)): "${currentDate}"`);
-      expect(validityValue, 'VIII.1: Validity field should equal (current date + 1 month)').toBe(currentDate);
-      console.log(`✓ VIII.1: Validity = "${currentDate}" — default value is (current date + 1 month)`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Validity verified');
+      let __verifyPassed = false;
+      try {
+        expect(validityValue, 'VIII.1: Validity field should equal (current date + 1 month)').toBe(currentDate);
+        console.log(`✓ VIII.1: Validity = "${currentDate}" — default value is (current date + 1 month)`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Validity verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

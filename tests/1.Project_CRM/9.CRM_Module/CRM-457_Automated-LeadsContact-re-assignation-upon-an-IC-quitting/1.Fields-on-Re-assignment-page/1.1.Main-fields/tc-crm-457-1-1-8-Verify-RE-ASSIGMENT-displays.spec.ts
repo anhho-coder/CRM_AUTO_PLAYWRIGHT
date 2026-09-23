@@ -95,9 +95,14 @@ test.describe('CRM-457_1.1.8 - Verify RE-ASSIGMENT button displays on Re-assignm
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const reAssigmentButton = reAssignationPage.getReAssigmentButton();
-      await expect(reAssigmentButton).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "RE-ASSIGMENT" button is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - RE-ASSIGMENT button visible');
+      let __verifyPassed = false;
+      try {
+        await expect(reAssigmentButton).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "RE-ASSIGMENT" button is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - RE-ASSIGMENT button visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

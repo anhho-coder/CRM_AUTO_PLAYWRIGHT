@@ -573,9 +573,14 @@ test.describe('CRM-2338_1.1.1 - Verify the Deal Element.End User getting from Op
       const endUserValue = await dealElementPage.getEndUserValue();
       console.log(`  End User value received: "${endUserValue}"`);
       console.log(`  Expected               : "${name_EndUser1}"`);
-      expect(endUserValue).toBe(name_EndUser1);
-      console.log(`\u2713 VIII.1: End User = "${name_EndUser1}" - End User correctly set from Opp.Contact`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - End User verified');
+      let __verifyPassed = false;
+      try {
+        expect(endUserValue).toBe(name_EndUser1);
+        console.log(`\u2713 VIII.1: End User = "${name_EndUser1}" - End User correctly set from Opp.Contact`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - End User verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

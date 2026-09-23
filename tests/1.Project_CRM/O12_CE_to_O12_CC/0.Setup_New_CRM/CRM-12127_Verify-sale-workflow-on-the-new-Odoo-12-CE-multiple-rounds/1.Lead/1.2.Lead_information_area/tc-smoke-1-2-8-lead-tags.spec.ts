@@ -182,11 +182,15 @@ test.describe(`${TC} - Tags`, () => {
       console.log(`     Actual   : ${JSON.stringify(tags)}`);
       console.log(`  chatter note : ${note ? note.replace(/\n/g, ' | ') : '(none)'}`);
       console.log('===============================================');
-      expect(tags, 'the Lead must carry exactly the one selected tag').toEqual(['Trial download']);
-      expect(note, 'the chatter must log the tag').not.toBeNull();
-      expect(note as string, 'the log note must name the tag').toContain('New: Trial download');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Tags`);
+      let __verifyPassed = false;
+      try {
+        expect(tags, 'the Lead must carry exactly the one selected tag').toEqual(['Trial download']);
+        expect(note, 'the chatter must log the tag').not.toBeNull();
+        expect(note as string, 'the log note must name the tag').toContain('New: Trial download');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tags`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

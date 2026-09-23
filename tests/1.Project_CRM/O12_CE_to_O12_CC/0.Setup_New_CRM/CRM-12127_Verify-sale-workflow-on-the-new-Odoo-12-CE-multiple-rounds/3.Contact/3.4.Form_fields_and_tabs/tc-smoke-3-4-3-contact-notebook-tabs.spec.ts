@@ -196,10 +196,14 @@ test.describe(`${TC} - Notebook tabs`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Contact form shows ${actual.length} notebook tabs`);
 
-      expect(actual.length, 'the NUMBER of notebook tabs on the Contact form').toBe(EXPECTED.length);
-      expect(actual, 'the notebook tab NAMES and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Notebook tabs`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of notebook tabs on the Contact form').toBe(EXPECTED.length);
+        expect(actual, 'the notebook tab NAMES and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Notebook tabs`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

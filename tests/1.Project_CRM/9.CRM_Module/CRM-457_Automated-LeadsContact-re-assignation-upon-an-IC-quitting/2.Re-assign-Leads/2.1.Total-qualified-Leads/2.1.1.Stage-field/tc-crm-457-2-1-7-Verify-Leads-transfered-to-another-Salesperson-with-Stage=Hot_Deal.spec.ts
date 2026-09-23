@@ -409,10 +409,15 @@ test.describe('CRM-457_2.1.7 - Verify qualified Leads with Stage=Hot Deal transf
 
       // Normalize spaces around "/" to allow "0/1", "0 /1", "0/ 1", "0 / 1"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('0/1');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('0/1');
 
-      console.log('✓ III.1: Total text = "0/1" - qualified Lead with Stage=Hot Deal correctly counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 0-1 verified');
+        console.log('✓ III.1: Total text = "0/1" - qualified Lead with Stage=Hot Deal correctly counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 0-1 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

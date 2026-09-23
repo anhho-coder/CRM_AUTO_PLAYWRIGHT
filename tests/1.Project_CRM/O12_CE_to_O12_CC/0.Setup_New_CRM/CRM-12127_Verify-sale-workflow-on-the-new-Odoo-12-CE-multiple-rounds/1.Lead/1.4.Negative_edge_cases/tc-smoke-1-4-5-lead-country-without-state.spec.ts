@@ -178,11 +178,15 @@ test.describe(`${TC} - Country without State`, () => {
       console.log(`  Country : expected "${DATA.country}" | actual "${country}"`);
       console.log(`  State   : expected "" | actual "${state}"`);
       console.log('===============================================');
-      expect(leadUrl, 'the Lead must be saved').toMatch(/[?#&]id=\d+/);
-      expect(country, 'Country must keep the selected value').toBe(DATA.country);
-      expect(state, 'no State must be auto-filled').toBe('');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Country without State`);
+      let __verifyPassed = false;
+      try {
+        expect(leadUrl, 'the Lead must be saved').toMatch(/[?#&]id=\d+/);
+        expect(country, 'Country must keep the selected value').toBe(DATA.country);
+        expect(state, 'no State must be auto-filled').toBe('');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Country without State`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

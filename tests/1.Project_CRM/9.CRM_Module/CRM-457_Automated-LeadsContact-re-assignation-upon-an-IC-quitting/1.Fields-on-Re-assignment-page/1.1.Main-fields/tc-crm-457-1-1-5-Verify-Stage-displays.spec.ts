@@ -105,9 +105,14 @@ test.describe('CRM-457_1.1.5 - Verify Stage combobox displays on Re-assignment p
       await reAssignationPage.waitForLoadingSpinnerToHide(config.timeouts.loadingSpinner);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       const stageLabel = reAssignationPage.getStageLabel();
-      await expect(stageLabel).toBeVisible({ timeout: 10000 });
-      console.log('  ✓ II.1: "Stage" combobox is visible on Re-assignment page');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Stage combobox visible');
+      let __verifyPassed = false;
+      try {
+        await expect(stageLabel).toBeVisible({ timeout: 10000 });
+        console.log('  ✓ II.1: "Stage" combobox is visible on Re-assignment page');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Stage combobox visible', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

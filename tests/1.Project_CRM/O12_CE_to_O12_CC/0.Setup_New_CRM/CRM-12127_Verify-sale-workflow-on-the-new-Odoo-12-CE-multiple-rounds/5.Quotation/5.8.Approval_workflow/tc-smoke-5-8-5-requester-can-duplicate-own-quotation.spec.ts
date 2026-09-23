@@ -201,7 +201,28 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       console.log('===============================================');
       console.log(`OVERALL: ${pendingBefore && duplicateOffered && duplicateWorked && originalUntouched ? 'PASS' : 'FAIL'} - the requester can duplicate his own pending-approval Quotation on O12 CE`);
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC_ID} - requester duplicated his own Quotation`);
+      // VERIFY-POINT EVIDENCE: the verdict is already computed above, so the shot carries it - red box on
+      // the statusbar the assertions actually read, the VERIFY block burned into the image, and the result
+      // in the attachment name. Taken BEFORE the expect()s, so it is attached on a FAIL exactly as on a PASS.
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC_ID} - requester duplicated his own Quotation`,
+        passed: pendingBefore && duplicateOffered && duplicateWorked && originalUntouched,
+        highlight: ['.o_statusbar_status'],
+        lines: [
+          'Verify #1 - pending + Duplicate offered:',
+          `   Expected : status contains "Pending" AND Duplicate visible`,
+          `   Actual   : "${approvalState?.status ?? ''}" | duplicateOffered=${duplicateOffered}`,
+          `   Result   : ${pendingBefore && duplicateOffered ? 'PASS' : 'FAIL'}`,
+          'Verify #2 - Duplicate produces a NEW draft Quotation:',
+          `   Expected : a different sale.order id with status "Quotation"`,
+          `   Actual   : sourceId=${copy.sourceRecordId || '(none)'} | copyId=${copy.newRecordId || '(unchanged)'} | copyStatus="${copyStatus}"`,
+          `   Result   : ${duplicateWorked ? 'PASS' : 'FAIL'}`,
+          'Verify #3 - the ORIGINAL is untouched:',
+          `   Expected : the original is STILL "Pending Approval"`,
+          `   Actual   : "${originalStatusAfter}"`,
+          `   Result   : ${originalUntouched ? 'PASS' : 'FAIL'}`,
+        ],
+      });
 
       expect(
         pendingBefore,

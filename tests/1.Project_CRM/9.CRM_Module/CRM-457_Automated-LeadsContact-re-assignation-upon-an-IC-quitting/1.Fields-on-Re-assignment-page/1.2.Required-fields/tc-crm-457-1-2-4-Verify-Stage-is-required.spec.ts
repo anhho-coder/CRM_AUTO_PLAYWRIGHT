@@ -133,11 +133,16 @@ test.describe('CRM-457_1.2.4 - Verify Stage is required on Re-assignment page', 
       const errorText = await reAssignationPage.getValidationErrorText();
       console.log(`  Error message received: "${errorText}"`);
 
-      expect(errorText).toContain('following field');
-      expect(errorText).toContain('Stage');
+      let __verifyPassed = false;
+      try {
+        expect(errorText).toContain('following field');
+        expect(errorText).toContain('Stage');
 
-      console.log('  ✓ II.1: Error message displays "The following fields are invalid: Stage"');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Validation error for Stage');
+        console.log('  ✓ II.1: Error message displays "The following fields are invalid: Stage"');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Validation error for Stage', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

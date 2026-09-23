@@ -573,9 +573,14 @@ test.describe('CRM-2338_1.1.5.1 - Verify the Deal Element.Invoice Address gettin
       const invoiceAddressValue = await dealElementPage.getInvoiceAddressValue();
       console.log(`  Invoice Address value received: "${invoiceAddressValue}"`);
       console.log(`  Expected                      : "${name_Distributor1}"`);
-      expect(invoiceAddressValue).toBe(name_Distributor1);
-      console.log(`\u2713 VIII.1: Invoice Address = "${name_Distributor1}" - Invoice Address correctly set from Distributor`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1 - Invoice Address verified');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceAddressValue).toBe(name_Distributor1);
+        console.log(`\u2713 VIII.1: Invoice Address = "${name_Distributor1}" - Invoice Address correctly set from Distributor`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1 - Invoice Address verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

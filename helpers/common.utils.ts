@@ -273,6 +273,174 @@ export class CommonUtils {
   }
 
   /**
+   * VERIFY-POINT EVIDENCE - the screenshot that PROVES the check, taken while the screen still shows
+   * what the check read, and taken for a FAIL exactly as for a PASS.
+   *
+   * WHY THIS EXISTS: a `captureAndAttachScreenshot` placed AFTER the `expect()`s never runs on a
+   * failure - the throw skips it - so the only shot left in the report is the `afterEach` one, taken
+   * after the dropdown / dialog / wizard the check measured has already been closed. The report then
+   * shows a clean form and no trace of the defect. Call this BEFORE the first `expect()`, while the
+   * UI is still in the state the Actual was read from.
+   *
+   * What it adds on top of captureAndAttachScreenshot:
+   *   - a red (FAIL) / green (PASS) outline around the element(s) the check read, so the reviewer sees
+   *     WHAT was measured, not merely the screen it lived on;
+   *   - the VERIFY block burned into the image (Expected / Actual / Result), so the picture explains
+   *     itself without cross-reading stdout;
+   *   - the verdict in the attachment name ("... - FAIL.png"), so the report's attachment list tells
+   *     the evidence shot apart from the boundary shots at a glance.
+   * Both decorations are removed again afterwards: the page is left exactly as it was found.
+   *
+   * @example
+   *   const actual = await contactPage.getControlPanelMenuItems('Print', { keepOpen: true });
+   *   const pass = JSON.stringify(actual) === JSON.stringify(EXPECTED);
+   *   await CommonUtils.captureVerifyEvidence(page, testInfo, {
+   *     name: `${TC} - Print menu`,
+   *     passed: pass,
+   *     highlight: ['.o_control_panel .dropdown-menu.show'],
+   *     lines: [`Expected : ${EXPECTED.join(' | ')}`, `Actual   : ${actual.join(' | ')}`],
+   *   });
+   *   await contactPage.closeControlPanelMenu();
+   *   expect(actual).toEqual(EXPECTED);
+   */
+  static async captureVerifyEvidence(
+    page: Page,
+    testInfo: TestInfo,
+    opts: {
+      /** Attachment name WITHOUT the verdict suffix, e.g. "CRM-12370_3.2.5 - Print menu". */
+      name: string;
+      /** The verdict this shot proves - drives the outline colour and the name suffix. */
+      passed: boolean;
+      /** CSS selector(s) of what the check read (the open dropdown, the row, the field, the dialog). */
+      highlight?: string | string[];
+      /** The VERIFY lines burned into the image - normally the same strings printed on stdout. */
+      lines?: string[];
+      /** Which corner the caption sits in. Default 'top-right'. */
+      corner?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+    }
+  ): Promise<void> {
+    const selectors = typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || []);
+    const verdict = opts.passed ? 'PASS' : 'FAIL';
+    const colour = opts.passed ? '#1a9641' : '#e03131';
+    let decorated = false;
+    try {
+      const hits = await page.evaluate(
+        ({ selectors, colour, verdict, lines, corner }) => {
+          try {
+            const TAG = '__pwVerifyEvidence';
+            const HIT = '__pwVerifyHit';
+            document.querySelectorAll('.' + TAG).forEach((n) => n.remove());
+            document.querySelectorAll('.' + HIT).forEach((n) => n.classList.remove(HIT));
+
+            const style = document.createElement('style');
+            style.className = TAG;
+            style.textContent =
+              '.' + HIT + '{outline:3px solid ' + colour + ' !important;outline-offset:2px !important;' +
+              'box-shadow:0 0 0 6px rgba(224,49,49,.12) !important;border-radius:3px !important;}';
+            document.head.appendChild(style);
+
+            let hits = 0;
+            selectors.forEach((sel) =>
+              document.querySelectorAll(sel).forEach((el) => {
+                (el as HTMLElement).classList.add(HIT);
+                hits++;
+              })
+            );
+
+            if (lines && lines.length) {
+              const place =
+                corner === 'top-left' ? 'top:12px;left:12px;'
+                : corner === 'bottom-left' ? 'bottom:12px;left:12px;'
+                : corner === 'bottom-right' ? 'bottom:12px;right:12px;'
+                : 'top:12px;right:12px;';
+              const box = document.createElement('div');
+              box.className = TAG;
+              box.setAttribute(
+                'style',
+                'position:fixed;z-index:2147483647;' + place +
+                'max-width:46vw;padding:10px 14px;background:rgba(255,255,255,.97);' +
+                'border:3px solid ' + colour + ';border-radius:6px;color:#111;' +
+                'font:13px/1.45 Consolas,"Courier New",monospace;white-space:pre;' +
+                'box-shadow:0 4px 16px rgba(0,0,0,.28);pointer-events:none;'
+              );
+              const head = document.createElement('div');
+              head.setAttribute('style', 'font-weight:700;margin-bottom:4px;color:' + colour + ';');
+              head.textContent = 'VERIFY - ' + verdict;
+              const body = document.createElement('div');
+              body.textContent = lines.join('\n');
+              box.appendChild(head);
+              box.appendChild(body);
+              document.body.appendChild(box);
+            }
+            return hits;
+          } catch {
+            return -1;
+          }
+        },
+        { selectors, colour, verdict, lines: opts.lines || [], corner: opts.corner || 'top-right' }
+      ).catch(() => -1);
+
+      decorated = hits >= 0;
+      // A selector that matches nothing means the evidence shot silently lost its box - say so,
+      // rather than attaching a picture with no verify point marked on it.
+      if (selectors.length && hits === 0) {
+        console.log(`WARNING: verify-evidence highlight matched NOTHING (${selectors.join(', ')}) - the shot carries no marked verify point`);
+      }
+
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${opts.name} - ${verdict}`);
+    } finally {
+      if (decorated) {
+        await page.evaluate(() => {
+          document.querySelectorAll('.__pwVerifyEvidence').forEach((n) => n.remove());
+          document.querySelectorAll('.__pwVerifyHit').forEach((n) => n.classList.remove('__pwVerifyHit'));
+        }).catch(() => {});
+      }
+    }
+  }
+
+
+  /**
+   * VERIFY-POINT EVIDENCE, verdict derived from the assertions themselves.
+   *
+   * Wraps the `expect()`s of a verification step. The closure is run, the evidence shot is taken
+   * WHATEVER the outcome - and on a failure it is taken at the MOMENT OF THE THROW, with the screen
+   * exactly as the failing assertion saw it - and the original error is then re-thrown unchanged, so
+   * the test still fails with its own message.
+   *
+   * Use this where computing the verdict separately would mean duplicating the assertions. Where the
+   * spec already has the booleans (it printed them in the VERIFY block), prefer captureVerifyEvidence
+   * directly - it can colour and name the shot without running anything.
+   *
+   * @example
+   *   await CommonUtils.verifyWithEvidence(page, testInfo, {
+   *     name: `${TC} - Order Lines columns`,
+   *     highlight: ['.o_field_x2many_list thead'],
+   *   }, async () => {
+   *     expect(actual, 'the Order Lines columns').toEqual(EXPECTED);
+   *   });
+   */
+  static async verifyWithEvidence(
+    page: Page,
+    testInfo: TestInfo,
+    opts: {
+      name: string;
+      highlight?: string | string[];
+      lines?: string[];
+      corner?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
+    },
+    assertions: () => Promise<void> | void
+  ): Promise<void> {
+    let failure: unknown;
+    try {
+      await assertions();
+    } catch (err) {
+      failure = err;
+    }
+    await CommonUtils.captureVerifyEvidence(page, testInfo, { ...opts, passed: !failure }).catch(() => {});
+    if (failure) throw failure;
+  }
+
+  /**
    * Gets current timestamp in ISO format
    * @returns ISO formatted timestamp
    */

@@ -42,7 +42,7 @@ import { loginToO12CE, O12CE_DATA, teardownMigRecords, sweepMigLeftoversAfterAll
  *   3. The Name is unchanged by the edit.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12370_3\.1\.2:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_3\.1\.2:" --project=MigSmoke
  */
 
 const SKIP_CLEANUP_CONTACT = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).

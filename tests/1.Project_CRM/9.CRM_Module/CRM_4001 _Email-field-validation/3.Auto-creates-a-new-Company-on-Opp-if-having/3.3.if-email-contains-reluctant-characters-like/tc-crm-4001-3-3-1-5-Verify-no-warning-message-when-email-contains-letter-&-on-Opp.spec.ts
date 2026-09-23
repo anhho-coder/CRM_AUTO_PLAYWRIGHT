@@ -190,13 +190,18 @@ test.describe('CRM-4001_3.3.1.5 - Verify a valid email containing "&" posts no w
       console.log(`  Warning text: "${invalidEmailWarning}"`);
       console.log(`  Found       : ${chatterResult!.found}`);
 
-      expect(
-        chatterResult!.found,
-        `No invalid-email warning should be posted for a valid email ("&")`,
-      ).toBeFalsy();
+      let __verifyPassed = false;
+      try {
+        expect(
+          chatterResult!.found,
+          `No invalid-email warning should be posted for a valid email ("&")`,
+        ).toBeFalsy();
 
-      console.log('✓ Verification passed: no invalid-email warning was posted');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - no warning in Log');
+        console.log('✓ Verification passed: no invalid-email warning was posted');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - no warning in Log', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -200,9 +200,14 @@ test.describe('CRM-10601_2.1.1.10 - Mass Mark as Duplicate and Deactivate for mu
           expect(approvalStatus, `${label} Opp should have NO pending approval`).not.toMatch(/Pending Approval/i);
         }
       };
-      await review('fresh', freshOppUrl, true);
-      await review('pending', pendingOppUrl, false);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'CRM-10759 - Opp after Mass Mark and Deactivate (incl pending approval)');
+      let __verifyPassed = false;
+      try {
+        await review('fresh', freshOppUrl, true);
+        await review('pending', pendingOppUrl, false);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'CRM-10759 - Opp after Mass Mark and Deactivate (incl pending approval)', passed: __verifyPassed }).catch(() => {});
+      }
       console.log('✅ Both Opportunities (fresh + already-pending) were marked lost AND deactivated');
     });
   });

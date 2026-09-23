@@ -146,17 +146,24 @@ test.describe(`${TC_ID} - One invoice is the single source of truth`, () => {
 
       await subscriptionPage.openInvoices();
       await invoicePage.openFirstInvoiceRow();
-      const numberFromSubscription = await invoicePage.getInvoiceNumber().catch(() => '');
 
-      logVerify(
-        'VP5',
-        'the invoice reached from the subscription is the very same invoice found in Accounting',
-        `number from Accounting = "${numberFromAccounting}", number from the subscription = "${numberFromSubscription}"`,
-        numberFromSubscription === numberFromAccounting,
-      );
+      let __verifyPassed = false;
+      try {
+        const numberFromSubscription = await invoicePage.getInvoiceNumber().catch(() => '');
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 5 - same invoice from both routes').catch(() => {});
-      expect(numberFromSubscription, `VP5: both routes must reach the same invoice (Accounting "${numberFromAccounting}", subscription "${numberFromSubscription}")`).toBe(numberFromAccounting);
+        logVerify(
+          'VP5',
+          'the invoice reached from the subscription is the very same invoice found in Accounting',
+          `number from Accounting = "${numberFromAccounting}", number from the subscription = "${numberFromSubscription}"`,
+          numberFromSubscription === numberFromAccounting,
+        );
+
+        expect(numberFromSubscription, `VP5: both routes must reach the same invoice (Accounting "${numberFromAccounting}", subscription "${numberFromSubscription}")`).toBe(numberFromAccounting);
+
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 5 - same invoice from both routes', passed: __verifyPassed }).catch(() => {});
+      }
 
       console.log(`✅ ${TC_ID}: subscription "${reference}" produced exactly one authoritative invoice`);
     });

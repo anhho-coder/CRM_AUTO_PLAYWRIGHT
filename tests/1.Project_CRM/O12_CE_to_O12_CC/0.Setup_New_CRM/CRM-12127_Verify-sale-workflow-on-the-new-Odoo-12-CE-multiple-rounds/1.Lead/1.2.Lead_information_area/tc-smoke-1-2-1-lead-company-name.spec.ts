@@ -178,9 +178,13 @@ test.describe(`${TC} - Company Name`, () => {
       console.log(`     Actual   : "${companyName}"`);
       console.log(`     Result   : ${companyName === DATA.companyName ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      expect(companyName, 'Company Name must keep the entered value').toBe(DATA.companyName);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Company Name`);
+      let __verifyPassed = false;
+      try {
+        expect(companyName, 'Company Name must keep the entered value').toBe(DATA.companyName);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

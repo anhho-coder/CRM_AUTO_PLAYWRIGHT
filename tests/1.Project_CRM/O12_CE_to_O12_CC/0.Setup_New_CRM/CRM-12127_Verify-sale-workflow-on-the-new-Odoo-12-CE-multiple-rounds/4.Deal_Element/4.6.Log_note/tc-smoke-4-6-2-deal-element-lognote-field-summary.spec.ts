@@ -160,32 +160,36 @@ test.describe(`${TC} - Log note - creation summary`, () => {
     console.log(`  Deal Element saved: ${dealElementUrl}`);
 
     await test.step('Verification', async () => {
-      const raw = await dealElementPage.waitForChatterMessage(/^Payer:/m);
-      expect(raw, 'the chatter must carry the field summary note').not.toBeNull();
-      const fields = dealElementPage.parseLogNoteFields(raw as string);
-      console.log('Log note read:');
-      (raw as string).split('\n').forEach((l) => console.log(`   | ${l}`));
+      let __verifyPassed = false;
+      try {
+        const raw = await dealElementPage.waitForChatterMessage(/^Payer:/m);
+        expect(raw, 'the chatter must carry the field summary note').not.toBeNull();
+        const fields = dealElementPage.parseLogNoteFields(raw as string);
+        console.log('Log note read:');
+        (raw as string).split('\n').forEach((l) => console.log(`   | ${l}`));
 
-      await dealElementPage.clickOrderLinesTab();
-      const line = await dealElementPage.getOrderLineRowCells(0);
-      const lineSubtotal = parseFloat((line['Subtotal'] || '').replace(/[^0-9.]/g, ''));
-      const notedTotal = parseFloat((fields['Total'] || '').replace(/[^0-9.]/g, ''));
-      const salesperson = users.admin_crm_mig.createdByName;
+        await dealElementPage.clickOrderLinesTab();
+        const line = await dealElementPage.getOrderLineRowCells(0);
+        const lineSubtotal = parseFloat((line['Subtotal'] || '').replace(/[^0-9.]/g, ''));
+        const notedTotal = parseFloat((fields['Total'] || '').replace(/[^0-9.]/g, ''));
+        const salesperson = users.admin_crm_mig.createdByName;
 
-      record('Payer in the note', oppCompany, fields['Payer'] || '(missing)');
-      record('End User in the note', oppCompany, fields['End User'] || '(missing)');
-      record('Salesperson in the note', salesperson, fields['Salesperson'] || '(missing)');
-      record('Status in the note', 'Quotation', fields['Status'] || '(missing)');
-      record('Total in the note', String(lineSubtotal), String(notedTotal));
-      printVerify();
+        record('Payer in the note', oppCompany, fields['Payer'] || '(missing)');
+        record('End User in the note', oppCompany, fields['End User'] || '(missing)');
+        record('Salesperson in the note', salesperson, fields['Salesperson'] || '(missing)');
+        record('Status in the note', 'Quotation', fields['Status'] || '(missing)');
+        record('Total in the note', String(lineSubtotal), String(notedTotal));
+        printVerify();
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Creation summary note`);
-
-      expect(fields['Payer'], 'Payer in the note').toBe(oppCompany);
-      expect(fields['End User'], 'End User in the note').toBe(oppCompany);
-      expect(fields['Salesperson'], 'Salesperson in the note').toBe(salesperson);
-      expect(fields['Status'], 'Status in the note').toBe('Quotation');
-      expect(notedTotal, 'Total in the note must match the Order Lines').toBeCloseTo(lineSubtotal, 0);
+        expect(fields['Payer'], 'Payer in the note').toBe(oppCompany);
+        expect(fields['End User'], 'End User in the note').toBe(oppCompany);
+        expect(fields['Salesperson'], 'Salesperson in the note').toBe(salesperson);
+        expect(fields['Status'], 'Status in the note').toBe('Quotation');
+        expect(notedTotal, 'Total in the note must match the Order Lines').toBeCloseTo(lineSubtotal, 0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Creation summary note`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

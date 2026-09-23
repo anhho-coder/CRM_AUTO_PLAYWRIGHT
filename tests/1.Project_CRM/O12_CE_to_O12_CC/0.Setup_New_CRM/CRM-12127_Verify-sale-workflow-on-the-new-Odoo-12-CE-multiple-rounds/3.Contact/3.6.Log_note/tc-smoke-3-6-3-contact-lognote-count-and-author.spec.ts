@@ -184,13 +184,17 @@ test.describe(`${TC} - Log note - number, order and author`, () => {
       console.log('===============================================');
       console.log(`OVERALL: a newly created Contact carries ${messages.length} log notes written by ${authors.join(' / ')}`);
 
-      expect(messages.length, 'the NUMBER of log notes a newly created Contact carries').toBe(2);
-      expect(messages[messages.length - 1], 'the OLDEST log note of a newly created Contact').toBe('Contact created');
-      expect(messages[0], 'the NEWEST log note of a newly created Contact').toContain('Email:');
-      expect(authors, 'the author of every log note of a newly created Contact').toEqual(
-        messages.map(() => users.admin_crm_mig.createdByName));
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Log note - number, order and author`);
+      let __verifyPassed = false;
+      try {
+        expect(messages.length, 'the NUMBER of log notes a newly created Contact carries').toBe(2);
+        expect(messages[messages.length - 1], 'the OLDEST log note of a newly created Contact').toBe('Contact created');
+        expect(messages[0], 'the NEWEST log note of a newly created Contact').toContain('Email:');
+        expect(authors, 'the author of every log note of a newly created Contact').toEqual(
+          messages.map(() => users.admin_crm_mig.createdByName));
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - number, order and author`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

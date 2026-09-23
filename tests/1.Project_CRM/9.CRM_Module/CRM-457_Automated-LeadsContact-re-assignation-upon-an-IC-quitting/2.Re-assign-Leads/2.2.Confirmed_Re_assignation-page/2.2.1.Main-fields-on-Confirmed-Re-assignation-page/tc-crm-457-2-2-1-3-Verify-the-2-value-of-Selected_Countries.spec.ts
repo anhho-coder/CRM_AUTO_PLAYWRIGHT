@@ -308,13 +308,17 @@ test.describe('CRM-457_2.2.1.3 - Verify 2 Selected Countries = Countries on Conf
       console.log(`  Expected to contain (selected_country#1) : "${selectedCountry1}"`);
       console.log(`  Expected to contain (selected_country#2) : "${selectedCountry2}"`);
 
-      expect(selectedCountriesText).toContain(selectedCountry1);
-      console.log(`✓ III.1: "Selected Countries" contains "${selectedCountry1}" - verified correctly`);
+      let __verifyPassed = false;
+      try {
+        expect(selectedCountriesText).toContain(selectedCountry1);
+        console.log(`✓ III.1: "Selected Countries" contains "${selectedCountry1}" - verified correctly`);
 
-      expect(selectedCountriesText).toContain(selectedCountry2);
-      console.log(`✓ III.2: "Selected Countries" contains "${selectedCountry2}" - verified correctly`);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1-2 - Selected Countries verified');
+        expect(selectedCountriesText).toContain(selectedCountry2);
+        console.log(`✓ III.2: "Selected Countries" contains "${selectedCountry2}" - verified correctly`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1-2 - Selected Countries verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

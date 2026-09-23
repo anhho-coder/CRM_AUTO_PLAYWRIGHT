@@ -179,11 +179,15 @@ test.describe(`${TC} - Timezone`, () => {
       console.log(`  Timezone        : "${tz}"`);
       console.log(`  Timezone offset : "${tzOffset}"`);
       console.log('===============================================');
-      expect(tz, 'Timezone must be filled').not.toBe('');
-      expect(tzOffset, 'Timezone offset must be filled').not.toBe('');
-      expect(tzOffset, 'Timezone offset must name the same Timezone').toContain(tz);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Timezone`);
+      let __verifyPassed = false;
+      try {
+        expect(tz, 'Timezone must be filled').not.toBe('');
+        expect(tzOffset, 'Timezone offset must be filled').not.toBe('');
+        expect(tzOffset, 'Timezone offset must name the same Timezone').toContain(tz);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Timezone`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

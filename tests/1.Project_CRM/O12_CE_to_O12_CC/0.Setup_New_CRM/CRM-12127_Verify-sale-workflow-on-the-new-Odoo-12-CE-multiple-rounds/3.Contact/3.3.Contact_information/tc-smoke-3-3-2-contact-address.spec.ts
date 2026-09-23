@@ -180,11 +180,15 @@ test.describe(`${TC} - Address`, () => {
       console.log('===============================================');
       console.log('OVERALL: the Address block reports the Street, the State and the Country that were entered');
 
-      expect(address, 'the Address block carries the Street that was entered').toContain(DATA.street);
-      expect(address, 'the Address block carries the State that was selected').toContain(DATA.state);
-      expect(address, 'the Address block carries the Country that was selected').toContain(DATA.country);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Address`);
+      let __verifyPassed = false;
+      try {
+        expect(address, 'the Address block carries the Street that was entered').toContain(DATA.street);
+        expect(address, 'the Address block carries the State that was selected').toContain(DATA.state);
+        expect(address, 'the Address block carries the Country that was selected').toContain(DATA.country);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Address`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -795,10 +795,15 @@ test.describe('CRM-457_5.1.1.1 - Verify value at "Total" text = 6/6 after confir
 
       // Normalize spaces around "/" to allow "6/6", "3 /3", "3/ 3", "3 / 3"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('6/6');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('6/6');
 
-      console.log('\u2713 VII.1: Total text = "6/6" - Lead#1, Opp#1 and Contact#1 all re-assigned correctly');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VII.1 - Total 3-3 verified');
+        console.log('\u2713 VII.1: Total text = "6/6" - Lead#1, Opp#1 and Contact#1 all re-assigned correctly');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VII.1 - Total 3-3 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

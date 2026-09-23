@@ -135,11 +135,16 @@ test.describe('CRM-457_1.2.1 - Verify Customer type is required on Re-assignment
       const errorText = await reAssignationPage.getValidationErrorText();
       console.log(`  Error message received: "${errorText}"`);
 
-      expect(errorText).toContain('following field');
-      expect(errorText).toContain('Customer type');
+      let __verifyPassed = false;
+      try {
+        expect(errorText).toContain('following field');
+        expect(errorText).toContain('Customer type');
 
-      console.log('  ✓ II.1: Error message displays "The following fields are invalid: Customer type"');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'II.1 - Validation error for Customer type');
+        console.log('  ✓ II.1: Error message displays "The following fields are invalid: Customer type"');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'II.1 - Validation error for Customer type', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

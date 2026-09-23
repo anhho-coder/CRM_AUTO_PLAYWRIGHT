@@ -178,9 +178,13 @@ test.describe(`${TC} - Contact Name`, () => {
       console.log(`     Actual   : "${contactName}"`);
       console.log(`     Result   : ${contactName === DATA.contactName ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      expect(contactName, 'Contact Name must keep the entered value').toBe(DATA.contactName);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Contact Name`);
+      let __verifyPassed = false;
+      try {
+        expect(contactName, 'Contact Name must keep the entered value').toBe(DATA.contactName);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contact Name`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

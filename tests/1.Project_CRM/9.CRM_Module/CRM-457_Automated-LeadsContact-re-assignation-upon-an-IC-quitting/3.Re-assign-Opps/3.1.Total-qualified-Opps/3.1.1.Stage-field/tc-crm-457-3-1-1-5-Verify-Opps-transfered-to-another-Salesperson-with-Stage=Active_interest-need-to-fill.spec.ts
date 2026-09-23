@@ -533,10 +533,15 @@ test.describe('CRM-457_3.1.1.5 - Verify qualified Opps with Stage=Active interes
 
       // Normalize spaces around "/" to allow "0/1", "0 /1", "0/ 1", "0 / 1"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('0/1');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('0/1');
 
-      console.log('\u2713 III.1: Total text = "0/1" - qualified Opp with Stage=Active interest correctly counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 0-1 verified - Stage=Active interest');
+        console.log('\u2713 III.1: Total text = "0/1" - qualified Opp with Stage=Active interest correctly counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 0-1 verified - Stage=Active interest', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

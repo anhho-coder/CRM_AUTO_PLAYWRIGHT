@@ -131,8 +131,13 @@ test.describe('pre-sale-7.2.2.1 - Pre-Sales Engineer sees the email from the SE 
       console.log(`Step 6: Searching for SE_Support_Subject#1 = "${subject}"`);
       await helpdeskPage.searchTicket(subject);
       const visible = await helpdeskPage.isTicketVisible(subject);
-      expect(visible, `Step 6: the ticket "${subject}" should appear before opening it`).toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 6 - Ticket searched').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(visible, `Step 6: the ticket "${subject}" should appear before opening it`).toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 6 - Ticket searched', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 7: Select (open) the SE_Support_Subject#1 ticket', async () => {

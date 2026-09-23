@@ -188,10 +188,14 @@ test.describe(`${TC} - Sub-menu "More" entries`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the "More" sub-menu button offers ${actual.length} entries`);
 
-      expect(actual.length, 'the NUMBER of entries behind the "More" sub-menu button').toBe(EXPECTED.length);
-      expect(actual, 'the "More" sub-menu entries and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Sub-menu "More" entries`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of entries behind the "More" sub-menu button').toBe(EXPECTED.length);
+        expect(actual, 'the "More" sub-menu entries and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu "More" entries`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

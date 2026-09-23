@@ -185,15 +185,19 @@ test.describe(`${TC} - Lead Source - Partner`, () => {
       console.log(`  Lead Source : expected "Partner" | actual "${leadSource}"`);
       console.log(`  Lead Source tracking note : ${sourceNote ? sourceNote.replace(/\n/g, ' | ') : '(none - expected)'}`);
       console.log('===============================================');
-      expect(salesTeam, 'the Sales Team entered at creation must be kept').toBe(OWNER.team);
-      expect(salesperson, 'the Salesperson entered at creation must be kept').toBe(OWNER.salesperson);
-      expect(leadSource, 'a Lead created with an owner must be classified Partner').toBe('Partner');
-      expect(
-        sourceNote,
-        'the value is derived at creation, so no Lead Source change may be logged'
-      ).toBeNull();
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Lead Source - Partner`);
+      let __verifyPassed = false;
+      try {
+        expect(salesTeam, 'the Sales Team entered at creation must be kept').toBe(OWNER.team);
+        expect(salesperson, 'the Salesperson entered at creation must be kept').toBe(OWNER.salesperson);
+        expect(leadSource, 'a Lead created with an owner must be classified Partner').toBe('Partner');
+        expect(
+          sourceNote,
+          'the value is derived at creation, so no Lead Source change may be logged'
+        ).toBeNull();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Source - Partner`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

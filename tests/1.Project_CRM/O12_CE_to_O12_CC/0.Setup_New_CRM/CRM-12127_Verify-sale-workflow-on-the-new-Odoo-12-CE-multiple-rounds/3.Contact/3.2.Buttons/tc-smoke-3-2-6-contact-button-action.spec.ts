@@ -190,10 +190,14 @@ test.describe(`${TC} - Action menu`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Action menu of a Contact offers ${actual.length} actions`);
 
-      expect(actual.length, 'the NUMBER of entries in the Action menu').toBe(EXPECTED.length);
-      expect(actual, 'the Action menu entries and their ORDER').toEqual(EXPECTED);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Action menu`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.length, 'the NUMBER of entries in the Action menu').toBe(EXPECTED.length);
+        expect(actual, 'the Action menu entries and their ORDER').toEqual(EXPECTED);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Action menu`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

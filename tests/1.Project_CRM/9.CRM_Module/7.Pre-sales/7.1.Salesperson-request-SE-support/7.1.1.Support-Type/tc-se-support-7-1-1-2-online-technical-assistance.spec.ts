@@ -151,8 +151,13 @@ test.describe('pre-sale-7.1.1.2 - Salesperson requests SE support (Support type 
       await opportunityPage.openByUrl(createdOppUrl as string);
       const populated = await opportunityPage.waitForCompanyAndContactPopulated();
       console.log(`  - Company: "${populated.companyValue}" | Contact: "${populated.contactValue}"`);
-      expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before requesting SE support').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Opp#1 created (Company + Contact populated)').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(populated.populated, 'Company and Contact should both be populated on Opp #1 before requesting SE support').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Opp#1 created (Company + Contact populated)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ===================== Steps to reproduce =====================

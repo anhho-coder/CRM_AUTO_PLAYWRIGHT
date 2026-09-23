@@ -76,9 +76,14 @@ test.describe('CRM-12059_3.2 - Merging three fresh same-named contacts consolida
       c1 = await createCompanyContact(page, contactPage, sharedName, email1);
       c2 = await createCompanyContact(page, contactPage, sharedName, email2);
       c3 = await createCompanyContact(page, contactPage, sharedName, email3);
-      for (const c of [c1, c2, c3]) expect(c.id).toMatch(/^\d+$/);
-      expect(new Set([c1.id, c2.id, c3.id]).size, 'three distinct contacts').toBe(3);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - three same-named contacts created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        for (const c of [c1, c2, c3]) expect(c.id).toMatch(/^\d+$/);
+        expect(new Set([c1.id, c2.id, c3.id]).size, 'three distinct contacts').toBe(3);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - three same-named contacts created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Open Contacts, search the shared name, select all three', async () => {

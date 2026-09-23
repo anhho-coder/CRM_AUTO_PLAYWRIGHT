@@ -171,9 +171,13 @@ test.describe(`${TC} - VAT`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the VAT of the saved Contact reads "${actual}"`);
 
-      expect(actual, 'the VAT on the saved form matches the entered value').toContain(expected);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - VAT`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the VAT on the saved form matches the entered value').toContain(expected);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - VAT`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

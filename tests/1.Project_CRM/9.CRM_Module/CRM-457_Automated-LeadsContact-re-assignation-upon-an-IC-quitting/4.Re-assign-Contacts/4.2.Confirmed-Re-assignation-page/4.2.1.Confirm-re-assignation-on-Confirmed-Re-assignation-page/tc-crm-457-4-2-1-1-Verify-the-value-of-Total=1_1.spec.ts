@@ -395,10 +395,15 @@ test.describe('CRM-457_4.2.1.1 - Verify value at "Total" text = 1/1 after confir
 
       // Normalize spaces around "/" to allow "1/1", "1 /1", "1/ 1", "1 / 1"
       const normalizedTotal = totalText.replace(/\s*\/\s*/g, '/');
-      expect(normalizedTotal).toBe('1/1');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('1/1');
 
-      console.log('✓ III.1: Total text = "1/1" - qualified Contact correctly counted for re-assignment');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 1-1 verified');
+        console.log('✓ III.1: Total text = "1/1" - qualified Contact correctly counted for re-assignment');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 1-1 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

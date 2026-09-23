@@ -171,9 +171,13 @@ test.describe(`${TC} - Salesperson`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the Salesperson of the saved Contact reads "${actual}"`);
 
-      expect(actual, 'the Salesperson on the saved form matches the selected value').toBe(expected);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Salesperson`);
+      let __verifyPassed = false;
+      try {
+        expect(actual, 'the Salesperson on the saved form matches the selected value').toBe(expected);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Salesperson`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

@@ -149,25 +149,30 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
     });
 
     await test.step('Step 2: Make the update due, then run the scheduled action manually', async () => {
-      // Gate one - the company's own "Next Run". See the TWO GATES note in the header.
-      await settingsPage.openInvoicingSettings();
-      const before = await settingsPage.readSettings();
-      console.log(`  - "Next Run" was ${before.nextRun || '(empty)'}; setting it to ${todayForNextRun()} so the update is due`);
-      const due = await settingsPage.setNextRun(todayForNextRun());
-      expect(
-        due,
-        `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. Otherwise the job returns ` +
-          `early, and "the gap did not change" would be true only because nothing ran.`
-      ).toBe(true);
+      let __verifyPassed = false;
+      try {
+        // Gate one - the company's own "Next Run". See the TWO GATES note in the header.
+        await settingsPage.openInvoicingSettings();
+        const before = await settingsPage.readSettings();
+        console.log(`  - "Next Run" was ${before.nextRun || '(empty)'}; setting it to ${todayForNextRun()} so the update is due`);
+        const due = await settingsPage.setNextRun(todayForNextRun());
+        expect(
+          due,
+          `"Next Run" must end up holding ${todayForNextRun()} for the update to be due. Otherwise the job returns ` +
+            `early, and "the gap did not change" would be true only because nothing ran.`
+        ).toBe(true);
 
-      // Gate two - the scheduled action's own "Next Execution Date".
-      const opened = await cronPage.openScheduledAction(CRON_NAME);
-      expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
-      const set = await cronPage.setNextExecutionDate(todayForCronField());
-      expect(set, '"Next Execution Date" should have been set to today').toBe(true);
-      ranManually = await cronPage.clickRunManually();
-      expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - job run manually').catch(() => {});
+        // Gate two - the scheduled action's own "Next Execution Date".
+        const opened = await cronPage.openScheduledAction(CRON_NAME);
+        expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
+        const set = await cronPage.setNextExecutionDate(todayForCronField());
+        expect(set, '"Next Execution Date" should have been set to today').toBe(true);
+        ranManually = await cronPage.clickRunManually();
+        expect(ranManually, '"RUN MANUALLY" should have been pressed and the run should have come back').toBe(true);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - job run manually', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 3-4: Look for rows on the three chosen dates again, then read the total', async () => {

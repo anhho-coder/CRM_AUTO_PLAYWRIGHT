@@ -497,9 +497,14 @@ test.describe('CRM-2338_1.3.2.7 - Verify the Deal Element Total is updated autom
       const orderTotalRaw = await dealElementPage.getOrderLinesTotal();
       const orderTotal = parseFloat(orderTotalRaw.toFixed(2));
       console.log(`  Order Lines Total                             : ${orderTotal}`);
-      expect(orderTotal, `VIII.1: Order Lines Total (${orderTotal}) should equal Sum_Subtotal_After_All_Discounts (${sumSubtotalAfterAllDiscounts})`).toBe(sumSubtotalAfterAllDiscounts);
-      console.log(`✓ VIII.1: Total ${orderTotal} = Sum_Subtotal_After_All_Discounts ${sumSubtotalAfterAllDiscounts} — confirmed`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'VIII.1b - Total verified');
+      let __verifyPassed = false;
+      try {
+        expect(orderTotal, `VIII.1: Order Lines Total (${orderTotal}) should equal Sum_Subtotal_After_All_Discounts (${sumSubtotalAfterAllDiscounts})`).toBe(sumSubtotalAfterAllDiscounts);
+        console.log(`✓ VIII.1: Total ${orderTotal} = Sum_Subtotal_After_All_Discounts ${sumSubtotalAfterAllDiscounts} — confirmed`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'VIII.1b - Total verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -174,11 +174,15 @@ test.describe(`${TC} - Log note - field summary`, () => {
       console.log('===============================================');
       console.log('OVERALL: the field-summary log note reports the Email and the Show on website flag');
 
-      expect(note, 'the Contact carries a field-summary log note').not.toBeNull();
-      expect(fields['Email'], 'the Email the field-summary log note reports').toBe(DATA.email);
-      expect(fields['Show on website'], 'the Show on website flag the field-summary log note reports').toBe('true');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Log note - field summary`);
+      let __verifyPassed = false;
+      try {
+        expect(note, 'the Contact carries a field-summary log note').not.toBeNull();
+        expect(fields['Email'], 'the Email the field-summary log note reports').toBe(DATA.email);
+        expect(fields['Show on website'], 'the Show on website flag the field-summary log note reports').toBe('true');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - field summary`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

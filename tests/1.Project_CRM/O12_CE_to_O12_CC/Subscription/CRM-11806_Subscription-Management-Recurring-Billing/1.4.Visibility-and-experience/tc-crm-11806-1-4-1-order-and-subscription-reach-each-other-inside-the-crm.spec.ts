@@ -147,17 +147,23 @@ test.describe(`${TC_ID} - Order and subscription reach each other inside the CRM
       });
       await quotationPage.waitForPageLoad(CommonUtils.waitTimes.pageLoad).catch(() => {});
 
-      const backOnOrder = await quotationPage.getSalesOrderNumber().catch(() => '');
+      let __verifyPassed = false;
+      try {
+        const backOnOrder = await quotationPage.getSalesOrderNumber().catch(() => '');
 
-      logVerify(
-        'VP4',
-        `the "Sales" smart button returns to the same order "${orderNumber}"`,
-        `order number reached from the subscription = "${backOnOrder}"`,
-        backOnOrder.includes(orderNumber) || orderNumber.includes(backOnOrder),
-      );
+        logVerify(
+          'VP4',
+          `the "Sales" smart button returns to the same order "${orderNumber}"`,
+          `order number reached from the subscription = "${backOnOrder}"`,
+          backOnOrder.includes(orderNumber) || orderNumber.includes(backOnOrder),
+        );
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - back on the originating order').catch(() => {});
-      expect(backOnOrder, `VP4: the subscription should lead back to order "${orderNumber}" (reached: "${backOnOrder}")`).toContain(orderNumber);
+        expect(backOnOrder, `VP4: the subscription should lead back to order "${orderNumber}" (reached: "${backOnOrder}")`).toContain(orderNumber);
+
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - back on the originating order', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step(`Step 5: Search "${customerName}" in the Subscriptions list from inside the CRM`, async () => {

@@ -180,20 +180,24 @@ test.describe(`${TC} - Log note - Lead created`, () => {
       console.log('==================== VERIFY ====================');
       console.log(created.raw.split('\n').map((l) => '   | ' + l).join('\n'));
       console.log('===============================================');
-      expect(
-        created.raw.startsWith('Opportunity created'),
-        'the note must start with "Opportunity created"'
-      ).toBe(true);
-      expect(created.fields['Company Name'], 'Company Name in the note').toBe(DATA.companyName);
-      expect(created.fields['Contact Name'], 'Contact Name in the note').toBe(DATA.contactName);
-      expect(created.fields['Email'], 'Email in the note').toBe(DATA.email);
-      expect(created.fields['Stage'], 'Stage in the note').toBe('New');
-      expect(created.fields['Active'], 'Active in the note').toBe('true');
-      expect(Object.keys(created.fields), 'the note must report the system keys').toEqual(
-        expect.arrayContaining(['Priority (System)', 'Expected Revenue'])
-      );
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Log note - Lead created`);
+      let __verifyPassed = false;
+      try {
+        expect(
+          created.raw.startsWith('Opportunity created'),
+          'the note must start with "Opportunity created"'
+        ).toBe(true);
+        expect(created.fields['Company Name'], 'Company Name in the note').toBe(DATA.companyName);
+        expect(created.fields['Contact Name'], 'Contact Name in the note').toBe(DATA.contactName);
+        expect(created.fields['Email'], 'Email in the note').toBe(DATA.email);
+        expect(created.fields['Stage'], 'Stage in the note').toBe('New');
+        expect(created.fields['Active'], 'Active in the note').toBe('true');
+        expect(Object.keys(created.fields), 'the note must report the system keys').toEqual(
+          expect.arrayContaining(['Priority (System)', 'Expected Revenue'])
+        );
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Lead created`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

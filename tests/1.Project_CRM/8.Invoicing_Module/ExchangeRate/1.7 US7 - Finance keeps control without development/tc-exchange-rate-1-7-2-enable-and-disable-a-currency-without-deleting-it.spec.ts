@@ -154,13 +154,18 @@ describeBlock('Exchange-rate_1.7.2 - US7: enable and disable a currency without 
     });
 
     await test.step('Pre-condition: Record the currencies currently in use', async () => {
-      enabledBefore = await readEnabledSet();
-      console.log(`  - Currencies in use before anything is changed (${enabledBefore.length}): ${enabledBefore.join(', ')}`);
-      expect(
-        enabledBefore,
-        `${UNUSED_CURRENCY} must start OUT of use for this case to mean anything; the enabled list already holds it`
-      ).not.toContain(UNUSED_CURRENCY);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition - currencies in use').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        enabledBefore = await readEnabledSet();
+        console.log(`  - Currencies in use before anything is changed (${enabledBefore.length}): ${enabledBefore.join(', ')}`);
+        expect(
+          enabledBefore,
+          `${UNUSED_CURRENCY} must start OUT of use for this case to mean anything; the enabled list already holds it`
+        ).not.toContain(UNUSED_CURRENCY);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition - currencies in use', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     try {

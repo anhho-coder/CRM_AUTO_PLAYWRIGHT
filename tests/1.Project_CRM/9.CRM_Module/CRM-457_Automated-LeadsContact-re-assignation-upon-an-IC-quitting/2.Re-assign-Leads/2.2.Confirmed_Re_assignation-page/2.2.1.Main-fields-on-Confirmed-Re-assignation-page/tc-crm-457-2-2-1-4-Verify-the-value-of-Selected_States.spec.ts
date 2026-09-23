@@ -298,10 +298,15 @@ test.describe('CRM-457_2.2.1.4 - Verify Selected States = Country State on Confi
       console.log(`  Selected States received : "${selectedStatesText}"`);
       console.log(`  Expected (selected_country_state#1) : "${selectedCountryState1}"`);
 
-      expect(selectedStatesText).toBe(selectedCountryState1);
+      let __verifyPassed = false;
+      try {
+        expect(selectedStatesText).toBe(selectedCountryState1);
 
-      console.log(`✓ III.1: "Selected States" = "${selectedCountryState1}" - verified correctly on Confirmed Re-assignation page`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Selected States verified');
+        console.log(`✓ III.1: "Selected States" = "${selectedCountryState1}" - verified correctly on Confirmed Re-assignation page`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Selected States verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

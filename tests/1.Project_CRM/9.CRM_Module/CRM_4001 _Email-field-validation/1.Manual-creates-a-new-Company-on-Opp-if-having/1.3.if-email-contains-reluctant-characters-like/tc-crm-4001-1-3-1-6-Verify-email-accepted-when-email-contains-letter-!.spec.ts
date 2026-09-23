@@ -160,15 +160,19 @@ test.describe('CRM-4001_1.3.1.6 - Verify a valid email containing "!" is accepte
       console.log(`\n=== VERIFICATION ===`);
       console.log(`Verifying NO "${invalidEmailError}" dialog appears and the Opp is saved`);
 
-      const errorShown = await opportunityPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long);
-      expect(errorShown, `No "${invalidEmailError}" error should appear for a valid email ("!")`).toBeFalsy();
+      let __verifyPassed = false;
+      try {
+        const errorShown = await opportunityPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long);
+        expect(errorShown, `No "${invalidEmailError}" error should appear for a valid email ("!")`).toBeFalsy();
 
-      await opportunityPage.waitForRecordSaved();
-      createdUrl = page.url();
-      expect(createdUrl, 'The Opp should be saved (URL gains a record id)').toMatch(/[?#&]id=\d+/);
-      console.log(`✓ Verification passed: Opp saved at ${createdUrl} with no invalid-email error`);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - Opp saved');
+        await opportunityPage.waitForRecordSaved();
+        createdUrl = page.url();
+        expect(createdUrl, 'The Opp should be saved (URL gains a record id)').toMatch(/[?#&]id=\d+/);
+        console.log(`✓ Verification passed: Opp saved at ${createdUrl} with no invalid-email error`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Opp saved', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

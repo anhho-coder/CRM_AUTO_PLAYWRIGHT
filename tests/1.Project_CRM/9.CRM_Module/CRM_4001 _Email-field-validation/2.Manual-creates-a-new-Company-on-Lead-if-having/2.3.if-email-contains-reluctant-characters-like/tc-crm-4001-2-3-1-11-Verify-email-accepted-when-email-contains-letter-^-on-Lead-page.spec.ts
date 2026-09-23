@@ -157,18 +157,22 @@ test.describe('CRM-4001_2.3.1.11 - Verify a valid email containing "^" is accept
     // ==============================================================
 
     await test.step('Step 5 - Verification: Lead saved with no "email is invalid" error', async () => {
-      console.log(`\n=== VERIFICATION ===`);
-      console.log(`Verifying NO "${invalidEmailError}" dialog appears and the Lead is saved`);
+      let __verifyPassed = false;
+      try {
+        console.log(`\n=== VERIFICATION ===`);
+        console.log(`Verifying NO "${invalidEmailError}" dialog appears and the Lead is saved`);
 
-      const errorShown = await leadPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long);
-      expect(errorShown, `No "${invalidEmailError}" error should appear for a valid email ("^")`).toBeFalsy();
+        const errorShown = await leadPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long);
+        expect(errorShown, `No "${invalidEmailError}" error should appear for a valid email ("^")`).toBeFalsy();
 
-      await leadPage.waitForRecordSaved();
-      createdUrl = page.url();
-      expect(createdUrl, 'The Lead should be saved (URL gains a record id)').toMatch(/[?#&]id=\d+/);
-      console.log(`✓ Verification passed: Lead saved at ${createdUrl} with no invalid-email error`);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Verification - Lead saved');
+        await leadPage.waitForRecordSaved();
+        createdUrl = page.url();
+        expect(createdUrl, 'The Lead should be saved (URL gains a record id)').toMatch(/[?#&]id=\d+/);
+        console.log(`✓ Verification passed: Lead saved at ${createdUrl} with no invalid-email error`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Verification - Lead saved', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

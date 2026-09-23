@@ -121,26 +121,29 @@ test.describe('CRM-12059_1.4 - Merge into a historical contact with MULTIPLE Sta
       console.log('\n=== PRE-CONDITION II: Pinned historical multi-opp customer + its EMAIL DOMAIN ===');
       console.log(`  - Pinned destination : "${HISTORICAL_CONTACT.name}" (#${HISTORICAL_CONTACT.id})`);
 
+      let __verifyPassed = false;
+      try {
+        // Open the contact once and read BOTH requirements off its form: the MULTIPLE-opportunities
+        // count (mirrors the reported Loxodonta AB contact) and the EMAIL DOMAIN (the merge key).
+        // openContactFormByUrl gates on the record actually being rendered - a hash-route hop
+        // otherwise reads the PREVIOUS form's fields.
+        const custUrl = `${new URL(page.url()).origin}/web#id=${HISTORICAL_CONTACT.id}&model=res.partner&view_type=form`;
+        const rendered = await contactPage.openContactFormByUrl(custUrl, HISTORICAL_CONTACT.name);
+        expect(rendered, `the pinned contact form (#${HISTORICAL_CONTACT.id}) must render`).toBe(true);
+        destOppCount = await contactPage.getOpportunityStatCount();
+        const email = ((await contactPage.getEmailReadonly()) || '').trim();
+        const domain = extractEmailDomain(email);
+        console.log(`  - contact email="${email}" -> domain="${domain}" (opportunities: ${destOppCount})`);
+        expect(destOppCount, 'The pinned historical destination must carry MULTIPLE high-stage opportunities').toBeGreaterThanOrEqual(2);
+        expect(domain, 'the pinned contact must expose an email domain - it is the merge key').not.toBe('');
+        expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
 
-      // Open the contact once and read BOTH requirements off its form: the MULTIPLE-opportunities
-      // count (mirrors the reported Loxodonta AB contact) and the EMAIL DOMAIN (the merge key).
-      // openContactFormByUrl gates on the record actually being rendered - a hash-route hop
-      // otherwise reads the PREVIOUS form's fields.
-      const custUrl = `${new URL(page.url()).origin}/web#id=${HISTORICAL_CONTACT.id}&model=res.partner&view_type=form`;
-      const rendered = await contactPage.openContactFormByUrl(custUrl, HISTORICAL_CONTACT.name);
-      expect(rendered, `the pinned contact form (#${HISTORICAL_CONTACT.id}) must render`).toBe(true);
-      destOppCount = await contactPage.getOpportunityStatCount();
-      const email = ((await contactPage.getEmailReadonly()) || '').trim();
-      const domain = extractEmailDomain(email);
-      console.log(`  - contact email="${email}" -> domain="${domain}" (opportunities: ${destOppCount})`);
-      expect(destOppCount, 'The pinned historical destination must carry MULTIPLE high-stage opportunities').toBeGreaterThanOrEqual(2);
-      expect(domain, 'the pinned contact must expose an email domain - it is the merge key').not.toBe('');
-      expect(isPublicEmailDomain(domain), `"${domain}" must be a company domain, not a public/free one shared by unrelated contacts`).toBe(false);
-
-
-      historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
-      console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), ${destOppCount} opportunities, email domain = "@${domain}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - historical customer + email domain confirmed').catch(() => {});
+        historical = { name: HISTORICAL_CONTACT.name, id: HISTORICAL_CONTACT.id, url: custUrl, email, domain };
+        console.log(`  ✓ Historical destination confirmed = "${historical.name}" (#${historical.id}), ${destOppCount} opportunities, email domain = "@${domain}"`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - historical customer + email domain confirmed', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------
@@ -152,11 +155,15 @@ test.describe('CRM-12059_1.4 - Merge into a historical contact with MULTIPLE Sta
       console.log(`  - Name  : ${historical.name}   (shared with the historical contact)`);
       console.log(`  - Email : ${sourceEmail}   (inside the shared domain "@${historical.domain}")`);
       source = await createCompanyContact(page, contactPage, historical.name, sourceEmail);
-      expect(source.id, 'source contact must have an ID').toMatch(/^\d+$/);
-      expect(source.id).not.toBe(historical.id);
-      expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - fresh source contact created').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(source.id, 'source contact must have an ID').toMatch(/^\d+$/);
+        expect(source.id).not.toBe(historical.id);
+        expect(extractEmailDomain(sourceEmail), 'the fresh source email must sit in the historical email domain').toBe(historical.domain);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - fresh source contact created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ----------------------------------------------------------------------------------------
@@ -175,8 +182,13 @@ test.describe('CRM-12059_1.4 - Merge into a historical contact with MULTIPLE Sta
       console.log(`  - rows matching "${historical.name}": ${rows} unfiltered -> ${companyRows} company record(s)`);
       const selected = await contactPage.selectContactRowsByExactName(historical.name);
       // Exactly two exact-name records must be selected: the historical destination + the fresh source.
-      expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce I - historical + source selected').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(selected, 'exactly the historical contact and the fresh source must be selected').toBe(2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce I - historical + source selected', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let destinationText = '';

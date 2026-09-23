@@ -191,14 +191,18 @@ test.describe(`${TC} - Timezone derived from the Address`, () => {
           `although "${DATA.timezonePicked}" was picked on the form`
       );
 
-      expect(addressBlock, 'the Address block carries the State the Timezone is derived from').toContain(DATA.state);
-      expect(addressBlock, 'the Address block carries the Country the Timezone is derived from').toContain(DATA.country);
-      expect(timezoneSaved, 'the Timezone the saved Contact reports, derived from its Country and State').toBe(
-        DATA.timezoneExpected
-      );
-      expect(timezoneSaved, 'the Address wins over the Timezone picked on the form').not.toBe(DATA.timezonePicked);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Timezone derived from the Address`);
+      let __verifyPassed = false;
+      try {
+        expect(addressBlock, 'the Address block carries the State the Timezone is derived from').toContain(DATA.state);
+        expect(addressBlock, 'the Address block carries the Country the Timezone is derived from').toContain(DATA.country);
+        expect(timezoneSaved, 'the Timezone the saved Contact reports, derived from its Country and State').toBe(
+          DATA.timezoneExpected
+        );
+        expect(timezoneSaved, 'the Address wins over the Timezone picked on the form').not.toBe(DATA.timezonePicked);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Timezone derived from the Address`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

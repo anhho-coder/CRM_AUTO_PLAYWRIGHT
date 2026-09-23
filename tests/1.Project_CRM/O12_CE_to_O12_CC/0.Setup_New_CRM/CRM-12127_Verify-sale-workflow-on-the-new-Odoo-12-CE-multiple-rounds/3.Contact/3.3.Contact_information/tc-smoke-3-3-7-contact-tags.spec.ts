@@ -174,10 +174,14 @@ test.describe(`${TC} - Tags`, () => {
       console.log('===============================================');
       console.log(`OVERALL: the saved Contact carries the Tag "${chosenTag}"`);
 
-      expect(tags, 'the Tag selected at creation is saved on the Contact').toContain(chosenTag);
-      expect(tags.length, 'the NUMBER of Tags on the saved Contact').toBe(1);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Tags`);
+      let __verifyPassed = false;
+      try {
+        expect(tags, 'the Tag selected at creation is saved on the Contact').toContain(chosenTag);
+        expect(tags.length, 'the NUMBER of Tags on the saved Contact').toBe(1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tags`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

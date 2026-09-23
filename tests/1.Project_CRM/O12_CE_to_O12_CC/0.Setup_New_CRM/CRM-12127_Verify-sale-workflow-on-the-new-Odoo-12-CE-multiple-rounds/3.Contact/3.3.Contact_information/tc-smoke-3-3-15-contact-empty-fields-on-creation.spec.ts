@@ -192,9 +192,13 @@ test.describe(`${TC} - Empty fields on creation`, () => {
       console.log('===============================================');
       console.log(`OVERALL: ${EXPECTED_EMPTY.length - filled.length}/${EXPECTED_EMPTY.length} fields are empty on a newly created Contact`);
 
-      expect(filled, 'the Contact information fields that must stay empty on a newly created Contact').toEqual([]);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Empty fields on creation`);
+      let __verifyPassed = false;
+      try {
+        expect(filled, 'the Contact information fields that must stay empty on a newly created Contact').toEqual([]);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Empty fields on creation`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

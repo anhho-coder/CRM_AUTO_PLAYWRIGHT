@@ -184,11 +184,15 @@ test.describe(`${TC} - Checkbox defaults`, () => {
       console.log('===============================================');
       console.log('OVERALL: a Contact created by hand is flagged "Is created manually" and "Show on website"');
 
-      expect(actual.map((a) => ({ field: a.field, checked: a.checked })),
-        'the checkbox states of a newly created Contact').toEqual(
-        EXPECTED.map((e) => ({ field: e.field, checked: e.checked })));
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Checkbox defaults`);
+      let __verifyPassed = false;
+      try {
+        expect(actual.map((a) => ({ field: a.field, checked: a.checked })),
+          'the checkbox states of a newly created Contact').toEqual(
+          EXPECTED.map((e) => ({ field: e.field, checked: e.checked })));
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Checkbox defaults`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

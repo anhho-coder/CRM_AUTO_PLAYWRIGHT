@@ -137,9 +137,14 @@ test.describe('CRM-10780_2.1.1.12 - Try to apply multiple promotions simultaneou
       promoNameA = createdA.name;
       promoUrlA = createdA.url;
       console.log(`✓ Promotion A created: "${promoNameA}" @ ${promoUrlA}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-A - Promotion A created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion A should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion A should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-A - Promotion A created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition B: Sales Manager creates Promotion B (Automatically Applied, 5% on order)', async () => {
@@ -147,9 +152,14 @@ test.describe('CRM-10780_2.1.1.12 - Try to apply multiple promotions simultaneou
       promoNameB = createdB.name;
       promoUrlB = createdB.url;
       console.log(`✓ Promotion B created: "${promoNameB}" @ ${promoUrlB}`);
-      expect(await promotionPage.isInEditMode(), 'Promotion B should have saved').toBeFalsy();
-      expect(await promotionPage.isPromotionActive(), 'Promotion B should be active').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-B - Promotion B created');
+      let __verifyPassed = false;
+      try {
+        expect(await promotionPage.isInEditMode(), 'Promotion B should have saved').toBeFalsy();
+        expect(await promotionPage.isPromotionActive(), 'Promotion B should be active').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-B - Promotion B created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     // ============================================================
@@ -234,8 +244,13 @@ test.describe('CRM-10780_2.1.1.12 - Try to apply multiple promotions simultaneou
       await dealElementPage.addProductLine('[A2144B]', 1, 'Socket');
       const lineCount = await dealElementPage.getOrderLineCount();
       console.log(`✓ Step 2: Deal Element opened + product added (order lines = ${lineCount})`);
-      expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - Deal Element with product');
+      let __verifyPassed = false;
+      try {
+        expect(lineCount, 'Order should contain the added product line').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2 - Deal Element with product', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 3: Try to apply both promotion A and B to the deal', async () => {
@@ -261,33 +276,46 @@ test.describe('CRM-10780_2.1.1.12 - Try to apply multiple promotions simultaneou
       const setA = await dealElementPage.setPromotion(promoNameA);
       expect(setA, 'Promotion A should be settable in the "Promotion" field (edit mode)').toBeTruthy();
       await dealElementPage.save();
-      const totalAfterA = await dealElementPage.getAmountTotal();
-      const linesAfterA = await dealElementPage.getOrderLineCount();
-      const aLinePresent = await dealElementPage.isProductInOrderLines(promoNameA);
-      console.log(`  After Promotion A: total=${totalAfterA}, order lines=${linesAfterA}, A line present=${aLinePresent}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3a - Promotion A applied');
-      expect(aLinePresent || linesAfterA > linesBefore, 'Promotion A should be applied as a discount line').toBeTruthy();
-      expect(totalAfterA, 'Total should drop after applying Promotion A').toBeLessThan(totalBefore);
+      let __verifyPassedA = false;
+      // Hoisted out of the try: the second verification block below reads linesAfterA, so it must
+      // outlive this block scope (it was a step-level const before the evidence capture was added).
+      let linesAfterA = 0;
+      try {
+        const totalAfterA = await dealElementPage.getAmountTotal();
+        linesAfterA = await dealElementPage.getOrderLineCount();
+        const aLinePresent = await dealElementPage.isProductInOrderLines(promoNameA);
+        console.log(`  After Promotion A: total=${totalAfterA}, order lines=${linesAfterA}, A line present=${aLinePresent}`);
+        expect(aLinePresent || linesAfterA > linesBefore, 'Promotion A should be applied as a discount line').toBeTruthy();
+        expect(totalAfterA, 'Total should drop after applying Promotion A').toBeLessThan(totalBefore);
+        __verifyPassedA = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3a - Promotion A applied', passed: __verifyPassedA }).catch(() => {});
+      }
 
       // Try to ALSO apply Promotion B. The Many2one field can only hold one value, so this REPLACES A.
       const setB = await dealElementPage.setPromotion(promoNameB);
       expect(setB, 'Attempting to set Promotion B should be possible (it replaces A in the single field)').toBeTruthy();
       await dealElementPage.save();
-      const totalAfterB = await dealElementPage.getAmountTotal();
-      const linesAfterB = await dealElementPage.getOrderLineCount();
-      const aStillPresent = await dealElementPage.isProductInOrderLines(promoNameA);
-      const bPresent = await dealElementPage.isProductInOrderLines(promoNameB);
-      console.log(`  After trying Promotion B: total=${totalAfterB}, order lines=${linesAfterB}, A still present=${aStillPresent}, B present=${bPresent}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3b - Tried to apply Promotion B');
+      let __verifyPassedB = false;
+      try {
+        const totalAfterB = await dealElementPage.getAmountTotal();
+        const linesAfterB = await dealElementPage.getOrderLineCount();
+        const aStillPresent = await dealElementPage.isProductInOrderLines(promoNameA);
+        const bPresent = await dealElementPage.isProductInOrderLines(promoNameB);
+        console.log(`  After trying Promotion B: total=${totalAfterB}, order lines=${linesAfterB}, A still present=${aStillPresent}, B present=${bPresent}`);
 
-      // Expected (Jira): "Only able to apply 1 promotion" - the order carries exactly ONE promotion.
-      // The single-value Promotion field means B replaces A: only B (5%) remains, not both A+B.
-      expect(aStillPresent && bPresent,
-        'The order must NOT carry BOTH Promotion A and Promotion B simultaneously (only 1 promotion allowed)').toBeFalsy();
-      // After replacement only one discount line should exist (same line count as a single applied promo).
-      expect(linesAfterB,
-        'Applying a second promotion must not accumulate a second discount line (only 1 promotion applied)').toBeLessThanOrEqual(linesAfterA);
-      console.log(`✅ Only one promotion is applied at a time (A=${aStillPresent}, B=${bPresent}); the system does not carry both.`);
+        // Expected (Jira): "Only able to apply 1 promotion" - the order carries exactly ONE promotion.
+        // The single-value Promotion field means B replaces A: only B (5%) remains, not both A+B.
+        expect(aStillPresent && bPresent,
+          'The order must NOT carry BOTH Promotion A and Promotion B simultaneously (only 1 promotion allowed)').toBeFalsy();
+        // After replacement only one discount line should exist (same line count as a single applied promo).
+        expect(linesAfterB,
+          'Applying a second promotion must not accumulate a second discount line (only 1 promotion applied)').toBeLessThanOrEqual(linesAfterA);
+        console.log(`✅ Only one promotion is applied at a time (A=${aStillPresent}, B=${bPresent}); the system does not carry both.`);
+        __verifyPassedB = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 3b - Tried to apply Promotion B', passed: __verifyPassedB }).catch(() => {});
+      }
     });
   });
 });

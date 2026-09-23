@@ -178,11 +178,15 @@ test.describe(`${TC} - Priority default on the CREATE form`, () => {
       console.log(`  label        : expected "Low" | actual "${formDefaultPriority.label}"`);
       console.log(`  filled stars : expected 0 | actual ${formDefaultPriority.filledStars} of ${formDefaultPriority.totalStars}`);
       console.log('===============================================');
-      expect(formDefaultPriority.label, 'a new Lead form must start at Low').toBe('Low');
-      expect(formDefaultPriority.filledStars, 'Low must fill no star').toBe(0);
-      expect(formDefaultPriority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Priority default on the CREATE form`);
+      let __verifyPassed = false;
+      try {
+        expect(formDefaultPriority.label, 'a new Lead form must start at Low').toBe('Low');
+        expect(formDefaultPriority.filledStars, 'Low must fill no star').toBe(0);
+        expect(formDefaultPriority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Priority default on the CREATE form`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

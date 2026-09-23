@@ -414,10 +414,15 @@ test.describe('CRM-457_2.2.2.4 - Verify value at "Total" text = 2/2 after confir
       console.log(`  Normalized     : "${normalizedTotal}"`);
       console.log(`  Expected       : "2/2"`);
 
-      expect(normalizedTotal).toBe('2/2');
+      let __verifyPassed = false;
+      try {
+        expect(normalizedTotal).toBe('2/2');
 
-      console.log('✓ III.1: "Total" = "2/2" - verified correctly after confirming re-assignation with 2 leads');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Total 2-2 verified');
+        console.log('✓ III.1: "Total" = "2/2" - verified correctly after confirming re-assignation with 2 leads');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Total 2-2 verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

@@ -294,10 +294,15 @@ test.describe('CRM-457_2.2.2.2 - Verify Stage of process = "TRANSFER" after conf
       console.log(`  Stage of process received : "${stageOfProcess}"`);
       console.log(`  Expected                  : "TRANSFER"`);
 
-      expect(stageOfProcess).toBe('TRANSFER');
+      let __verifyPassed = false;
+      try {
+        expect(stageOfProcess).toBe('TRANSFER');
 
-      console.log(`✓ III.1: Stage of process = "TRANSFER" - verified correctly after confirming re-assignation`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'III.1 - Stage of process verified');
+        console.log(`✓ III.1: Stage of process = "TRANSFER" - verified correctly after confirming re-assignation`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'III.1 - Stage of process verified', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Final Summary', async () => {

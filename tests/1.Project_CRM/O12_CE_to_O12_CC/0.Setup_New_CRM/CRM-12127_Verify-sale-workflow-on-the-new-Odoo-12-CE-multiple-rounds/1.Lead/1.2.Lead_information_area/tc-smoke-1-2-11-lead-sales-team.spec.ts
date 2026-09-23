@@ -183,9 +183,13 @@ test.describe(`${TC} - Sales Team`, () => {
       console.log(`  waited     : ${assignment.totalWaitTime}s over ${assignment.attemptCount} checks`);
       console.log(`  Sales Team : "${salesTeam}"`);
       console.log('===============================================');
-      expect(salesTeam, 'Sales Team must be filled by the assignment job').not.toBe('');
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Sales Team`);
+      let __verifyPassed = false;
+      try {
+        expect(salesTeam, 'Sales Team must be filled by the assignment job').not.toBe('');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sales Team`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

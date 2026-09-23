@@ -183,12 +183,16 @@ test.describe(`${TC} - CREATE button`, () => {
       console.log('===============================================');
       console.log('OVERALL: CREATE opens a blank Contact form in edit mode');
 
-      expect(editable, 'the CREATE button opens the Contact form in EDIT mode').toBe(true);
-      expect(nameOnForm, 'the Name field of the blank CREATE form').toBe('');
-      expect(emailOnForm, 'the Email field of the blank CREATE form').toBe('');
-      expect(cp, 'the control-panel buttons of the blank CREATE form').toEqual(EXPECTED_CP);
-
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - CREATE button`);
+      let __verifyPassed = false;
+      try {
+        expect(editable, 'the CREATE button opens the Contact form in EDIT mode').toBe(true);
+        expect(nameOnForm, 'the Name field of the blank CREATE form').toBe('');
+        expect(emailOnForm, 'the Email field of the blank CREATE form').toBe('');
+        expect(cp, 'the control-panel buttons of the blank CREATE form').toEqual(EXPECTED_CP);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - CREATE button`, passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });
