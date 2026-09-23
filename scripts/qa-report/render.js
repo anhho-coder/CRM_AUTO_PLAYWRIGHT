@@ -16,6 +16,9 @@
 const fs = require('fs');
 const path = require('path');
 const cfg = require('./config');
+// Which frozen Allure report backs a given range — shared with the collector so the
+// "where each number comes from" hover shows the file that was actually read.
+const { periodFor: allurePeriodFor } = require('./sources/allure-exec');
 
 // PDP (Personal Development Plan) content for the hidden pdp.html page. Static —
 // transcribed from the team PDP sheet; loaded here so the page renders on Jenkins
@@ -404,7 +407,7 @@ function jqlNote(metrics, ranges, def, kpiJql) {
     worklog = byKey(cfg.JIRA_WORKLOG_METRICS), unique = byKey(cfg.JIRA_UNIQUE_METRICS),
     frd = byKey(cfg.JIRA_FRD_METRICS),
     derived = byKey(cfg.JIRA_DERIVED_METRICS), trans = byKey(cfg.JIRA_TRANSITION_METRICS),
-    split = byKey(cfg.JIRA_SPLIT_METRICS);
+    split = byKey(cfg.JIRA_SPLIT_METRICS), allure = byKey(cfg.ALLURE_PERIOD_METRICS);
   // Day before an ISO date: worklogDate > (from − 1 day) == worklogDate >= from,
   // written the way the team's sample "Unique Executed Test Cases" JQL is.
   const dayBefore = (iso) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10); };
@@ -488,6 +491,20 @@ function jqlNote(metrics, ranges, def, kpiJql) {
         code(`${scope} AND status changed to (${changed}) during ("D 00:00", "D 23:59") BY T`) +
         `<br><span class="muted">daily counts summed, then split at ${esc(m.claudeCutoff)}: with Claude = D ≥ ${esc(m.claudeCutoff)}, legacy = D &lt; ${esc(m.claudeCutoff)}, total = both (no extra query — reuses “Automation Test cases created”).</span>`;
     }
+    if (allure.has(meta.key)) {
+      // Not a JQL — this metric does not touch Jira. Show the exact file the number was
+      // read from for the selected range, so a reader can open it on the agent and check.
+      const p = allurePeriodFor(r.key, r.from) || { scope: '?', key: '?' };
+      // Joined with a backslash CONSTANT, not an escape in a template literal — a lone
+      // "\s"/"\w" there is swallowed by the parser and the path renders without separators.
+      const SEP = String.fromCharCode(92);
+      const file = [allure.get(meta.key).reportRoot, p.scope, p.key, 'widgets', 'suites.json'].join(SEP);
+      return `NOT Jira — the frozen Allure report for this period, on the Jenkins agent: ` +
+        code(file) +
+        `<br>value = ${code('Σ items[].statistic.total')} <span class="muted">— one row per UNIQUE test case (re-runs collapsed). ` +
+        `${code('widgets/summary.json')} is the ALL-RUNS number and is deliberately larger. ` +
+        `Trend bars read the matching daily / weekly / monthly reports, so they do not sum to this total.</span>`;
+    }
     if (derived.has(meta.key)) {
       const m = derived.get(meta.key);
       const proj = m.project ? `project = ${m.project} AND ` : '';
@@ -514,6 +531,7 @@ function jqlNote(metrics, ranges, def, kpiJql) {
     '“Unique Executed Test Cases” instead runs ONE window query per tester over the whole range, so a test case worked on many days counts ONCE — it is the distinct-count counterpart of “Manual Test cases executed” (which sums per day and can be larger). Its trend bars are per-bucket distinct counts, so they need not sum to the range total.',
     '“Executed test cases per day” is a RATE derived from that distinct count: per calendar-day = executed ÷ working days (Mon–Fri minus VN public holidays), and per man-day = executed ÷ test-case-execution man-days, where man-days = test-case worklog hours ÷ 8 × the tester’s workload. The per-man-day team figure is the blended rate (Σ executed ÷ Σ man-days).',
     '“Test cases automated — with vs without Claude” adds no query: it re-uses the “Automation Test cases created” daily series and splits each range at the team’s Claude-adoption date (2026-06-05, first Claude co-authored commit) — with Claude = resolved on/after it, legacy = before it, Total = both (so Total matches that card for the same range).',
+    '“Unique Automation Test cases executed” is the only metric here that never touches Jira. It reads the frozen Allure report this Jenkins host publishes for the matching period (<code>widgets/suites.json</code> = one row per unique test case, re-runs collapsed) — one report per range, because “unique” is not additive: summing the daily reports over Jun–Sep 2026 gives 6845 where the true unique for that span is 1187. Its Trend bars are per-bucket uniques and do NOT sum to the range total. Allure result buckets start 2026-06-19, so earlier quarters read 0 — nothing was archived, not nothing was executed. The “By IC” split is an attribution (Allure records which spec ran, never who ran it), not a measurement.',
     '“Leaked defects” counts the support tickets the QA review CLASSIFIED as a leak — <code>issuetype = "Post-EA - Support Ticket"</code> with <code>"Support Ticket Type" = "Leaked Defect"</code> — the same rule as the “Bug leakage” row on the Support ticket tab, so the two agree. It is whole-team (no reporter clause; non-QA reporters land in “Other”) and carries NO priority filter: every classified leak counts. Changed 2026-08-28 — it previously counted <code>"Leaked defect priority" is not EMPTY</code>, P1–P3.',
     'Every <code>created</code>-based query ends at <code>"&lt;to&gt; 23:59"</code>: a bare upper date means 00:00 of that day in JQL, which would drop everything created ON the last day (and these ranges end today). The report counts the last day, so the query shown here does too.',
   ];
@@ -2366,7 +2384,7 @@ function main() {
   // Metric metadata by key (Odoo KPI + all Jira-sourced metrics) so each section
   // page can pull exactly the metrics it lists in config.SECTIONS, in that order.
   const metaByKey = {};
-  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_FRD_METRICS, ...cfg.JIRA_TRANSITION_METRICS, ...cfg.JIRA_SPLIT_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_LIST_METRICS, ...cfg.JIRA_DEFECT_METRICS]
+  [...cfg.KPI_METRICS, ...cfg.JIRA_METRICS, ...cfg.JIRA_WORKLOG_METRICS, ...cfg.JIRA_UNIQUE_METRICS, ...cfg.JIRA_FRD_METRICS, ...cfg.JIRA_TRANSITION_METRICS, ...cfg.JIRA_SPLIT_METRICS, ...cfg.JIRA_DERIVED_METRICS, ...cfg.JIRA_LIST_METRICS, ...cfg.JIRA_DEFECT_METRICS, ...cfg.ALLURE_PERIOD_METRICS]
     .forEach((m) => { metaByKey[m.key] = m; });
 
   const subline = `Team: ${esc(data.members.join(', '))} · Manager: Anh Ho` +

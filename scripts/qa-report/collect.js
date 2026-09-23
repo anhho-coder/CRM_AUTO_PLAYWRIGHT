@@ -21,6 +21,7 @@ const { collectSupportClassification } = require('./sources/support-classificati
 const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = require('./sources/executed-per-day');
 const { collectTransitionMetrics } = require('./sources/automation-tc');
 const { buildAutomationClaudeSplit } = require('./sources/automation-split');
+const { collectAllurePeriodMetrics } = require('./sources/allure-exec');
 const { collectStuckMetrics } = require('./sources/stuck');
 const { collectDefectQuality } = require('./sources/defect-quality');
 const { collectAutomationCoverage } = require('./sources/automation-coverage');
@@ -268,6 +269,27 @@ async function main() {
   } catch (e) {
     data.sources.jiraAutomationTc = { status: 'error', message: String(e.message || e) };
     console.error('[collect] Jira automation test-case source failed:', e.message || e);
+  }
+
+  // --- ALLURE metric(s) (Unique Automation Test cases executed): NOT Jira. Reads the
+  //     frozen Allure period reports this Jenkins host publishes (C:allureperiods  //     report<scope><periodKey>widgetssuites.json — one row per UNIQUE test case,
+  //     re-runs collapsed). Each range reads the ONE report whose period matches it, so
+  //     there is no daily series to sum: "unique" is not additive (see
+  //     sources/allure-exec.js). Wrapped independently — a missing report root marks
+  //     only this source failed, so a zero on the page always means "the report exists
+  //     and is empty", never "the collector could not look".
+  try {
+    const allure = collectAllurePeriodMetrics(cfg.ALLURE_PERIOD_METRICS, ranges, members, now);
+    for (const m of cfg.ALLURE_PERIOD_METRICS) {
+      const d = allure[m.key];
+      if (!d) continue;
+      data.metrics[m.key] = { label: d.label, kpiName: d.kpiName, ranges: d.ranges };
+      if (d.quarterly) data.quarterly[m.key] = d.quarterly;
+    }
+    data.sources.allurePeriods = { status: 'ok', source: 'allure frozen period reports (unique test cases)' };
+  } catch (e) {
+    data.sources.allurePeriods = { status: 'error', message: String(e.message || e) };
+    console.error('[collect] Allure period source failed:', e.message || e);
   }
 
   // --- Jira LIST metric(s) (STUCK — Dev done, QA not tested): issues currently in

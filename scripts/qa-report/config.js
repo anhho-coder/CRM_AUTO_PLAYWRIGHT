@@ -392,6 +392,62 @@ const JIRA_SPLIT_METRICS = [
   },
 ];
 
+// --- ALLURE PERIOD metrics (Automation test page · BOTH views) ---------------
+// NOT a Jira metric and NOT an additive daily series: the value comes from the
+// FROZEN Allure period reports the CRM-Allure-{Daily,Weekly,Monthly,Quarterly,Yearly}
+// jobs publish on this Jenkins host (ci/Jenkinsfile.period-allure ->
+// ci/allure-period-report.ps1). Each of those jobs merges the dated result buckets
+// `C:\allure\periods\results\<yyyy-MM-dd>\<JOB>\*.json` for its period, DEDUPES
+// them to the latest result per test identity (ci/allure-dedupe-latest.js) and
+// generates a report under `C:\allure\periods\report\<scope>\<periodKey>\`.
+//
+// WHICH WIDGET: `widgets/summary.json` is deliberately overwritten after generate with
+// the PRE-dedupe all-runs statistic (ci/allure-apply-allruns.js), so it counts retries
+// and re-runs. `widgets/suites.json` is left as generated — ONE ROW PER UNIQUE TEST
+// CASE — so the unique count is the sum of its items' `statistic.total`. That is the
+// same number the Allure report's Suites section shows, and the same one the weekly
+// stakeholder email reports as "Unique TCs executed".
+//
+// WHY NOT A DAILY SERIES: "unique" is not additive. A test executed on Monday and
+// again on Wednesday is 2 daily uniques but 1 unique for the week. Summing the daily
+// reports over 2026-06-18..2026-09-22 gives 6845; the yearly report's true unique for
+// the same span is 1187. So each range reads the ONE frozen report whose scope matches
+// it (see sources/allure-exec.js): currentWeek/lastWeek -> weekly, thisMonth ->
+// monthly, this/lastQuarter -> quarterly, this/lastYear -> yearly, and the Quarterly
+// view's bars -> quarterly. The Trend bars are per-bucket uniques from the matching
+// daily / weekly / monthly reports, so they do NOT sum to the range total by design.
+//
+// IC SPLIT: Allure records no tester — a result file says which spec ran, never who
+// ran it. `attributeTo` therefore assigns the whole count to one IC (the automation
+// owner) so the card keeps the same "By IC" table as "Automation Test cases created".
+// It is an ATTRIBUTION, not a measurement; the card's ℹ️ note says so.
+//
+// DATA START: the dated buckets begin 2026-06-19, so every quarter before Q2-2026
+// reads 0 — no runs were archived, not "no tests were executed".
+const ALLURE_PERIOD_METRICS = [
+  {
+    key: 'uniqueAutomationTcExecuted',
+    label: 'Unique Automation Test cases executed',
+    kpiName: 'Allure · Distinct automation test cases executed in the period (re-runs collapsed)',
+    // Root of the frozen period reports on the Jenkins agent. Override for a local run.
+    reportRoot: process.env.ALLURE_PERIODS_REPORT_ROOT || 'C:\\allure\\periods\\report',
+    attributeTo: 'Anh Ho',   // the IC the whole count is attributed to (see above)
+    dataFrom: '2026-06-19',  // first dated result bucket on the Jenkins host
+    quarterWindow: 4,        // bars in the Quarterly view: 3 trailing quarters + the current one
+    quarterly: true,         // also show an actual-only card in the Automation Quarterly view
+    byLabel: 'By IC',
+    noteTitle: 'How this is counted',
+    note: [
+      'Source: the frozen Allure period reports on this Jenkins host (CRM-Allure-Daily / Weekly / Monthly / Quarterly / Yearly), not Jira.',
+      'UNIQUE = one row per test case, re-runs and retries collapsed — the sum of widgets/suites.json. The Allure Overview number is larger because it counts every run.',
+      'Each range reads the ONE Allure report whose period matches it: Current/Last week → the weekly report, This month → monthly, This/Last quarter → quarterly, This/Last year → yearly.',
+      'Trend bars are per-bucket uniques (per day, per week or per month). They do NOT add up to the range total — a test executed in two buckets is 1 unique for the range but shows in both bars.',
+      'By IC: Allure records which spec ran, never who ran it. The whole count is attributed to Anh Ho as the automation owner — an attribution, not a measurement.',
+      'Allure result buckets start 2026-06-19. Quarters before Q2-2026 read 0 because nothing was archived, not because nothing was executed.',
+    ],
+  },
+];
+
 // --- Jira LIST metrics (QA CRM · Jira · Dashboard page) -----------------------
 // A metric whose value is a LIST of issues, not a count aggregated per day. The
 // "QA CRM - Jira - Dashboard" page (the leftmost tab / default landing) renders
@@ -640,9 +696,10 @@ const SUPPORT_CLASSIFICATION = {
 // The 3rd tab, "Worklog allocation", is the separate worklog page. Each section
 // lists its metric keys IN DISPLAY ORDER; render.js builds one page per section
 // (with the Quarterly KPI + By range sub-views) showing ONLY these metrics.
-// Metrics with no calc yet — support tickets verified, automation TCs executed,
-// automation run frequency — are simply not listed, so they don't render until
-// added here (and wired in collect.js).
+// Metrics with no calc yet — support tickets verified, automation run frequency —
+// are simply not listed, so they don't render until added here (and wired in
+// collect.js). "Unique Automation Test cases executed" was added 2026-09-23 and is
+// the one metric that does NOT come from Jira (see ALLURE_PERIOD_METRICS).
 // The "QA CRM - Jira - Dashboard" section (kind: 'list') is the LEFTMOST tab and
 // the default landing page (index.html); render.js gives it its own list-style
 // layout (headline + issue table) rather than the count-card layout the other
@@ -685,7 +742,7 @@ const SECTIONS = [
   {
     key: 'automation',
     label: 'Automation test',
-    metricKeys: ['automationTcCreated', 'automationTcClaudeSplit', 'bugsFoundByAutomation'],
+    metricKeys: ['automationTcCreated', 'uniqueAutomationTcExecuted', 'automationTcClaudeSplit', 'bugsFoundByAutomation'],
   },
 ];
 
@@ -789,7 +846,7 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR, CACHE_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,
