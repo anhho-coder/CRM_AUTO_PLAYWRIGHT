@@ -38,7 +38,8 @@
  * concurrent — negligible next to the per-day count metrics; JiraClient retry applies.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, JIRA_DEFECT_METRICS } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, JIRA_DEFECT_METRICS } = cfg;
 const { quarterlyActualFromDaily } = require('./testexec');
 
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
@@ -102,11 +103,11 @@ async function collectDefectQuality(ranges, now = new Date()) {
     // Bugs created: one count per (range × tester), so the card can show a reporter split.
     const perTesterCounts = {}; // jiraUser -> counts aligned to rangeList
     for (const mem of MEMBERS) {
-      perTesterCounts[mem.jira] = await mapLimit(rangeList, 8, (range) =>
+      perTesterCounts[mem.jira] = await mapLimit(rangeList, cfg.JIRA_CONCURRENCY, (range) =>
         jira.count(bugsCreatedJql(metric, `reporter = ${mem.jira}`, range.from, range.to)));
     }
     // Leaked defects: the matching issues per range (for the total, priority split + table).
-    const leakedLists = await mapLimit(rangeList, 8, (range) =>
+    const leakedLists = await mapLimit(rangeList, cfg.JIRA_CONCURRENCY, (range) =>
       jira.searchAll(leakedJql(metric, range.from, range.to), ['summary', 'priority', 'created', 'reporter']));
 
     const perRange = {};

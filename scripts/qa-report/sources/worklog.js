@@ -15,10 +15,13 @@
 const fs = require('fs');
 const path = require('path');
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES, CACHE_DIR } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES, CACHE_DIR } = cfg;
 const { isoDate } = require('../lib/ranges');
 
-const FETCH_CONCURRENCY = 8;       // simultaneous per-issue worklog reads
+// Simultaneous per-issue worklog reads. Sourced from config so the Jenkinsfile
+// can set a shard-specific budget: aggregate load on Jira stays constant.
+const FETCH_CONCURRENCY = cfg.JIRA_CONCURRENCY;
 const CACHE_FILE = path.join(CACHE_DIR, 'worklog-cache.json');
 const MS_DAY = 86400000;
 const addDaysIso = (iso, n) => isoDate(new Date(Date.parse(iso + 'T00:00:00Z') + n * MS_DAY));

@@ -33,7 +33,8 @@
  * profile as sources/testexec.js, comfortably inside JiraClient's retry/backoff.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, JIRA_UNIQUE_METRICS } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, JIRA_UNIQUE_METRICS } = cfg;
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const isoUTC = (d) => d.toISOString().slice(0, 10);
@@ -129,7 +130,7 @@ async function collectUniqueMetrics(ranges, memberNames) {
           tasks.push({ ri, kind: 'bucket', bi, name: m.name, jira: m.jira, from: b.from, to: b.to }));
       }
     });
-    const results = await mapLimit(tasks, 8, async (t) =>
+    const results = await mapLimit(tasks, cfg.JIRA_CONCURRENCY, async (t) =>
       ({ ...t, n: await jira.count(uniqueJql(metric, t.jira, t.from, t.to)) }));
 
     const perRange = {};

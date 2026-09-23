@@ -47,6 +47,11 @@ pipeline {
         // WORKLOG_REFRESH_DAYS and the rest comes from cache.
         QA_REPORT_CACHE_DIR = 'E:/jenkins-cache/crm-qa-report'
         // QA_REPORT_WINDOW_DAYS = '7'   // uncomment to override the rolling window
+        // Fallback Jira concurrency. Every shard OVERRIDES this with its own budget (the
+        // SHARD_JIRA_CONCURRENCY map in the Collect stage below); this value only takes effect if
+        // a branch somehow runs without its withEnv. Deliberately low, so a wiring mistake
+        // throttles the build instead of flooding Jira with 8 shards x the config default of 8.
+        QA_JIRA_CONCURRENCY = '2'
     }
 
     stages {
@@ -62,80 +67,80 @@ pipeline {
                         usernameVariable: 'ODOO_USER', passwordVariable: 'ODOO_PASSWORD'),
                     string(credentialsId: 'jira-crm-qa', variable: 'JIRA_TOKEN')
                 ]) {
-                    // Bounded retry: re-run collect a few times to recover a TRANSIENT
-                    // source failure (a brief Odoo/Jira network blip). Capped LOW on
-                    // purpose — when a source is genuinely down, retrying can't fix it, and
-                    // 20 slow re-collects previously blew the build timeout and ABORTED the
-                    // build with NO report (blank page). With a small cap the Render +
-                    // publish stages always run, so a report is ALWAYS published (UNSTABLE
-                    // if degraded), never blank. The bat is wrapped so a collect crash can't
-                    // fail the stage either. Raise maxAttempts only if you also raise the timeout.
                     script {
-                        // Keep the BEST attempt, not the LAST one. Every collect run overwrites
-                        // qa-report-out/data/, so this loop used to publish whatever the final
-                        // attempt happened to leave behind. On build #114 that discarded five
-                        // good attempts in favour of a sixth that had lost jiraAutomationTc to a
-                        // transient Jira 400 — and the Automation cards silently disappeared from
-                        // the report, which reads as "the metric was never built".
-                        // collect.js now writes failed-sources.txt; we snapshot latest.json +
-                        // status.txt after any attempt that beats the best so far, and restore
-                        // that snapshot before Render. worklog-cache.json is NOT snapshotted: it
-                        // is a cross-build cache (and now lives outside the workspace), not report data.
-                        def maxAttempts = 6
-                        def st = 'failed'
-                        def bestFailed = 100000
-                        def bestSt = 'failed'
-                        def bestAttempt = 0
-                        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
-                            if (attempt > 1) {
-                                echo "Collect attempt ${attempt}/${maxAttempts}: previous run was '${st}', retrying for complete data…"
-                                sleep time: 30, unit: 'SECONDS'
-                            }
-                            try {
-                                bat 'node scripts/qa-report/collect.js'
-                            } catch (err) {
-                                echo "Collect attempt ${attempt} crashed: ${err}"
-                            }
-                            try { st = readFile(file: 'qa-report-out/data/status.txt').trim() } catch (e) { st = 'failed' }
-                            // 99999 = "could not tell"; it still ranks below any real count, so an
-                            // unreadable attempt never beats a readable one but does beat nothing.
-                            def failed = 99999
-                            try {
-                                def f = readFile(file: 'qa-report-out/data/failed-sources.txt').trim()
-                                failed = f ? f.split(',').length : 0
-                            } catch (e) { failed = 99999 }
-                            echo "Collect attempt ${attempt}: status=${st}, failed sources=${failed == 99999 ? 'unknown' : failed}"
-                            if (failed < bestFailed) {
-                                // Only count it as the new best if the snapshot actually succeeded,
-                                // otherwise a crashed attempt could leave us with nothing to restore.
-                                try {
-                                    writeFile file: 'collect-best/latest.json', encoding: 'UTF-8',
-                                        text: readFile(file: 'qa-report-out/data/latest.json', encoding: 'UTF-8')
-                                    writeFile file: 'collect-best/status.txt', encoding: 'UTF-8',
-                                        text: readFile(file: 'qa-report-out/data/status.txt', encoding: 'UTF-8')
-                                    bestFailed = failed; bestSt = st; bestAttempt = attempt
-                                    echo "Collect attempt ${attempt} is the best so far (${failed == 99999 ? 'unknown' : failed} failed source(s)) — snapshotted."
-                                } catch (e) {
-                                    echo "Collect attempt ${attempt}: snapshot failed (${e.message}); keeping the previous best."
+                        // Run collection shards in parallel. Each shard collects one group of
+                        // sources independently (odoo-kpi, jira-dashboard, frd, manual-heavy,
+                        // manual-light, support, automation, worklog), writes its own part file,
+                        // and has 2 retries to recover transient failures. A shard that fails
+                        // after 2 retries is NOT retried again by this loop — parts are the key:
+                        // the Merge stage will use LKG (last known good) fallback for any part
+                        // that is missing or corrupt, so a report is ALWAYS publishable. This
+                        // replaces the old 6x whole-collect retry + snapshot/restore loop (build
+                        // #114 lesson: independent parts mean a failed shard never discards the
+                        // other 17 sources' good data).
+                        //
+                        // PER-SHARD JIRA BUDGET. Splitting the budget EVENLY (8 shards x 1) would
+                        // keep Jira load at today's 8 in flight and still make the build SLOWER:
+                        // the three shards that dominate the runtime all issue one count() per
+                        // (day x tester) over ~20 months, and at concurrency 1 each of them takes
+                        // roughly 8x longer than it does today — the wall clock would then be that
+                        // one crippled shard, not the sum we are trying to escape. The budget is
+                        // therefore weighted towards the per-day-count shards:
+                        //   manual-heavy  testexec + unique-testexec + executed-per-day
+                        //   manual-light  jiraMetrics is per-day too (support tickets per day)
+                        //   automation    automation-tc is per (day x tester x metric)
+                        //   worklog       per-issue worklog reads, but incremental (~35 days)
+                        //   the rest      a handful of per-range counts; they finish early
+                        // Peak = 15 in flight, dropping to ~10 once the light shards finish. That
+                        // is ~2x today's 8, but sustained for a much SHORTER window and over the
+                        // same total number of requests; lib/jira.js already honours 429/Retry-After.
+                        // RE-TUNE THIS after the first build: collect.js now logs per-unit seconds,
+                        // so the real distribution is in the console instead of being guesswork.
+                        // odoo-kpi talks to Odoo, not Jira — its number is irrelevant.
+                        def SHARD_JIRA_CONCURRENCY = [
+                            'manual-heavy'  : 4,
+                            'manual-light'  : 3,
+                            'automation'    : 3,
+                            'worklog'       : 2,
+                            'jira-dashboard': 1,
+                            'frd'           : 1,
+                            'support'       : 1,
+                            'odoo-kpi'      : 1,
+                        ]
+                        // Source of truth for the group names is config.js SHARDS / registry.js
+                        // GROUPS. A group listed here that no longer exists makes collect.js throw
+                        // (unitsForGroups rejects an unknown group); a group MISSING here is caught
+                        // the other way round — merge.js finds no part for its units and marks them
+                        // 'missing', which names them in failed-sources.txt and turns the build
+                        // UNSTABLE. Neither mistake can pass silently.
+                        def branches = [:]
+                        for (g in SHARD_JIRA_CONCURRENCY.keySet()) {
+                            def gg = g  // capture the loop var for use in the closure
+                            def cc = SHARD_JIRA_CONCURRENCY[gg]
+                            branches[gg] = {
+                                withEnv(["QA_JIRA_CONCURRENCY=${cc}"]) {
+                                    try {
+                                        retry(2) {
+                                            bat "node scripts/qa-report/collect.js --only=${gg}"
+                                        }
+                                        echo "Shard '${gg}' collected successfully (jira concurrency ${cc})."
+                                    } catch (err) {
+                                        echo "Shard '${gg}' failed after 2 retries: ${err.message}"
+                                        // Do not rethrow — Merge will handle the missing/corrupt part
+                                        // using LKG, and the build still publishes a report.
+                                    }
                                 }
                             }
-                            if (st == 'ok') break
                         }
-                        if (bestAttempt > 0) {
-                            try {
-                                writeFile file: 'qa-report-out/data/latest.json', encoding: 'UTF-8',
-                                    text: readFile(file: 'collect-best/latest.json', encoding: 'UTF-8')
-                                writeFile file: 'qa-report-out/data/status.txt', encoding: 'UTF-8',
-                                    text: readFile(file: 'collect-best/status.txt', encoding: 'UTF-8')
-                                st = bestSt
-                                echo "Restored attempt #${bestAttempt} (${bestFailed == 99999 ? 'unknown' : bestFailed} failed source(s)) for rendering."
-                            } catch (e) {
-                                echo "Could not restore the best snapshot (${e.message}); publishing the last attempt instead."
-                            }
-                        }
-                        echo "Collect data status: ${st}"
+                        parallel branches
+                        echo "Collect phase complete (all shards attempted)."
                     }
                 }
+            }
+        }
+        stage('Merge parts') {
+            steps {
+                bat 'node scripts/qa-report/merge.js'
             }
         }
         stage('Render report') {
@@ -168,6 +173,9 @@ pipeline {
                 reportFiles: 'index.html',
                 reportName: 'CRMQAReport'
             ])
+            // 'qa-report-out/**' is recursive, so it already carries data/parts/*.json — the
+            // per-shard parts are archived with everything else, which is what makes a failed
+            // shard diagnosable after the fact.
             archiveArtifacts artifacts: 'qa-report-out/**', allowEmptyArchive: true
         }
     }

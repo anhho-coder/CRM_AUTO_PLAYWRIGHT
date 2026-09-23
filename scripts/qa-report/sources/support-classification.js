@@ -45,7 +45,8 @@
  * feeding the "Leakage defects list" table at the bottom of the page.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, SUPPORT_CLASSIFICATION } = require('../config');
+const mainCfg = require('../config');
+const { loadJira, SUPPORT_CLASSIFICATION } = mainCfg;
 
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
 const jqlStr = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
@@ -142,7 +143,7 @@ async function collectSupportClassification(ranges) {
     });
     tasks.push({ ri, ci: 'total', jql: totalJql(cfg, range.from, range.to) });
   });
-  const results = await mapLimit(tasks, 8, async (t) => ({ ...t, n: await jira.count(t.jql) }));
+  const results = await mapLimit(tasks, mainCfg.JIRA_CONCURRENCY, async (t) => ({ ...t, n: await jira.count(t.jql) }));
 
   // The categories flagged `listIssues` (currently C — Bug leakage) ALSO need the
   // matching issues, not just the count: that number feeds the team KPI, so the page
@@ -155,7 +156,7 @@ async function collectSupportClassification(ranges) {
   rangeList.forEach((range, ri) => listCats.forEach((cat) => {
     listTasks.push({ ri, code: cat.code, jql: categoryJql(cfg, cat, range.from, range.to) });
   }));
-  const listResults = await mapLimit(listTasks, 8, async (t) => {
+  const listResults = await mapLimit(listTasks, mainCfg.JIRA_CONCURRENCY, async (t) => {
     try {
       const issues = await jira.searchAll(t.jql, ['summary', 'priority', 'reporter', 'assignee', 'created', 'status', 'resolution']);
       return { ...t, issues: issues.map(shapeIssue).sort(byPriorityThenNewest) };

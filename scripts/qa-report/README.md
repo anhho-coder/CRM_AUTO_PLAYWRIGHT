@@ -144,6 +144,34 @@ node scripts/qa-report/collect.js   → qa-report-out/data/latest.json (+ histor
 node scripts/qa-report/render.js    → qa-report-out/index.html  (self-contained)
 ```
 
+That single-process form still works and is what `run-local.ps1` uses. **Jenkins no longer
+uses it**, because collecting all 18 sources serially in one process is what made the build
+slow and fragile: one source failing used to cost a re-run of the other seventeen. Jenkins
+instead collects in SHARDS that run in parallel and are reassembled afterwards:
+
+```
+node scripts/qa-report/collect.js --only=manual-heavy   → qa-report-out/data/parts/<unit>.json
+      ... 8 such shards in parallel, see Jenkinsfile.qa-report ...
+node scripts/qa-report/merge.js                         → latest.json (+ history, status.txt)
+node scripts/qa-report/render.js                        → index.html
+```
+
+- `sources/registry.js` — the 18 collection UNITS and the 8 SHARD GROUPS they belong to.
+  One unit = one former `try/catch` block of `collect.js`. A unit returns a *patch* rather
+  than mutating shared state, which is what lets it run in its own process.
+- `lib/parts.js` — part files and the last-known-good (LKG) store under `cfg.CACHE_DIR`
+  (outside the workspace, which Jenkins wipes every build).
+- `merge.js` — applies the parts in registry order. A shard that produced no part falls back
+  to its LKG copy, and its sources are marked `stale` (loudly, in the console and in
+  `failed-sources.txt`) rather than silently vanishing from the page.
+- `collect.js --dry-run` — prints the unit/group plan and exits without collecting anything.
+  Safe to run anywhere: it makes no Odoo or Jira call.
+- Per-unit timings are logged on every run, so "which source burns the build time" is a
+  console read, not a guess.
+- `QA_JIRA_CONCURRENCY` caps in-flight Jira requests per process (default 8). Jenkins sets it
+  per shard so eight parallel shards do not multiply the load eight-fold — see the
+  `SHARD_JIRA_CONCURRENCY` map in `Jenkinsfile.qa-report`.
+
 - `config.js` — team members (Odoo employee id + Jira username), KPI list,
   worklog columns, Odoo + Jira connection loaders.
 - `lib/odoo.js` — minimal Odoo 12 JSON-RPC client.

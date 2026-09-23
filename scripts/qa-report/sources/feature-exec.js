@@ -46,7 +46,8 @@
  * count-only profile of the other window-count sources, inside JiraClient's retry/backoff.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, FEATURE_EXEC } = require('../config');
+const mainCfg = require('../config');
+const { loadJira, MEMBERS, FEATURE_EXEC } = mainCfg;
 
 const isoUTC = (d) => d.toISOString().slice(0, 10);
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
@@ -117,7 +118,7 @@ async function collectFeatureExec(ranges) {
       pushOutcomes(ri, 'grand', base);
     }
   });
-  const results = await mapLimit(tasks, 8, async (t) => ({ ...t, n: await jira.count(t.jql) }));
+  const results = await mapLimit(tasks, mainCfg.JIRA_CONCURRENCY, async (t) => ({ ...t, n: await jira.count(t.jql) }));
 
   const zero = () => ({ executed: 0, passed: 0, failed: 0, aborted: 0 });
   const out = {};

@@ -18,7 +18,8 @@
  * JiraClient's retry/backoff. Same lightweight count-only profile as feature-exec.js.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, BUG_BY_PRIORITY } = require('../config');
+const mainCfg = require('../config');
+const { loadJira, MEMBERS, BUG_BY_PRIORITY } = mainCfg;
 
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
 const jqlStr = (s) => `"${String(s).replace(/"/g, '\\"')}"`;
@@ -63,7 +64,7 @@ async function collectBugByPriority(ranges) {
       tasks.push({ ri, ci, pi: 'total', jql: cellJql(cfg, col, range.from, range.to, null) });
     });
   });
-  const results = await mapLimit(tasks, 8, async (t) => ({ ...t, n: await jira.count(t.jql) }));
+  const results = await mapLimit(tasks, mainCfg.JIRA_CONCURRENCY, async (t) => ({ ...t, n: await jira.count(t.jql) }));
 
   const out = {};
   rangeList.forEach((range, ri) => {

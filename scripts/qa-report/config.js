@@ -858,6 +858,24 @@ const HOLIDAY_EXCLUDE = ['Working day', 'Easter', 'Christmas', 'Culture']; // ne
 
 // Selectable ranges (last week / this month / quarter / year) are defined in lib/ranges.js.
 
+// --- Jira requests in flight, per collecting PROCESS ---------------------------
+// 8 is what a single whole-report collect has always used. It stays the default so
+// `node collect.js` with no arguments behaves exactly as before.
+// When the Jenkinsfile runs shards in PARALLEL, each shard is its own process, so the
+// load at Jira is the SUM over the running shards. The Jenkinsfile therefore overrides
+// this per shard (SHARD_JIRA_CONCURRENCY) rather than letting 8 shards take 8 each.
+// It does NOT split the budget evenly: the three per-day-count shards dominate the
+// runtime and would be crippled at 1 apiece, so they get the larger share and the peak
+// lands near 15 — above today's 8, but over a much shorter window and the same total
+// number of requests. The arithmetic and the reasoning live next to that map.
+// To override for one process: set the QA_JIRA_CONCURRENCY environment variable.
+const JIRA_CONCURRENCY = Number(process.env.QA_JIRA_CONCURRENCY) || 8;
+
+// --- Shards for parallel collection ------------------------------------------
+// The groups that will run as independent shards in the Jenkinsfile. Registry.js
+// and the Jenkinsfile read this same list to coordinate which units run together.
+const SHARDS = ['odoo-kpi', 'jira-dashboard', 'frd', 'manual-heavy', 'manual-light', 'support', 'automation', 'worklog'];
+
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR, CACHE_DIR,
   loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
@@ -865,4 +883,5 @@ module.exports = {
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,
   HOLIDAY_ICS_URL, HOLIDAY_WORKDAY_HOURS, HOLIDAY_INCLUDE, HOLIDAY_EXCLUDE,
+  JIRA_CONCURRENCY, SHARDS,
 };

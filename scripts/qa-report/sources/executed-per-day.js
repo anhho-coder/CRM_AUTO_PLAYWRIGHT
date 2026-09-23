@@ -28,7 +28,8 @@
  * on the card.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, WORK_HOURS_PER_DAY } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, WORK_HOURS_PER_DAY } = cfg;
 const { aggregate } = require('../lib/ranges');
 const { fetchHolidayDates } = require('./holidays');
 const { bucketsFor } = require('./unique-testexec');
@@ -39,7 +40,9 @@ const NAME_BY_USER = Object.fromEntries(MEMBERS.map((m) => [m.jira, m.name]));
 const TEAM_USERS = new Set(MEMBERS.map((m) => m.jira));
 const WORKLOAD = Object.fromEntries(MEMBERS.map((m) => [m.name, Number(m.workload) || 0]));
 
-const FETCH_CONCURRENCY = 8;
+// Simultaneous per-issue worklog reads. Sourced from config so the Jenkinsfile
+// can set a shard-specific budget: aggregate load on Jira stays constant.
+const FETCH_CONCURRENCY = cfg.JIRA_CONCURRENCY;
 const MS_DAY = 86400000;
 
 /** Weekday? (Mon–Fri, in UTC — the whole pipeline dates in UTC). */

@@ -24,7 +24,8 @@
  * Jira; incremental caching (cf. the Worklog page) can be added later if needed.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, JIRA_WORKLOG_METRICS } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, JIRA_WORKLOG_METRICS } = cfg;
 
 const ord = (y, q) => y * 4 + q;
 const r0 = (n) => Math.round(n);
@@ -61,7 +62,7 @@ async function collectTestExecMetrics(fetchFrom, today) {
   for (const metric of JIRA_WORKLOG_METRICS) {
     const tasks = [];
     for (const day of days) for (const m of MEMBERS) tasks.push({ day, m });
-    const counts = await mapLimit(tasks, 8, async ({ day, m }) =>
+    const counts = await mapLimit(tasks, cfg.JIRA_CONCURRENCY, async ({ day, m }) =>
       ({ date: day.date, name: m.name, n: await jira.count(dayJql(metric, m.jira, day.prevDate, day.date)) }));
 
     const map = {};

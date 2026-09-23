@@ -28,7 +28,8 @@
  * per-day-count helpers) to stay DRY.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, JIRA_TRANSITION_METRICS } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, JIRA_TRANSITION_METRICS } = cfg;
 const { eachDay } = require('./testexec');
 
 /** Status-transition JQL across [from..to], for one tester. `to` may equal `from`. */
@@ -58,7 +59,7 @@ async function collectTransitionMetrics(fetchFrom, today) {
 
     const tasks = [];
     for (const day of days) for (const m of active) tasks.push({ day, m });
-    const counts = await mapLimit(tasks, 8, async ({ day, m }) =>
+    const counts = await mapLimit(tasks, cfg.JIRA_CONCURRENCY, async ({ day, m }) =>
       ({ date: day.date, name: m.name, n: await jira.count(dayJql(metric, m.jira, day.date)) }));
 
     const map = {};

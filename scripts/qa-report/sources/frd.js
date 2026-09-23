@@ -41,7 +41,8 @@
  * run 8-way concurrently. Lightweight, like sources/unique-testexec.js.
  */
 const { JiraClient, mapLimit } = require('../lib/jira');
-const { loadJira, MEMBERS, JIRA_FRD_METRICS } = require('../config');
+const cfg = require('../config');
+const { loadJira, MEMBERS, JIRA_FRD_METRICS } = cfg;
 
 const isoUTC = (d) => d.toISOString().slice(0, 10);
 // A JQL string literal: wrap in double quotes, escape any embedded quote.
@@ -108,9 +109,9 @@ async function collectFrdMetrics(ranges) {
   for (const metric of JIRA_FRD_METRICS) {
     // ONE searchAll (worked issues: summary + status) + ONE count (estimates) per range,
     // each 8-way concurrent. mapLimit preserves order, so results align to rangeList.
-    const searched = await mapLimit(rangeList, 8, (range) =>
+    const searched = await mapLimit(rangeList, cfg.JIRA_CONCURRENCY, (range) =>
       jira.searchAll(workedJql(metric, jiraUsers, range.from, range.to), ['summary', 'status']));
-    const estimated = await mapLimit(rangeList, 8, (range) =>
+    const estimated = await mapLimit(rangeList, cfg.JIRA_CONCURRENCY, (range) =>
       jira.count(estimatesJql(metric, jiraUsers, range.from, range.to)));
 
     const perRange = {};
