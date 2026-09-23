@@ -376,13 +376,20 @@ test.describe('CRM-12501_7.1 - Perpetual licence must not carry an expiry', () =
       console.log('  - Logged in as admin CRM');
 
       // Fire the automatic WebShop generation once (the job is disabled on pre-production).
-      const opened = await cronPage.openScheduledActionById(WEBSHOP_CRON_ID);
-      expect(opened, `Scheduled action #${WEBSHOP_CRON_ID} must open in developer mode`).toBe(true);
-      cronActionName = await cronPage.getActionName();
-      console.log(`  - Scheduled action: "${cronActionName}"`);
-      expect(cronActionName, `Scheduled action #${WEBSHOP_CRON_ID} must be "${WEBSHOP_CRON_NAME}"`)
-        .toContain(WEBSHOP_CRON_NAME);
+      let __verifyCronOpened = false;
+      try {
+        const opened = await cronPage.openScheduledActionById(WEBSHOP_CRON_ID);
+        expect(opened, `Scheduled action #${WEBSHOP_CRON_ID} must open in developer mode`).toBe(true);
+        cronActionName = await cronPage.getActionName();
+        console.log(`  - Scheduled action: "${cronActionName}"`);
+        expect(cronActionName, `Scheduled action #${WEBSHOP_CRON_ID} must be "${WEBSHOP_CRON_NAME}"`)
+          .toContain(WEBSHOP_CRON_NAME);
+        __verifyCronOpened = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1 - WebShop scheduled action opened - verify', passed: __verifyCronOpened }).catch(() => {});
+      }
 
+      let __verifyRunManually = false;
       let cronState: ScheduledActionState | null = null;
       try {
         cronState = await cronPage.readState();
@@ -390,7 +397,9 @@ test.describe('CRM-12501_7.1 - Perpetual licence must not carry an expiry', () =
         expect(runManuallyVisible, 'The "RUN MANUALLY" button must be rendered (developer mode + Technical Features)').toBe(true);
         runManuallyPressed = await cronPage.clickRunManually();
         expect(runManuallyPressed, '"RUN MANUALLY" must be pressed so the WebShop generation runs once').toBe(true);
+        __verifyRunManually = true;
       } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 1 - RUN MANUALLY pressed - verify', passed: __verifyRunManually }).catch(() => {});
         // Shared-environment rule: never leave the job's schedule changed. RUN MANUALLY does not touch
         // the schedule, so restore ONLY when the state really moved.
         if (cronState) {

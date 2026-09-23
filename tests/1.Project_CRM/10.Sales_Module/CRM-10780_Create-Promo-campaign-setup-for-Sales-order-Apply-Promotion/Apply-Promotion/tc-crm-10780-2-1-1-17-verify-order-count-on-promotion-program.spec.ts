@@ -255,7 +255,13 @@ test.describe('CRM-10780_2.1.1.17 - Verify order count on Promotion Program afte
       }
       console.log(`✓ Steps 2 + 3: created ${OPP_COUNT} opp(s)/deal(s); Promotion A applied to ${appliedCount} of them`);
       // Build sanity: at least one deal must have qualified, otherwise the count check below is meaningless.
-      expect(appliedCount, 'Promotion A should have applied to at least one of the 3 deals').toBeGreaterThan(0);
+      let __verifyDealsApplied = false;
+      try {
+        expect(appliedCount, 'Promotion A should have applied to at least one of the 3 deals').toBeGreaterThan(0);
+        __verifyDealsApplied = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 2-3 - promotion applied to the deals - verify', passed: __verifyDealsApplied }).catch(() => {});
+      }
     });
 
     await test.step('Step 4: Go to Sales Modules', async () => {

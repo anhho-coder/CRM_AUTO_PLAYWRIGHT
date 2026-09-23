@@ -257,10 +257,16 @@ test.describe('CRM-10066_1.1 - Manual merge via "Convert to Opportunity" option 
       console.log('Step 4: Selecting "Merge with existing opportunities"');
       const mergeAvailable = await leadPage.isMergeOptionAvailable();
       console.log(`  - "Merge with existing opportunities" option available: ${mergeAvailable}`);
-      expect(
-        mergeAvailable,
-        '"Merge with existing opportunities" should be offered (Opp#1 and Lead#1 share the same company email domain)'
-      ).toBeTruthy();
+      let __verifyMergeOffered = false;
+      try {
+        expect(
+          mergeAvailable,
+          '"Merge with existing opportunities" should be offered (Opp#1 and Lead#1 share the same company email domain)'
+        ).toBeTruthy();
+        __verifyMergeOffered = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - Merge option offered - verify', passed: __verifyMergeOffered }).catch(() => {});
+      }
 
       await leadPage.selectConversionActionMerge();
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Merge option selected');

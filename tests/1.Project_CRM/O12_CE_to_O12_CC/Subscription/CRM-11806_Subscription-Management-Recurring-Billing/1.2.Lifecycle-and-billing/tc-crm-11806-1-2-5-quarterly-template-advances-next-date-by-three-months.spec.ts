@@ -204,7 +204,13 @@ test.describe('CRM-11806_1.2.5 - A quarterly subscription advances its next invo
         amountOk,
       );
 
-      expect(total, `VP4: the invoice total (${total}) should equal the Recurring Price (${recurringPrice})`).toBeCloseTo(recurringPrice, 1);
+      let __verifyVP4 = false;
+      try {
+        expect(total, `VP4: the invoice total (${total}) should equal the Recurring Price (${recurringPrice})`).toBeCloseTo(recurringPrice, 1);
+        __verifyVP4 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Step 4 - invoice total equals Recurring Price - verify', passed: __verifyVP4 }).catch(() => {});
+      }
 
       console.log(`✅ ${TC_ID}: the quarterly cycle billed once and the next date advanced by three months`);
     });
