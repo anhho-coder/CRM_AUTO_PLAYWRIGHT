@@ -168,6 +168,14 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
 
       actual = await opportunityPage.getStatusBarStages();
       actual.forEach((stage, i) => console.log(`  Stage #${i + 1}: ${stage}`));
+      // The assertion below is on what the bar SHOWS, which is what the baseline TC counts. Print
+      // the full node list beside it: on crm-mig the two diverge (3 shown, 8 present), and a report
+      // carrying only the shown count reads as "the pipeline lost 5 stages" when what it actually
+      // lost is one - "Contact Established". See CRM-13087.
+      const allNodes = await opportunityPage.getStatusBarStagesAll();
+      console.log(`  Stage nodes present in the bar (rendered or not, DOM order): ${allNodes.length}`);
+      console.log(`    ${allNodes.join(' | ')}`);
+      console.log(`  Stage entries the bar actually SHOWS: ${actual.length}`);
       record('Number of entries on the stage bar', EXPECTED.length, actual.length);
       record('Stages and their order', EXPECTED.join(' | '), actual.join(' | '));
     });

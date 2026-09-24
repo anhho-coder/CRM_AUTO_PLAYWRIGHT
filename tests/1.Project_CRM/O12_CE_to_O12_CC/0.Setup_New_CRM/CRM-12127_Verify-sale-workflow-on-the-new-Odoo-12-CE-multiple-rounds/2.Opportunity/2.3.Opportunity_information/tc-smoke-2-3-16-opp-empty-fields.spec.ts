@@ -172,11 +172,19 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
     await test.step(STEP.s8, async () => {
       console.log(`\n--- ${STEP.s8} ---`);
 
+      // A field that is NOT on the form reads back as "" through getFieldDisplayValue - the same
+      // value this case expects from a field that is present and empty. Asserting only on the value
+      // therefore stays green even if the form loses the field entirely, which is a test that has
+      // stopped testing. So check presence first, and assert on both.
       const nonEmpty: string[] = [];
+      const missing: string[] = [];
       for (const item of SHOULD_BE_EMPTY) {
+        const present = await opportunityPage.isFieldVisibleOnSheet(item.field);
         const actual = await opportunityPage.getFieldDisplayValue(item.field);
-        console.log(`  ${item.label.padEnd(24)}: "${actual}"`);
+        console.log(`  ${item.label.padEnd(24)}: present=${present} value="${actual}"`);
+        if (!present) missing.push(item.label);
         if (actual !== '') nonEmpty.push(`${item.label}="${actual}"`);
+        record(`${item.label} is present on the form`, 'present', present ? 'present' : 'NOT ON THE FORM');
         record(`${item.label} is empty on a new Opportunity`, '', actual);
       }
       const phone = await opportunityPage.getFieldDisplayValue('phone');
@@ -191,6 +199,7 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
         passed: CHECKS.every((c) => c.pass),
       }).catch(() => {});
 
+      expect(missing, 'the information-area fields this case checks must all be present on the form').toEqual([]);
       expect(nonEmpty, 'the information-area fields that must stay empty on a new Opportunity').toEqual([]);
       expect(phone, 'Phone, which pre-production renders as the literal string "false"').toBe('false');
       expect(mobile, 'Mobile, which pre-production renders as the literal string "false"').toBe('false');

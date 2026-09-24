@@ -3575,6 +3575,31 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * NEW, IN PROCESS, CONTACT ESTABLISHED, QUALIFIED, ACTIVE INTEREST, HOT DEAL, PURCHASE APPROVAL,
    * MORE. The MORE toggle is part of the bar and is returned with it.
    */
+  /**
+   * EVERY stage node in the bar, rendered or not, in DOM order.
+   *
+   * `getStatusBarStages()` deliberately returns only what the bar actually SHOWS - on
+   * pre-production the WON node is present but folded away, and the baseline TC counts 8 shown
+   * entries precisely because WON is not one of them. So that contract must not change.
+   *
+   * This reader exists for the other question: how many stages does the record have at all. On
+   * crm-mig the two numbers diverge (8 nodes, 3 shown), and reporting only the shown count made
+   * CRM-12370_2.7.1 look like "8 stages became 3" when the real gap is a missing stage - see
+   * CRM-13087. A spec that asserts on the shown list should log this one next to it.
+   */
+  async getStatusBarStagesAll(): Promise<string[]> {
+    const bar = this.page.locator('.o_statusbar_status').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((label) => label.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
   async getStatusBarStages(): Promise<string[]> {
     const bar = this.page.locator('.o_statusbar_status').first();
     await bar.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
@@ -4149,11 +4174,24 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   ): Promise<string> {
     const hit = (v: string) => (typeof matcher === 'string' ? v === matcher : matcher.test(v));
     let value = await this.getFieldDisplayValue(fieldName);
+    // Keep the best real reading we ever saw. Odoo is a SPA: `domcontentloaded` fires long before
+    // the form exists, so a read taken right after a reload can come back empty even though the
+    // field holds a value. Returning the LAST read then reports "" for a field that is populated -
+    // which is exactly how CRM-12370_2.3.10 came to report Salesperson as empty when the very first
+    // attempt had already read "Ho Quoc Anh" (see CRM-13088).
+    let lastNonEmpty = value;
     for (let i = 1; i < attempts && !hit(value); i++) {
       console.log('  ... ' + fieldName + ' shows "' + value + '", waiting for ' + matcher + ' - attempt #' + i + ', reloading');
       await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForPageReady().catch(() => {});
       await this.wait(interval);
       value = await this.getFieldDisplayValue(fieldName);
+      if (value !== '') lastNonEmpty = value;
+    }
+    if (hit(value)) return value;
+    if (value === '' && lastNonEmpty !== '') {
+      console.log('  ... ' + fieldName + ' last read came back empty; reporting the last real value seen: "' + lastNonEmpty + '"');
+      return lastNonEmpty;
     }
     return value;
   }
