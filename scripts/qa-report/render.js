@@ -1454,6 +1454,11 @@ function pdpBodyHtml(pdp) {
   return `${infoCard}\n${howTo}\n${secHtml}`;
 }
 
+// The (+) launcher for the hidden PDP pages. Sits absolutely in the hero's top-left
+// corner on EVERY report tab, so the Personal Development Plan is one click away
+// wherever the reader is. The hero needs `hero--plus` for the extra top padding.
+const HERO_PLUS = '<a class="heroplus" href="pdp-dashboard.html" title="Personal Development Plan" aria-label="Open Personal Development Plan">+</a>';
+
 // A per-page sub-nav that toggles between the two hidden PDP views (Guideline /
 // Dashboard). `active` = 'guideline' | 'dashboard'.
 function pdpNav(active) {
@@ -2444,7 +2449,8 @@ function main() {
     const automationCoverageHtml = (navKey === 'automation' && data.automationCoverage)
       ? withAnchor({ key: 'automationCoverage', label: data.automationCoverage.label }, automationCoverageSection(data.automationCoverage)) : '';
     return `${docHead(title)}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — ${esc(section.label)}</h1>
   <div class="sub">${subline}</div>
   ${pageNav(navKey)}
@@ -2520,7 +2526,7 @@ function main() {
     '<p class="muted">No Jira dashboard data available.</p>';
   const jiraDashboardHtml = `${docHead('CRM QA — Jira Dashboard')}
 <div class="hero hero--plus">
-  <a class="heroplus" href="pdp-dashboard.html" title="Personal Development Plan" aria-label="Open Personal Development Plan">+</a>
+  ${HERO_PLUS}
   <h1>CRM QA Team — ${esc(jiraDashSec ? jiraDashSec.label : 'QA CRM - Jira - Dashboard')}</h1>
   <div class="sub">${subline}</div>
   ${pageNav('jiraDashboard')}
@@ -2543,7 +2549,8 @@ function main() {
   const frdSections = frdMetrics.filter((m) => data.metrics[m.key])
     .map((m) => withAnchor(m, frdSection(m, data.metrics[m.key], frdDef))).join('\n');
   const frdHtml = `${docHead('CRM QA — FRD/Spec Review/I2L')}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — ${esc(frdSec ? frdSec.label : 'FRD/Spec Review/I2L')}</h1>
   <div class="sub">${subline}</div>
   ${pageNav('frd')}
@@ -2578,7 +2585,8 @@ function main() {
     : '';
 
   const worklogHtml = `${docHead('CRM QA — Worklog allocation')}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — Worklog allocation</h1>
   <div class="sub">${subline}</div>
   ${pageNav('worklog')}
@@ -2632,7 +2640,8 @@ ${wlDataScript}
       leakageListSection(supCls, supClsDef, jiraBase))}
   </div>` : '<p class="muted">No support-ticket classification data available (the Jira source needs a token at collect time).</p>';
   const supportHtml = `${docHead('CRM QA — Support ticket')}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — ${esc(supportSec ? supportSec.label : 'Support ticket')}</h1>
   <div class="sub">${subline}</div>
   ${pageNav('support')}
@@ -2678,7 +2687,8 @@ ${wlDataScript}
   ${withAnchor({ key: 'automationVelocity', label: 'Automation velocity — Claude vs Legacy' }, velocitySection(splitMeta, splitData, claudeDef))}`
     : '<p class="muted">No Claude-split data available.</p>';
   const claudeHtml = `${docHead('CRM QA — Claude vs Legacy')}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — Claude vs Legacy</h1>
   <div class="sub">${subline}</div>
   ${pageNav('claude')}
@@ -2722,7 +2732,8 @@ ${wlDataScript}
     </thead>`;
   const rankingHtml = `${docHead('CRM QA — QA Ranking')}
 ${rkStyle}
-<div class="hero">
+<div class="hero hero--plus">
+  ${HERO_PLUS}
   <h1>CRM QA Team — QA Ranking</h1>
   <div class="sub">${subline}</div>
   ${pageNav('ranking')}
