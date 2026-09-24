@@ -15,36 +15,13 @@ const path = require('path');
 const cfg = require('./config');
 const { GROUPS, UNITS, unitsForGroups } = require('./sources/registry');
 const parts = require('./lib/parts');
+const { buildSkeleton } = require('./lib/skeleton');
 const { computeRanges, fetchStart, aggregate, isoDate } = require('./lib/ranges');
 const { quarterlyActualFromDaily } = require('./sources/testexec');
 
-/**
- * Build the skeleton data object that all collection drivers must produce.
- * Exported so merge.js can build the same shape when reassembling parts.
- */
-function buildSkeleton(now) {
-  const ranges = computeRanges(now);
-  const members = cfg.MEMBERS.map((m) => m.name);
-
-  return {
-    generatedAt: new Date().toISOString(),
-    team: 'CRM QA Team',
-    members,
-    ranges,
-    defaultView: 'range',
-    defaultRange: 'lastWeek',
-    jiraBaseUrl: cfg.jiraBaseUrl(),
-    sources: {},
-    metrics: {},
-    quarterly: {},
-    worklog: null,
-    featureExec: null,
-    bugByPriority: null,
-    supportClassification: null,
-    automationCoverage: null,
-    kpiJql: {},
-  };
-}
+// The skeleton lives in lib/skeleton.js because merge.js builds the identical one from
+// the shard parts. Two copies only have to drift by one container for applyPatch to drop
+// a patch silently — see the note in that file.
 
 /**
  * Run a single unit inside try/catch, time it, and return a part object.
@@ -268,6 +245,12 @@ async function main() {
   console.log(`[collect] Wrote ${path.join(cfg.DATA_DIR, 'latest.json')}`);
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+// Only collect when this file is RUN, never when it is merely required. Without this
+// guard `require('./collect')` starts a full collection as a side effect of the module
+// load — which reads Odoo Production and fires the whole Jira workload. A tooling script
+// that only wanted buildSkeleton triggered exactly that.
+if (require.main === module) {
+  main().catch((e) => { console.error(e); process.exit(1); });
+}
 
 module.exports = { buildSkeleton };

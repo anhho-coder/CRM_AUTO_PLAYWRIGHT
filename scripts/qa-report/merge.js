@@ -18,31 +18,12 @@ const cfg = require('./config');
 const { UNITS } = require('./sources/registry');
 const { computeRanges, isoDate } = require('./lib/ranges');
 const parts = require('./lib/parts');
+const { buildSkeleton } = require('./lib/skeleton');
 
 /**
  * Build the skeleton data structure that merge.js fills with patches.
  * Matches the skeleton that collect.js currently builds inline.
  */
-function buildSkeleton(now, ranges, members) {
-  return {
-    generatedAt: new Date().toISOString(),
-    team: 'CRM QA Team',
-    members,
-    ranges,
-    defaultView: 'range',
-    defaultRange: 'lastWeek',
-    jiraBaseUrl: cfg.jiraBaseUrl(),
-    sources: {},
-    metrics: {},
-    quarterly: {},
-    worklog: null,
-    featureExec: null,
-    bugByPriority: null,
-    supportClassification: null,
-    automationCoverage: null,
-    kpiJql: {},
-  };
-}
 
 /**
  * Validate and sanitize a patch against the current config.
@@ -110,7 +91,7 @@ async function main() {
   const members = cfg.MEMBERS.map((m) => m.name);
 
   // Build the base skeleton
-  const data = buildSkeleton(now, ranges, members);
+  const data = buildSkeleton(now);
 
   // Track which units are served stale for logging
   const staleUnits = [];
