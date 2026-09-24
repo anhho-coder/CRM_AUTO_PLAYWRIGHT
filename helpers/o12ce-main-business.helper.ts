@@ -806,9 +806,29 @@ export function registerMigRecordFromUrl(url: string, label: string, modelHint?:
 }
 
 /** Models Odoo 12 refuses to unlink outside draft/cancel, and the action that gets them there. */
-const CANCEL_BEFORE_UNLINK: Record<string, { action: string; deletableStates: string[] }> = {
+const CANCEL_BEFORE_UNLINK: Record<
+  string,
+  { action: string; deletableStates: string[]; clearBeforeUnlink?: Record<string, false> }
+> = {
   // account.invoice.unlink() raises unless the invoice is draft or cancelled.
-  'account.invoice': { action: 'action_invoice_cancel', deletableStates: ['draft', 'cancel'] },
+  //
+  // ...and then raises a SECOND time, on a different field. Odoo 12's account.invoice.unlink() is
+  //     if invoice.state not in ('draft', 'cancel'): raise  <- the state gate above
+  //     elif invoice.move_name:                     raise "You cannot delete an invoice after it
+  //                                                        has been validated (and received a
+  //                                                        number)."
+  // Cancelling an OPEN invoice satisfies the first gate and clears `number` (a related field on the
+  // journal entry, which the cancel unlinks) but NOT `move_name`, which deliberately survives so
+  // Odoo can reuse the allocated number. So the teardown cancelled the invoice, reported success on
+  // that, and still could not delete it - every spec that VALIDATES an invoice left one behind.
+  // Observed 2026-09-23 on CRM-12370_7.3.1: account.invoice#117971 cancelled, then
+  // "FAILED ... You cannot delete an invoice after it has been validated".
+  // Clearing move_name is what the Odoo UI itself does before deleting a reset-to-draft invoice.
+  'account.invoice': {
+    action: 'action_invoice_cancel',
+    deletableStates: ['draft', 'cancel'],
+    clearBeforeUnlink: { move_name: false },
+  },
   // sale.order.unlink() raises unless the order is draft or cancelled ('sent' included).
   'sale.order': { action: 'action_cancel', deletableStates: ['draft', 'cancel'] },
 };
@@ -835,6 +855,14 @@ async function unlinkMigRecords(
         if (state && !needsCancel.deletableStates.includes(state)) {
           await platform.callKw(record.model, needsCancel.action, [[record.id]]);
           console.log(`  cancelled ${record.model}#${record.id} (was "${state}")`);
+        }
+        // Always, not only when we just cancelled: a record can already BE in a deletable state
+        // and still carry the field that blocks the unlink (a cancelled invoice keeps move_name).
+        if (needsCancel.clearBeforeUnlink) {
+          await platform.callKw(record.model, 'write', [[record.id], needsCancel.clearBeforeUnlink]);
+          console.log(
+            `  cleared   ${record.model}#${record.id} ${Object.keys(needsCancel.clearBeforeUnlink).join(', ')} (blocks unlink)`,
+          );
         }
       }
       await platform.callKw(record.model, 'unlink', [[record.id]]);
