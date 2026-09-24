@@ -23,7 +23,7 @@ import {
  *   Verify a Salesperson can create a CRM Opportunity on the O12 CE Migration server
  *   (crm-mig.nakivo.site) - the Opp saves and the async Company/Contact partner creation completes.
  *
- * Source manual TC (pre-production): TC.Performance.1.1.2.1 "Create Opp". Section II ports the
+ * Source manual TC (pre-production): TC.Performance.2.1.1 "Create Opp". Section II ports the
  * pre-prod main-business flow to O12 CE as a FUNCTIONAL smoke (elapsed times are printed for
  * reference; the gate is the business outcome).
  *

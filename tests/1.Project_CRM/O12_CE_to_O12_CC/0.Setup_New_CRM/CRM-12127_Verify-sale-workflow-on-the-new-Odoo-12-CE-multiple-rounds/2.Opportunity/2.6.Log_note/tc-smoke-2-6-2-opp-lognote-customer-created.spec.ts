@@ -21,7 +21,7 @@ import {
  *  Automation-Type : new
  *  Automation-Date : 2026-09-23
  *  Feature folder  : .../CRM-12127_.../2.Opportunity/2.6.Log_note
- *  Source manual TC: TC.Performance.1.1.2.36 (pre-production baseline, 37/37 PASS 2026-09-21)
+ *  Source manual TC: TC.Performance.2.6.2 (pre-production baseline, 37/37 PASS 2026-09-21)
  *
  *  Summary
  *  ---------------------------------------------------------------------------------------------
@@ -46,7 +46,7 @@ import {
  *
  *  BASELINE RULE (CLAUDE.md, crm-mig automation)
  *  ---------------------------------------------------------------------------------------------
- *  Every expected value below is the PRE-PRODUCTION baseline, copied from TC.Performance.1.1.2.36
+ *  Every expected value below is the PRE-PRODUCTION baseline, copied from TC.Performance.2.6.2
  *  without modification. It is NOT adapted to what O12 CE renders. If O12 CE differs this spec
  *  goes RED - and that RED is the CORRECT result, because it is the parity gap this suite exists
  *  to find. Do not "fix" the spec by editing the expected values.

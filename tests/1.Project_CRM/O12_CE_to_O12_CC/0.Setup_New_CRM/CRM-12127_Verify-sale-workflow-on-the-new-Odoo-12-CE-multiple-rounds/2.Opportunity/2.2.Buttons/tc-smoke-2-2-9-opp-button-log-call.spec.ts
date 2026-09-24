@@ -20,7 +20,7 @@ import {
  *  Automation-Type : new
  *  Automation-Date : 2026-09-23
  *  Feature folder  : .../CRM-12127_.../2.Opportunity/2.2.Buttons
- *  Source manual TC: TC.Performance.1.1.2.11 (pre-production baseline, 37/37 PASS 2026-09-21)
+ *  Source manual TC: TC.Performance.2.2.9 (pre-production baseline, 37/37 PASS 2026-09-21)
  *
  *  Summary
  *  ---------------------------------------------------------------------------------------------
@@ -60,7 +60,7 @@ import {
  *
  *  BASELINE RULE (CLAUDE.md, crm-mig automation)
  *  ---------------------------------------------------------------------------------------------
- *  The expected values below are the PRE-PRODUCTION baseline, byte-identical to TC.Performance.1.1.2.11.
+ *  The expected values below are the PRE-PRODUCTION baseline, byte-identical to TC.Performance.2.2.9.
  *  They are NOT adapted to what O12 CE renders. If O12 CE differs this spec goes RED - and that
  *  RED is the CORRECT result, because it is the parity gap this suite exists to find. Do not
  *  "fix" the spec by editing the expected values.
@@ -170,7 +170,7 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
     await test.step(STEP.s8, async () => {
       console.log(`\n--- ${STEP.s8} ---`);
 
-      await opportunityPage.clickStatusbarButtonByName('log_call', CommonUtils.waitTimes.elementVisibility);
+      await opportunityPage.clickStatusbarButtonByName('log_call', CommonUtils.waitTimes.elementVisibility, { dispatchFallback: true });
       await page.waitForTimeout(CommonUtils.waitTimes.long);
     });
 

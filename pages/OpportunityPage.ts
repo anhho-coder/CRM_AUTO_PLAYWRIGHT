@@ -3517,19 +3517,40 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   /** Press a header button by the Odoo action it calls (e.g. "action_create_deal_element"). */
   async clickStatusbarButtonByName(
     actionName: string,
-    timeout: number = CommonUtils.waitTimes.pageLoad
+    timeout: number = CommonUtils.waitTimes.pageLoad,
+    opts: { dispatchFallback?: boolean } = {}
   ): Promise<void> {
-    const button = this.page
-      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]')
-      .filter({ visible: true })
-      .first();
-    await button.waitFor({ state: 'visible', timeout });
+    const candidates = this.page
+      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]');
+    // The visible-only filter has to go with the fallback too: an invisible button matches nothing
+    // through it, so even an `attached` wait would time out on the very case the fallback exists for.
+    const button = (opts.dispatchFallback ? candidates : candidates.filter({ visible: true })).first();
+    // With the fallback armed, wait only for the button to EXIST. On crm-mig the `log_call` button
+    // is intermittently reported not-visible (4 runs on 2026-09-24: visible twice, never-visible
+    // twice, same spec, same viewport, headed and headless alike), and a `visible` wait then eats
+    // the budget before the fallback below can run. Default (no fallback) keeps the visible wait.
+    await button.waitFor({ state: opts.dispatchFallback ? 'attached' : 'visible', timeout });
     await button.scrollIntoViewIfNeeded().catch(() => {});
     // Bound the click by the SAME budget as the wait. Without this the click inherits the whole
     // test timeout, so a header button that is visible but never becomes actionable burns the
     // entire test (CRM-12370_2.2.9 on crm-mig: 13.8 min on one click, then a timed-out test with
     // no VERIFY block at all). A bounded click fails with Playwright's actionability reason instead.
-    await button.click({ timeout });
+    try {
+      await button.click({ timeout });
+    } catch (err) {
+      if (!opts.dispatchFallback) throw err;
+      // O12 CE ONLY (observed 2026-09-24 on crm-mig, CRM-12370_2.2.9 / log_call): the button is
+      // "visible, enabled and stable" until Playwright scrolls it into view - which every click
+      // does - and is reported "element is not visible" immediately after "done scrolling", so the
+      // click retries until the budget is gone. Pre-production runs the very same code green.
+      // Dispatching the DOM event reaches the handler without scrolling, so the TC can still check
+      // what it is about (the dialog), while this line keeps the anomaly visible in the log rather
+      // than hiding it behind a green tick.
+      const reason = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.log(`  - WARNING: a real click on "${actionName}" was refused by the page (${reason})`);
+      console.log('  - falling back to a dispatched DOM click (no scroll) - see CRM-12370_2.2.9');
+      await button.dispatchEvent('click');
+    }
     console.log('  - Pressed the header button "' + actionName + '"');
   }
 

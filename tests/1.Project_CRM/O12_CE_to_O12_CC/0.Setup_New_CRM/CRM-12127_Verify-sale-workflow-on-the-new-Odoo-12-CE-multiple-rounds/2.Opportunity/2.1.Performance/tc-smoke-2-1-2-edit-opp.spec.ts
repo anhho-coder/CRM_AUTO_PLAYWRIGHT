@@ -23,7 +23,7 @@ import {
  *   Verify a saved CRM Opportunity can be edited on the O12 CE Migration server - changing the State
  *   from "Connecticut" to "CA (US)" is persisted after SAVE.
  *
- * Source manual TC (pre-production): TC.Performance.1.1.2.2 "Edit Opp". Section II ports it as a
+ * Source manual TC (pre-production): TC.Performance.2.1.2 "Edit Opp". Section II ports it as a
  * FUNCTIONAL smoke (elapsed time printed for reference; the gate is the persisted change).
  *
  * O12 CE deviations vs the pre-prod scenario (grounded on crm-mig, 2026-08-21):
