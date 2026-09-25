@@ -204,7 +204,7 @@ export async function openOpportunitiesListOnO12CE(page: Page): Promise<void> {
 export async function createOpportunityOnO12CE(
   page: Page,
   tcId: string,
-  opts: { reseller?: string; distributor?: string } = {}
+  opts: { reseller?: string; distributor?: string; street?: string } = {}
 ): Promise<O12ceOpportunity> {
   const opportunityPage = new OpportunityPage(page);
   const result: O12ceOpportunity = {
@@ -233,6 +233,13 @@ export async function createOpportunityOnO12CE(
     const contactFilled = await opportunityPage.fillContactName(result.contactName);
     console.log(`  Contact name field filled : ${contactFilled}`);
     await opportunityPage.fillEmail(result.email);
+    // CRM-12370_2.3.7 ports the pre-prod TC.Performance.1.1.2.20, which verifies the WHOLE Address
+    // block (Street + State + Country). The chain specs never entered a Street, so it is opt-in:
+    // every existing caller keeps its current data, and only the Address TC asks for it.
+    if (opts.street) {
+      await opportunityPage.fillStreet(opts.street);
+      console.log(`  Street       : ${opts.street}`);
+    }
     await opportunityPage.selectCountry(O12CE_DATA.country);
     await opportunityPage.selectState(O12CE_DATA.state);
     // Partner-driven TCs (2.5.21 "Reseller / Distributor come from the Opportunity" and

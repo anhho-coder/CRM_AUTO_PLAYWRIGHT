@@ -3517,15 +3517,40 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   /** Press a header button by the Odoo action it calls (e.g. "action_create_deal_element"). */
   async clickStatusbarButtonByName(
     actionName: string,
-    timeout: number = CommonUtils.waitTimes.pageLoad
+    timeout: number = CommonUtils.waitTimes.pageLoad,
+    opts: { dispatchFallback?: boolean } = {}
   ): Promise<void> {
-    const button = this.page
-      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]')
-      .filter({ visible: true })
-      .first();
-    await button.waitFor({ state: 'visible', timeout });
+    const candidates = this.page
+      .locator('xpath=//div[contains(@class,"o_statusbar_buttons")]//button[@name="' + actionName + '" and not(@disabled)]');
+    // The visible-only filter has to go with the fallback too: an invisible button matches nothing
+    // through it, so even an `attached` wait would time out on the very case the fallback exists for.
+    const button = (opts.dispatchFallback ? candidates : candidates.filter({ visible: true })).first();
+    // With the fallback armed, wait only for the button to EXIST. On crm-mig the `log_call` button
+    // is intermittently reported not-visible (4 runs on 2026-09-24: visible twice, never-visible
+    // twice, same spec, same viewport, headed and headless alike), and a `visible` wait then eats
+    // the budget before the fallback below can run. Default (no fallback) keeps the visible wait.
+    await button.waitFor({ state: opts.dispatchFallback ? 'attached' : 'visible', timeout });
     await button.scrollIntoViewIfNeeded().catch(() => {});
-    await button.click();
+    // Bound the click by the SAME budget as the wait. Without this the click inherits the whole
+    // test timeout, so a header button that is visible but never becomes actionable burns the
+    // entire test (CRM-12370_2.2.9 on crm-mig: 13.8 min on one click, then a timed-out test with
+    // no VERIFY block at all). A bounded click fails with Playwright's actionability reason instead.
+    try {
+      await button.click({ timeout });
+    } catch (err) {
+      if (!opts.dispatchFallback) throw err;
+      // O12 CE ONLY (observed 2026-09-24 on crm-mig, CRM-12370_2.2.9 / log_call): the button is
+      // "visible, enabled and stable" until Playwright scrolls it into view - which every click
+      // does - and is reported "element is not visible" immediately after "done scrolling", so the
+      // click retries until the budget is gone. Pre-production runs the very same code green.
+      // Dispatching the DOM event reaches the handler without scrolling, so the TC can still check
+      // what it is about (the dialog), while this line keeps the anomaly visible in the log rather
+      // than hiding it behind a green tick.
+      const reason = err instanceof Error ? err.message.split('\n')[0] : String(err);
+      console.log(`  - WARNING: a real click on "${actionName}" was refused by the page (${reason})`);
+      console.log('  - falling back to a dispatched DOM click (no scroll) - see CRM-12370_2.2.9');
+      await button.dispatchEvent('click');
+    }
     console.log('  - Pressed the header button "' + actionName + '"');
   }
 
@@ -3550,6 +3575,31 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * NEW, IN PROCESS, CONTACT ESTABLISHED, QUALIFIED, ACTIVE INTEREST, HOT DEAL, PURCHASE APPROVAL,
    * MORE. The MORE toggle is part of the bar and is returned with it.
    */
+  /**
+   * EVERY stage node in the bar, rendered or not, in DOM order.
+   *
+   * `getStatusBarStages()` deliberately returns only what the bar actually SHOWS - on
+   * pre-production the WON node is present but folded away, and the baseline TC counts 8 shown
+   * entries precisely because WON is not one of them. So that contract must not change.
+   *
+   * This reader exists for the other question: how many stages does the record have at all. On
+   * crm-mig the two numbers diverge (8 nodes, 3 shown), and reporting only the shown count made
+   * CRM-12370_2.7.1 look like "8 stages became 3" when the real gap is a missing stage - see
+   * CRM-13087. A spec that asserts on the shown list should log this one next to it.
+   */
+  async getStatusBarStagesAll(): Promise<string[]> {
+    const bar = this.page.locator('.o_statusbar_status').first();
+    await bar.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    if ((await bar.count()) === 0) return [];
+    return await bar
+      .evaluate((el: HTMLElement) =>
+        Array.from(el.querySelectorAll('button'))
+          .map((b) => ((b as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
+          .filter((label) => label.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
   async getStatusBarStages(): Promise<string[]> {
     const bar = this.page.locator('.o_statusbar_status').first();
     await bar.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
@@ -4124,11 +4174,24 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   ): Promise<string> {
     const hit = (v: string) => (typeof matcher === 'string' ? v === matcher : matcher.test(v));
     let value = await this.getFieldDisplayValue(fieldName);
+    // Keep the best real reading we ever saw. Odoo is a SPA: `domcontentloaded` fires long before
+    // the form exists, so a read taken right after a reload can come back empty even though the
+    // field holds a value. Returning the LAST read then reports "" for a field that is populated -
+    // which is exactly how CRM-12370_2.3.10 came to report Salesperson as empty when the very first
+    // attempt had already read "Ho Quoc Anh" (see CRM-13088).
+    let lastNonEmpty = value;
     for (let i = 1; i < attempts && !hit(value); i++) {
       console.log('  ... ' + fieldName + ' shows "' + value + '", waiting for ' + matcher + ' - attempt #' + i + ', reloading');
       await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForPageReady().catch(() => {});
       await this.wait(interval);
       value = await this.getFieldDisplayValue(fieldName);
+      if (value !== '') lastNonEmpty = value;
+    }
+    if (hit(value)) return value;
+    if (value === '' && lastNonEmpty !== '') {
+      console.log('  ... ' + fieldName + ' last read came back empty; reporting the last real value seen: "' + lastNonEmpty + '"');
+      return lastNonEmpty;
     }
     return value;
   }
