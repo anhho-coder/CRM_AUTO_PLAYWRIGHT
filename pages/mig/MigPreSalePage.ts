@@ -124,6 +124,9 @@ export class MigPreSalePage extends MigDataParityPage {
   /** Budget for one raise round-trip: the save posts to the second server before it returns. */
   static readonly RAISE_BUDGET_MS = 60000;
 
+  /** Budget for getting the raise dialog open, across however many reveal/click attempts it takes. */
+  static readonly RAISE_OPEN_BUDGET_MS = 60000;
+
   // ------------------------------------------------------------------ Pre-Sales session state
 
   private presalesUid: number | undefined;
@@ -611,6 +614,9 @@ export class MigPreSalePage extends MigDataParityPage {
   private readonly dialogSaveButton = () =>
     this.page.locator('.modal-dialog footer button[name="create_ticket"]');
 
+  /** The datetime picker the Meeting Time field opens. It is appended to the body, not to the dialog. */
+  private readonly datePicker = () => this.page.locator('.bootstrap-datetimepicker-widget');
+
   private readonly logNotes = () => this.page.locator('.o_thread_message .o_thread_message_content');
 
   /**
@@ -675,13 +681,40 @@ export class MigPreSalePage extends MigDataParityPage {
     return (await this.raiseButtonDisabled().getAttribute('title')) ?? '';
   }
 
-  /** Click the live control and wait for the raise dialog. */
+  /**
+   * Click the live control and wait for the raise dialog.
+   *
+   * The header's buttons are laid out by a NAKIVO script that runs AFTER the form renders: the raise
+   * control is drawn INLINE for about half a second and is then moved into the More overflow. Probing
+   * `isVisible()` once, inside that opening window, answers "visible" - so the reveal is skipped, and
+   * the click that follows then waits on a button that has already moved. Playwright retries that
+   * click until the TEST times out; on 2026-09-23 that cost TC-40 its whole 15-minute budget, and the
+   * error surfaced far from here (at the next `locator.fill`), which is why it read as a fill bug.
+   *
+   * So do not decide once. Re-check and re-reveal on every attempt until the dialog is actually up.
+   */
   async openRaiseDialog(): Promise<void> {
-    if (!(await this.raiseButton().isVisible().catch(() => false))) {
-      await this.revealHeaderButtons();
+    const deadline = Date.now() + MigPreSalePage.RAISE_OPEN_BUDGET_MS;
+    let attempts = 0;
+    while (Date.now() < deadline) {
+      attempts += 1;
+      if (!(await this.raiseButton().isVisible().catch(() => false))) {
+        await this.revealHeaderButtons();
+      }
+      // A short click budget on purpose: if the button moved between the check and the click, fail
+      // fast and take the next attempt - which reveals More again - instead of blocking on a stale one.
+      await this.raiseButton().click({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => { /* it overflowed mid-attempt */ });
+      if (await this.dialog().isVisible().catch(() => false)) {
+        await this.dialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+        return;
+      }
+      await this.page.waitForTimeout(CommonUtils.waitTimes.medium);
     }
-    await this.raiseButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.dialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    throw new Error(
+      `The raise dialog never opened after ${attempts} attempt(s) in ` +
+      `${MigPreSalePage.RAISE_OPEN_BUDGET_MS}ms - the "Request SE support" control was neither inline ` +
+      'nor reachable under the header More menu.',
+    );
   }
 
   /** The raise dialog's field names, in the order the dialog renders them. */
@@ -721,8 +754,18 @@ export class MigPreSalePage extends MigDataParityPage {
       await d.locator('.o_field_widget[name="subject"] input, input[name="subject"]').first().fill(values.subject);
     }
     if (values.meetingTime !== undefined) {
-      await d.locator('input[name="meeting_time"]').first().fill(values.meetingTime);
-      await this.page.keyboard.press('Escape');
+      // Meeting Time is a datetime widget: <div class="o_datepicker" name="meeting_time"> wrapping an
+      // <input class="o_datepicker_input" name="meeting_time">. The input itself fills in ~150ms - the
+      // fill was never the problem. Dismissing the picker with ESCAPE is: inside a modal, Odoo 12
+      // reads Escape as "close the dialog", so the whole raise dialog goes away and every field after
+      // this one waits on a locator that can no longer resolve. That is exactly how TC-40 burned its
+      // 15-minute timeout and reported it against the NEXT field's `.fill()`.
+      // Blur instead - the picker closes with the focus and the dialog stays up.
+      const meetingTime = d.locator('.o_datepicker[name="meeting_time"] input, input[name="meeting_time"]').first();
+      await meetingTime.fill(values.meetingTime);
+      await meetingTime.blur();
+      await this.datePicker().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait })
+        .catch(() => { /* the picker may never have opened */ });
     }
     if (values.description !== undefined) {
       await d.locator('textarea[name="description"], input[name="description"]').first().fill(values.description);
