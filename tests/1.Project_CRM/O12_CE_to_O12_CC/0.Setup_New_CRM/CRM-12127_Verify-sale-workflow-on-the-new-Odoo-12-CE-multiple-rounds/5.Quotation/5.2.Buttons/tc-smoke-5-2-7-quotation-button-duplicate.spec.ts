@@ -27,7 +27,8 @@ import {
  *
  * Summary:
  *   Verify Duplicate opens a NEW sale.order record that carries its own SO number, the Payer of
- *   the source Quotation and the QUOTATION stage.
+ *   the source Quotation and the QUOTATION stage, and that pressing Save commits that copy on the
+ *   same record with its number, its Payer and the QUOTATION stage unchanged.
  *
  * -----------------------------------------------------------------------------
  * Source manual TC (pre-production): TC.Performance.1.1.5.12 "Duplicate button on the Quotation"
@@ -36,7 +37,7 @@ import {
  *     - The O12 CE Migration server is reachable and the Admin account can log in
  *       (CRM-12325_1.1.1).
  *
- *   Steps to reproduce (the manual TC's 6 steps):
+ *   Steps to reproduce (the manual TC's 7 steps):
  *     1. Log in to the CRM.
  *     2. Open "CRM" and switch to the Opportunities list view.
  *     3. Create the Opportunity this test case owns:
@@ -53,6 +54,7 @@ import {
  *          - Order line   = NAKIVO Backup product
  *     5. Press "NEW QUOTATION" to create the Quotation.
  *     6. Press "Duplicate" and read the copy it opens.
+ *     7. Press "Save" on the duplicated Quotation and read the fields and the stage after Save.
  *
  *   Verification:
  *     1. Duplicate lands on a different record than the source.
@@ -60,11 +62,18 @@ import {
  *     3. The copy carries the Payer of the source Quotation.
  *     4. The copy is on the QUOTATION stage.
  *     5. Duplicate raises no Odoo error dialog.
+ *     6. The copy opens in edit mode (Save / Discard offered) and Save leaves edit mode - the
+ *        Edit button is back and the Save button is gone.
+ *     7. Save stays on the SAME record - the copy's record id does not change.
+ *     8. After Save the Quotation number is the one the copy carried before Save.
+ *     9. After Save the Payer is still the Payer of the source Quotation.
+ *    10. After Save the stage is still QUOTATION.
+ *    11. Save raises no Odoo error dialog.
  *
  *   Manual steps 1-5 are the shared O12 CE setup and are run by the suite helper
  *   (o12ce-main-business.helper), which expands them into Step 1 .. Step 11 plus Step 12
- *   below - the same grouping the 4.Deal_Element specs use. Manual step 6 is Step 13,
- *   mapped 1:1.
+ *   below - the same grouping the 4.Deal_Element specs use. Manual step 6 is Step 13 and
+ *   manual step 7 is Step 14, each mapped 1:1.
  *
  * -----------------------------------------------------------------------------
  * Baseline rule (CLAUDE.md): the assertions below are the PRE-PRODUCTION baseline, ported
@@ -82,6 +91,7 @@ const TC = 'CRM-12370_5.2.7';
 const STEP = {
   s12: 'Step 12: Press "NEW QUOTATION" on the saved Deal Element to create the Quotation',
   s13: 'Step 13: Press Duplicate and verify the copy',
+  s14: 'Step 14: Press "Save" on the duplicated Quotation and verify the fields and stage after Save',
   verify: 'Verification',
 } as const;
 
@@ -138,6 +148,14 @@ test.describe(`${TC} - Duplicate button on the Quotation`, () => {
     let dupSourceId = '';
     let dupNewId = '';
     let dupPopup = '';
+    let savedOk = false;
+    let saveWasInEditMode = false;
+    let saveIdBefore = '';
+    let saveIdAfter = '';
+    let savePopup = '';
+    let savedNumber = '';
+    let savedPayer = '';
+    let savedStage = '';
 
     // The VERIFY block printed before the expect()s, so a failing check still reaches stdout.
     const CHECKS: Array<{ what: string; expected: string; actual: string; pass: boolean }> = [];
@@ -226,6 +244,40 @@ test.describe(`${TC} - Duplicate button on the Quotation`, () => {
       record('Backend popup', '(none)', dupPopup === '' ? '(none)' : dupPopup);
     });
 
+    await test.step(STEP.s14, async () => {
+      console.log(`
+--- ${STEP.s14} ---`);
+      // Odoo 12 opens the copy in EDIT mode (Save / Discard in the breadcrumb), so the copy is only
+      // committed once Save is pressed - this step is what turns the duplicate into a stored record.
+      const saveResult = await quotationPage.saveQuotationForm();
+      savedOk = saveResult.saved;
+      saveWasInEditMode = saveResult.wasInEditMode;
+      saveIdBefore = saveResult.recordIdBefore;
+      saveIdAfter = saveResult.recordIdAfter;
+      savePopup = saveResult.popupText;
+
+      savedNumber = await quotationPage.getSalesOrderNumber();
+      savedPayer = await quotationPage.getPayerName();
+      savedStage = await quotationPage.getActiveStatusBarStage();
+
+      console.log(`  Form was in edit mode        : ${saveResult.wasInEditMode}`);
+      console.log(`  Quotation number after Save  : ${savedNumber}`);
+      console.log(`  Payer after Save             : ${savedPayer}`);
+      console.log(`  Stage after Save             : ${savedStage}`);
+      console.log(`  Record id before / after Save: ${saveIdBefore} / ${saveIdAfter}`);
+      console.log(`  URL after Save               : ${page.url()}`);
+
+      record('Duplicated copy opened in edit mode, so Save has something to commit', 'true', String(saveWasInEditMode));
+      record('Save left edit mode (Edit back, Save gone)', 'true', String(savedOk));
+      record('Save stayed on the same record', saveIdBefore, saveIdAfter);
+      record('Quotation number after Save', copyNumber, savedNumber);
+      record('Payer after Save', sourcePayer, savedPayer);
+      record('Stage after Save', EXPECTED_STAGE, savedStage);
+      record('Backend popup on Save', '(none)', savePopup === '' ? '(none)' : savePopup);
+
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Quotation copy saved`);
+    });
+
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
       console.log(`  Opportunity : id=${opp?.oppId} | Company="${opp?.companyValue}"`);
@@ -238,6 +290,13 @@ test.describe(`${TC} - Duplicate button on the Quotation`, () => {
       expect(copyPayer, 'the copy must carry the Payer of the source Quotation').toBe(sourcePayer);
       expect(copyStage, 'the copy must be a Quotation, not a Sale Order').toBe(EXPECTED_STAGE);
       expect(dupPopup, 'Duplicate must not raise an Odoo error dialog').toBe('');
+      expect(saveWasInEditMode, 'the duplicated copy must open in edit mode - otherwise Save commits nothing and this step verifies nothing').toBe(true);
+      expect(savedOk, 'Save must leave edit mode - the Edit button back and the Save button gone').toBe(true);
+      expect(saveIdAfter, 'Save must stay on the copy, not create another record').toBe(saveIdBefore);
+      expect(savedNumber, 'the saved copy must keep the Quotation number it was given').toBe(copyNumber);
+      expect(savedPayer, 'the saved copy must keep the Payer of the source Quotation').toBe(sourcePayer);
+      expect(savedStage, 'the saved copy must still be a Quotation, not a Sale Order').toBe(EXPECTED_STAGE);
+      expect(savePopup, 'Save must not raise an Odoo error dialog').toBe('');
     });
   });
 });
