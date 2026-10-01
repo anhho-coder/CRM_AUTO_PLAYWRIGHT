@@ -68,9 +68,20 @@ import {
  *   5. Play as the Max account and press "APPROVE" button.
  *
  * Verification Points:
- *   1. After "TO APPROVE" the Quotation status is "Pending Approval".
- *   2. After Max presses "APPROVE" the approval is consumed (the APPROVE button is gone and a
- *      forward action - CONFIRM / SEND BY EMAIL - is available).
+ *   Every point below is the PRE-PRODUCTION screen after APPROVE (reference: SO220674 on
+ *   pre-production.nakivo.site) - the O12 CE Migration server must read exactly the same.
+ *   1. After "TO APPROVE" the statusbar stage is "Pending Approval"
+ *      (chatter on pre-prod: "Status: Quotation -> Pending Approval").
+ *   2. After Max presses "APPROVE" the statusbar stage is "Approved" - on pre-prod the statusbar
+ *      reads QUOTATION | *APPROVED* | QUOTATION SENT | SALE ORDER and the chatter logs
+ *      "Status: Pending Approval -> Approved". Read back from the SERVER (reload): Odoo 12 does not
+ *      re-render the statusbar in place, so a straight read after the action returns the old stage.
+ *   3. The approval buttons are consumed - neither "APPROVE" nor "TO APPROVE" is offered any more
+ *      (pre-prod's post-approval header carries neither).
+ *   4. The post-approval header of the pre-prod screen is offered: SEND BY EMAIL, CONFIRM, CANCEL
+ *      and Duplicate are ALL visible. (Pre-prod shows SEND BY EMAIL | PRINT | CANCEL | CONFIRM |
+ *      PREVIEW | SEND PRO-FORMA INVOICE | Duplicate; these four are the ones this Page Object
+ *      locates, and CONFIRM + SEND BY EMAIL are required TOGETHER, not either-or.)
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12370_5\.1\.4:" --project=chromium
@@ -133,6 +144,9 @@ test.describe('CRM-12370_5.1.4 - O12 CE smoke: approve a Quotation', () => {
     // assignment, which keeps TypeScript's control-flow narrowing honest in the finally block.
     let session: { approverPage: Page; approverContext: BrowserContext } | undefined;
     let approvalCheck = { approved: false, approveButtonGone: false, toApproveButtonGone: false, confirmVisible: false, sendByEmailVisible: false };
+    // The rest of the pre-prod post-approval header (Verification Point 4).
+    let cancelVisible = false;
+    let duplicateVisible = false;
 
     await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
     await openOpportunitiesListOnO12CE(page);
@@ -160,7 +174,7 @@ test.describe('CRM-12370_5.1.4 - O12 CE smoke: approve a Quotation', () => {
       const approvalDeadline = Date.now() + CommonUtils.waitTimes.reAssignationWait;
       do {
         statusAfterToApprove = await quotationPage.getQuotationStatus().catch(() => '');
-        if (/pending|approv/i.test(statusAfterToApprove)) break;
+        if (/pending/i.test(statusAfterToApprove)) break;
         await page.waitForTimeout(CommonUtils.waitTimes.long);
       } while (Date.now() < approvalDeadline);
 
@@ -186,37 +200,71 @@ test.describe('CRM-12370_5.1.4 - O12 CE smoke: approve a Quotation', () => {
       console.log('\n--- Steps run - Step 5: Press APPROVE (as Max) ---');
       const approverQuotationPage = new QuotationPage(session!.approverPage);
       approveMs = await approverQuotationPage.clickApprove();
+      // RELOAD, then read - Odoo 12 leaves both the statusbar and the header buttons on their
+      // pre-action render when a state-changing action returns, so an in-place read reports the
+      // stage the record held BEFORE the APPROVE (that is exactly how this TC once reported
+      // "Pending Approval" beside a header with no CONFIRM / SEND BY EMAIL on it).
+      statusAfterApprove = await approverQuotationPage.getQuotationStatusFromServer();
       approvalCheck = await approverQuotationPage.verifyApprovalSuccess(CommonUtils.waitTimes.abnormalWait);
-      statusAfterApprove = await approverQuotationPage.getQuotationStatus().catch(() => '');
+      cancelVisible = await approverQuotationPage.isCancelButtonVisible(CommonUtils.waitTimes.searchOppWait);
+      duplicateVisible = await approverQuotationPage.isDuplicateButtonVisible(CommonUtils.waitTimes.searchOppWait);
       console.log(`  APPROVE elapsed        : ${(approveMs / 1000).toFixed(2)}s (recorded for reference, not asserted)`);
-      console.log(`  Status after APPROVE   : "${statusAfterApprove}"`);
+      console.log(`  Status after APPROVE   : "${statusAfterApprove}" (server-read)`);
     });
 
       await test.step('Verification', async () => {
-      const pendingOk = /pending|approv/i.test(statusAfterToApprove);
+      // Expected values below are the pre-production screen after APPROVE, verbatim.
+      const pendingOk = /^pending approval$/i.test(statusAfterToApprove.trim());
+      const approvedStageOk = /^approved$/i.test(statusAfterApprove.trim());
+      const approvalButtonsConsumed = approvalCheck.approveButtonGone && approvalCheck.toApproveButtonGone;
+      const postApprovalHeaderOk =
+        approvalCheck.sendByEmailVisible && approvalCheck.confirmVisible && cancelVisible && duplicateVisible;
+      const overallOk = pendingOk && approvedStageOk && approvalButtonsConsumed && postApprovalHeaderOk;
 
       console.log('\n==================== VERIFY ====================');
-      console.log('  Verify #1 - After "TO APPROVE" the Quotation status is "Pending Approval":');
-      console.log('     Expected : status contains "Pending Approval"');
+      console.log('  (Expected = the pre-production screen after APPROVE - reference SO220674)');
+      console.log('  Verify #1 - After "TO APPROVE" the statusbar stage is "Pending Approval":');
+      console.log('     Expected : stage = "Pending Approval"');
       console.log(`     Actual   : "${statusAfterToApprove}"`);
       console.log(`     Result   : ${pendingOk ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #2 - After "APPROVE" the approval is consumed and a forward action is available:');
-      console.log('     Expected : APPROVE button gone AND (CONFIRM or SEND BY EMAIL) visible');
-      console.log(`     Actual   : approveGone=${approvalCheck.approveButtonGone} | confirm=${approvalCheck.confirmVisible} | sendByEmail=${approvalCheck.sendByEmailVisible}`);
-      console.log(`     Result   : ${approvalCheck.approved ? 'PASS' : 'FAIL'}`);
-      console.log(`  Info - Status after APPROVE: "${statusAfterApprove}"`);
+      console.log('  Verify #2 - After "APPROVE" the statusbar stage is "Approved":');
+      console.log('     Expected : stage = "Approved" (server-read after reload)');
+      console.log(`     Actual   : "${statusAfterApprove}"`);
+      console.log(`     Result   : ${approvedStageOk ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #3 - After "APPROVE" the approval buttons are consumed:');
+      console.log('     Expected : "APPROVE" gone AND "TO APPROVE" gone');
+      console.log(`     Actual   : approveGone=${approvalCheck.approveButtonGone} | toApproveGone=${approvalCheck.toApproveButtonGone}`);
+      console.log(`     Result   : ${approvalButtonsConsumed ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #4 - After "APPROVE" the pre-prod post-approval header is offered:');
+      console.log('     Expected : SEND BY EMAIL visible AND CONFIRM visible AND CANCEL visible AND Duplicate visible');
+      console.log(`     Actual   : sendByEmail=${approvalCheck.sendByEmailVisible} | confirm=${approvalCheck.confirmVisible} | cancel=${cancelVisible} | duplicate=${duplicateVisible}`);
+      console.log(`     Result   : ${postApprovalHeaderOk ? 'PASS' : 'FAIL'}`);
       console.log(`  Info - Opportunity: id=${opp?.oppId} | Ordered Qty=${APPROVAL_QTY}`);
       console.log(`  Info - Requested by: ${users.sale_ic_thomas_crm_mig.displayName} | Approved by: ${users.manager_max_crm_mig.displayName}`);
       console.log(`  Info - Quotation URL: ${quotationUrl}`);
       console.log(`  Info - APPROVE elapsed: ${(approveMs / 1000).toFixed(2)}s`);
       console.log('===============================================');
-      console.log(`OVERALL: ${pendingOk && approvalCheck.approved ? 'PASS' : 'FAIL'} - Quotation approval on the O12 CE Migration server`);
+      console.log(`OVERALL: ${overallOk ? 'PASS' : 'FAIL'} - Quotation approval on the O12 CE Migration server`);
 
       // The approval happened in the Max session, so the evidence screenshot comes from that page.
       await CommonUtils.captureAndAttachScreenshot(session?.approverPage ?? page, testInfo, `${TC_ID} - Quotation approved on O12 CE`);
 
-      expect(pendingOk, `"TO APPROVE" must move the O12 CE Quotation into Pending Approval (status read back: "${statusAfterToApprove}")`).toBeTruthy();
-      expect(approvalCheck.approved, `"APPROVE" must complete the O12 CE approval (approveGone=${approvalCheck.approveButtonGone}, confirm=${approvalCheck.confirmVisible}, sendByEmail=${approvalCheck.sendByEmailVisible})`).toBeTruthy();
+      expect(
+        pendingOk,
+        `"TO APPROVE" must move the O12 CE Quotation into the "Pending Approval" stage, as on pre-production (stage read back: "${statusAfterToApprove}")`
+      ).toBeTruthy();
+      expect(
+        approvedStageOk,
+        `after "APPROVE" the O12 CE statusbar must read "Approved", as on pre-production (server-read stage: "${statusAfterApprove}")`
+      ).toBeTruthy();
+      expect(
+        approvalButtonsConsumed,
+        `after "APPROVE" neither approval button may remain, as on pre-production (approveGone=${approvalCheck.approveButtonGone}, toApproveGone=${approvalCheck.toApproveButtonGone})`
+      ).toBeTruthy();
+      expect(
+        postApprovalHeaderOk,
+        `after "APPROVE" the O12 CE header must offer the same post-approval actions as pre-production (sendByEmail=${approvalCheck.sendByEmailVisible}, confirm=${approvalCheck.confirmVisible}, cancel=${cancelVisible}, duplicate=${duplicateVisible})`
+      ).toBeTruthy();
       });
     } finally {
       // Always close the approver browser context (and attach its video), even when verification failed.

@@ -16,6 +16,7 @@ import {
   O12cePendingApprovalResult,
   teardownMigRecords,
   sweepMigLeftoversAfterAll,
+  registerMigRecordFromUrl,
 } from '@helpers/o12ce-main-business.helper';
 
 /**
@@ -65,17 +66,20 @@ import {
  *   1. Stay logged in as the SAME account that raised the Quotation (Thomas Semerich).
  *   2. Press the "Duplicate" button on the Quotation header.
  *   3. Read the copy back (record id + number + status).
- *   4. Re-open the ORIGINAL Quotation by its URL and read its status back.
+ *   4. Press "Save" on the duplicated Quotation and read the fields and the status after Save.
+ *   5. Re-open the ORIGINAL Quotation by its URL and read its status back.
  *
  * Verification Points:
  *   1. Before the attempt the Quotation status is "Pending Approval" and "Duplicate" is offered to
  *      the requester.
  *   2. "Duplicate" works for the requester - the form lands on a DIFFERENT sale.order record, which
  *      is a fresh draft "Quotation".
- *   3. The ORIGINAL Quotation is untouched - it is still "Pending Approval".
+ *   3. Save commits the copy: it opens in edit mode, Save leaves edit mode on the SAME record,
+ *      and the copy keeps its Quotation number and the "Quotation" status.
+ *   4. The ORIGINAL Quotation is untouched - it is still "Pending Approval".
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12370_5.8.5:" --project=chromium
+ *   npx playwright test --grep "CRM-12370_5.8.5:" --project=MigSmoke
  */
 
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
@@ -126,6 +130,13 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
     let copyNumber = '';
     let copyStatus = '';
     let originalStatusAfter = '';
+    let saveWasInEditMode = false;
+    let savedOk = false;
+    let saveIdBefore = '';
+    let saveIdAfter = '';
+    let savePopup = '';
+    let savedNumber = '';
+    let savedStatus = '';
 
     await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
     await openOpportunitiesListOnO12CE(page);
@@ -164,8 +175,33 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       console.log(`  Copy status    : "${copyStatus}"`);
     });
 
-    await test.step('Steps run - Step 4: Re-open the ORIGINAL Quotation and read its status back', async () => {
-      console.log('\n--- Steps run - Step 4: Re-open the original ---');
+    await test.step('Steps run - Step 4: Press "Save" on the duplicated Quotation and verify the fields and status after Save', async () => {
+      console.log('\n--- Steps run - Step 4: Press Save on the copy ---');
+      // Odoo 12 opens the copy in EDIT mode (Save / Discard in the breadcrumb), so it is only
+      // committed once Save is pressed - and it has to be pressed BEFORE step 5 navigates away,
+      // or the copy is discarded instead of saved.
+      const saveResult = await quotationPage.saveQuotationForm();
+      saveWasInEditMode = saveResult.wasInEditMode;
+      savedOk = saveResult.saved;
+      saveIdBefore = saveResult.recordIdBefore;
+      saveIdAfter = saveResult.recordIdAfter;
+      savePopup = saveResult.popupText;
+
+      savedNumber = await quotationPage.getSalesOrderNumber(CommonUtils.waitTimes.abnormalWait).catch(() => '');
+      savedStatus = await quotationPage.getQuotationStatus().catch(() => '');
+
+      // The saved copy is a record THIS run created - it has to be torn down with the rest of the chain.
+      if (copy.navigated) registerMigRecordFromUrl(page.url(), `Quotation copy ${TC_ID}`, 'sale.order');
+
+      console.log(`  Form was in edit mode        : ${saveWasInEditMode}`);
+      console.log(`  Quotation number after Save  : ${savedNumber || '(not read)'}`);
+      console.log(`  Status after Save            : "${savedStatus}"`);
+      console.log(`  Record id before / after Save: ${saveIdBefore || '(none)'} / ${saveIdAfter || '(none)'}`);
+      console.log(`  Popup raised by Save         : "${savePopup || '(none)'}"`);
+    });
+
+    await test.step('Steps run - Step 5: Re-open the ORIGINAL Quotation and read its status back', async () => {
+      console.log('\n--- Steps run - Step 5: Re-open the original ---');
       await page.goto(approvalState?.quotationUrl ?? '');
       await quotationPage.waitForPageLoad(CommonUtils.waitTimes.savingPage).catch(() => {});
       originalStatusAfter = await quotationPage.getQuotationStatus().catch(() => '');
@@ -178,6 +214,12 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       const copyIsDraftQuotation = /^quotation$/i.test(copyStatus.trim());
       const duplicateWorked = copyIsDifferentRecord && copyIsDraftQuotation;
       const originalUntouched = /pending/i.test(originalStatusAfter);
+      const copyOpenedInEditMode = saveWasInEditMode;
+      const copySaved = savedOk && saveIdAfter !== '' && saveIdAfter === saveIdBefore;
+      const savedNumberKept = savedNumber !== '' && savedNumber === copyNumber;
+      const savedStatusKept = /^quotation$/i.test(savedStatus.trim());
+      const saveRaisedNoPopup = savePopup === '';
+      const saveWorked = copyOpenedInEditMode && copySaved && savedNumberKept && savedStatusKept && saveRaisedNoPopup;
 
       console.log('\n==================== VERIFY ====================');
       console.log('  Verify #1 - Before the attempt the Quotation is "Pending Approval" and "Duplicate" is offered:');
@@ -188,7 +230,12 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       console.log('     Expected : the form lands on a different sale.order id whose status is "Quotation"');
       console.log(`     Actual   : sourceId=${copy.sourceRecordId || '(none)'} | copyId=${copy.newRecordId || '(unchanged)'} | copyNumber=${copyNumber || '(not read)'} | copyStatus="${copyStatus}"`);
       console.log(`     Result   : ${duplicateWorked ? 'PASS' : 'FAIL'}`);
-      console.log('  Verify #3 - The ORIGINAL Quotation is untouched:');
+      console.log('  Verify #3 - Save commits the copy without changing what Duplicate produced:');
+      console.log('     Expected : the copy opens in edit mode, Save leaves edit mode on the SAME record,');
+      console.log(`                the number stays "${copyNumber || '(not read)'}", the status stays "Quotation", no popup`);
+      console.log(`     Actual   : wasInEditMode=${copyOpenedInEditMode} | leftEditMode=${savedOk} | id ${saveIdBefore || '(none)'} -> ${saveIdAfter || '(none)'} | number "${savedNumber}" | status "${savedStatus}" | popup "${savePopup || '(none)'}"`);
+      console.log(`     Result   : ${saveWorked ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #4 - The ORIGINAL Quotation is untouched:');
       console.log('     Expected : the original is STILL "Pending Approval"');
       console.log(`     Actual   : "${originalStatusAfter}"`);
       console.log(`     Result   : ${originalUntouched ? 'PASS' : 'FAIL'}`);
@@ -199,14 +246,14 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       console.log(`  Info - Opportunity: id=${opp?.oppId}`);
       console.log(`  Info - Original Quotation URL: ${approvalState?.quotationUrl ?? ''}`);
       console.log('===============================================');
-      console.log(`OVERALL: ${pendingBefore && duplicateOffered && duplicateWorked && originalUntouched ? 'PASS' : 'FAIL'} - the requester can duplicate his own pending-approval Quotation on O12 CE`);
+      console.log(`OVERALL: ${pendingBefore && duplicateOffered && duplicateWorked && saveWorked && originalUntouched ? 'PASS' : 'FAIL'} - the requester can duplicate his own pending-approval Quotation on O12 CE and save the copy`);
 
       // VERIFY-POINT EVIDENCE: the verdict is already computed above, so the shot carries it - red box on
       // the statusbar the assertions actually read, the VERIFY block burned into the image, and the result
       // in the attachment name. Taken BEFORE the expect()s, so it is attached on a FAIL exactly as on a PASS.
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC_ID} - requester duplicated his own Quotation`,
-        passed: pendingBefore && duplicateOffered && duplicateWorked && originalUntouched,
+        passed: pendingBefore && duplicateOffered && duplicateWorked && saveWorked && originalUntouched,
         highlight: ['.o_statusbar_status'],
         lines: [
           'Verify #1 - pending + Duplicate offered:',
@@ -217,7 +264,11 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
           `   Expected : a different sale.order id with status "Quotation"`,
           `   Actual   : sourceId=${copy.sourceRecordId || '(none)'} | copyId=${copy.newRecordId || '(unchanged)'} | copyStatus="${copyStatus}"`,
           `   Result   : ${duplicateWorked ? 'PASS' : 'FAIL'}`,
-          'Verify #3 - the ORIGINAL is untouched:',
+          'Verify #3 - Save commits the copy:',
+          `   Expected : edit mode -> Save, same record, number "${copyNumber || '(not read)'}", status "Quotation"`,
+          `   Actual   : wasInEditMode=${copyOpenedInEditMode} | id ${saveIdBefore || '(none)'} -> ${saveIdAfter || '(none)'} | number "${savedNumber}" | status "${savedStatus}"`,
+          `   Result   : ${saveWorked ? 'PASS' : 'FAIL'}`,
+          'Verify #4 - the ORIGINAL is untouched:',
           `   Expected : the original is STILL "Pending Approval"`,
           `   Actual   : "${originalStatusAfter}"`,
           `   Result   : ${originalUntouched ? 'PASS' : 'FAIL'}`,
@@ -235,6 +286,26 @@ test.describe('CRM-12370_5.8.5 - O12 CE smoke: the requester can duplicate his o
       expect(
         duplicateWorked,
         `"Duplicate" must open a NEW draft Quotation for the requester (${users.sale_ic_thomas_crm_mig.displayName}) - source id ${copy.sourceRecordId || '(none)'}, id after the click ${copy.newRecordId || '(unchanged)'}, copy status "${copyStatus}" (popup="${copy.popupText || '(none)'}")`
+      ).toBeTruthy();
+      expect(
+        copyOpenedInEditMode,
+        `the duplicated copy must open in EDIT mode (Save / Discard offered) - otherwise Save commits nothing and this step verifies nothing (record id on screen: ${saveIdBefore || '(none)'})`
+      ).toBeTruthy();
+      expect(
+        copySaved,
+        `"Save" must commit the copy and leave edit mode on the SAME record - id before ${saveIdBefore || '(none)'}, id after ${saveIdAfter || '(none)'}`
+      ).toBeTruthy();
+      expect(
+        savedNumberKept,
+        `the saved copy must keep the Quotation number Duplicate gave it - "${copyNumber || '(not read)'}" before Save, "${savedNumber || '(not read)'}" after`
+      ).toBeTruthy();
+      expect(
+        savedStatusKept,
+        `the saved copy must still be a draft "Quotation" after Save, but it reads "${savedStatus}"`
+      ).toBeTruthy();
+      expect(
+        saveRaisedNoPopup,
+        `"Save" must not raise an Odoo error dialog - it answered "${savePopup}"`
       ).toBeTruthy();
       expect(
         originalUntouched,
