@@ -82,12 +82,18 @@ let sharedPage: import('@playwright/test').Page | undefined;
 let teardown: (() => Promise<void>) | undefined;
 
 test.describe('CRM-12135_TC-18 - The dispatcher notification names everything the reader needs', () => {
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
     }
     if (teardown) {
-      console.log('TEARDOWN DID NOT RUN - the test left the try block without cleaning up.');
+      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
+      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
+      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
+      const swept = await MigPreSalePage.sweepLeftovers(browser);
+      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
+        + `opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
       teardown = undefined;
     }
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
@@ -183,12 +189,12 @@ await test.step(STEP.s1, async () => {
   const meetingTimeStr = 'tomorrow at 15:00';
   const meetingLinkStr = 'https://meet.example.invalid/auto-crm-12135';
 
-  await preSale.fillRaiseDialog({ subject, description, supportType });
-
-  // RE-SYNC GAP (CRM-12932, 2026-09-24): MigPreSalePage.fillRaiseDialog does not support
-  // Meeting Time and Meeting Link parameters. These fields must be filled manually on the form.
-  // The method would need to be extended to accept and fill these fields.
-  // TODO: Add meeting time and meeting link filling to the dialog
+  // fillRaiseDialog DOES take meetingTime and meetingLink - the note that used to sit here claiming
+  // otherwise was wrong, and because of it the case asserted a Meeting link it had never entered.
+  // Meeting Time goes in a SECOND call, after the support type: choosing an online type fires an
+  // onchange that overwrites the field, so filling it first loses the value (same trap as TC-07).
+  await preSale.fillRaiseDialog({ subject, description, supportType, meetingLink: meetingLinkStr });
+  await preSale.fillRaiseDialog({ meetingTime: meetingTimeStr });
 
   ticketSubject = subject;
   ticketSupportType = supportType;
@@ -215,7 +221,12 @@ await test.step(STEP.s2, async () => {
   console.log(`  - Searching for mail with Opportunity name: ${opportunityName}`);
 
   // Capture mail queue entries for this request
-  mails = await preSale.mailsForRequest(requestId);
+  // The dispatcher notification is sent BY THE CRM and lives in the CRM's own mail queue. The manual
+  // TC says so in as many words: "On the CRM open Settings > Technical > Email > Emails". This used
+  // to call mailsForRequest(), which always queries the PRE-SALES Application - a different server
+  // with a different queue - so it searched somewhere the mail can never be. Measured 2026-10-05:
+  // the CRM row carries email_to "pre-sales@nakivo.com", subject "New SE meeting request by ...".
+  mails = await preSale.mailsOnCrmBySubject('New SE meeting request');
   console.log(`  - Mail queue entries found: ${mails.length}`);
   for (const m of mails) {
     console.log(`    - To      : ${m.emailTo}`);
@@ -245,7 +256,7 @@ await test.step(STEP.s3, async () => {
   console.log(`\n  Mail details:`);
   console.log(`  - To             : ${mail.emailTo}`);
   console.log(`  - Subject        : ${mail.subject}`);
-  console.log(`  - Body preview   : ${mail.bodyHtml.slice(0, 200)}`);
+  console.log(`  - Body (readable): ${MigPreSalePage.mailText(mail).slice(0, 400)}`);
 
   // Verify mail has correct recipient
   const expectedRecipient = 'pre-sales@nakivo.com';
@@ -260,20 +271,28 @@ await test.step(STEP.s3, async () => {
   console.log(`  - Has correct subject: ${hasCorrectSubject ? 'YES' : 'NO'}`);
 
   // Verify mail body contains all 9 values
-  const bodyContainsOpportunityName = mail.bodyHtml.includes(opportunityName);
-  const bodyContainsTicketNumber = mail.bodyHtml.includes(ticketNumber);
-  const bodyContainsTicketSubject = mail.bodyHtml.includes(ticketSubject);
-  const bodyContainsSupportType = mail.bodyHtml.includes(ticketSupportType);
-  const bodyContainsExpectedRevenue = mail.bodyHtml.includes(String(expectedRevenue));
-  const bodyContainsDescription = mail.bodyHtml.includes(description);
-  const bodyContainsMeetingLink = mail.bodyHtml.includes(meetingLink);
+  const bodyContainsOpportunityName = MigPreSalePage.mailText(mail).includes(opportunityName);
+  const bodyContainsTicketNumber = MigPreSalePage.mailText(mail).includes(ticketNumber);
+  const bodyContainsTicketSubject = MigPreSalePage.mailText(mail).includes(ticketSubject);
+  const bodyContainsSupportType = MigPreSalePage.mailText(mail).includes(ticketSupportType);
+  // The mail's "Size" line is the plain Expected Revenue (planned_revenue), NOT the Expected Revenue
+  // Deal the raise is gated on. Confirmed by the feature owner on 2026-10-05 and by a baseline probe
+  // on PRE-PRODUCTION, where the same wizard on an Opportunity with planned_revenue=750 /
+  // planned_revenue_custom=900 also produced "Size: 750.0". Both servers agree; it is by design.
+  // This spec used to assert the Deal figure and was red for a product behaviour that is correct.
+  const revenues = await preSale.leadRevenues(leadId);
+  console.log(`  - Opportunity planned_revenue (Expected Revenue)        : ${revenues.plain}  <- what the mail reports`);
+  console.log(`  - Opportunity planned_revenue_custom (Expected Rev Deal): ${revenues.deal}  (gate field, NOT in the mail)`);
+  const bodyContainsExpectedRevenue = MigPreSalePage.mailText(mail).includes(String(revenues.plain));
+  const bodyContainsDescription = MigPreSalePage.mailText(mail).includes(description);
+  const bodyContainsMeetingLink = MigPreSalePage.mailText(mail).includes(meetingLink);
 
   console.log(`\n  Mail body content verification:`);
   console.log(`  - Contains Opportunity name (${opportunityName}): ${bodyContainsOpportunityName ? 'YES' : 'NO'}`);
   console.log(`  - Contains Ticket number (${ticketNumber}): ${bodyContainsTicketNumber ? 'YES' : 'NO'}`);
   console.log(`  - Contains Ticket Subject (${ticketSubject}): ${bodyContainsTicketSubject ? 'YES' : 'NO'}`);
   console.log(`  - Contains Support type (${ticketSupportType}): ${bodyContainsSupportType ? 'YES' : 'NO'}`);
-  console.log(`  - Contains Expected Revenue (${expectedRevenue}): ${bodyContainsExpectedRevenue ? 'YES' : 'NO'}`);
+  console.log(`  - Contains Expected Revenue (${revenues.plain}): ${bodyContainsExpectedRevenue ? 'YES' : 'NO'}`);
   console.log(`  - Contains Description (${description}): ${bodyContainsDescription ? 'YES' : 'NO'}`);
   console.log(`  - Contains Meeting link (${meetingLink}): ${bodyContainsMeetingLink ? 'YES' : 'NO'}`);
 
@@ -284,7 +303,9 @@ await test.step(STEP.s3, async () => {
   expect(bodyContainsTicketNumber, 'email body should contain Ticket number').toBe(true);
   expect(bodyContainsTicketSubject, 'email body should contain Ticket Subject').toBe(true);
   expect(bodyContainsSupportType, 'email body should contain Support type').toBe(true);
-  expect(bodyContainsExpectedRevenue, 'email body should contain Expected Revenue').toBe(true);
+  expect(bodyContainsExpectedRevenue,
+    `email body "Size" should report the plain Expected Revenue (${revenues.plain}), which is what this notification carries by design - not the Expected Revenue Deal (${revenues.deal})`,
+  ).toBe(true);
   expect(bodyContainsDescription, 'email body should contain Description').toBe(true);
   expect(bodyContainsMeetingLink, 'email body should contain Meeting link').toBe(true);
   console.log('===============================================');
