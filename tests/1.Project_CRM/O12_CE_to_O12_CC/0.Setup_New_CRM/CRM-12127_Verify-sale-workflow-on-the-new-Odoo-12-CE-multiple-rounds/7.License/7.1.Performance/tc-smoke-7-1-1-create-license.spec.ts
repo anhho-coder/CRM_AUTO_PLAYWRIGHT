@@ -38,8 +38,10 @@ import {
  *   - The license module IS on the Migration server: model `license_management.license` with
  *     `it_monitoring_mode_select` (SOCKET = "sockets" / VM = "workloads") and `support_type`
  *     (24_7 = "24/7" / standard), plus the invoice-form "CREATE LICENSE" view.
- *   - This TC needs the created Quotation to be OPEN on screen, so it asserts that "NEW QUOTATION"
- *     navigated to the new Quotation form (see CRM-12370_1.5.1 for the two observed variants).
+ *   - This TC needs the created Quotation to be OPEN on screen, so it asserts `landedOnQuotation`
+ *     - the form ended up on the Quotation, whether "NEW QUOTATION" navigated there or the helper
+ *     had to look the record up. O12 CE always takes the second variant, so `navigated` is reported
+ *     only, never gated on (see CRM-12370_1.5.1 for the two observed variants).
  *
  * Pre-conditions:
  *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
@@ -119,8 +121,8 @@ test.describe('CRM-12370_7.1.1 - O12 CE smoke: create a License', () => {
       console.log('\n--- Step 12: Press NEW QUOTATION ---');
       quotation = await pressNewQuotationOnO12CE(page);
       expect(
-        quotation.navigated,
-        `the "NEW QUOTATION" action must open the created Quotation form so it can be confirmed (O12 CE created it in place instead - chatter: "${(quotation.chatterText || '').substring(0, 200)}")`
+        quotation.landedOnQuotation,
+        `the Quotation raised by "NEW QUOTATION" must be open on screen before this TC can drive it (navigated=${quotation.navigated}, looked up id=${quotation.quotationId || 'none'})`
       ).toBeTruthy();
     });
 
