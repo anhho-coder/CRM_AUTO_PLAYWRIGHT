@@ -140,6 +140,7 @@ let leadId = 0;
 let requestId = 0;
 let request: Awaited<ReturnType<typeof preSale.request>> | undefined;
 let teamLogins: string[] = [];
+let allUserCount = 0;
 
 await test.step(STEP.pre1, async () => {
   console.log(`\n--- ${STEP.pre1} ---`);
@@ -215,7 +216,9 @@ await test.step(STEP.s3, async () => {
   //   - Read dropdown options
   // Using API verification instead: get team member logins
   teamLogins = await preSale.teamMemberLogins();
+  allUserCount = await preSale.activeUserCount();
   console.log(`  Sales Engineers team members available (${teamLogins.length}): ${teamLogins.join(', ')}`);
+  console.log(`  Active internal users on the Pre-Sales Application: ${allUserCount}`);
   console.log(`  Manual verification: dropdown should show exactly these ${teamLogins.length} members`);
 });
 
@@ -233,9 +236,12 @@ await test.step(STEP.verify, async () => {
   const r = request!;
   const stageOk = r.stage === 'New';
   const unowned = r.assignedUserId === false;
-  const expectedMembers = [...MigPreSalePage.SE_TEAM_LOGINS].sort();
+  // The manual TC says the dropdown offers "only Sales Engineers team members (six TODAY)". The
+  // roster is incidental - the author flagged it with "today" - so assert the two things that stay
+  // true as people join and leave, and record the roster itself as an unscored observation.
   const actualMembers = [...teamLogins].sort();
-  const membershipOk = JSON.stringify(actualMembers) === JSON.stringify(expectedMembers);
+  const teamHasMembers = actualMembers.length > 0;
+  const teamIsRestricted = actualMembers.length < allUserCount;
 
   console.log('\n==================== VERIFY ====================');
   console.log('Verify #1 - Request stage = New:');
@@ -246,22 +252,31 @@ await test.step(STEP.verify, async () => {
   console.log(`     Expected : false`);
   console.log(`     Actual   : ${r.assignedUserId}`);
   console.log(`     Result   : ${unowned ? 'PASS' : 'FAIL'}`);
-  console.log('Verify #3 - Sales Engineers team has all six expected members:');
-  console.log(`     Expected : ${expectedMembers.join(', ')}`);
-  console.log(`     Actual   : ${actualMembers.join(', ') || '(none)'}`);
-  console.log(`     Result   : ${membershipOk ? 'PASS' : 'FAIL'}`);
-  console.log('Verify #4 - [MANUAL] Pre-Sales list view shows request with Team = Sales Engineers');
+  console.log('Verify #3 - The Sales Engineers team can be assigned to at all:');
+  console.log(`     Expected : at least one member`);
+  console.log(`     Actual   : ${actualMembers.length} member(s)`);
+  console.log(`     Result   : ${teamHasMembers ? 'PASS' : 'FAIL'}`);
+  console.log('Verify #4 - The team is a RESTRICTED set, not every user (so the dropdown cannot offer an outsider):');
+  console.log(`     Expected : fewer members than the ${allUserCount} active internal users`);
+  console.log(`     Actual   : ${actualMembers.length} of ${allUserCount}`);
+  console.log(`     Result   : ${teamIsRestricted ? 'PASS' : 'FAIL'}`);
+  console.log(`  Observation (not scored) - team roster today (${actualMembers.length}): ${actualMembers.join(', ') || '(none)'}`);
+  console.log('Verify #5 - [MANUAL] Pre-Sales list view shows request with Team = Sales Engineers');
   console.log(`     Status   : REQUIRES MANUAL VERIFICATION (no page object method for Pre-Sales UI)`);
-  console.log('Verify #5 - [MANUAL] Assigned user dropdown shows only team members');
+  console.log('Verify #6 - [MANUAL] Assigned user dropdown shows only team members');
   console.log(`     Status   : REQUIRES MANUAL VERIFICATION (no page object method for dropdown)`);
-  console.log('Verify #6 - [MANUAL] Sales Engineer can sign in and see the request');
+  console.log('Verify #7 - [MANUAL] Sales Engineer can sign in and see the request');
   console.log(`     Status   : REQUIRES MANUAL VERIFICATION (no page object method for sign-in as different user)`);
   console.log('===============================================');
-  console.log(`OVERALL: ${stageOk && unowned && membershipOk ? 'PASS' : 'FAIL'} - new request arrives New and unassigned (API verified)`);
+  console.log(`OVERALL: ${stageOk && unowned && teamHasMembers && teamIsRestricted ? 'PASS' : 'FAIL'} - new request arrives New and unassigned (API verified)`);
 
   expect(stageOk, `request stage should be New (got ${r.stage})`).toBe(true);
   expect(unowned, 'request should arrive with no assigned user').toBe(true);
-  expect(membershipOk, `team should hold all six members (got ${actualMembers.join(', ')})`).toBe(true);
+  expect(teamHasMembers, 'the Sales Engineers team should hold at least one member to assign to').toBe(true);
+  expect(teamIsRestricted,
+    `the Sales Engineers team should be a restricted set, but it holds ${actualMembers.length} of the `
+    + `${allUserCount} active internal users - an unrestricted team means the assignee dropdown can offer an outsider`,
+  ).toBe(true);
 });
     } finally {
       // Teardown runs HERE, not in afterEach: it needs the live session, and afterEach only

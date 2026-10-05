@@ -223,8 +223,12 @@ test.describe('CRM-12135_TC-40 - A request carries a Ticket Type with exactly th
         await preSale.waitForRaiseDialogClosed();
         const raised = await preSale.requestsForLead(leadId);
         expect(raised.length, 'should have created at least two requests').toBeGreaterThanOrEqual(2);
-        requestIdB = raised[1].id;
-        console.log(`  Request B id     : ${requestIdB} (${raised[1].number})`);
+        // requestsForLead() orders `id desc`, so the request just created is ALWAYS raised[0].
+        // Reading raised[1] here returned request A and made B look mis-mapped - that is what
+        // produced "Online technical assistance should map to Technical assistance (got
+        // Deployment / POC session)", A's type, on the 2026-09-24 run.
+        requestIdB = raised[0].id;
+        console.log(`  Request B id     : ${requestIdB} (${raised[0].number})`);
       });
 
       await test.step(STEP.s3, async () => {
@@ -245,8 +249,8 @@ test.describe('CRM-12135_TC-40 - A request carries a Ticket Type with exactly th
         await preSale.waitForRaiseDialogClosed();
         const raised = await preSale.requestsForLead(leadId);
         expect(raised.length, 'should have created at least three requests').toBeGreaterThanOrEqual(3);
-        requestIdC = raised[2].id;
-        console.log(`  Request C id     : ${requestIdC} (${raised[2].number})`);
+        requestIdC = raised[0].id;   // newest first - see the note on request B above
+        console.log(`  Request C id     : ${requestIdC} (${raised[0].number})`);
       });
 
       await test.step(STEP.s4, async () => {

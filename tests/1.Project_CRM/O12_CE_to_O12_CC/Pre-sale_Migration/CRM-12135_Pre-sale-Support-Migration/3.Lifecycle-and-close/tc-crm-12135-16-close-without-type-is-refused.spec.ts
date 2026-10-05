@@ -146,7 +146,12 @@ test.describe('CRM-12135_TC-16 - Closing without a support type is refused', () 
         const ticketData: Record<string, any> = {
           name: `${marker}-no-type`,
           team_id: teamId,
-          type_id: false, // Blank - do not set the type
+          // The Pre-Sales Application makes Description mandatory on create - without it the call is
+          // refused with "Missing required value for the field 'Description' (description)" and the
+          // case dies before it can test anything. The manual TC does not mention the field because a
+          // human filling the form cannot save without it either; it is setup, not part of the check.
+          description: `Automated setup for CRM-12135 TC-16 - this request must not be closable while Ticket Type is blank.`,
+          type_id: false, // Blank - this IS what the case tests: no Ticket Type
         };
         requestId = await preSale.presalesCallKw<number>(
           MigPreSalePage.TICKET_MODEL, 'create', [ticketData],
@@ -172,7 +177,17 @@ test.describe('CRM-12135_TC-16 - Closing without a support type is refused', () 
           refusedMessage = '';
           console.log(`  Move succeeded (no refusal)`);
         } catch (err) {
-          refusedMessage = (err as Error).message.split('\n')[0];
+          // Keep the WHOLE message. The refusal reads two lines -
+          //   Please fill in next to close the ticket:
+          //   - "Classification" group
+          // - so taking only the first line threw away the only one that names Classification, and
+          // the check below could never pass however correctly the product behaved (2026-10-05 run).
+          // Keep the WHOLE message. The refusal reads two lines -
+          //   Please fill in next to close the ticket:
+          //   - "Classification" group
+          // - so taking only the first line threw away the only one that names Classification,
+          // and the check below could never pass however correctly the product behaved.
+          refusedMessage = (err as Error).message.replace(/[\s]+/g, ' ').trim();
           console.log(`  Move refused: ${refusedMessage}`);
         }
       });

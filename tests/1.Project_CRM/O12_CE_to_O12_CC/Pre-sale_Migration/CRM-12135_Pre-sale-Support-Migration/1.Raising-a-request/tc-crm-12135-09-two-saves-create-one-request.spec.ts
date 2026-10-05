@@ -131,7 +131,16 @@ const marker = MigPreSalePage.marker('TC-09', runId);
         const subject = `${marker}-double-save`;
         const description = 'Automated check of CRM-12135 TC-09.';
         const supportType = 'Online deployment session';
-        const meetingTime = 'tomorrow at 15:00'; // RE-SYNC GAP: fixture needs to calculate "one hour from now" dynamically
+        // The manual TC (CRM-12924) says "Meeting Time = one hour from now", so COMPUTE it - a
+        // literal rots, and a natural-language string is not a datetime at all. Until 2026-09-25
+        // this line read 'tomorrow at 15:00': Odoo cannot parse that, the save was refused, the
+        // dialog closed, and the second Save click then waited on a button that no longer existed
+        // until the 15-minute test timeout. Format is the one the en_US datepicker accepts,
+        // the same one TC-40 uses: MM/DD/YYYY HH:MM:SS.
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const inOneHour = new Date(Date.now() + 60 * 60 * 1000);
+        const meetingTime = `${pad(inOneHour.getMonth() + 1)}/${pad(inOneHour.getDate())}/`
+          + `${inOneHour.getFullYear()} ${pad(inOneHour.getHours())}:${pad(inOneHour.getMinutes())}:00`;
         let leadId = 0;
         let baselineTicketCount = 0;
         let newTicketCount = 0;
@@ -188,8 +197,12 @@ const marker = MigPreSalePage.marker('TC-09', runId);
 
         await test.step(STEP.s3, async () => {
           console.log(`\n--- ${STEP.s3} ---`);
-          const first = preSale.saveRaiseDialog();
-          const second = preSale.saveRaiseDialog().catch(() => { /* control may be gone */ });
+          // Both clicks get their own short budget. The SECOND one is expected to find the button
+          // already gone once the first save closes the dialog - without a budget that click waits
+          // out the whole test timeout instead of losing a few seconds.
+          const first = preSale.saveRaiseDialog(CommonUtils.waitTimes.abnormalWait);
+          const second = preSale.saveRaiseDialog(CommonUtils.waitTimes.extraLong)
+            .catch(() => { /* expected: the control is gone once the first save lands */ });
           await Promise.allSettled([first, second]);
           console.log(`  Save pressed twice in quick succession (no await between)`);
         });
@@ -208,7 +221,9 @@ const marker = MigPreSalePage.marker('TC-09', runId);
 
           // Read new Tickets count
           const ticketsBtn = page.locator('button[name="open_customer_tickets"]');
-          let newTicketCount = 0;
+          // Assign the OUTER newTicketCount declared at the top of the test. A `let` here shadowed it:
+          // the step read 1 and printed "Actual = 1", while the VERIFY block below still saw the outer
+          // variable at its initial 0 and failed a test that had actually passed (2026-09-25 run).
           if (await ticketsBtn.isVisible().catch(() => false)) {
             const text = await ticketsBtn.textContent();
             const match = text?.match(/(\d+)/);
