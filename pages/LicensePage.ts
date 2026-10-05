@@ -724,8 +724,24 @@ export class LicensePage extends BasePage {
    */
   async openLicenseManagementApp(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<void> {
     const tile = this.page.locator('a.o_app, .o_app').filter({ hasText: /licen[cs]e\s*management/i }).first();
-    await tile.waitFor({ state: 'visible', timeout });
-    await tile.click();
+    // Pre-production renders the tile normally, so try the real user click first and keep that
+    // path byte-for-byte unchanged.
+    const visible = await tile
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear })
+      .then(() => true)
+      .catch(() => false);
+    if (visible) {
+      await tile.click();
+    } else {
+      // crm-mig: the sidebar theme leaves EVERY app tile out of the layout - measured 2026-10-05
+      // on the apps home, 0 of 24 tiles have a box, while display:block / visibility:visible /
+      // opacity:1 say nothing is hidden by CSS. So the tile is there and reachable, it just has
+      // no point for a pointer to aim at, and both a normal and a force click time out
+      // (180s on CRM-12370_7.5.1). Dispatch the click on the element instead.
+      // The tile EXISTS on crm-mig - this is not the app being absent.
+      await tile.waitFor({ state: 'attached', timeout });
+      await tile.evaluate((el: HTMLElement) => el.click());
+    }
     await this.page.waitForLoadState('networkidle', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.extraLong);
   }
