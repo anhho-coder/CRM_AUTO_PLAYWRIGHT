@@ -88,6 +88,17 @@ test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', 
     test.setTimeout(config.timeouts.test);
     console.log('========== CRM-12135_TC-39 - Portal account stays on My account page ==========');
 
+    // This case cannot be automated today, and it must SAY SO rather than pass.
+    // Until 2026-09-25 the spec ended with `expect(true, 'RE-SYNC GAP: ...').toBe(true)` - an
+    // assertion that cannot fail. It reported PASS on every run while verifying nothing, which is
+    // worse than a red test: a reader of the report counted it as coverage that did not exist.
+    // Two things are missing, both outside this spec:
+    //   1. a page-object method to sign in to the Pre-Sales portal through its login FORM, and
+    //   2. the value of "link L" - the new manual TC (CRM-12944) names it but never defines it.
+    // Undo: implement both, then restore the assertions kept in the backup copy of this file
+    // (`noRequests` / `noTeams`, spec_backup_before_thuat_rewrite_20260924, lines 206-207).
+    test.skip(true, 'BLOCKED - needs a portal UI login helper and the value of "link L" from CRM-12944');
+
     // RE-SYNC GAP (CRM-12944, 2026-09-24): "Link L" is not defined in the pre-conditions or steps.
     // The test requires a specific request URL to test step 2, but the link value is not available.
     // The portal login (step 1) can proceed, but step 2 is blocked without the link definition.
@@ -154,8 +165,8 @@ test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', 
         console.log(`     Status: BLOCKED - link L value not defined in pre-conditions`);
         console.log('===============================================');
 
-        // Assertions are held back until the gaps are resolved
-        expect(true, 'RE-SYNC GAP: portal login and link L must be implemented').toBe(true);
+        // No assertion here on purpose - the test skips before reaching this point (see the
+        // test.skip at the top). A vacuous expect(true).toBe(true) used to sit here.
       });
 
     } finally {

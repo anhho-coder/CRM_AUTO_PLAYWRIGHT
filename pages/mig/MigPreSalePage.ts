@@ -107,7 +107,15 @@ export class MigPreSalePage extends MigDataParityPage {
     'subject', 'meeting_time', 'description', 'meeting_link', 'support_type',
   ];
 
-  /** The six Sales Engineers the team holds (set by Dev on 2026-09-17). */
+  /**
+   * Sales Engineers known to be on the team - a source of a REAL login to assign to, nothing more.
+   *
+   * Do NOT assert that the team holds exactly these. Membership changes: on 2026-10-05 the team held
+   * seven, `qa.se.user@nakivo.com` having been added, and CRM-12135_TC-10 went red for it although
+   * nothing was wrong with the product. The manual TC itself says "six TODAY", which is the author
+   * telling us the number is incidental. Assert the invariant - the team is non-empty and does not
+   * contain everyone - not the roster.
+   */
   static readonly SE_TEAM_LOGINS: readonly string[] = [
     'alex.tsiklidis@nakivo.com', 'dario@nakivo.com', 'elie@nakivo.com',
     'hassan.dika@nakivo.com', 'luis.mata@nakivo.com', 'nick.luchkov@nakivo.com',
@@ -306,6 +314,18 @@ export class MigPreSalePage extends MigDataParityPage {
     if (!ids.length) return [];
     const usersRows = await this.presalesCallKw<any[]>('res.users', 'read', [ids, ['login']]);
     return usersRows.map((u) => String(u.login));
+  }
+
+  /**
+   * How many active internal users the Pre-Sales Application has.
+   *
+   * Lets a case prove that the Sales Engineers team is a PROPER subset of the user base - i.e. the
+   * assignee field really is restricted - without pinning any name or count that will rot.
+   */
+  async activeUserCount(): Promise<number> {
+    return await this.presalesCallKw<number>(
+      'res.users', 'search_count', [[['active', '=', true], ['share', '=', false]]],
+    );
   }
 
   // ------------------------------------------------------------------ Pre-Sales requests
@@ -614,6 +634,12 @@ export class MigPreSalePage extends MigDataParityPage {
   private readonly dialogSaveButton = () =>
     this.page.locator('.modal-dialog footer button[name="create_ticket"]');
 
+  private readonly dialogCancelButton = () =>
+    this.page.locator('.modal-dialog footer button[special="cancel"]')
+      .or(this.page.locator('.modal-dialog footer button.o_form_button_cancel'))
+      .or(this.page.locator('.modal-dialog footer button:has-text("Cancel")'))
+      .first();
+
   /** The datetime picker the Meeting Time field opens. It is appended to the body, not to the dialog. */
   private readonly datePicker = () => this.page.locator('.bootstrap-datetimepicker-widget');
 
@@ -778,9 +804,86 @@ export class MigPreSalePage extends MigDataParityPage {
     }
   }
 
-  /** Press Save on the raise dialog. */
-  async saveRaiseDialog(): Promise<void> {
-    await this.dialogSaveButton().click();
+  /**
+   * What the Meeting Time input actually holds right now.
+   *
+   * A case that claims to test "Meeting Time left blank" must PROVE the field is blank at the
+   * moment it saves. Choosing an online support type may fire an onchange that fills it - in which
+   * case the case tested nothing, and the save succeeding is correct behaviour, not a defect.
+   */
+  async meetingTimeValue(): Promise<string> {
+    const input = this.dialog()
+      .locator('.o_datepicker[name="meeting_time"] input, input[name="meeting_time"]').first();
+    return ((await input.inputValue().catch(() => '')) || '').trim();
+  }
+
+  /**
+   * Press Save on the raise dialog.
+   *
+   * `timeout` bounds the CLICK. It matters when a case presses Save twice on purpose (TC-09): the
+   * first save closes the dialog, so the second click finds no button and - with Playwright's default
+   * budget - waits out the entire test timeout instead of failing in seconds.
+   */
+  async saveRaiseDialog(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    await this.dialogSaveButton().click({ timeout });
+  }
+
+  /**
+   * Press Cancel on the raise dialog and wait for it to go.
+   *
+   * A case that tries several INVALID combinations needs a FRESH dialog per attempt, because
+   * `fillRaiseDialog()` only writes the fields it is given - it never blanks one - and `support_type`
+   * offers no empty option at all, so a value once chosen cannot be taken back inside the same dialog.
+   * Mutating one dialog across attempts silently carries the previous attempt's values forward: that
+   * is how TC-07 turned its third "must be refused" attempt into a successful save on 2026-09-24,
+   * created a real request, and then hung for 15 minutes filling a dialog that had already closed.
+   */
+  async cancelRaiseDialog(): Promise<void> {
+    await this.dialogCancelButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.dialog().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => { /* already gone */ });
+  }
+
+  /**
+   * The Odoo warning/validation popup that a refused save can raise, if one is on screen.
+   *
+   * Not every refusal flags a field. Some are a MODAL instead - "Please input meeting time!" is one,
+   * and the spec that only read `.o_field_invalid` saw an empty list and concluded nothing was wrong.
+   * The popup also sits ON TOP of the raise dialog, so any later click on it (Cancel, Save) times out
+   * until the popup is dismissed. Both are why these two helpers exist.
+   */
+  // `.modal-dialog:not(:has(.o_form_view))` matched NOTHING: Playwright does not support :has()
+  // nested inside :not(). The popup was on screen the whole time - "Odoo Server Error - Warning /
+  // Please input meeting time!" - and the spec reported "(no popup)". filter({hasNot}) is the
+  // supported form and does what the selector was meant to say: the modal that is not the form.
+  private readonly alertModal = () =>
+    this.page.locator('.modal-dialog')
+      .filter({ hasNot: this.page.locator('.o_form_view') })
+      .first();
+
+  /**
+   * The text of that popup, or '' when none appears within `timeout`.
+   *
+   * It must WAIT. The popup is rendered after the server answers the save, so reading immediately
+   * after the click returns '' every time and the spec concludes "no popup" while the warning is
+   * sitting on the screen - measured 2026-10-05 against "Please input meeting time!".
+   */
+  async alertText(timeout: number = CommonUtils.waitTimes.searchOppWait): Promise<string> {
+    const modal = this.alertModal();
+    const appeared = await modal.waitFor({ state: 'visible', timeout })
+      .then(() => true).catch(() => false);
+    if (!appeared) return '';
+    return ((await modal.innerText().catch(() => '')) || '').trim();
+  }
+
+  /** Dismiss the popup (Ok / Close), so the dialog underneath is clickable again. */
+  async dismissAlert(): Promise<void> {
+    const modal = this.alertModal();
+    if (!(await modal.isVisible().catch(() => false))) return;
+    const btn = modal.locator('footer button, .modal-footer button').first();
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => { /* already gone */ });
+    await modal.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => { /* already gone */ });
   }
 
   /** Is the raise dialog still on screen? A refused save keeps it open. */

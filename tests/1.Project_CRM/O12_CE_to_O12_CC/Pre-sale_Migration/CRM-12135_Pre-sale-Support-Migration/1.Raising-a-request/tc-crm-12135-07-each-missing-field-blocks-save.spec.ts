@@ -152,6 +152,8 @@ const supportTypeOnline = 'Online technical assistance';
 let leadId = 0;
 const results: { step: number; fieldEmpty: string; dialogOpen: boolean; flaggedFields: string[] }[] = [];
 let finalRequestCreated = false;
+let meetingTimeAlert = '';
+let meetingTimeBeforeSave = '';
 
 await test.step(STEP.pre1, async () => {
   console.log(`\n--- ${STEP.pre1} ---`);
@@ -187,6 +189,13 @@ await test.step(STEP.s2, async () => {
   console.log(`  - Support type: ${supportTypeOffline}`);
   await preSale.saveRaiseDialog();
   const stillOpen = await preSale.isRaiseDialogOpen();
+  if (!stillOpen) {
+    // The save was ACCEPTED where the manual TC says it must be refused. Stop with the truth:
+    // carrying on means the next fillRaiseDialog() writes into a dialog that is gone, and this
+    // repo sets no per-action timeout, so the test would hang until it dies.
+    throw new Error('Step 2: the save was ACCEPTED although subject was meant to be blank -'
+      + ' the dialog closed and a request may have been created; check the teardown sweep.');
+  }
   const flagged = await preSale.dialogInvalidFieldNames();
   results.push({ step: 2, fieldEmpty: 'subject', dialogOpen: stillOpen, flaggedFields: flagged });
   console.log(`  Result: dialog open=${stillOpen}, flagged fields=[${flagged.join(', ')}]`);
@@ -194,12 +203,23 @@ await test.step(STEP.s2, async () => {
 
 await test.step(STEP.s3, async () => {
   console.log(`\n--- ${STEP.s3} ---`);
+  // Fresh dialog per attempt: fillRaiseDialog() never blanks a field, and support_type has no
+  // empty option, so "blank" is only truthful on a dialog that was just opened.
+  await preSale.cancelRaiseDialog();
+  await preSale.openRaiseDialog();
   await preSale.fillRaiseDialog({ subject: subjectRequired, supportType: supportTypeOffline });
   console.log(`  - Subject     : ${subjectRequired}`);
   console.log(`  - Description : [blank]`);
   console.log(`  - Support type: ${supportTypeOffline}`);
   await preSale.saveRaiseDialog();
   const stillOpen = await preSale.isRaiseDialogOpen();
+  if (!stillOpen) {
+    // The save was ACCEPTED where the manual TC says it must be refused. Stop with the truth:
+    // carrying on means the next fillRaiseDialog() writes into a dialog that is gone, and this
+    // repo sets no per-action timeout, so the test would hang until it dies.
+    throw new Error('Step 3: the save was ACCEPTED although description was meant to be blank -'
+      + ' the dialog closed and a request may have been created; check the teardown sweep.');
+  }
   const flagged = await preSale.dialogInvalidFieldNames();
   results.push({ step: 3, fieldEmpty: 'description', dialogOpen: stillOpen, flaggedFields: flagged });
   console.log(`  Result: dialog open=${stillOpen}, flagged fields=[${flagged.join(', ')}]`);
@@ -207,12 +227,23 @@ await test.step(STEP.s3, async () => {
 
 await test.step(STEP.s4, async () => {
   console.log(`\n--- ${STEP.s4} ---`);
+  // Fresh dialog per attempt: fillRaiseDialog() never blanks a field, and support_type has no
+  // empty option, so "blank" is only truthful on a dialog that was just opened.
+  await preSale.cancelRaiseDialog();
+  await preSale.openRaiseDialog();
   await preSale.fillRaiseDialog({ subject: subjectRequired, description, supportType: undefined });
   console.log(`  - Subject     : ${subjectRequired}`);
   console.log(`  - Description : ${description}`);
   console.log(`  - Support type: [blank]`);
   await preSale.saveRaiseDialog();
   const stillOpen = await preSale.isRaiseDialogOpen();
+  if (!stillOpen) {
+    // The save was ACCEPTED where the manual TC says it must be refused. Stop with the truth:
+    // carrying on means the next fillRaiseDialog() writes into a dialog that is gone, and this
+    // repo sets no per-action timeout, so the test would hang until it dies.
+    throw new Error('Step 4: the save was ACCEPTED although support_type was meant to be blank -'
+      + ' the dialog closed and a request may have been created; check the teardown sweep.');
+  }
   const flagged = await preSale.dialogInvalidFieldNames();
   results.push({ step: 4, fieldEmpty: 'support_type', dialogOpen: stillOpen, flaggedFields: flagged });
   console.log(`  Result: dialog open=${stillOpen}, flagged fields=[${flagged.join(', ')}]`);
@@ -220,21 +251,51 @@ await test.step(STEP.s4, async () => {
 
 await test.step(STEP.s5, async () => {
   console.log(`\n--- ${STEP.s5} ---`);
+  // Fresh dialog per attempt: fillRaiseDialog() never blanks a field, and support_type has no
+  // empty option, so "blank" is only truthful on a dialog that was just opened.
+  await preSale.cancelRaiseDialog();
+  await preSale.openRaiseDialog();
   await preSale.fillRaiseDialog({ subject: subjectRequired, description, supportType: supportTypeOnline });
   console.log(`  - Subject     : ${subjectRequired}`);
   console.log(`  - Description : ${description}`);
   console.log(`  - Support type: ${supportTypeOnline}`);
-  console.log(`  - Meeting Time: [blank - should be required for online type]`);
+  // PROVE the field is blank before saving. If an onchange filled it when the online support
+  // type was chosen, this step never tested the blank case at all and a successful save is
+  // correct behaviour - the spec would be at fault, not the product.
+  // Clear Meeting Time AFTER the support type, not before: fillRaiseDialog writes meetingTime first
+  // and choosing an online type then fires an onchange that fills it again. Measured 2026-10-05 -
+  // the field came back as "10/05/2026 12:00:00", so every earlier run saved a VALID request and
+  // never tested the blank case at all.
+  await preSale.fillRaiseDialog({ meetingTime: '' });
+  meetingTimeBeforeSave = await preSale.meetingTimeValue();
+  console.log(`  - Meeting Time: ${meetingTimeBeforeSave ? JSON.stringify(meetingTimeBeforeSave) + ' <- NOT blank; the form filled it' : '[blank, confirmed]'}`);
   await preSale.saveRaiseDialog();
   const stillOpen = await preSale.isRaiseDialogOpen();
+  if (!stillOpen) {
+    // The save was ACCEPTED where the manual TC says it must be refused. Stop with the truth:
+    // carrying on means the next fillRaiseDialog() writes into a dialog that is gone, and this
+    // repo sets no per-action timeout, so the test would hang until it dies.
+    throw new Error('Step 5: the save was ACCEPTED although meeting_time was meant to be blank -'
+      + ' the dialog closed and a request may have been created; check the teardown sweep.');
+  }
   const flagged = await preSale.dialogInvalidFieldNames();
+  // This refusal is a POPUP, not a flagged field: the manual TC (CRM-12922 step 5) expects
+  // "Please input meeting time!". Read it, record it, then dismiss it - left up, it overlays the
+  // dialog and the next Cancel/Save click times out, which is exactly how step 6 died on 2026-09-25.
+  meetingTimeAlert = await preSale.alertText();
+  await preSale.dismissAlert();
   results.push({ step: 5, fieldEmpty: 'meeting_time', dialogOpen: stillOpen, flaggedFields: flagged });
   console.log(`  Result: dialog open=${stillOpen}, flagged fields=[${flagged.join(', ')}]`);
+  console.log(`  Popup text: ${meetingTimeAlert ? JSON.stringify(meetingTimeAlert) : '(no popup)'}`);
   console.log(`  RE-SYNC GAP (CRM-12922, 2026-09-24): No page object method exists to verify the error message text "Please input meeting time!" - can only verify dialog stayed open and fields flagged`);
 });
 
 await test.step(STEP.s6, async () => {
   console.log(`\n--- ${STEP.s6} ---`);
+  // Fresh dialog per attempt: fillRaiseDialog() never blanks a field, and support_type has no
+  // empty option, so "blank" is only truthful on a dialog that was just opened.
+  await preSale.cancelRaiseDialog();
+  await preSale.openRaiseDialog();
   await preSale.fillRaiseDialog({ subject: subjectRequired, description, supportType: supportTypeOffline });
   console.log(`  - Subject     : ${subjectRequired}`);
   console.log(`  - Description : ${description}`);
@@ -255,7 +316,8 @@ await test.step(STEP.verify, async () => {
   const check1 = results[0].dialogOpen === true && results[0].flaggedFields.includes('subject');
   const check2 = results[1].dialogOpen === true && results[1].flaggedFields.includes('description');
   const check3 = results[2].dialogOpen === true && results[2].flaggedFields.includes('support_type');
-  const check4 = results[3].dialogOpen === true;
+  const MEETING_TIME_MSG = 'Please input meeting time!';
+  const check4 = results[3].dialogOpen === true && meetingTimeAlert.includes(MEETING_TIME_MSG);
   const check5 = finalRequestCreated;
 
   console.log('\n==================== VERIFY ====================');
@@ -271,9 +333,9 @@ await test.step(STEP.verify, async () => {
   console.log(`     Expected : true`);
   console.log(`     Actual   : ${check3} (dialog open=${results[2].dialogOpen}, flagged=[${results[2].flaggedFields.join(', ')}])`);
   console.log(`     Result   : ${check3 ? 'PASS' : 'FAIL'}`);
-  console.log('Verify #4 - Save with online Support type and no Meeting Time is refused, dialog stays open:');
-  console.log(`     Expected : true`);
-  console.log(`     Actual   : ${check4} (dialog open=${results[3].dialogOpen})`);
+  console.log('Verify #4 - Save with online Support type and no Meeting Time is refused with the stated message:');
+  console.log(`     Expected : dialog stays open AND the popup reads "${MEETING_TIME_MSG}"`);
+  console.log(`     Actual   : dialog open=${results[3].dialogOpen}, popup=${meetingTimeAlert ? JSON.stringify(meetingTimeAlert) : '(none)'}`);
   console.log(`     Result   : ${check4 ? 'PASS' : 'FAIL'}`);
   console.log('Verify #5 - Save with all required fields succeeds, dialog closes, request is created:');
   console.log(`     Expected : true`);
@@ -285,7 +347,7 @@ await test.step(STEP.verify, async () => {
   expect(check1, 'save with subject empty should be refused and subject field flagged').toBe(true);
   expect(check2, 'save with description empty should be refused and description field flagged').toBe(true);
   expect(check3, 'save with support type empty should be refused and support type field flagged').toBe(true);
-  expect(check4, 'save with online type and no meeting time should be refused').toBe(true);
+  expect(check4, `save with online type and no meeting time should be refused with "${MEETING_TIME_MSG}" (popup was ${meetingTimeAlert ? JSON.stringify(meetingTimeAlert) : 'absent'})`).toBe(true);
   expect(check5, 'save with all required fields should succeed').toBe(true);
 });
     } finally {
