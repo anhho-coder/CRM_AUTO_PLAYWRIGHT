@@ -87,12 +87,18 @@ let sharedPage: import('@playwright/test').Page | undefined;
 let teardown: (() => Promise<void>) | undefined;
 
 test.describe('CRM-12135_TC-19 - The acknowledgment is sent once and never repeats', () => {
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
     }
     if (teardown) {
-      console.log('TEARDOWN DID NOT RUN - the test left the try block without cleaning up.');
+      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
+      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
+      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
+      const swept = await MigPreSalePage.sweepLeftovers(browser);
+      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
+        + `opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
       teardown = undefined;
     }
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
@@ -182,11 +188,18 @@ await test.step(STEP.s1, async () => {
 await test.step(STEP.s2, async () => {
   console.log(`\n--- ${STEP.s2} ---`);
   const allMails = await preSale.mailsForRequest(requestId);
-  const ackMails = allMails.filter(m => m.bodyHtml && m.bodyHtml.includes(ACK_TEXT));
+  const ackMails = allMails.filter(m => MigPreSalePage.mailText(m).includes(ACK_TEXT));
   mailsAtRaise = ackMails.length;
+  // When the filter finds nothing, say WHAT was there instead of just "0". A body whose wording has
+  // drifted from ACK_TEXT and a mail that was never generated look identical in a bare count.
+  console.log(`  - Mails on this request: ${allMails.length}; matching the acknowledgment text: ${ackMails.length}`);
+  for (const m of allMails) {
+    console.log(`      #${m.id} subject="${m.subject}" ackText=${MigPreSalePage.mailText(m).includes(ACK_TEXT)} `
+      + `body="${MigPreSalePage.mailText(m).slice(0, 160)}"`);
+  }
   console.log(`  - Ack mails found : ${mailsAtRaise}`);
   if (ackMails.length > 0) {
-    console.log(`  - Ack mail recipient: ${ackMails[0].emailTo}`);
+    console.log(`  - Ack mail recipient: ${(await preSale.mailRecipients(ackMails[0])).join(', ') || '(none)'}`);
   }
 });
 
@@ -203,7 +216,7 @@ await test.step(STEP.s3, async () => {
 await test.step(STEP.s4, async () => {
   console.log(`\n--- ${STEP.s4} ---`);
   const allMails = await preSale.mailsForRequest(requestId);
-  const ackMails = allMails.filter(m => m.bodyHtml && m.bodyHtml.includes(ACK_TEXT));
+  const ackMails = allMails.filter(m => MigPreSalePage.mailText(m).includes(ACK_TEXT));
   mailsAfterRoundTrip = ackMails.length;
   console.log(`  - Ack mails found after round trip : ${mailsAfterRoundTrip}`);
 });

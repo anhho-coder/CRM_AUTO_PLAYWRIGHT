@@ -1,6 +1,9 @@
 import { MigDataParityPage } from './MigDataParityPage';
 import { CommonUtils } from '@helpers/common.utils';
-import { baseUrl_presales_mig, presalesDb_mig, users } from '@config/users.config';
+import { baseUrl_mig, baseUrl_presales_mig, presalesDb_mig, users } from '@config/users.config';
+// Imported by FILE, not through the `@pages/mig` barrel: the barrel also exports this very class,
+// so going through it would make the module import itself.
+import { LoginPageMig } from './LoginPageMig';
 import type { Page, APIRequestContext } from '@playwright/test';
 
 /** One pre-sale request, as the specs read it off the Pre-Sales Application. */
@@ -30,7 +33,16 @@ export interface PreSaleMail {
   id: number;
   state: string;
   subject: string;
+  /**
+   * The raw To header. On the PRE-SALES Application this is almost always EMPTY: those notifications
+   * address PARTNERS, and Odoo keeps partner recipients in `recipient_ids`, not here. Measured
+   * 2026-10-05 on a real request - email_to "", recipient_ids [68]. Reading only this field is why
+   * TC-20 and TC-21 could never pass. On the CRM the opposite holds: email_to carries
+   * pre-sales@nakivo.com and recipient_ids is empty.
+   */
   emailTo: string;
+  /** Partner ids this mail is addressed to - resolve with resolvePartnerEmails(). */
+  recipientIds: number[];
   bodyHtml: string;
   date: string;
 }
@@ -153,8 +165,17 @@ export class MigPreSalePage extends MigDataParityPage {
 
   /** The name a spec gives the data it creates, e.g. AUTO-CRM-12135-TC-01-1758100000000. */
   static marker(tcId: string, runId: string): string {
-    return `${MigPreSalePage.MARKER_PREFIX}-${tcId}-${runId}`;
+    // Remember it. A test that TIMES OUT never reaches its finally block, so the sweep that
+    // lives there does not run and the records stay on crm-mig. afterEach can still clean up,
+    // but only if it knows which marker to look for - and the marker is created inside the test
+    // body. Recording it here keeps all 30 specs free of extra bookkeeping.
+    const m = `${MigPreSalePage.MARKER_PREFIX}-${tcId}-${runId}`;
+    MigPreSalePage.lastMarker = m;
+    return m;
   }
+
+  /** The marker most recently issued by marker(), for the afterEach safety sweep. */
+  static lastMarker = '';
 
   private get api(): APIRequestContext {
     return this.page.context().request;
@@ -328,6 +349,156 @@ export class MigPreSalePage extends MigDataParityPage {
     );
   }
 
+  /**
+   * Sweep the last run's records from a FRESH session - the afterEach safety net.
+   *
+   * The in-test sweep lives in a finally block, which a Playwright TEST TIMEOUT skips entirely.
+   * On 2026-09-24 that left two Opportunities on crm-mig after TC-07 and TC-09 timed out, and the
+   * afterEach of the day only PRINTED "TEARDOWN DID NOT RUN". afterEach cannot reuse the test's
+   * page either - the context is already closing - so this opens its own, logs in, sweeps, closes.
+   * Returns what it removed; never throws, because a teardown that fails the test is worse than
+   * a leftover that gets reported.
+   */
+  static async sweepLeftovers(
+    browser: import('@playwright/test').Browser,
+    marker: string = MigPreSalePage.lastMarker,
+  ): Promise<{ requests: number[]; opportunities: number[]; errors: string[] }> {
+    const out = { requests: [] as number[], opportunities: [] as number[], errors: [] as string[] };
+    if (!marker) {
+      out.errors.push('no marker was recorded for this test - nothing to sweep');
+      return out;
+    }
+    let context: import('@playwright/test').BrowserContext | undefined;
+    try {
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      const login = new LoginPageMig(page);
+      await login.navigateTo(baseUrl_mig);
+      await login.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
+      const preSale = new MigPreSalePage(page);
+      await preSale.loginPresales(
+        users.anh_ho_presales_mig.username,
+        users.anh_ho_presales_mig.password,
+      );
+      return await preSale.sweepByMarker(marker);
+    } catch (err) {
+      out.errors.push(`standalone sweep failed: ${(err as Error).message}`);
+      return out;
+    } finally {
+      await context?.close().catch(() => { /* nothing left to close */ });
+    }
+  }
+
+  /**
+   * Turn a mail's `recipient_ids` into the e-mail addresses a reader would see in "To (Partners)".
+   *
+   * The manual cases say "Its To (Partners) field names the engineer / the salesperson". That field
+   * is partner-based, so the assertion has to resolve the partners - comparing against `email_to`
+   * compares against an empty string.
+   */
+  async resolvePartnerEmails(partnerIds: number[]): Promise<string[]> {
+    if (!partnerIds.length) return [];
+    const rows = await this.presalesCallKw<any[]>(
+      'res.partner', 'read', [partnerIds, ['email', 'name']],
+    );
+    return rows.map((r) => String(r.email || r.name || '')).filter(Boolean);
+  }
+
+  /**
+   * A mail body as a READER sees it: tags removed, entities and whitespace normalised.
+   *
+   * Never match a sentence against raw `body_html`. The template wraps words in tags and uses
+   * &nbsp;, so "has been received and is being reviewed by our Sales Engineers team" is present on
+   * screen while `bodyHtml.includes(...)` is false - measured 2026-10-05 on TC-19, whose body
+   * plainly read that sentence while the filter counted zero matches.
+   */
+  static mailText(mail: PreSaleMail): string {
+    return (mail.bodyHtml || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ')
+      .replace(/&amp;/gi, '&')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /**
+   * Both revenue fields of one Opportunity.
+   *
+   * The CRM carries TWO: `planned_revenue` ("Expected Revenue") and `planned_revenue_custom`
+   * ("Expected Revenue Deal"). The pre-sales gate and this whole feature use the CUSTOM one, and a
+   * spec that sets one while the product reports the other will disagree for a reason that has
+   * nothing to do with the check being made. Read both and say which is which.
+   */
+  async leadRevenues(leadId: number): Promise<{ plain: number; deal: number }> {
+    const rows = await this.page.evaluate(async (id) => {
+      const res = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call',
+          params: {
+            model: 'crm.lead', method: 'read',
+            args: [[id], ['planned_revenue', 'planned_revenue_custom']], kwargs: {},
+          },
+        }),
+      });
+      const j = await res.json();
+      if (j.error) throw new Error(`crm.lead read failed: ${JSON.stringify(j.error).slice(0, 200)}`);
+      return j.result as any[];
+    }, leadId);
+    const r = rows[0] ?? {};
+    return { plain: Number(r.planned_revenue ?? 0), deal: Number(r.planned_revenue_custom ?? 0) };
+  }
+
+  /** Every address a mail is addressed to, from BOTH the raw header and the partner recipients. */
+  async mailRecipients(mail: PreSaleMail): Promise<string[]> {
+    const fromPartners = await this.resolvePartnerEmails(mail.recipientIds);
+    const raw = mail.emailTo.split(/[,;]/).map((x) => x.trim()).filter(Boolean);
+    return [...new Set([...raw, ...fromPartners])];
+  }
+
+  /**
+   * Mails in the CRM's OWN queue - a different server from the Pre-Sales Application.
+   *
+   * Both hosts run `Settings > Technical > Email > Emails`, and they hold different mail. The
+   * dispatcher notification of TC-18 is sent BY the CRM and lives here; the acknowledgment,
+   * assignment and reply notifications live on the Pre-Sales Application. Reading the wrong queue
+   * finds nothing, which is exactly how TC-18 failed until 2026-10-05.
+   */
+  async mailsOnCrmBySubject(subjectLike: string, limit: number = 50): Promise<PreSaleMail[]> {
+    const rows = await this.page.evaluate(async ({ subjectLike: sub, limit: lim }) => {
+      const res = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'mail.mail',
+            method: 'search_read',
+            args: [[['subject', 'ilike', sub]],
+              ['id', 'state', 'subject', 'email_to', 'recipient_ids', 'body_html', 'date']],
+            kwargs: { limit: lim, order: 'id desc' },
+          },
+        }),
+      });
+      const j = await res.json();
+      if (j.error) throw new Error(`CRM mail.mail search_read failed: ${JSON.stringify(j.error).slice(0, 300)}`);
+      return j.result as any[];
+    }, { subjectLike, limit });
+    return rows.map((m) => ({
+      id: m.id,
+      state: String(m.state ?? ''),
+      subject: String(m.subject ?? ''),
+      emailTo: m.email_to ? String(m.email_to) : '',
+      recipientIds: (m.recipient_ids ?? []) as number[],
+      bodyHtml: String(m.body_html ?? ''),
+      date: String(m.date ?? ''),
+    }));
+  }
+
   // ------------------------------------------------------------------ Pre-Sales requests
 
   private static toRequest(r: any): PreSaleRequest {
@@ -491,14 +662,15 @@ export class MigPreSalePage extends MigDataParityPage {
     const rows = await this.presalesCallKw<any[]>(
       'mail.mail', 'search_read',
       [[['model', '=', MigPreSalePage.TICKET_MODEL], ['res_id', '=', id]],
-        ['state', 'subject', 'email_to', 'body_html', 'date']],
+        ['state', 'subject', 'email_to', 'recipient_ids', 'body_html', 'date']],
       { limit: MigDataParityPage.MAX_LIMIT, order: 'id asc' },
     );
     return rows.map((m) => ({
       id: m.id,
       state: String(m.state ?? ''),
       subject: String(m.subject ?? ''),
-      emailTo: String(m.email_to ?? ''),
+      emailTo: m.email_to ? String(m.email_to) : '',
+      recipientIds: (m.recipient_ids ?? []) as number[],
       bodyHtml: String(m.body_html ?? ''),
       date: String(m.date ?? ''),
     }));

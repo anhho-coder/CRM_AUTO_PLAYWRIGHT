@@ -95,12 +95,18 @@ let sharedPage: import('@playwright/test').Page | undefined;
 let teardown: (() => Promise<void>) | undefined;
 
 test.describe('CRM-12135_TC-08 - A submission that fails leaves no request, note, session or mail', () => {
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
     }
     if (teardown) {
-      console.log('TEARDOWN DID NOT RUN - the test left the try block without cleaning up.');
+      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
+      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
+      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
+      const swept = await MigPreSalePage.sweepLeftovers(browser);
+      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
+        + `opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
       teardown = undefined;
     }
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
@@ -114,6 +120,31 @@ test.describe('CRM-12135_TC-08 - A submission that fails leaves no request, note
 
   test('CRM-12135_TC-08: Creating a request while the Pre-Sales Application is unreachable shows a clear error and leaves nothing behind', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
+
+    // ---------------------------------------------------------------------------------------------
+    // NOT AUTOMATABLE - skipped on purpose, with its reason. Do not turn this back into a thrown
+    // error: in the HTML report a thrown BLOCKED is indistinguishable from a real regression, and a
+    // reader cannot tell "we never ran this" from "the product broke".
+    //
+    // The case needs the CRM-to-helpdesk link to be DOWN while a request is raised, then restored.
+    // The tester reproduced it by setting an invalid port on the endpoint - the evidence screenshot
+    // on CRM-12923 shows the resulting error, "Port out of range 0-65535".
+    //
+    // Automation could issue that write. It must not:
+    //   - crm-mig is a SHARED QA environment. While the test ran, pre-sales raising would be broken
+    //     for everyone else on the server.
+    //   - If the test died before restoring the parameter, the breakage would persist until somebody
+    //     noticed. That is not hypothetical here: a Playwright test TIMEOUT skips the finally block,
+    //     which is exactly how this suite left records behind on 2026-09-24.
+    // So the blocker is blast radius on a shared server, not a missing capability.
+    //
+    // To run it: a developer takes the link down, runs this case manually, and restores it.
+    // To automate it: give QA a disposable environment, or a supported switch that fails the call
+    // without touching shared configuration.
+    // ---------------------------------------------------------------------------------------------
+    test.skip(true, 'NOT AUTOMATABLE - needs the CRM-to-helpdesk link taken down and restored by Dev; '
+      + 'doing that from a test would break pre-sales raising for every other user of crm-mig, and a '
+      + 'test timeout would leave it broken. Run manually (CRM-12923).');
     console.log('========== CRM-12135_TC-08 - Creating a request while Pre-Sales Application is unreachable ==========');
 
     const context = await browser.newContext({

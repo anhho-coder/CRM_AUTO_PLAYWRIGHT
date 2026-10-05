@@ -67,12 +67,18 @@ let sharedPage: import('@playwright/test').Page | undefined;
 let teardown: (() => Promise<void>) | undefined;
 
 test.describe('CRM-12135_TC-26 - An administrator is never signed in automatically', () => {
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
     }
     if (teardown) {
-      console.log('TEARDOWN DID NOT RUN - the test left the try block without cleaning up.');
+      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
+      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
+      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
+      const swept = await MigPreSalePage.sweepLeftovers(browser);
+      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
+        + `opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
       teardown = undefined;
     }
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
@@ -86,6 +92,27 @@ test.describe('CRM-12135_TC-26 - An administrator is never signed in automatical
 
   test('CRM-12135_TC-26: An administrator is never signed in automatically', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
+
+    // ---------------------------------------------------------------------------------------------
+    // NOT AUTOMATABLE - skipped on purpose, with its reason. Do not turn this back into a thrown
+    // error: a thrown BLOCKED reads as a regression in the report.
+    //
+    // The case asserts that a Pre-Sales ADMINISTRATOR is excluded from the auto-login: clicking the
+    // Tickets smart button must show the login FORM, and signing in by hand must then open the
+    // request. Proving it needs an administrator account on the Pre-Sales Application, and QA does
+    // not hold one - the gap has been open since 2026-09-18. Without that account the pre-condition
+    // cannot be built at all, so there is nothing to assert.
+    //
+    // A second, smaller gap: the page object has no helper that signs in through the embedded
+    // helpdesk's login FORM. That one is ordinary work; the account is the blocker.
+    //
+    // To unblock: ask Dev for an administrator login on pre-sales-crm-mig.nakivo.site, then build
+    // the pre-condition the way every other case here does - create the Opportunity, raise the
+    // request - instead of pointing at a hard-coded Opportunity id.
+    // ---------------------------------------------------------------------------------------------
+    test.skip(true, 'NOT AUTOMATABLE - needs an administrator account on the Pre-Sales Application, '
+      + 'which QA does not hold (open since 2026-09-18), plus a page-object helper for the embedded '
+      + 'login form. Run manually (CRM-12940).');
     console.log('========== CRM-12135_TC-26 - An administrator is never signed in automatically ==========');
 
     const context = await browser.newContext({

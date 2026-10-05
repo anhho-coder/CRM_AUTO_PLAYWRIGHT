@@ -86,12 +86,18 @@ let sharedPage: import('@playwright/test').Page | undefined;
 let teardown: (() => Promise<void>) | undefined;
 
 test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
-  test.afterEach(async ({}, testInfo) => {
+  test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
     }
     if (teardown) {
-      console.log('TEARDOWN DID NOT RUN - the test left the try block without cleaning up.');
+      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
+      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
+      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
+      const swept = await MigPreSalePage.sweepLeftovers(browser);
+      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
+        + `opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
       teardown = undefined;
     }
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
