@@ -32,6 +32,42 @@ export class HomePageMig extends HomePage {
     await this.dismissErrorDialog();
   }
 
+  /**
+   * Back to the applications home - the Mig equivalent of the base object's apps-menu click.
+   *
+   * `HomePage.returnToHome()` clicks `applicationMenuLink()`. The Mig sidebar theme keeps that
+   * link out of the layout, exactly as it does for the navbar CRM link, so the click never
+   * resolves and the caller sits there until the test times out - 15 minutes on
+   * CRM-12370_7.5.1, which spends them before reaching its first assertion.
+   * Open the apps action by its URL hash instead: theme-agnostic, and the same trick
+   * `navigateToCRM()` already uses here.
+   */
+  async returnToHome() {
+    await this.goto(MigPlatformPage.appUrl(MigPlatformPage.HASH.apps));
+    await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad);
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.dismissErrorDialog();
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * The applications home is "loaded" on Mig when the app links EXIST, not when they are visible.
+   *
+   * `HomePage.waitForHomePageLoad()` waits for `crmLink()` to be *visible*. On the Mig sidebar
+   * theme that anchor is rendered as a `dropdown-item o_app` inside a collapsed menu, so it stays
+   * `hidden` and the wait burns its whole timeout - 122 resolutions to the same hidden element on
+   * CRM-12370_7.5.1. The element being ATTACHED is the real "the apps home has rendered" signal
+   * here, and every Mig navigation goes by URL hash afterwards anyway.
+   */
+  async waitForHomePageLoad(timeout: number = CommonUtils.waitTimes.pageLoad) {
+    await this.waitForLoadingSpinnerToHide(timeout).catch(() => {});
+    await this.page
+      .locator('xpath=//a[contains(@data-menu-xmlid, "crm.crm_menu_root")]')
+      .first()
+      .waitFor({ state: 'attached', timeout });
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
+
   /** Open an action by its Mig URL hash and wait until its LIST view has rendered. */
   private async openListByHash(hash: string) {
     await this.goto(MigPlatformPage.appUrl(hash));
