@@ -538,9 +538,19 @@ export class LicensePage extends BasePage {
     return await sheet
       .evaluate((el: HTMLElement, title: string) => {
         const clean = (s: string) => (s || '').replace(/[​⁣]/g, '').replace(/\s+/g, ' ').trim();
+        // Case-INSENSITIVE match on purpose. `innerText` returns the RENDERED text, so a theme that
+        // sets `text-transform: uppercase` turns a DOM "General" into "GENERAL" and a strict ===
+        // then matches nothing and this reader silently returns 0 fields - which reads like "the
+        // group is missing" when every field is right there.
+        // Measured 2026-10-02 on the same licence form, same selector, both bases:
+        //   pre-production : textContent "General", innerText "General", text-transform: none
+        //   crm-mig        : textContent "General", innerText "GENERAL", text-transform: uppercase
+        // The GROUP NAMES are identical in the DOM; only the rendering differs. That difference is a
+        // finding in its own right and belongs in a TC that asserts the heading - it must not be
+        // allowed to blank out every field-list TC. See CRM-12370_7.3.1-7.3.4 / 7.4.9.
         const sep = Array.from(el.querySelectorAll('.o_horizontal_separator'))
           .filter((s) => !!((s as HTMLElement).offsetParent || s.getClientRects().length))
-          .find((s) => clean((s as HTMLElement).innerText) === title);
+          .find((s) => clean((s as HTMLElement).innerText).toUpperCase() === title.toUpperCase());
         if (!sep) return { left: [] as string[], right: [] as string[] };
         const container = (sep.closest('table.o_inner_group') as HTMLElement | null) || (sep.parentElement as HTMLElement);
         if (!container) return { left: [] as string[], right: [] as string[] };
@@ -789,7 +799,10 @@ export class LicensePage extends BasePage {
         const clean = (s: string) => (s || '').replace(/[\u200b\u2063\u00a0]/g, ' ').replace(/\s+/g, ' ').trim();
         const sep = Array.from(el.querySelectorAll('.o_horizontal_separator'))
           .filter((s) => !!((s as HTMLElement).offsetParent || s.getClientRects().length))
-          .find((s) => clean((s as HTMLElement).innerText) === 'Limits');
+          // Case-insensitive for the same reason as getGroupColumns: the crm-mig theme renders the
+          // separator through `text-transform: uppercase`, so innerText reads "LIMITS" there and
+          // "Limits" on pre-production while the DOM text is "Limits" on both.
+          .find((s) => clean((s as HTMLElement).innerText).toUpperCase() === 'LIMITS');
         if (!sep) return [] as Array<{ text: string; number: string; unit: string }>;
         const container = (sep.closest('table.o_inner_group') as HTMLElement | null) || (sep.parentElement as HTMLElement);
         if (!container) return [] as Array<{ text: string; number: string; unit: string }>;
