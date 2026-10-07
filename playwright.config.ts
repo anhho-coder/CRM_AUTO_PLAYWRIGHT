@@ -335,14 +335,43 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
-      // II.Smoked_Test_Main_Business sub-tree of the O12 CE setup suite (23 specs, titles
-      // CRM-12370_1.x.y) - the main-business smoke chain on the crm-mig server:
-      // Lead -> Opportunity -> Contact -> Deal Element -> Quotation -> Invoice -> License.
-      // Its own project so a dedicated Jenkins job (CRM_O12_MIG_Smoke) can re-run just this
-      // folder via --project=MigSmoke. Overlaps with (is a subset of) the O12 project.
+      // CRM-12127_Verify-sale-workflow sub-tree of the O12 CE setup suite (240 specs on this
+      // branch, titles CRM-12370_1.x.y / tc-smoke-*) - the main-business chain on the crm-mig
+      // server: Lead -> Opportunity -> Contact -> Deal Element -> Quotation -> Invoice -> License.
+      // Its own project so the dedicated Jenkins jobs (CRM_O12_MIG_Smoke and
+      // CRM-SETUP-CRM-12127-Sale-Workflow) can re-run just this folder via --project=MigSmoke.
+      // Overlaps with (is a subset of) the O12 project.
       // Inventory + last results per TC: CRM-12450.
       name: 'MigSmoke',
       testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
+      // I.Build-fresh-Odoo-12-Community sub-tree of the O12 CE setup suite (29 specs across
+      // A-Reachable-and-boot / B-Community-not-Enterprise / C-Clean-base-state / D-Light-smoke),
+      // on the crm-mig server. Its own project so the dedicated Jenkins job
+      // CRM-SETUP-I-Build-Fresh-Odoo12-CE runs exactly this folder via --project=MigSetup_Build.
+      // Overlaps with (is a subset of) the O12 project.
+      name: 'MigSetup_Build',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/I.Build-fresh-Odoo-12-Community',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
+      // III.Cut-off-Enterprise-links sub-tree of the O12 CE setup suite (26 specs across the
+      // A-G sub-folders), on the crm-mig server. Its own project so the dedicated Jenkins job
+      // CRM-SETUP-III-Cut-off-Enterprise-links runs exactly this folder via
+      // --project=MigSetup_CutOff. Overlaps with (is a subset of) the O12 project.
+      name: 'MigSetup_CutOff',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/III.Cut-off-Enterprise-links',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
+    },
+    {
+      // IV.Install-custom-modules sub-tree of the O12 CE setup suite (27 specs across the
+      // 4.1-4.6 sub-folders), on the crm-mig server. Its own project so the dedicated Jenkins
+      // job CRM-SETUP-IV-Install-custom-modules runs exactly this folder via
+      // --project=MigSetup_Modules. Overlaps with (is a subset of) the O12 project.
+      name: 'MigSetup_Modules',
+      testDir: './tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/IV.Install-custom-modules',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
