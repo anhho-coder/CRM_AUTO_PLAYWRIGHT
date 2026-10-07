@@ -151,6 +151,22 @@ pipeline {
             steps {
                 script {
                     def mode = (params.ROUTE_GATE ?: 'auto').trim()
+                    // crm-mig-only jobs: the pre-flight probes the PRE-PROD route
+                    // (10.220.222.100), which these never touch - crm-mig is 10.30.21.10. A
+                    // declarative pipeline rewrites this job's parameters from the block above on
+                    // every build, so a ROUTE_GATE=off default saved in the job config survives
+                    // only until build #1; pin it by job name instead. An explicit non-auto
+                    // ROUTE_GATE still wins, so a run can be forced through the gate on purpose.
+                    def crmMigOnlyJobs = [
+                        'CRM-SETUP-I-Build-Fresh-Odoo12-CE',
+                        'CRM-SETUP-III-Cut-off-Enterprise-links',
+                        'CRM-SETUP-IV-Install-custom-modules',
+                        'CRM-SETUP-CRM-12127-Sale-Workflow',
+                    ]
+                    if (mode == 'auto' && crmMigOnlyJobs.contains(env.JOB_BASE_NAME)) {
+                        echo "Job '${env.JOB_BASE_NAME}' runs on crm-mig only -> ROUTE_GATE auto resolves to off."
+                        mode = 'off'
+                    }
                     if (mode == 'auto') {
                         def unattended = false
                         try {
