@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-25 - An eligible user reaches the helpdesk inside the CRM with no second login
+ * CRM-12135_5.1 - An eligible user reaches the helpdesk inside the CRM with no second login
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-25
+ * Test Case ID   : CRM-12135_5.1
  * Jira           : CRM-12135
  * Requirements   : FUNC-0063, FUNC-0064, UI-0002
  * Run as         : Engineer
@@ -67,7 +67,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-25 - An eligible user reaches the helpdesk inside the CRM with no second login', () => {
+test.describe('CRM-12135_5.1 - An eligible user reaches the helpdesk inside the CRM with no second login', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -91,9 +91,9 @@ test.describe('CRM-12135_TC-25 - An eligible user reaches the helpdesk inside th
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-25: An eligible user reaches the helpdesk inside the CRM with no second login', async ({ browser }, testInfo) => {
+  test('CRM-12135_5.1: An eligible user reaches the helpdesk inside the CRM with no second login', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-25 - An eligible user reaches the helpdesk inside the CRM with no second login ==========');
+    console.log('========== CRM-12135_5.1 - An eligible user reaches the helpdesk inside the CRM with no second login ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

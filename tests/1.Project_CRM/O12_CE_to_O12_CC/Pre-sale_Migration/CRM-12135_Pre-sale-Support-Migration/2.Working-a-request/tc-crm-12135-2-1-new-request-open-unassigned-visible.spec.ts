@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-10 - A new request arrives in the queue as New with no assigned user
+ * CRM-12135_2.1 - A new request arrives in the queue as New with no assigned user
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-10
+ * Test Case ID   : CRM-12135_2.1
  * Jira           : CRM-12135 (updated by Thuat Phung, 2026-09-24)
  * Requirements   : FUNC-0043, FUNC-0047
  * Run as         : Engineer
@@ -29,7 +29,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * Jira CRM-12925, Block "CRM-12135_TC-10" in CRM-12945 Pre-sale test execution.
+ * Jira CRM-12925, Block "CRM-12135_2.1" in CRM-12945 Pre-sale test execution.
  * Rewritten by Thuat Phung (QA SE Specialist), 2026-09-24.
  *
  *   Pre-condition(s):
@@ -93,7 +93,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-10 - A new request arrives open, unassigned and visible to the team', () => {
+test.describe('CRM-12135_2.1 - A new request arrives open, unassigned and visible to the team', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -117,9 +117,9 @@ test.describe('CRM-12135_TC-10 - A new request arrives open, unassigned and visi
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-10: A new request arrives open, unassigned and visible to the team', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.1: A new request arrives open, unassigned and visible to the team', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-10 - A new request arrives open, unassigned and visible to the team ==========');
+    console.log('========== CRM-12135_2.1 - A new request arrives open, unassigned and visible to the team ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

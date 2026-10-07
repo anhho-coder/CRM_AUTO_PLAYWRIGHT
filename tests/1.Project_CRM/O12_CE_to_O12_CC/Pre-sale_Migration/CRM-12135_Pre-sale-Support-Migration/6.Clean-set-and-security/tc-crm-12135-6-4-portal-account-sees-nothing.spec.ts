@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-39 - A portal account sees no request and no team
+ * CRM-12135_6.4 - A portal account sees no request and no team
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-39
+ * Test Case ID   : CRM-12135_6.4
  * Jira           : CRM-12135
  * Requirements   : IS-CRM-SEC-0008, IS-CRM-SEC-0009
  * Run as         : Portal (qa_portal account)
@@ -66,7 +66,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', () => {
+test.describe('CRM-12135_6.4 - A portal account sees no request and no team', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -90,25 +90,25 @@ test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', 
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-39: Signing in as a portal user, or opening a request link, stays on the portal My account page', async ({ browser }, testInfo) => {
+  test('CRM-12135_6.4: Signing in as a portal user, or opening a request link, stays on the portal My account page', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-39 - Portal account stays on My account page ==========');
+    console.log('========== CRM-12135_6.4 - Portal account stays on My account page ==========');
 
     // This case cannot be automated today, and it must SAY SO rather than pass.
     // Until 2026-09-25 the spec ended with `expect(true, 'RE-SYNC GAP: ...').toBe(true)` - an
     // assertion that cannot fail. It reported PASS on every run while verifying nothing, which is
     // worse than a red test: a reader of the report counted it as coverage that did not exist.
-    // Two things are missing, both outside this spec:
-    //   1. a page-object method to sign in to the Pre-Sales portal through its login FORM, and
-    //   2. the value of "link L" - the new manual TC (CRM-12944) names it but never defines it.
-    // Undo: implement both, then restore the assertions kept in the backup copy of this file
+    // ONE thing is missing, and it is ours to write, not anyone else's to supply:
+    //   a page-object method to sign in to the Pre-Sales portal through its login FORM.
+    // Undo: implement it, then restore the assertions kept in the backup copy of this file
     // (`noRequests` / `noTeams`, spec_backup_before_thuat_rewrite_20260924, lines 206-207).
-    test.skip(true, 'BLOCKED - needs a portal UI login helper and the value of "link L" from CRM-12944');
+    test.skip(true, 'BLOCKED - needs a portal UI login helper for the Pre-Sales Application');
 
-    // RE-SYNC GAP (CRM-12944, 2026-09-24): "Link L" is not defined in the pre-conditions or steps.
-    // The test requires a specific request URL to test step 2, but the link value is not available.
-    // The portal login (step 1) can proceed, but step 2 is blocked without the link definition.
-    const linkL = ''; // BLOCKED: need the actual request link value from pre-conditions
+    // CORRECTION 2026-10-07: an earlier note here claimed "link L" was named but never defined by
+    // CRM-12944, and that claim travelled into the CRM-12456 description. It is WRONG. The manual
+    // TC defines L in its pre-conditions: "create one request ... Then copy the browser URL of that
+    // request as L." This spec creates that request itself, so it holds the id and can build L.
+    const linkL = ''; // derive from the request this spec creates once the portal login helper exists
 
     const incognitoContext = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
@@ -152,8 +152,8 @@ test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', 
       await test.step(STEP.s2, async () => {
         console.log(`\n--- ${STEP.s2} ---`);
         if (!linkL) {
-          console.log(`  BLOCKED: Link L is not defined in pre-conditions`);
-          console.log(`  Cannot proceed without the actual request link URL`);
+          console.log(`  BLOCKED: portal login via UI not implemented, so L was never built`);
+          console.log(`  L is defined by CRM-12944: the browser URL of the request created in pre-condition 1`);
         } else {
           console.log(`  Attempting to open: ${linkL}`);
           await page.goto(linkL, { waitUntil: 'domcontentloaded' });
@@ -168,7 +168,7 @@ test.describe('CRM-12135_TC-39 - A portal account sees no request and no team', 
         console.log('Verify #1 - The portal My account page opens, not the Pre-sale tickets backend:');
         console.log(`     Status: BLOCKED - portal login via UI not implemented`);
         console.log('Verify #2 - The request does not open; the portal My account page is shown:');
-        console.log(`     Status: BLOCKED - link L value not defined in pre-conditions`);
+        console.log(`     Status: BLOCKED - portal login via UI not implemented`);
         console.log('===============================================');
 
         // No assertion here on purpose - the test skips before reaching this point (see the

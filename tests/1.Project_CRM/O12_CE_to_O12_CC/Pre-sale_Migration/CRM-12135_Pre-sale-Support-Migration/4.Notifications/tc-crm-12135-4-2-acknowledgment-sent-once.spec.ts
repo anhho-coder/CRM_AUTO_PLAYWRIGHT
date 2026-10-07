@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-19 - The acknowledgment is sent once and never repeats
+ * CRM-12135_4.2 - The acknowledgment is sent once and never repeats
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-19
+ * Test Case ID   : CRM-12135_4.2
  * Jira           : CRM-12135
  * Requirements   : FUNC-0058
  * Run as         : Salesperson
@@ -86,7 +86,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-19 - The acknowledgment is sent once and never repeats', () => {
+test.describe('CRM-12135_4.2 - The acknowledgment is sent once and never repeats', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -110,9 +110,9 @@ test.describe('CRM-12135_TC-19 - The acknowledgment is sent once and never repea
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-19: The acknowledgment is sent once and never repeats', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.2: The acknowledgment is sent once and never repeats', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-19 - The acknowledgment is sent once and never repeats ==========');
+    console.log('========== CRM-12135_4.2 - The acknowledgment is sent once and never repeats ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

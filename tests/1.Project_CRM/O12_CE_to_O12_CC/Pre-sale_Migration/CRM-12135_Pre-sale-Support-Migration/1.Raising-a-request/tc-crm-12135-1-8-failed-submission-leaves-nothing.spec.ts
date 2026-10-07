@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-08 - Creating a request while the Pre-Sales Application is unreachable shows a clear error and leaves nothing behind
+ * CRM-12135_1.8 - Creating a request while the Pre-Sales Application is unreachable shows a clear error and leaves nothing behind
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-08
+ * Test Case ID   : CRM-12135_1.8
  * Jira           : CRM-12135
  * Requirements   : REL-0001
  * Run as         : Salesperson
@@ -94,7 +94,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-08 - A submission that fails leaves no request, note, session or mail', () => {
+test.describe('CRM-12135_1.8 - A submission that fails leaves no request, note, session or mail', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -118,7 +118,7 @@ test.describe('CRM-12135_TC-08 - A submission that fails leaves no request, note
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-08: Creating a request while the Pre-Sales Application is unreachable shows a clear error and leaves nothing behind', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.8: Creating a request while the Pre-Sales Application is unreachable shows a clear error and leaves nothing behind', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // ---------------------------------------------------------------------------------------------
@@ -145,7 +145,7 @@ test.describe('CRM-12135_TC-08 - A submission that fails leaves no request, note
     test.skip(true, 'NOT AUTOMATABLE - needs the CRM-to-helpdesk link taken down and restored by Dev; '
       + 'doing that from a test would break pre-sales raising for every other user of crm-mig, and a '
       + 'test timeout would leave it broken. Run manually (CRM-12923).');
-    console.log('========== CRM-12135_TC-08 - Creating a request while Pre-Sales Application is unreachable ==========');
+    console.log('========== CRM-12135_1.8 - Creating a request while Pre-Sales Application is unreachable ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

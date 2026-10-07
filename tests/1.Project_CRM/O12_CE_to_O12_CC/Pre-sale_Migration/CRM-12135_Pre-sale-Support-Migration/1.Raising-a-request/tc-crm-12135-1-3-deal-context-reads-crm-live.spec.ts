@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-03 - Opportunity context is filled and reads the CRM live, not a copy
+ * CRM-12135_1.3 - Opportunity context is filled and reads the CRM live, not a copy
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-03
+ * Test Case ID   : CRM-12135_1.3
  * Jira           : CRM-12135
  * Requirements   : FUNC-0040
  * Run as         : Both
@@ -110,7 +110,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-03 - Opportunity context is filled and reads the CRM live, not a copy', () => {
+test.describe('CRM-12135_1.3 - Opportunity context is filled and reads the CRM live, not a copy', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -134,9 +134,9 @@ test.describe('CRM-12135_TC-03 - Opportunity context is filled and reads the CRM
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-03: Opportunity context is filled and reads the CRM live, not a copy', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.3: Opportunity context is filled and reads the CRM live, not a copy', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-03 - Opportunity context is filled and reads the CRM live, not a copy ==========');
+    console.log('========== CRM-12135_1.3 - Opportunity context is filled and reads the CRM live, not a copy ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

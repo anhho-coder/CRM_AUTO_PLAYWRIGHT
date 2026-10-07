@@ -17,9 +17,9 @@ import { CommonUtils } from '@helpers/common.utils';
  * the file would destroy it with no way back. Undo = drop the `.skip` and reopen CRM-12920.
  * ============================================================================================
  * ============================================================================================
- * CRM-12135_TC-05 - No platform or version name reaches a user-visible string
+ * CRM-12135_1.5 - No platform or version name reaches a user-visible string
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-05
+ * Test Case ID   : CRM-12135_1.5
  * Jira           : CRM-12135
  * Requirements   : FUNC-0071, FUNC-0072
  * Run as         : Salesperson, admin
@@ -89,7 +89,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe.skip('CRM-12135_TC-05 - No platform or version name reaches a user-visible string', () => {
+test.describe.skip('CRM-12135_1.5 - No platform or version name reaches a user-visible string', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -113,9 +113,9 @@ test.describe.skip('CRM-12135_TC-05 - No platform or version name reaches a user
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-05: No platform or version name reaches a user-visible string', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.5: No platform or version name reaches a user-visible string', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-05 - No platform or version name reaches a user-visible string ==========');
+    console.log('========== CRM-12135_1.5 - No platform or version name reaches a user-visible string ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

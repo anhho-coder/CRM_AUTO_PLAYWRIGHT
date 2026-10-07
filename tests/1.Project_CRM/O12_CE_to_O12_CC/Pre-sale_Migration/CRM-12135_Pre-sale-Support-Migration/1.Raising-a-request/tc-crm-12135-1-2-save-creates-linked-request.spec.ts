@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-02 - Save creates a request on the helpdesk, linked both ways
+ * CRM-12135_1.2 - Save creates a request on the helpdesk, linked both ways
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-02
+ * Test Case ID   : CRM-12135_1.2
  * Jira           : CRM-12135
  * Requirements   : FUNC-0039, FUNC-0056
  * Run as         : Salesperson
@@ -105,7 +105,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-02 - Save creates a request on the helpdesk, linked both ways', () => {
+test.describe('CRM-12135_1.2 - Save creates a request on the helpdesk, linked both ways', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -129,9 +129,9 @@ test.describe('CRM-12135_TC-02 - Save creates a request on the helpdesk, linked 
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-02: Save creates a request on the helpdesk, linked both ways', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.2: Save creates a request on the helpdesk, linked both ways', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-02 - Save creates a request on the helpdesk, linked both ways ==========');
+    console.log('========== CRM-12135_1.2 - Save creates a request on the helpdesk, linked both ways ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

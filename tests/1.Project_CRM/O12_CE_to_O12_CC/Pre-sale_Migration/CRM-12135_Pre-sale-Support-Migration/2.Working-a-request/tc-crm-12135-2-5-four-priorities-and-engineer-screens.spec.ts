@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-15 - Four priority levels, and both engineer screens carry their fields
+ * CRM-12135_2.5 - Four priority levels, and both engineer screens carry their fields
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-15
+ * Test Case ID   : CRM-12135_2.5
  * Jira           : CRM-12929 (re-synced 2026-09-24)
  * Requirements   : FUNC-0053, UI-0003, UI-0004
  * Run as         : Engineer
@@ -104,7 +104,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-15 - Four priority levels, and both engineer screens carry their fields', () => {
+test.describe('CRM-12135_2.5 - Four priority levels, and both engineer screens carry their fields', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -128,9 +128,9 @@ test.describe('CRM-12135_TC-15 - Four priority levels, and both engineer screens
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-15: Four priority levels, and both engineer screens carry their fields', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.5: Four priority levels, and both engineer screens carry their fields', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-15 - Four priority levels, and both engineer screens carry their fields ==========');
+    console.log('========== CRM-12135_2.5 - Four priority levels, and both engineer screens carry their fields ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

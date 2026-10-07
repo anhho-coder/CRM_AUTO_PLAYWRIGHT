@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-13 - A reply stays on the request
+ * CRM-12135_2.3 - A reply stays on the request
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-13
+ * Test Case ID   : CRM-12135_2.3
  * Jira           : CRM-12135
  * Requirements   : FUNC-0048
  * Run as         : Engineer
@@ -28,7 +28,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * Jira CRM-12927 - Thuat's manual TC for CRM-12135_TC-13, verified 2026-09-24.
+ * Jira CRM-12927 - Thuat's manual TC for CRM-12135_2.3, verified 2026-09-24.
  *
  *   Pre-condition(s):
  *      Created Opportunity and request with offline technical assistance type,
@@ -85,7 +85,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
+test.describe('CRM-12135_2.3 - A reply stays on the request', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -109,9 +109,9 @@ test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-13: A reply stays on the request', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.3: A reply stays on the request', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-13 - A reply stays on the request ==========');
+    console.log('========== CRM-12135_2.3 - A reply stays on the request ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

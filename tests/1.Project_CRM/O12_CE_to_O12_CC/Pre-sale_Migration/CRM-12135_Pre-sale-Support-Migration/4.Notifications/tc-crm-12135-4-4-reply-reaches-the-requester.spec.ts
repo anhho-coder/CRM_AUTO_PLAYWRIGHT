@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-21 - A reply reaches the requester; an unmatched one is visibly unsent
+ * CRM-12135_4.4 - A reply reaches the requester; an unmatched one is visibly unsent
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-21
+ * Test Case ID   : CRM-12135_4.4
  * Jira           : CRM-12135
  * Requirements   : FUNC-0060
  * Run as         : Both
@@ -91,7 +91,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-21 - A reply reaches the requester; an unmatched one is visibly unsent', () => {
+test.describe('CRM-12135_4.4 - A reply reaches the requester; an unmatched one is visibly unsent', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -115,9 +115,9 @@ test.describe('CRM-12135_TC-21 - A reply reaches the requester; an unmatched one
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-21: A reply reaches the requester; an unmatched one is visibly unsent', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.4: A reply reaches the requester; an unmatched one is visibly unsent', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-21 - A reply reaches the requester; an unmatched one is visibly unsent ==========');
+    console.log('========== CRM-12135_4.4 - A reply reaches the requester; an unmatched one is visibly unsent ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

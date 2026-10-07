@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-22 - One closure notification, and one click records the rating
+ * CRM-12135_4.5 - One closure notification, and one click records the rating
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-22
+ * Test Case ID   : CRM-12135_4.5
  * Jira           : CRM-12135
  * Requirements   : FUNC-0061, FUNC-0125
  * Run as         : Salesperson
@@ -95,7 +95,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-22 - One closure notification, and one click records the rating', () => {
+test.describe('CRM-12135_4.5 - One closure notification, and one click records the rating', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -119,9 +119,9 @@ test.describe('CRM-12135_TC-22 - One closure notification, and one click records
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-22: One closure notification, and one click records the rating', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.5: One closure notification, and one click records the rating', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-22 - One closure notification, and one click records the rating ==========');
+    console.log('========== CRM-12135_4.5 - One closure notification, and one click records the rating ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

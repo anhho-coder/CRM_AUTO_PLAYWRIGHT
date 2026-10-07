@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-06 - Under $100 only the disabled control shows, with its tooltip
+ * CRM-12135_1.6 - Under $100 only the disabled control shows, with its tooltip
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-06
+ * Test Case ID   : CRM-12135_1.6
  * Jira           : CRM-12135
  * Requirements   : FUNC-0037
  * Run as         : Salesperson
@@ -81,7 +81,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-06 - Under $100 only the disabled control shows, with its tooltip', () => {
+test.describe('CRM-12135_1.6 - Under $100 only the disabled control shows, with its tooltip', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -105,9 +105,9 @@ test.describe('CRM-12135_TC-06 - Under $100 only the disabled control shows, wit
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-06: Under $100 only the disabled control shows, with its tooltip', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.6: Under $100 only the disabled control shows, with its tooltip', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-06 - Under $100 only the disabled control shows, with its tooltip ==========');
+    console.log('========== CRM-12135_1.6 - Under $100 only the disabled control shows, with its tooltip ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-18 - The dispatcher notification names everything the reader needs
+ * CRM-12135_4.1 - The dispatcher notification names everything the reader needs
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-18
+ * Test Case ID   : CRM-12135_4.1
  * Jira           : CRM-12135
  * Requirements   : FUNC-0057
  * Run as         : Salesperson
@@ -28,7 +28,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * Jira CRM-12932 / CRM-12135_TC-18 (Thuat rewrite 2026-09-24)
+ * Jira CRM-12932 / CRM-12135_4.1 (Thuat rewrite 2026-09-24)
  * "Creating a new Request SE support sends an email to the pre-sales address"
  *
  *   Pre-condition(s):
@@ -81,7 +81,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-18 - The dispatcher notification names everything the reader needs', () => {
+test.describe('CRM-12135_4.1 - The dispatcher notification names everything the reader needs', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -105,9 +105,9 @@ test.describe('CRM-12135_TC-18 - The dispatcher notification names everything th
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-18: The dispatcher notification names everything the reader needs', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.1: The dispatcher notification names everything the reader needs', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-18 - The dispatcher notification names everything the reader needs ==========');
+    console.log('========== CRM-12135_4.1 - The dispatcher notification names everything the reader needs ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-24 - Creating a request adds a log note only on its own Opportunity, not on another Opportunity
+ * CRM-12135_4.7 - Creating a request adds a log note only on its own Opportunity, not on another Opportunity
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-24
+ * Test Case ID   : CRM-12135_4.7
  * Jira           : CRM-12135, CRM-12938
  * Requirements   : FUNC-0062
  * Run as         : Salesperson
@@ -73,7 +73,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-24 - Note expansion stops at the company, the exact address and a won deal', () => {
+test.describe('CRM-12135_4.7 - Note expansion stops at the company, the exact address and a won deal', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -97,9 +97,9 @@ test.describe('CRM-12135_TC-24 - Note expansion stops at the company, the exact 
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-24: Note expansion stops at the company, the exact address and a won deal', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.7: Note expansion stops at the company, the exact address and a won deal', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-24 - Note expansion stops at the company, the exact address and a won deal ==========');
+    console.log('========== CRM-12135_4.7 - Note expansion stops at the company, the exact address and a won deal ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

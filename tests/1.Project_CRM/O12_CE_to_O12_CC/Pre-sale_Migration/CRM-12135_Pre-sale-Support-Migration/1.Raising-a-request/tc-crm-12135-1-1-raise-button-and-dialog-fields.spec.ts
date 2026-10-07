@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12916 / CRM-12135_TC-01 - Request SE support button and New Ticket dialog fields
+ * CRM-12916 / CRM-12135_1.1 - Request SE support button and New Ticket dialog fields
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-01 / CRM-12916
+ * Test Case ID   : CRM-12135_1.1 / CRM-12916
  * Jira           : CRM-12135 (parent), CRM-12916 (manual TC)
  * Requirements   : FUNC-0037, FUNC-0038, FUNC-0041
  * Run as         : Salesperson
@@ -98,7 +98,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-01 - The raise button shows and the dialog carries the five fields in order', () => {
+test.describe('CRM-12135_1.1 - The raise button shows and the dialog carries the five fields in order', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -122,9 +122,9 @@ test.describe('CRM-12135_TC-01 - The raise button shows and the dialog carries t
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-01: The raise button shows and the dialog carries the five fields in order', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.1: The raise button shows and the dialog carries the five fields in order', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-01 - The raise button shows and the dialog carries the five fields in order ==========');
+    console.log('========== CRM-12135_1.1 - The raise button shows and the dialog carries the five fields in order ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

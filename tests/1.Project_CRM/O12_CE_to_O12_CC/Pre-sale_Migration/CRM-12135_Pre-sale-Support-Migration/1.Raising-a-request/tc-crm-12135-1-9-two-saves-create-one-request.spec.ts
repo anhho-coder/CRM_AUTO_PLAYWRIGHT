@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-09 - Two saves in quick succession create exactly one request
+ * CRM-12135_1.9 - Two saves in quick succession create exactly one request
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-09
+ * Test Case ID   : CRM-12135_1.9
  * Jira           : CRM-12135
  * Requirements   : REL-0002
  * Run as         : Salesperson
@@ -85,7 +85,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-09 - Two saves in quick succession create exactly one request', () => {
+test.describe('CRM-12135_1.9 - Two saves in quick succession create exactly one request', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -109,9 +109,9 @@ test.describe('CRM-12135_TC-09 - Two saves in quick succession create exactly on
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-09: Two saves in quick succession create exactly one request', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.9: Two saves in quick succession create exactly one request', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-09 - Two saves in quick succession create exactly one request ==========');
+    console.log('========== CRM-12135_1.9 - Two saves in quick succession create exactly one request ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

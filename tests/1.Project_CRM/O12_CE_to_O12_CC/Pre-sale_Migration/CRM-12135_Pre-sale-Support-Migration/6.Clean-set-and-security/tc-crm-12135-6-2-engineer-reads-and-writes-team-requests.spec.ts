@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-36 - An engineer reads and writes every request of the team
+ * CRM-12135_6.2 - An engineer reads and writes every request of the team
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-36
+ * Test Case ID   : CRM-12135_6.2
  * Jira           : CRM-12135
  * Requirements   : IS-CRM-SEC-0008, IS-CRM-SEC-0009
  * Run as         : Engineer (pre_sales_engineer_crm_mig account)
@@ -102,7 +102,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-36 - An engineer reads and writes every request of the team', () => {
+test.describe('CRM-12135_6.2 - An engineer reads and writes every request of the team', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -126,9 +126,9 @@ test.describe('CRM-12135_TC-36 - An engineer reads and writes every request of t
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-36: An engineer reads and writes every request of the team', async ({ browser }, testInfo) => {
+  test('CRM-12135_6.2: An engineer reads and writes every request of the team', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-36 - An engineer reads and writes every request of the team ==========');
+    console.log('========== CRM-12135_6.2 - An engineer reads and writes every request of the team ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

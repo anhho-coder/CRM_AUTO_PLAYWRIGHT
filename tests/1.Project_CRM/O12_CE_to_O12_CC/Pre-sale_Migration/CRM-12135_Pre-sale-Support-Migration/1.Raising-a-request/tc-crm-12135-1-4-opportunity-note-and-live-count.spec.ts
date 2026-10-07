@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-04 - Creating a ticket adds a log note and increases the Tickets button count
+ * CRM-12135_1.4 - Creating a ticket adds a log note and increases the Tickets button count
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-04
+ * Test Case ID   : CRM-12135_1.4
  * Jira           : CRM-12135 (CRM-12919 on automation)
  * Requirements   : FUNC-0054, FUNC-0055
  * Run as         : Salesperson
@@ -85,7 +85,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-04 - The opportunity gets a note, and the Tickets button its live count', () => {
+test.describe('CRM-12135_1.4 - The opportunity gets a note, and the Tickets button its live count', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -109,9 +109,9 @@ test.describe('CRM-12135_TC-04 - The opportunity gets a note, and the Tickets bu
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-04: The opportunity gets a note, and the Tickets button its live count', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.4: The opportunity gets a note, and the Tickets button its live count', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-04 - The opportunity gets a note, and the Tickets button its live count ==========');
+    console.log('========== CRM-12135_1.4 - The opportunity gets a note, and the Tickets button its live count ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

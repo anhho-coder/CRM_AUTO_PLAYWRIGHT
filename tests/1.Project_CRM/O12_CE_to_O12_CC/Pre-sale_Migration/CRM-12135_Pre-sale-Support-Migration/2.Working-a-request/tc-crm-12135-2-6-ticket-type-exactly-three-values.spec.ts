@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-40 - A request carries a Ticket Type with exactly the three values in use
+ * CRM-12135_2.6 - A request carries a Ticket Type with exactly the three values in use
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-40
+ * Test Case ID   : CRM-12135_2.6
  * Jira           : CRM-12135
  * Requirements   : IS-CRM-FUNC-0042
  * Run as         : Engineer
@@ -95,7 +95,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-40 - A request carries a Ticket Type with exactly the three values in use', () => {
+test.describe('CRM-12135_2.6 - A request carries a Ticket Type with exactly the three values in use', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -119,9 +119,9 @@ test.describe('CRM-12135_TC-40 - A request carries a Ticket Type with exactly th
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-40: A request carries a Ticket Type with exactly the three values in use', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.6: A request carries a Ticket Type with exactly the three values in use', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-40 - A request carries a Ticket Type with exactly the three values in use ==========');
+    console.log('========== CRM-12135_2.6 - A request carries a Ticket Type with exactly the three values in use ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

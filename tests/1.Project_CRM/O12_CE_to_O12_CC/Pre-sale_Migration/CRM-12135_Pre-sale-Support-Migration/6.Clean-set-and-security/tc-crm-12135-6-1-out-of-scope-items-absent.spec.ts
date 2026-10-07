@@ -17,9 +17,9 @@ import { CommonUtils } from '@helpers/common.utils';
  * the file would destroy it with no way back. Undo = drop the `.skip` and reopen CRM-12941.
  * ============================================================================================
  * ============================================================================================
- * CRM-12135_TC-33 - The items left out of scope are absent from both sides
+ * CRM-12135_6.1 - The items left out of scope are absent from both sides
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-33
+ * Test Case ID   : CRM-12135_6.1
  * Jira           : CRM-12135
  * Requirements   : IS-CRM-FUNC-0068, IS-CRM-FUNC-0070
  * Run as         : Engineer. The PDF's section 6 names this case as one the handed-over
@@ -101,7 +101,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe.skip('CRM-12135_TC-33 - The items left out of scope are absent from both sides', () => {
+test.describe.skip('CRM-12135_6.1 - The items left out of scope are absent from both sides', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -125,9 +125,9 @@ test.describe.skip('CRM-12135_TC-33 - The items left out of scope are absent fro
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-33: The items left out of scope are absent from both sides', async ({ browser }, testInfo) => {
+  test('CRM-12135_6.1: The items left out of scope are absent from both sides', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-33 - The items left out of scope are absent from both sides ==========');
+    console.log('========== CRM-12135_6.1 - The items left out of scope are absent from both sides ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

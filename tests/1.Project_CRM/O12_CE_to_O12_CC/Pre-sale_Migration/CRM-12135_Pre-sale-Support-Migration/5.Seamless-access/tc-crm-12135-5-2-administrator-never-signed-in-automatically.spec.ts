@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-26 - An administrator is never signed in automatically
+ * CRM-12135_5.2 - An administrator is never signed in automatically
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-26
+ * Test Case ID   : CRM-12135_5.2
  * Jira           : CRM-12135
  * Requirements   : FUNC-0063
  * Run as         : Engineer admin
@@ -66,7 +66,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-26 - An administrator is never signed in automatically', () => {
+test.describe('CRM-12135_5.2 - An administrator is never signed in automatically', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -90,7 +90,7 @@ test.describe('CRM-12135_TC-26 - An administrator is never signed in automatical
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-26: An administrator is never signed in automatically', async ({ browser }, testInfo) => {
+  test('CRM-12135_5.2: An administrator is never signed in automatically', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // ---------------------------------------------------------------------------------------------
@@ -113,7 +113,7 @@ test.describe('CRM-12135_TC-26 - An administrator is never signed in automatical
     test.skip(true, 'NOT AUTOMATABLE - needs an administrator account on the Pre-Sales Application, '
       + 'which QA does not hold (open since 2026-09-18), plus a page-object helper for the embedded '
       + 'login form. Run manually (CRM-12940).');
-    console.log('========== CRM-12135_TC-26 - An administrator is never signed in automatically ==========');
+    console.log('========== CRM-12135_5.2 - An administrator is never signed in automatically ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

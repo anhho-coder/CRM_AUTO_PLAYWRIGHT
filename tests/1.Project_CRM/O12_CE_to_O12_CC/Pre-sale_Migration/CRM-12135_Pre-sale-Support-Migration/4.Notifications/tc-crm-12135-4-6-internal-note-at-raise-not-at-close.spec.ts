@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-23 - Creating a request adds a log note on the Opportunity, closing it adds none
+ * CRM-12135_4.6 - Creating a request adds a log note on the Opportunity, closing it adds none
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-23
+ * Test Case ID   : CRM-12135_4.6
  * Jira           : CRM-12135
  * Requirements   : FUNC-0062
  * Run as         : Salesperson
@@ -83,7 +83,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-23 - The internal note lands at raise and on a contact change, not at close', () => {
+test.describe('CRM-12135_4.6 - The internal note lands at raise and on a contact change, not at close', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -107,9 +107,9 @@ test.describe('CRM-12135_TC-23 - The internal note lands at raise and on a conta
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-23: The internal note lands at raise and on a contact change, not at close', async ({ browser }, testInfo) => {
+  test('CRM-12135_4.6: The internal note lands at raise and on a contact change, not at close', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-23 - The internal note lands at raise and on a contact change, not at close ==========');
+    console.log('========== CRM-12135_4.6 - The internal note lands at raise and on a contact change, not at close ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

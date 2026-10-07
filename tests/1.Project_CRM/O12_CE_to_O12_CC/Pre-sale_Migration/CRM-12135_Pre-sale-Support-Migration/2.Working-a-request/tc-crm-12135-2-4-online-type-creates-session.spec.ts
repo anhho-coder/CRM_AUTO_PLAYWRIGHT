@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12928 - An online request creates a Calendar session, an offline one does not
+ * CRM-12135_2.4 - An online request creates a Calendar session, an offline one does not
  * ============================================================================================
- * Test Case ID   : CRM-12928
+ * Test Case ID   : CRM-12135_2.4
  * Jira           : CRM-12135 (CRM-12928 is the manual TC revision)
  * Requirements   : FUNC-0049
  * Run as         : Salesperson
@@ -111,7 +111,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12928 - An online request creates a Calendar session, an offline one does not', () => {
+test.describe('CRM-12135_2.4 - An online request creates a Calendar session, an offline one does not', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -135,9 +135,9 @@ test.describe('CRM-12928 - An online request creates a Calendar session, an offl
     sharedPage = undefined;
   });
 
-  test('CRM-12928: An online request creates a Calendar session, an offline one does not', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.4: An online request creates a Calendar session, an offline one does not', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12928 - An online request creates a Calendar session, an offline one does not ==========');
+    console.log('========== CRM-12135_2.4 - An online request creates a Calendar session, an offline one does not ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },

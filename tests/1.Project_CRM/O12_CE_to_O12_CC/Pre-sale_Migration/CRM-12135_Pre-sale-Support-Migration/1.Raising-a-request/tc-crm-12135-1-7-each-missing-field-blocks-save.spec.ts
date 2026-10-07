@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-07 - Each missing field blocks the save on that field
+ * CRM-12135_1.7 - Each missing field blocks the save on that field
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-07
+ * Test Case ID   : CRM-12135_1.7
  * Jira           : CRM-12135
  * Requirements   : FUNC-0038
  * Run as         : Salesperson
@@ -29,7 +29,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * CRM-12922 [PASS] CRM-12135_TC-07 (rewritten 2026-09-24 by Thuat Phung)
+ * CRM-12922 [PASS] CRM-12135_1.7 (rewritten 2026-09-24 by Thuat Phung)
  * Each missing required field blocks the save, and Meeting Time only for online types
  *
  *   Pre-condition(s):
@@ -102,7 +102,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-07 - Each missing field blocks the save on that field', () => {
+test.describe('CRM-12135_1.7 - Each missing field blocks the save on that field', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -126,9 +126,9 @@ test.describe('CRM-12135_TC-07 - Each missing field blocks the save on that fiel
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-07: Each missing field blocks the save on that field', async ({ browser }, testInfo) => {
+  test('CRM-12135_1.7: Each missing field blocks the save on that field', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-07 - Each missing field blocks the save on that field ==========');
+    console.log('========== CRM-12135_1.7 - Each missing field blocks the save on that field ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
