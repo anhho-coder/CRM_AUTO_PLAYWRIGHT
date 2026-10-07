@@ -33,8 +33,29 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  *   Pre-condition(s):
  *      1. Logged in to crm-mig.nakivo.site as Salesperson admin_crm_mig
- *      2. The Pre-Sales Application is currently UNREACHABLE (requires Dev intervention)
+ *      2. The Pre-Sales service is disconnected - see the procedure below
  *      3. An Opportunity exists to raise a request from
+ *
+ * How to disconnect / re-connect the Pre-sales service
+ * ----------------------------------------------------
+ * Recorded verbatim from the tester, 2026-10-07. This is what opens and closes the window this
+ * case needs; the spec never does it itself - see the skip note further down for why.
+ *
+ *   How to disconnect Pre-sales service:
+ *      1. Open Settings > General Settings > menu SSO Configuration and copy the current
+ *         Remote Internal URL.
+ *      2. Change only its port to an unused one, for example http://127.0.0.1:1 to make it to be
+ *         the incorrect URL, and save.
+ *
+ *   How to re-connect Pre-sales service:
+ *      1. Open Settings > General Settings > menu SSO Configuration
+ *      2. Enter the URL here "http://127.0.0.1:8070" to "Remote Internal URL" field and save
+ *      3. The Connection will be automatically re-connect
+ *
+ * The automated run of 2026-10-07 confirmed the disconnect from the other side: with the port
+ * changed, the save was refused with
+ *   Technical detail: ('The pre-sales helpdesk did not accept /nakivo/presale/ticket/create:
+ *                      Port out of range 0-65535', '')
  *
  *   Steps to reproduce:
  *      1. On the CRM (crm-mig.nakivo.site) open Settings > Technical > Email > Emails,
@@ -75,7 +96,7 @@ import { CommonUtils } from '@helpers/common.utils';
 // Step labels - ONE source of truth for the test.step() label AND the stdout banner.
 const STEP = {
   pre1:   'Pre-condition 1: Logged in to crm-mig.nakivo.site as Salesperson admin_crm_mig',
-  pre2:   'Pre-condition 2: The Pre-Sales Application is currently UNREACHABLE (requires Dev intervention)',
+  pre2:   'Pre-condition 2: The Pre-Sales service is disconnected - Settings > General Settings > SSO Configuration, Remote Internal URL port changed to an unused one',
   pre3:   'Pre-condition 3: Create an Opportunity named AUTO-CRM-12135-TC-08-<runId>-fail-opp with Expected Revenue Deal = $750 (above the $100 gate)',
   s1:     'Step 1: Record the baseline email count with subject "New SE meeting request"',
   s2:     'Step 2: From the Opportunity, attempt to create a request while Pre-Sales Application is unreachable',
@@ -202,9 +223,14 @@ test.describe('CRM-12135_1.8 - A submission that fails leaves no request, note, 
 
       await test.step(STEP.pre2, async () => {
         console.log(`\n--- ${STEP.pre2} ---`);
-        console.log('  CRITICAL: This test requires Dev to have broken the CRM-to-helpdesk connection');
-        console.log('  before this step runs. Without it, the request will succeed and the test will fail.');
-        console.log('  The test proceeds assuming the connection is broken.');
+        console.log('  Disconnect  : Settings > General Settings > SSO Configuration - copy the current');
+        console.log('                Remote Internal URL, change only its port to an unused one');
+        console.log('                (for example http://127.0.0.1:1), and save.');
+        console.log('  Re-connect  : same screen, set Remote Internal URL to http://127.0.0.1:8070 and save;');
+        console.log('                the connection re-establishes itself.');
+        console.log('  This spec never performs either - doing it from a test would break pre-sales raising');
+        console.log('  for every other user of crm-mig, and a test timeout would leave it broken. It runs');
+        console.log('  only inside an agreed window, which PRESALE_OUTAGE_WINDOW=1 declares.');
       });
 
       await test.step(STEP.pre3, async () => {
