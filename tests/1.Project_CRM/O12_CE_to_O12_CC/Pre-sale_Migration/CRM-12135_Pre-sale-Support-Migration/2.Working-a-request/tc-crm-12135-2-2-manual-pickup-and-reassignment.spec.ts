@@ -111,6 +111,32 @@ test.describe('CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing ass
 
   test('CRM-12135_2.2: Pick-up and re-assignment are manual; nothing assigns itself', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
+
+    // ---------------------------------------------------------------------------------------------
+    // SKIPPED 2026-10-07 - the case is blocked on a PRODUCT DEFECT, not on anything in this spec.
+    //
+    // Verify #5 asserts that the first assignment's timestamp survives a re-assignment. Measured
+    // three times - 09:50:23 -> :24, 04:25:27 -> :28, 06:40:00 -> :01 - the Pre-Sales Application
+    // returns a value one second later after a re-assignment that writes `user_id` only.
+    //
+    // Nathan Do confirmed it on CRM-12456 (comment 703900): the requirement is IS-CRM-FUNC-0046,
+    // which "requires the first assignment to be recorded and preserved, which is also how the
+    // current system behaves, but the Pre-Sales Application sets the assigned date again on every
+    // re-assignment". The "Pre-sale Test Cases" card set omits FUNC-0046 on purpose - its own
+    // traceability page lists it under requirements checked on the development side.
+    //
+    // A minute-wide tolerance was tried on 2026-10-07 to make this green and was reverted the same
+    // day: it hid an acknowledged defect, and it would still have gone red roughly one run in sixty.
+    // The assertion is back to exact equality and the case is skipped, by the tester's decision, so
+    // the defect is tracked in Jira rather than as a permanently red automated test.
+    //
+    // Undo: when the Pre-Sales Application stops re-stamping assigned_date, drop this skip. The
+    // other four verifications in this case already pass and need no change.
+    // ---------------------------------------------------------------------------------------------
+    test.skip(true, 'BLOCKED by a product defect - the Pre-Sales Application re-stamps assigned_date on '
+      + 'every re-assignment, against IS-CRM-FUNC-0046 (confirmed by Dev, CRM-12456 comment 703900). '
+      + 'Measured 3x as a 1-second drift. Re-enable once the product preserves the first assignment.');
+
     console.log('========== CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing assigns itself ==========');
 
     const context = await browser.newContext({
@@ -236,13 +262,10 @@ await test.step(STEP.verify, async () => {
   const ownerAfterPickUp = a.assignedUserId === firstEngineerId;
   const stampWritten = Boolean(a.assignedDate);
   const ownerAfterReassign = b.assignedUserId === secondEngineerId;
-  // Compared to the MINUTE, not the second. Measured twice (runs 2026-10-05 and 2026-10-07) the
-  // server returned a value exactly one second later after the re-assignment - 09:50:23 -> 09:50:24
-  // and 04:25:27 -> 04:25:28 - although the re-assignment writes `user_id` only. Truncating to
-  // "YYYY-MM-DD HH:MM" is a TOLERANCE, not a fix: it still reports a difference whenever the two
-  // assignments straddle a minute boundary, and it does not establish why the value moves.
-  const toMinute = (d?: string | null) => (d ? String(d).slice(0, 16) : '');
-  const stampPreserved = Boolean(a.assignedDate) && toMinute(a.assignedDate) === toMinute(b.assignedDate);
+  // Exact equality, deliberately. A minute-wide tolerance was tried on 2026-10-07 and reverted the
+  // same day: it turned the case green while hiding a defect Dev has since acknowledged, and it
+  // would still have gone red about one run in sixty, when the two assignments straddle a minute.
+  const stampPreserved = Boolean(a.assignedDate) && a.assignedDate === b.assignedDate;
 
   console.log('\n==================== VERIFY ====================');
   console.log('Verify #1 - Before any assignment: Assigned user is empty (unowned):');
@@ -261,11 +284,10 @@ await test.step(STEP.verify, async () => {
   console.log(`     Expected : ${secondEngineerId} (${secondEngineerLogin})`);
   console.log(`     Actual   : ${b.assignedUserId} (${b.assignedUserName})`);
   console.log(`     Result   : ${ownerAfterReassign ? 'PASS' : 'FAIL'}`);
-  console.log('Verify #5 - After re-assignment: assignedDate is preserved (compared to the minute):');
-  console.log(`     Expected : ${toMinute(a.assignedDate) || '(none)'}`);
-  console.log(`     Actual   : ${toMinute(b.assignedDate) || '(none)'}`);
+  console.log('Verify #5 - After re-assignment: assignedDate is preserved (not updated):');
+  console.log(`     Expected : ${a.assignedDate || '(none)'}`);
+  console.log(`     Actual   : ${b.assignedDate || '(none)'}`);
   console.log(`     Result   : ${stampPreserved ? 'PASS' : 'FAIL'}`);
-  console.log(`     Raw (seconds kept, for the record) : ${a.assignedDate || '(none)'} -> ${b.assignedDate || '(none)'}`);
   console.log('===============================================');
   console.log(`OVERALL: ${startUnowned && ownerAfterPickUp && stampWritten && ownerAfterReassign && stampPreserved ? 'PASS' : 'FAIL'}`);
 
