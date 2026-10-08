@@ -3083,4 +3083,38 @@ export class InvoicePage extends BasePage {
       .isVisible({ timeout })
       .catch(() => false);
   }
+
+  // ---- Breadcrumb + reload readers, used by CRM-12370_6.2.12 ----
+  /**
+   * The breadcrumb trail above the form, left to right - on the chain this suite drives that is
+   * "All Pipeline" / the Opportunity / the Deal Element / the Sale Order / "Invoice".
+   *
+   * Odoo keeps the trail in the web client's in-memory action stack, so reading it is also how a
+   * RELOAD is told apart from a navigation: a stack rebuilt from the URL hash comes back shorter.
+   */
+  async getBreadcrumbTrail(): Promise<string[]> {
+    const crumbs = this.page.locator('.breadcrumb li');
+    await crumbs.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    const count = await crumbs.count().catch(() => 0);
+    const out: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const text = ((await crumbs.nth(i).innerText({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')) || '')
+        .replace(/​/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (text) out.push(text);
+    }
+    return out;
+  }
+
+  /**
+   * Refresh the Invoice page the way a tester presses F5, and wait until the form has painted again
+   * (readonly mode = the Edit button is back). The URL is NOT re-typed: the reload keeps whatever
+   * hash the client was on, which is exactly what a human F5 does.
+   */
+  async reloadInvoiceForm(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    await this.page.reload({ waitUntil: 'load', timeout });
+    await this.editButtonLoc().waitFor({ state: 'visible', timeout });
+  }
+
 }

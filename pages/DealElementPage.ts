@@ -1774,4 +1774,65 @@ export class DealElementPage extends BasePage {
     return hit ? hit.value : '';
   }
 
+
+  // ---- Order Lines alignment readers, used by CRM-12370_4.5.5 ----
+
+  /**
+   * The horizontal alignment of one Order Lines row, read as
+   * { column caption -> { header, cell } } where each value is the COMPUTED `text-align`.
+   *
+   * Two traps this normalises, so a reader never has to:
+   *  - Chromium reports the INITIAL value of `text-align` as `start` / `end`, not as
+   *    `left` / `right`. A cell the stylesheet never touched would therefore read `start`
+   *    and could never be compared against a cell it styled `right`. Both are resolved
+   *    against the element's own `direction` (LTR: start -> left, end -> right).
+   *  - Odoo puts the alignment on the `<td>` / `<th>` itself (`.o_list_number` is what
+   *    right-aligns a numeric column), so the computed style is read from the cell node,
+   *    not from the widget inside it.
+   *
+   * Cells are zipped onto the header row by position, exactly as getOrderLineRowCells()
+   * does, so a column that moved cannot silently shift an alignment onto its neighbour.
+   * The leading drag-handle column carries no caption and is dropped.
+   */
+  async getOrderLineCellAlignments(
+    rowIndex: number = 0
+  ): Promise<Record<string, { header: string; cell: string }>> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement, index: number) => {
+        const clean = (n: Element) => ((n as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        const align = (n: Element | undefined) => {
+          if (!n) return '(missing)';
+          const style = window.getComputedStyle(n as HTMLElement);
+          const ltr = (style.direction || 'ltr') !== 'rtl';
+          const value = (style.textAlign || '').trim();
+          if (value === 'start') return ltr ? 'left' : 'right';
+          if (value === 'end') return ltr ? 'right' : 'left';
+          return value;
+        };
+        const headers = Array.from(el.querySelectorAll('thead th'));
+        const row = el.querySelectorAll('tbody tr.o_data_row')[index];
+        const cells = row ? Array.from(row.querySelectorAll('td')) : [];
+        const out: Record<string, { header: string; cell: string }> = {};
+        headers.forEach((th, i) => {
+          const caption = clean(th);
+          if (caption.length === 0) return;
+          out[caption] = { header: align(th), cell: align(cells[i]) };
+        });
+        return out;
+      }, rowIndex)
+      .catch(() => ({} as Record<string, { header: string; cell: string }>));
+  }
+
+  /** How many data rows the Order Lines list currently renders. */
+  async getOrderLineRowCount(): Promise<number> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement) => el.querySelectorAll('tbody tr.o_data_row').length)
+      .catch(() => 0);
+  }
+
+
 }
