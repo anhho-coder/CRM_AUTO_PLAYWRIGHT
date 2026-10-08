@@ -2104,4 +2104,64 @@ export class QuotationPage extends BasePage {
       )
       .catch(() => [] as string[]);
   }
+
+  // ---- Save reader, used by CRM-12370_5.2.7 and 5.8.5 (Duplicate -> Save flows) ----
+  /**
+   * Press the form's "Save" button and report what the save produced.
+   *
+   * Written for the Duplicate test case: Odoo 12 opens the COPY in EDIT mode (Save / Discard in the
+   * breadcrumb), so the copy is only committed once Save is pressed. The save is confirmed by the
+   * form LEAVING edit mode - the Edit button returns and the Save button is gone - never by a fixed
+   * wait, and the record id is re-read so a caller can prove Save stayed on the same record instead
+   * of creating another one.
+   *
+   * @param timeout - how long to wait for the form to leave edit mode
+   */
+  async saveQuotationForm(timeout: number = CommonUtils.waitTimes.savingPage): Promise<{
+    wasInEditMode: boolean;
+    saved: boolean;
+    editButtonVisible: boolean;
+    saveButtonGone: boolean;
+    recordIdBefore: string;
+    recordIdAfter: string;
+    elapsedMs: number;
+    popupText: string;
+  }> {
+    const recordIdBefore = this.getRecordIdFromUrl();
+    const wasInEditMode = await this.saveButton()
+      .isVisible({ timeout: CommonUtils.waitTimes.elementVisibility })
+      .catch(() => false);
+    console.log(`  - Form is in edit mode before Save: ${wasInEditMode} (record id: ${recordIdBefore || '(none)'})`);
+
+    const start = Date.now();
+    if (wasInEditMode) {
+      await this.saveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      console.log('  - Clicked "Save"');
+    }
+
+    const editButtonVisible = await this.editButtonLoc()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+    const saveStillVisible = await this.saveButton().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    const saveButtonGone = !saveStillVisible;
+    const elapsedMs = Date.now() - start;
+
+    const popupText = await this.getBlockingPopupText(CommonUtils.waitTimes.extraLong);
+    if (popupText) {
+      console.log(`  - Save answered with a popup: "${popupText.substring(0, 300)}"`);
+      await this.dismissBlockingPopup();
+    }
+
+    const recordIdAfter = this.getRecordIdFromUrl();
+    // A form that was never in edit mode has nothing to save - reporting that as "saved" would
+    // turn a Duplicate that never opened the copy into a vacuous PASS.
+    const saved = wasInEditMode && editButtonVisible && saveButtonGone;
+    console.log(`  - Edit button back: ${editButtonVisible}`);
+    console.log(`  - Save button gone: ${saveButtonGone}`);
+    console.log(`  - Record id after Save: ${recordIdAfter || '(none)'}`);
+    console.log(`  ${saved ? '\u2713' : '\u26a0'} Saved (form left edit mode): ${saved} (${(elapsedMs / 1000).toFixed(2)}s)`);
+    return { wasInEditMode, saved, editButtonVisible, saveButtonGone, recordIdBefore, recordIdAfter, elapsedMs, popupText };
+  }
+
 }
