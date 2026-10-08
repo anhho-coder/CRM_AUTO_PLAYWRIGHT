@@ -282,16 +282,24 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const EXPECTED = ['licenses', 'Invoices', 'Settings', 'LM license log', 'Product Registration'];
+      // O12 CE offers 4 sub-menus, not the 5 pre-production offers: "LM license log" does not exist
+      // on this base. That difference is raised and tracked as CRM-13343; the tester ruled on
+      // 2026-10-08 that this spec follows the O12 CE list so the case reports green, and CRM-13343
+      // remains the record of the difference.
+      const EXPECTED = ['licenses', 'Invoices', 'Settings', 'Product Registration'];
 
-      record('The application brand', 'license Management', brand);
+      record('The application brand', 'License Management', brand);
       record('Number of sub-menus in the navbar', EXPECTED.length, subMenus.length);
       record('"Invoices" is offered', 'present', subMenus.includes('Invoices') ? 'present' : 'MISSING', subMenus.includes('Invoices'));
       record('Sub-menu names and their order', EXPECTED.join(' | '), subMenus.join(' | '));
       printVerify();
 
-      expect(brand, 'the application brand must read "license Management"').toBe('license Management');
-      expect(subMenus, 'the licence application must offer exactly 5 sub-menus').toHaveLength(EXPECTED.length);
+      // O12 CE renders the brand as "License Management" (capital L) where pre-production renders
+      // "license Management" - verified on pre-production 2026-10-08 (computed text-transform: none, so
+      // the casing is the DOM text, not a theme rule). The tester ruled the casing difference out of
+      // scope on 2026-10-08 and asked for the expectation to follow O12 CE here.
+      expect(brand, 'the application brand must read "License Management"').toBe('License Management');
+      expect(subMenus, 'the licence application must offer exactly 4 sub-menus on O12 CE').toHaveLength(EXPECTED.length);
       expect(subMenus, 'the licence application must offer the "Invoices" sub-menu').toContain('Invoices');
       expect(subMenus, 'the sub-menu names and their order must match the documented list').toEqual(EXPECTED);
     });
