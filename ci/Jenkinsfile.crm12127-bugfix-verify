@@ -1,0 +1,309 @@
+// Re-run the CRM-12127 specs that the 29 now-Resolved crm-mig bugs made red, and report a
+// PER-BUG verdict.
+//
+//   Job name   : CRM-12127-BugFix-Verify
+//   Script Path: ci/Jenkinsfile.crm12127-bugfix-verify
+//   Branch     : now_code_on_Cursor
+//   Target     : crm-mig.nakivo.site (db nakivoCE) - NOT pre-production.
+//
+// SCOPE lives in git, not in the job config: ci/crm12127-bugfix-verify-specs.txt maps each bug
+// key to the spec(s) its ticket names, 28 bug lines -> 45 unique specs (CRM-12912 has no TC of
+// its own and rides on the two Lead field-order specs). A declarative pipeline rewrites a job's
+// parameters from this file on every build, so anything the job must remember belongs here.
+//
+// WHY ITS OWN PIPELINE instead of the shared Jenkinsfile:
+//   1. The shared Jenkinsfile runs SPEC/GREP under --project=chrome-headless; this suite wants
+//      --project=MigSmoke so it is scoped to the CRM-12127 testDir.
+//   2. The shared Jenkinsfile's mid-run vpn-watchdog aborts on the PRE-PROD flag regardless of
+//      params - a crm-mig run that never touches pre-prod ends NOT_BUILT (CRM_O12_MIG_Smoke #1
+//      died that way after 60.9 min). Here the watchdog is OFF by default and opt-in.
+//   3. It reports a bug-by-bug verdict, which the section jobs cannot.
+//
+// It deliberately does NOT stash into the Allure period buckets (same choice as
+// ci/Jenkinsfile.rerun-fix-bug-confirm): this is a verification run, not the weekly trend.
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'SPEC_MANIFEST',
+            defaultValue: 'ci/crm12127-bugfix-verify-specs.txt',
+            description: 'Bug-to-spec manifest read from the checkout. Format per line: <bug key> <TC id> <spec path>. Edit the file in git to change the scope.'
+        )
+        string(
+            name: 'ONLY_BUGS',
+            defaultValue: '',
+            description: 'Comma-separated bug keys to narrow the run to (e.g. CRM-13081,CRM-13088). BLANK = every bug in the manifest.'
+        )
+        string(
+            name: 'PROJECT',
+            defaultValue: 'MigSmoke',
+            description: 'Playwright project. MigSmoke = the CRM-12127 sale-workflow testDir on system Chrome headless.'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '300',
+            description: 'Timeout in minutes for the Playwright run. 45 specs run serially (workers:1), each driving a full UI chain on crm-mig at ~3-6 min -> 2.5-4.5h. The absolute options{} backstop below is 360.'
+        )
+        choice(
+            name: 'MIG_GATE',
+            choices: ['on', 'off'],
+            description: 'Probe https://crm-mig.nakivo.site/ before running. on = an unreachable server ends the build NOT_BUILT with the reason, so "server down" is never reported as "nothing failed". off = run regardless.'
+        )
+        choice(
+            name: 'VPN_WATCHDOG',
+            choices: ['off', 'on'],
+            description: 'Mid-run PRE-PROD VPN watchdog. OFF by default: this job only talks to crm-mig, so a pre-prod flag is not its problem. Turn on only if a spec here starts using pre-prod.'
+        )
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+    }
+
+    options {
+        timeout(time: 360, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('crm-mig reachability gate') {
+            steps {
+                script {
+                    if ((params.MIG_GATE ?: 'on').trim() == 'off') {
+                        echo 'MIG_GATE=off -> skipping the crm-mig probe.'
+                    } else {
+                        // curl -f: non-zero unless the server answers 2xx/3xx. An unreachable
+                        // server and a clean run look identical in a results file, so gate here.
+                        def rc = bat(returnStatus: true,
+                            script: 'curl -s -f -k -o NUL --max-time 30 "https://crm-mig.nakivo.site/"')
+                        if (rc != 0) {
+                            currentBuild.result = 'NOT_BUILT'
+                            error('SKIPPED: https://crm-mig.nakivo.site/ did not answer (curl exit ' + rc + '). No spec was run - this is NOT a pass. Re-run when the migration server is back.')
+                        }
+                        echo 'crm-mig reachable -> proceeding.'
+                    }
+                }
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Resolve the bug-fix spec set') {
+            steps {
+                script {
+                    def manifestPath = (params.SPEC_MANIFEST ?: 'ci/crm12127-bugfix-verify-specs.txt').trim()
+                    if (!fileExists(manifestPath)) {
+                        error("SPEC_MANIFEST '${manifestPath}' not found in the checkout.")
+                    }
+                    def only = (params.ONLY_BUGS ?: '').trim()
+                    def wanted = []
+                    if (only) { only.split(',').each { def t = it.trim(); if (t) { wanted << t } } }
+
+                    def bugs = [] as Set
+                    def specs = []
+                    readFile(manifestPath).split('\n').each { rawLine ->
+                        def line = rawLine.trim()
+                        if (!line || line.startsWith('#')) { return }
+                        def cols = line.split('\\s+')
+                        if (cols.size() < 3) { return }
+                        def bug = cols[0]
+                        def path = cols[2]
+                        if (wanted && !wanted.contains(bug)) { return }
+                        bugs << bug
+                        if (!specs.contains(path)) { specs << path }
+                    }
+                    if (specs.isEmpty()) {
+                        error("The manifest resolved to no specs (ONLY_BUGS='${only}'). Nothing to verify.")
+                    }
+
+                    // Positional arg = a regex over the full spec path. Match on the basename:
+                    // every name here is unique inside the MigSmoke testDir, and 45 full paths
+                    // would blow past the cmd command-line limit.
+                    def names = specs.collect { it.tokenize('/').last().replace('.spec.ts', '') }
+                    def specRegex = '(' + names.join('|') + ')\\.spec\\.ts'
+
+                    env.SPEC_REGEX = specRegex
+                    env.SPEC_COUNT = "${specs.size()}"
+                    env.BUG_COUNT  = "${bugs.size()}"
+                    env.MANIFEST   = manifestPath
+
+                    echo "Bug-fix verification set: ${bugs.size()} bug(s) -> ${specs.size()} unique spec(s)"
+                    specs.eachWithIndex { s, i -> echo String.format('  %2d. %s', i + 1, s) }
+                }
+            }
+        }
+
+        stage('Re-run the specs') {
+            steps {
+                script {
+                    def proj = (params.PROJECT ?: 'MigSmoke').trim()
+                    def runTimeout = (params.TIMEOUT_MIN ?: '300').isInteger() ? (params.TIMEOUT_MIN).toInteger() : 300
+                    def watchdogOn = (params.VPN_WATCHDOG ?: 'off').trim() == 'on'
+
+                    // Start clean so the published report is ONLY this build.
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    bat 'if exist bugfix-verify-summary.txt del /q bugfix-verify-summary.txt'
+
+                    def runPlaywright = {
+                        // SPECRE via env + quoted "%SPECRE%" so the regex | survives cmd.
+                        withEnv(["SPECRE=${env.SPEC_REGEX}", "PROJ=${proj}"]) {
+                            bat 'call npx playwright test "%SPECRE%" --project=%PROJ%'
+                        }
+                    }
+
+                    bat 'if exist .pw_done del /q .pw_done'
+                    env.VPN_ABORT = 'false'
+                    try {
+                        timeout(time: runTimeout, unit: 'MINUTES') {
+                            if (!watchdogOn) {
+                                echo "VPN_WATCHDOG=off - crm-mig only; a pre-prod flag will not abort this run."
+                                withCredentials([file(credentialsId: 'crm-users-secrets', variable: 'CRM_SECRETS_FILE')]) {
+                                    runPlaywright()
+                                }
+                            } else {
+                                parallel(
+                                    'playwright': {
+                                        try {
+                                            withCredentials([file(credentialsId: 'crm-users-secrets', variable: 'CRM_SECRETS_FILE')]) {
+                                                runPlaywright()
+                                            }
+                                        } finally { bat 'echo done> .pw_done' }
+                                    },
+                                    'vpn-watchdog': {
+                                        while (!fileExists('.pw_done')) {
+                                            sleep(time: 60, unit: 'SECONDS')
+                                            if (fileExists('.pw_done')) { break }
+                                            if (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0) {
+                                                env.VPN_ABORT = 'true'
+                                                echo 'VPN-WATCHDOG: pre-prod VPN flag RAISED mid-run - aborting; remaining specs will NOT run (not failed).'
+                                                error('pre-prod VPN dropped mid-run')
+                                            }
+                                        }
+                                    },
+                                    failFast: true
+                                )
+                            }
+                        }
+                    } catch (err) {
+                        if (env.VPN_ABORT == 'true') {
+                            currentBuild.result = 'NOT_BUILT'
+                            echo 'Run stopped: pre-prod VPN dropped mid-run. The remaining specs were NOT executed.'
+                        } else {
+                            // A red spec is the POINT of this job - record it, keep going to the
+                            // verdict stage so the per-bug table is still produced.
+                            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE', message: 'At least one spec in the bug-fix set is still failing') {
+                                throw err
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Per-bug verdict') {
+            steps {
+                script {
+                    // node reads the manifest + the json reporter output and prints a bug-by-bug
+                    // table into the console and bugfix-verify-summary.txt.
+                    withEnv(["MANIFEST=${env.MANIFEST}", "ONLY_BUGS=${(params.ONLY_BUGS ?: '').trim()}"]) {
+                        bat(returnStatus: true, script: 'node ci\\crm12127-bugfix-verify-report.js')
+                    }
+                    if (fileExists('bugfix-verify-summary.txt')) {
+                        echo "\n" + readFile('bugfix-verify-summary.txt')
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Flatten Playwright's latest timestamped run folder to a fixed 'pw-report'.
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            junit allowEmptyResults: true, testResults: 'pw-report/junit-results.xml'
+            archiveArtifacts artifacts: 'bugfix-verify-summary.txt, playwright-report/**, test-results/**', allowEmptyArchive: true
+        }
+        success { echo 'All specs in the bug-fix set passed - every bug in scope is verified green on crm-mig.' }
+        failure { echo 'At least one spec is still red. See bugfix-verify-summary.txt for the bug-by-bug verdict and the Playwright Report for the evidence.' }
+        unstable { echo 'Some specs are still red - see bugfix-verify-summary.txt.' }
+    }
+}

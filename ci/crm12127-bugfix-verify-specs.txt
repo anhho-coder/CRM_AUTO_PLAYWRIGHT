@@ -1,0 +1,68 @@
+# CRM-12127 bug-fix verification set - re-run the specs that the 29 Resolved crm-mig bugs made red.
+#
+# Source: the "Test case" table of each Jira bug (jira.nakivo.com), rows "Test case(s)" and "Spec".
+# The 10 CRM-12325_* bugs were filed under the OLD section numbering (2.1.Lead, 2.4.Deal_Element);
+# the suite has since been renumbered to 1.Lead..7.License (CRM-12370_*), so those bugs are mapped
+# by the stable file slug, not by the TC number printed in the ticket.
+# CRM-12912 carries no TC of its own ("no TC asserts this behaviour on its own yet") - it rides on
+# the two Lead field-order specs it was found from (CRM-12783 / CRM-12785), so it adds no line.
+#
+# Format: <bug key> <TC id> <spec path, relative to the repo root>
+# Lines starting with # are ignored. Duplicate spec paths are de-duplicated by the pipeline.
+
+# --- 1. Lead ------------------------------------------------------------------------------------
+CRM-12783 1.6.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.6.Field_names_and_order/tc-smoke-1-6-1-lead-field-order-left.spec.ts
+CRM-12785 1.6.2  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.6.Field_names_and_order/tc-smoke-1-6-2-lead-field-order-right.spec.ts
+CRM-12797 1.2.7  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.2.Lead_information_area/tc-smoke-1-2-7-lead-priority.spec.ts
+CRM-12801 1.5.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.5.System_derived_values/tc-smoke-1-5-1-lead-tags-applied-by-system.spec.ts
+CRM-12804 1.4.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.4.Negative_edge_cases/tc-smoke-1-4-1-lead-email-invalid-manual-refused.spec.ts
+CRM-12811 1.2.10 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.2.Lead_information_area/tc-smoke-1-2-10-lead-salesperson.spec.ts
+CRM-12819 1.2.12 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.2.Lead_information_area/tc-smoke-1-2-12-lead-lead-source-partner.spec.ts
+CRM-12825 1.5.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.5.System_derived_values/tc-smoke-1-5-3-lead-lead-source-nakivo.spec.ts
+CRM-12826 1.2.9  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.2.Lead_information_area/tc-smoke-1-2-9-lead-top-deal.spec.ts
+CRM-12827 1.2.14 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/1.Lead/1.2.Lead_information_area/tc-smoke-1-2-14-lead-timezone.spec.ts
+
+# --- 2. Opportunity -----------------------------------------------------------------------------
+CRM-13081 2.3.14 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-14-opp-numeric-defaults.spec.ts
+CRM-13081 2.3.15 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-15-opp-checkbox-defaults.spec.ts
+CRM-13081 2.4.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.4.Form_fields_and_tabs/tc-smoke-2-4-1-opp-field-order-left.spec.ts
+CRM-13081 2.4.2  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.4.Form_fields_and_tabs/tc-smoke-2-4-2-opp-field-order-right.spec.ts
+CRM-13082 2.4.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.4.Form_fields_and_tabs/tc-smoke-2-4-3-opp-notebook-tabs.spec.ts
+CRM-13085 2.2.11 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.2.Buttons/tc-smoke-2-2-11-opp-button-mark-won-blocked.spec.ts
+CRM-13086 2.2.2  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.2.Buttons/tc-smoke-2-2-2-opp-buttons-header.spec.ts
+CRM-13086 2.2.6  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.2.Buttons/tc-smoke-2-2-6-opp-button-action.spec.ts
+CRM-13086 2.5.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.5.Sub_menu/tc-smoke-2-5-1-opp-smart-buttons-list.spec.ts
+CRM-13087 2.7.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.7.Stages/tc-smoke-2-7-1-opp-stage-list.spec.ts
+CRM-13088 2.3.10 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-10-opp-salesperson.spec.ts
+CRM-13088 2.3.11 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-11-opp-sales-team.spec.ts
+CRM-13088 2.3.12 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-12-opp-lead-source.spec.ts
+CRM-13088 2.3.13 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.3.Opportunity_information/tc-smoke-2-3-13-opp-tags.spec.ts
+CRM-13088 2.6.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/2.Opportunity/2.6.Log_note/tc-smoke-2-6-3-opp-lognote-assignment.spec.ts
+
+# --- 3. Contact ---------------------------------------------------------------------------------
+CRM-13033 3.3.15 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.3.Contact_information/tc-smoke-3-3-15-contact-empty-fields-on-creation.spec.ts
+CRM-13033 3.4.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.4.Form_fields_and_tabs/tc-smoke-3-4-1-contact-field-order-left.spec.ts
+CRM-13033 3.4.2  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.4.Form_fields_and_tabs/tc-smoke-3-4-2-contact-field-order-right.spec.ts
+CRM-13034 3.4.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.4.Form_fields_and_tabs/tc-smoke-3-4-3-contact-notebook-tabs.spec.ts
+CRM-13035 3.3.14 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.3.Contact_information/tc-smoke-3-3-14-contact-checkbox-defaults.spec.ts
+CRM-13036 3.2.5  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.2.Buttons/tc-smoke-3-2-5-contact-button-print.spec.ts
+CRM-13036 3.2.6  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.2.Buttons/tc-smoke-3-2-6-contact-button-action.spec.ts
+CRM-13037 3.3.10 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.3.Contact_information/tc-smoke-3-3-10-contact-timezone.spec.ts
+CRM-13040 3.5.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/3.Contact/3.5.Sub_menu/tc-smoke-3-5-3-contact-smart-button-more.spec.ts
+
+# --- 4. Deal Element ----------------------------------------------------------------------------
+CRM-12950 4.4.6  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/4.Deal_Element/4.4.Deal_Element_information/tc-smoke-4-4-6-deal-element-payer-follows-distributor.spec.ts
+CRM-13208 4.5.5  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/4.Deal_Element/4.5.Order_Lines/tc-smoke-4-5-5-deal-element-order-line-cell-alignment.spec.ts
+
+# --- 5. Quotation -------------------------------------------------------------------------------
+CRM-13186 5.3.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/5.Quotation/5.3.Form_fields_and_tabs/tc-smoke-5-3-1-quotation-field-labels-and-order.spec.ts
+CRM-13186 5.4.12 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/5.Quotation/5.4.Quotation_information/tc-smoke-5-4-12-quotation-empty-fields-on-creation.spec.ts
+CRM-13186 5.4.13 tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/5.Quotation/5.4.Quotation_information/tc-smoke-5-4-13-quotation-total-in-company-currency-developer-only.spec.ts
+
+# --- 6. Invoice ---------------------------------------------------------------------------------
+CRM-13273 6.3.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.3.Form_fields_and_tabs/tc-smoke-6-3-1-invoice-field-order-left.spec.ts
+CRM-13273 6.3.2  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.3.Form_fields_and_tabs/tc-smoke-6-3-2-invoice-field-order-right.spec.ts
+CRM-13273 6.3.4  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.3.Form_fields_and_tabs/tc-smoke-6-3-4-invoice-delivery-address-not-rendered.spec.ts
+CRM-13274 6.3.3  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.3.Form_fields_and_tabs/tc-smoke-6-3-3-invoice-notebook-tabs.spec.ts
+CRM-13274 6.5.1  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.5.Invoice_Lines/tc-smoke-6-5-1-invoice-lines-columns.spec.ts
+CRM-13277 6.4.9  tests/1.Project_CRM/O12_CE_to_O12_CC/0.Setup_New_CRM/CRM-12127_Verify-sale-workflow-on-the-new-Odoo-12-CE-multiple-rounds/6.Invoice/6.4.Invoice_information/tc-smoke-6-4-9-invoice-checkbox-defaults.spec.ts
