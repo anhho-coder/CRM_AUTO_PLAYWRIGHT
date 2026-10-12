@@ -9,7 +9,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * CRM-12135_6.2 - An engineer reads and writes every request of the team
  * ============================================================================================
  * Test Case ID   : CRM-12135_6.2
- * Jira           : CRM-12135
+ * Jira           : CRM-12135, CRM-12942
  * Requirements   : IS-CRM-SEC-0008, IS-CRM-SEC-0009
  * Run as         : Engineer (pre_sales_engineer_crm_mig account)
  * Automation-Type: new
@@ -32,6 +32,9 @@ import { CommonUtils } from '@helpers/common.utils';
  * ----------------
  * "Pre-sale Migration Instructions.pdf" attached to CRM-12135 on 2026-09-17 -
  * sections 3-5 (the end-user flow) and section 7 (the test-case matrix, row TC-36).
+ * Xray Test Case: CRM-12942 - "CRM-12135_6.2 A Sales Engineer edits, moves and closes a request
+ * assigned to another engineer" (Resolved; key pinned here 2026-10-12, it was the only spec of the
+ * 30 whose header named no Xray key).
  *
  *   Pre-condition(s):
  *      1. CRM is running at crm-mig.nakivo.site, Pre-Sales Application at
