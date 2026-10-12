@@ -19,10 +19,12 @@ import {
  * Test Case ID: CRM-12370_4.5.5
  * Automation-Type: new
  * Automation-Date: 2026-10-01
+ * Expected-Result-Updated: 2026-10-12 (center -> pre-production baseline, see CRM-13208)
  *
  * Summary:
- *   Verify every data cell of an Order Lines item row is CENTER-aligned - the computed
- *   text-align of each of the 16 named columns' cells reads "center".
+ *   Verify every data cell of an Order Lines item row carries the BASELINE alignment - the
+ *   computed text-align of each of the 16 named columns' cells is the one pre-production
+ *   renders for that column: the six text columns left, the ten numeric columns right.
  *
  * Source:
  *   Tester observation by anh.ho on 2026-10-01, with a screenshot of Deal Element DE038882
@@ -31,15 +33,21 @@ import {
  *   Discount Amount, Promo Discount Amount, Partner Discount, Partner Discount Amount and
  *   Subtotal After All Discounts - and the tester scoped the expectation to the WHOLE item
  *   row (all 16 named columns) on the same day.
- *   There is NO Xray manual TC behind this spec yet; when one is created, pin its key and
- *   fields.updated here (REQUIREMENT #7).
+ *   Xray manual TC: CRM-13193.
  *
- * OPEN QUESTION - the expected value is NOT yet grounded on pre-production:
- *   "center" is the alignment the TESTER stated as expected on 2026-10-01. It was not read
- *   off the pre-production Deal Element form (there is no pre-prod MCP, and this suite runs
- *   on crm-mig only). Before this spec's red is quoted as an O12 CE drift, somebody must
- *   open the same tab on pre-production and confirm the baseline there.
- *   What IS grounded, over XML-RPC on crm-mig (2026-10-01, uid 9685): form view 2140
+ * EXPECTED RESULT CHANGED on 2026-10-12 - "center" was never the baseline:
+ *   The centre expectation was filed as CRM-13208 and closed "Not a bug" on 2026-10-02 by
+ *   khang.nguyentd - crm-mig renders the Order Lines exactly as pre-production does (text
+ *   left, numbers right), both builds using the same list definition with no alignment
+ *   setting. That comment offered two routes: raise a separate change request, or align the
+ *   test with the baseline. Both were taken - the change request is CRM-13501 (fit the list
+ *   into ONE view as pre-production does, which is a different ask, not centring), and this
+ *   spec now asserts the per-column BASELINE alignment. The baseline was read on 2026-10-01
+ *   from pre-production DE046102 and crm-mig DE045097 side by side, and re-measured on
+ *   crm-mig on 2026-10-12 (run 2026-10-12-155759, Deal Element DE045474).
+ *
+ * Why the baseline is left/right and not something the view sets:
+ *   Grounded over XML-RPC on crm-mig (2026-10-01, uid 9685): form view 2140
  *   sale.order.deal.element.view.form declares NO alignment attribute on any order_line
  *   field, and every amount column is float/monetary on sale.order.line
  *   (price_unit, subtotal_before_discount, discount, special_discount_amount,
@@ -80,9 +88,11 @@ import {
  *   1. The Order Lines list renders exactly 1 item row (the one this test added) - so the
  *      alignment checks below cannot pass against an empty list.
  *   2. The item row is read across exactly 16 named columns.
- *   3. Each of those 16 cells is center-aligned: computed text-align = "center".
- *      A cell reading "left" or "right" is the defect this TC exists for - the value then sits
- *      off-centre under its header, which is what the 2026-10-01 screenshot shows.
+ *   3. Each of those 16 cells carries ITS OWN baseline alignment: computed text-align = "left"
+ *      for the six text columns (Product, Start Date, End Date, Description, Unit of Measure,
+ *      Taxes) and "right" for the ten numeric ones. A cell that drifts from its baseline - or a
+ *      column the baseline does not name at all - fails its own check, so a renamed or dropped
+ *      column cannot pass by reading as "unknown".
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12370_4\.5\.5:" --project=MigSmoke
@@ -90,8 +100,35 @@ import {
 
 const TC = 'CRM-12370_4.5.5';
 
-/** The alignment every Order Lines data cell must carry. */
-const EXPECTED_CELL_ALIGNMENT = 'center';
+/**
+ * The alignment each Order Lines column carries on the pre-production baseline - and, since
+ * CRM-13208 was closed "Not a bug", on crm-mig too: the six text columns render left, the ten
+ * numeric ones right. Nothing is centred on either build.
+ * Keyed UPPERCASE on purpose: the caption casing is a theme detail this TC does not score
+ * (CRM-12370_4.5.1 owns it), so the lookup upper-cases what it reads before matching.
+ */
+const BASELINE_CELL_ALIGNMENT: Record<string, string> = {
+  PRODUCT: 'left',
+  'START DATE': 'left',
+  'END DATE': 'left',
+  DESCRIPTION: 'left',
+  'ORDERED QTY': 'right',
+  'UNIT OF MEASURE': 'left',
+  'UNIT PRICE': 'right',
+  TAXES: 'left',
+  'SUBTOTAL BEFORE DISCOUNT': 'right',
+  'DISCOUNT (%)': 'right',
+  'SPECIAL DISCOUNT AMOUNT': 'right',
+  'PROMO DISCOUNT AMOUNT': 'right',
+  'PARTNER DISCOUNT': 'right',
+  'PARTNER DISCOUNT AMOUNT': 'right',
+  'SUBTOTAL AFTER ALL DISCOUNTS': 'right',
+  SUBTOTAL: 'right',
+};
+
+/** The baseline alignment for a caption as the list renders it - '' when the baseline does not name it. */
+const baselineAlignmentFor = (caption: string): string =>
+  BASELINE_CELL_ALIGNMENT[caption.toUpperCase().replace(/\s+/g, ' ').trim()] || '';
 
 /**
  * The number of NAMED columns the Order Lines list renders on a draft Deal Element.
@@ -138,7 +175,7 @@ test.describe(`${TC} - Order Lines cell alignment`, () => {
     await sweepMigLeftoversAfterAll(browser, TC);
   });
 
-  test(`${TC}: Verify the items of the Order Lines list are center-aligned`, async ({ page }, testInfo) => {
+  test(`${TC}: Verify the items of the Order Lines list follow the baseline alignment (text left, numbers right)`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -204,10 +241,12 @@ test.describe(`${TC} - Order Lines cell alignment`, () => {
       record('Number of item rows in the Order Lines list', EXPECTED_ITEM_ROW_COUNT, rowCount);
       record('Number of named columns read on the item row', EXPECTED_NAMED_COLUMN_COUNT, columns.length);
       columns.forEach((caption) => {
+        const expected = baselineAlignmentFor(caption);
         record(
-          `Cell alignment - "${caption}" (a value that is not centred sits off-centre under its header)`,
-          EXPECTED_CELL_ALIGNMENT,
-          alignments[caption].cell
+          `Cell alignment - "${caption}" (the alignment pre-production renders for this column)`,
+          expected || '(column not named by the baseline)',
+          alignments[caption].cell,
+          expected !== '' && expected === alignments[caption].cell
         );
       });
       columns.forEach((caption) => {
@@ -216,7 +255,9 @@ test.describe(`${TC} - Order Lines cell alignment`, () => {
 
       printVerify();
 
-      const misaligned = columns.filter((c) => alignments[c].cell !== EXPECTED_CELL_ALIGNMENT);
+      const misaligned = columns.filter(
+        (c) => baselineAlignmentFor(c) === '' || alignments[c].cell !== baselineAlignmentFor(c)
+      );
       const allPassed = CHECKS.every((c) => c.pass);
 
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
@@ -234,8 +275,13 @@ test.describe(`${TC} - Order Lines cell alignment`, () => {
       );
       expect(
         misaligned,
-        `every Order Lines cell must be ${EXPECTED_CELL_ALIGNMENT}-aligned - these are not: ` +
-          misaligned.map((c) => `${c} = ${alignments[c].cell}`).join(', ')
+        'every Order Lines cell must carry its baseline alignment - these do not: ' +
+          misaligned
+            .map(
+              (c) =>
+                `${c} = ${alignments[c].cell} (baseline: ${baselineAlignmentFor(c) || 'this column is not in the baseline'})`
+            )
+            .join(', ')
       ).toEqual([]);
     });
   });
