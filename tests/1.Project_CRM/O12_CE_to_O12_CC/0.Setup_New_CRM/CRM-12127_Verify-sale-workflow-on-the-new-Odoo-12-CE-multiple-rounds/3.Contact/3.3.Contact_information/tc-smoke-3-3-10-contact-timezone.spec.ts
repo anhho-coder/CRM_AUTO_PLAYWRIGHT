@@ -28,6 +28,20 @@ import {
  * Contact screen-verification set to the O12 CE Migration server: the same fact is verified, on the
  * O12 CE Contact form.
  *
+ * BASELINE-RULE EXCEPTION - CRM-13037, closed by Dev as "Not a bug" (Khang Nguyen Thai Duy, 2026-10-05):
+ *   "For countries with several time zones (such as the United States) the time zone is looked up
+ *    through a Google Maps service that needs an API key; the migration server has no outbound API keys
+ *    on purpose until go-live, so the contact keeps the creating user's time zone (UCT). Countries with
+ *    one time zone already work (France gives Europe/Paris)."
+ *   Instruction to the tester in the same comment: "please expect UCT for US contacts on crm-mig until
+ *   go-live, or re-test with a single-time-zone country, and close this ticket."
+ *   -> Verify #2 below therefore accepts EITHER the derived "America/New_York" (what crm-mig will report
+ *      once the API key lands at go-live) OR the creating user's "UCT". Nothing else is relaxed: Verify #1
+ *      and Verify #3 stay exactly as the pre-production baseline wrote them, and a third value - including
+ *      the "Europe/London" picked on the form - still fails.
+ *   -> AT GO-LIVE: delete 'UCT'/'UTC' from TIMEZONE_ACCEPTED and this TC is strict against the baseline again.
+ *   Jira: http://jira.nakivo.com/browse/CRM-13037
+ *
  * O12 CE deviations vs the pre-production scenario (MECHANICAL only):
  *   - Login as Admin (`users.admin_crm_mig`) - the only account provisioned on the Migration server.
  *   - Contacts is opened by URL hash (HomePageMig) because the Mig sidebar theme hides the navbar link.
@@ -118,9 +132,16 @@ test.describe(`${TC} - Timezone derived from the Address`, () => {
       state: 'Connecticut',
       // Deliberately NOT the timezone of the address - the point of the test case.
       timezonePicked: 'Europe/London',
-      // What Connecticut, United States resolves to.
+      // What Connecticut, United States resolves to once the Maps lookup is available.
       timezoneExpected: 'America/New_York',
     };
+
+    // CRM-13037: the multi-timezone lookup is switched off on crm-mig (no outbound API key until
+    // go-live), so a US Contact keeps the creating user's timezone instead of deriving one. Jira
+    // records the observed value as "UCT"; "UTC" is accepted next to it because Odoo's tz list
+    // carries both spellings as separate entries and either one means the same thing here -
+    // no derivation happened.
+    const TIMEZONE_ACCEPTED = [DATA.timezoneExpected, 'UCT', 'UTC'];
 
     // STEP.s1 - loginToO12CE opens its own test.step and prints the matching banner.
     await loginToO12CE(page);
@@ -178,9 +199,11 @@ test.describe(`${TC} - Timezone derived from the Address`, () => {
       console.log(`     Actual   : "${addressBlock}"`);
       console.log(`     Result   : ${addressCarriesState && addressCarriesCountry ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #2 - the Timezone the saved Contact reports:');
-      console.log(`     Expected : ${DATA.timezoneExpected}   (derived from ${DATA.state}, ${DATA.country})`);
+      console.log(`     Expected : one of ${TIMEZONE_ACCEPTED.map((tz) => `"${tz}"`).join(' | ')}`);
+      console.log(`                "${DATA.timezoneExpected}" = derived from ${DATA.state}, ${DATA.country} (expected at go-live)`);
+      console.log(`                "UCT"/"UTC" = the creating user's timezone kept, no Maps API key on crm-mig (CRM-13037)`);
       console.log(`     Actual   : ${timezoneSaved}`);
-      console.log(`     Result   : ${timezoneSaved === DATA.timezoneExpected ? 'PASS' : 'FAIL'}`);
+      console.log(`     Result   : ${TIMEZONE_ACCEPTED.includes(timezoneSaved) ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #3 - the Address wins over the Timezone picked on the form:');
       console.log(`     Expected : NOT "${DATA.timezonePicked}"`);
       console.log(`     Actual   : ${timezoneSaved}   (picked "${DATA.timezonePicked}" at creation)`);
@@ -195,9 +218,11 @@ test.describe(`${TC} - Timezone derived from the Address`, () => {
       try {
         expect(addressBlock, 'the Address block carries the State the Timezone is derived from').toContain(DATA.state);
         expect(addressBlock, 'the Address block carries the Country the Timezone is derived from').toContain(DATA.country);
-        expect(timezoneSaved, 'the Timezone the saved Contact reports, derived from its Country and State').toBe(
-          DATA.timezoneExpected
-        );
+        expect(
+          TIMEZONE_ACCEPTED,
+          `the Timezone the saved Contact reports (got "${timezoneSaved}") is either "${DATA.timezoneExpected}" derived ` +
+            `from its Country and State, or the creating user's timezone kept per CRM-13037 (no Maps API key until go-live)`
+        ).toContain(timezoneSaved);
         expect(timezoneSaved, 'the Address wins over the Timezone picked on the form').not.toBe(DATA.timezonePicked);
         __verifyPassed = true;
       } finally {
