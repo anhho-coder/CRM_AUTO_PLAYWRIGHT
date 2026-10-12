@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-13 - A reply stays on the request
+ * CRM-12135_2.3 - A reply stays on the request
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-13
+ * Test Case ID   : CRM-12135_2.3
  * Jira           : CRM-12135
  * Requirements   : FUNC-0048
  * Run as         : Engineer
@@ -28,7 +28,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * Jira CRM-12927 - Thuat's manual TC for CRM-12135_TC-13, verified 2026-09-24.
+ * Jira CRM-12927 - Thuat's manual TC for CRM-12135_2.3, verified 2026-09-24.
  *
  *   Pre-condition(s):
  *      Created Opportunity and request with offline technical assistance type,
@@ -85,7 +85,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
+test.describe('CRM-12135_2.3 - A reply stays on the request', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -109,13 +109,16 @@ test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-13: A reply stays on the request', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.3: A reply stays on the request', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-13 - A reply stays on the request ==========');
+    console.log('========== CRM-12135_2.3 - A reply stays on the request ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
       ignoreHTTPSErrors: true,
+      // recordVideo must be passed HERE: `video: 'on'` in playwright.config.ts only reaches
+      // contexts Playwright creates itself, never one built by hand with browser.newContext().
+      recordVideo: { dir: testInfo.outputDir, size: { width: 1920, height: 1080 } },
     });
     const page = await context.newPage();
     sharedPage = page;
@@ -240,6 +243,13 @@ test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
         expect(messageCountGrew, `the correspondence should grow (before ${messagesBefore}, after ${messagesAfter.length})`).toBe(true);
       });
     } finally {
+      // Evidence FIRST, while the page is still alive. afterEach runs after this block, so its
+      // screenshots could only ever find a closed page - which is why every run logged
+      // "Screenshot skipped ... has been closed". A thrown assertion also passes through
+      // finally, so a red run is captured the same way.
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Final state before teardown')
+        .catch(() => {});
+
       // Teardown runs HERE, not in afterEach: it needs the live session, and afterEach only
       // sees a closed context. A thrown assertion still passes through finally, so a red run
       // cleans up too.
@@ -251,7 +261,21 @@ test.describe('CRM-12135_TC-13 - A reply stays on the request', () => {
         }
         teardown = undefined;
       }
+      // The Video handle must be taken BEFORE close; the file is only written on close, and
+      // path() resolves once it is. A hand-made context does not attach it to the report
+      // either, so attach it explicitly.
+      const video = page.video();
       await context.close();
+      if (video) {
+        try {
+          await testInfo.attach('video', { path: await video.path(), contentType: 'video/webm' });
+          console.log('\u{1F3A5} Video attached');
+        } catch (err) {
+          console.log(`Video not attached: ${(err as Error).message.split('\n')[0]}`);
+        }
+      }
+      // afterEach must not chase a page this block has just closed.
+      sharedPage = undefined;
     }
   });
 });

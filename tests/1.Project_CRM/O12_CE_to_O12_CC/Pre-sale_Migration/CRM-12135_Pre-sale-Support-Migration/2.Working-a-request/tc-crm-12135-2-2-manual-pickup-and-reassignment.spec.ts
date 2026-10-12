@@ -6,9 +6,9 @@ import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_TC-11 - Pick-up and re-assignment are manual; nothing assigns itself
+ * CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing assigns itself
  * ============================================================================================
- * Test Case ID   : CRM-12135_TC-11
+ * Test Case ID   : CRM-12135_2.2
  * Jira           : CRM-12135
  * Requirements   : FUNC-0044, FUNC-0045, FUNC-0046
  * Run as         : Engineer
@@ -29,7 +29,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Source manual TC
  * ----------------
- * Jira CRM-12926 - CRM-12135_TC-11 A request is picked up with Assign to me and can be re-assigned
+ * Jira CRM-12926 - CRM-12135_2.2 A request is picked up with Assign to me and can be re-assigned
  *
  *   Pre-condition(s):
  *      The request from the pre-conditions is ready (unowned, on Pre-Sales Application).
@@ -85,7 +85,7 @@ let sharedPage: import('@playwright/test').Page | undefined;
 /** Installed by the pre-condition that first creates data; runs in the finally block. */
 let teardown: (() => Promise<void>) | undefined;
 
-test.describe('CRM-12135_TC-11 - Pick-up and re-assignment are manual; nothing assigns itself', () => {
+test.describe('CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing assigns itself', () => {
   test.afterEach(async ({ browser }, testInfo) => {
     if (sharedPage) {
       await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
@@ -109,13 +109,42 @@ test.describe('CRM-12135_TC-11 - Pick-up and re-assignment are manual; nothing a
     sharedPage = undefined;
   });
 
-  test('CRM-12135_TC-11: Pick-up and re-assignment are manual; nothing assigns itself', async ({ browser }, testInfo) => {
+  test('CRM-12135_2.2: Pick-up and re-assignment are manual; nothing assigns itself', async ({ browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_TC-11 - Pick-up and re-assignment are manual; nothing assigns itself ==========');
+
+    // ---------------------------------------------------------------------------------------------
+    // SKIPPED 2026-10-07 - the case is blocked on a PRODUCT DEFECT, not on anything in this spec.
+    //
+    // Verify #5 asserts that the first assignment's timestamp survives a re-assignment. Measured
+    // three times - 09:50:23 -> :24, 04:25:27 -> :28, 06:40:00 -> :01 - the Pre-Sales Application
+    // returns a value one second later after a re-assignment that writes `user_id` only.
+    //
+    // Nathan Do confirmed it on CRM-12456 (comment 703900): the requirement is IS-CRM-FUNC-0046,
+    // which "requires the first assignment to be recorded and preserved, which is also how the
+    // current system behaves, but the Pre-Sales Application sets the assigned date again on every
+    // re-assignment". The "Pre-sale Test Cases" card set omits FUNC-0046 on purpose - its own
+    // traceability page lists it under requirements checked on the development side.
+    //
+    // A minute-wide tolerance was tried on 2026-10-07 to make this green and was reverted the same
+    // day: it hid an acknowledged defect, and it would still have gone red roughly one run in sixty.
+    // The assertion is back to exact equality and the case is skipped, by the tester's decision, so
+    // the defect is tracked in Jira rather than as a permanently red automated test.
+    //
+    // Undo: when the Pre-Sales Application stops re-stamping assigned_date, drop this skip. The
+    // other four verifications in this case already pass and need no change.
+    // ---------------------------------------------------------------------------------------------
+    test.skip(true, 'BLOCKED by a product defect - the Pre-Sales Application re-stamps assigned_date on '
+      + 'every re-assignment, against IS-CRM-FUNC-0046 (confirmed by Dev, CRM-12456 comment 703900). '
+      + 'Measured 3x as a 1-second drift. Re-enable once the product preserves the first assignment.');
+
+    console.log('========== CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing assigns itself ==========');
 
     const context = await browser.newContext({
       viewport: { width: 1920, height: 1080 },
       ignoreHTTPSErrors: true,
+      // recordVideo must be passed HERE: `video: 'on'` in playwright.config.ts only reaches
+      // contexts Playwright creates itself, never one built by hand with browser.newContext().
+      recordVideo: { dir: testInfo.outputDir, size: { width: 1920, height: 1080 } },
     });
     const page = await context.newPage();
     sharedPage = page;
@@ -233,6 +262,9 @@ await test.step(STEP.verify, async () => {
   const ownerAfterPickUp = a.assignedUserId === firstEngineerId;
   const stampWritten = Boolean(a.assignedDate);
   const ownerAfterReassign = b.assignedUserId === secondEngineerId;
+  // Exact equality, deliberately. A minute-wide tolerance was tried on 2026-10-07 and reverted the
+  // same day: it turned the case green while hiding a defect Dev has since acknowledged, and it
+  // would still have gone red about one run in sixty, when the two assignments straddle a minute.
   const stampPreserved = Boolean(a.assignedDate) && a.assignedDate === b.assignedDate;
 
   console.log('\n==================== VERIFY ====================');
@@ -263,9 +295,16 @@ await test.step(STEP.verify, async () => {
   expect(ownerAfterPickUp, 'after assign to me, owner should be first engineer').toBe(true);
   expect(stampWritten, 'first assignment should record a timestamp').toBe(true);
   expect(ownerAfterReassign, 'after re-assignment, owner should be second engineer').toBe(true);
-  expect(stampPreserved, 'assignment date should survive re-assignment').toBe(true);
+  expect(stampPreserved, 'assignment date should survive re-assignment (compared to the minute)').toBe(true);
 });
     } finally {
+      // Evidence FIRST, while the page is still alive. afterEach runs after this block, so its
+      // screenshots could only ever find a closed page - which is why every run logged
+      // "Screenshot skipped ... has been closed". A thrown assertion also passes through
+      // finally, so a red run is captured the same way.
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Final state before teardown')
+        .catch(() => {});
+
       // Teardown runs HERE, not in afterEach: it needs the live session, and afterEach only
       // sees a closed context. A thrown assertion still passes through finally, so a red run
       // cleans up too.
@@ -277,7 +316,21 @@ await test.step(STEP.verify, async () => {
         }
         teardown = undefined;
       }
+      // The Video handle must be taken BEFORE close; the file is only written on close, and
+      // path() resolves once it is. A hand-made context does not attach it to the report
+      // either, so attach it explicitly.
+      const video = page.video();
       await context.close();
+      if (video) {
+        try {
+          await testInfo.attach('video', { path: await video.path(), contentType: 'video/webm' });
+          console.log('\u{1F3A5} Video attached');
+        } catch (err) {
+          console.log(`Video not attached: ${(err as Error).message.split('\n')[0]}`);
+        }
+      }
+      // afterEach must not chase a page this block has just closed.
+      sharedPage = undefined;
     }
   });
 });
