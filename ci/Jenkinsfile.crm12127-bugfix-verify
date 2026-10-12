@@ -84,6 +84,7 @@ pipeline {
         stage('crm-mig reachability gate') {
             steps {
                 script {
+                    env.MIG_UP = 'true'
                     if ((params.MIG_GATE ?: 'on').trim() == 'off') {
                         echo 'MIG_GATE=off -> skipping the crm-mig probe.'
                     } else {
@@ -92,28 +93,36 @@ pipeline {
                         def rc = bat(returnStatus: true,
                             script: 'curl -s -f -k -o NUL --max-time 30 "https://crm-mig.nakivo.site/"')
                         if (rc != 0) {
+                            // Deliberately NOT error(): that would end the build FAILURE and read
+                            // as "the specs are red". Every later stage is gated on MIG_UP, so the
+                            // build ends NOT_BUILT = nothing ran, which is the honest answer.
+                            env.MIG_UP = 'false'
                             currentBuild.result = 'NOT_BUILT'
-                            error('SKIPPED: https://crm-mig.nakivo.site/ did not answer (curl exit ' + rc + '). No spec was run - this is NOT a pass. Re-run when the migration server is back.')
+                            echo "SKIPPED: https://crm-mig.nakivo.site/ did not answer (curl exit ${rc}). NO SPEC WAS RUN - this is NOT a pass. Re-run when the migration server is back."
+                        } else {
+                            echo 'crm-mig reachable -> proceeding.'
                         }
-                        echo 'crm-mig reachable -> proceeding.'
                     }
                 }
             }
         }
 
         stage('Install dependencies') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 bat 'npm ci'
             }
         }
 
         stage('Verify Google Chrome present') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
             }
         }
 
         stage('Ensure ffmpeg present (for video recording)') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 bat '''@echo off
 setlocal enabledelayedexpansion
@@ -140,6 +149,7 @@ echo ffmpeg OK
         }
 
         stage('Resolve the bug-fix spec set') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 script {
                     def manifestPath = (params.SPEC_MANIFEST ?: 'ci/crm12127-bugfix-verify-specs.txt').trim()
@@ -170,7 +180,7 @@ echo ffmpeg OK
                     // Positional arg = a regex over the full spec path. Match on the basename:
                     // every name here is unique inside the MigSmoke testDir, and 45 full paths
                     // would blow past the cmd command-line limit.
-                    def names = specs.collect { it.tokenize('/').last().replace('.spec.ts', '') }
+                    def names = specs.collect { it.substring(it.lastIndexOf('/') + 1).replace('.spec.ts', '') }
                     def specRegex = '(' + names.join('|') + ')\\.spec\\.ts'
 
                     env.SPEC_REGEX = specRegex
@@ -179,12 +189,13 @@ echo ffmpeg OK
                     env.MANIFEST   = manifestPath
 
                     echo "Bug-fix verification set: ${bugs.size()} bug(s) -> ${specs.size()} unique spec(s)"
-                    specs.eachWithIndex { s, i -> echo String.format('  %2d. %s', i + 1, s) }
+                    specs.eachWithIndex { sp, i -> echo '  ' + (i + 1) + '. ' + sp }
                 }
             }
         }
 
         stage('Re-run the specs') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 script {
                     def proj = (params.PROJECT ?: 'MigSmoke').trim()
@@ -255,6 +266,7 @@ echo ffmpeg OK
         }
 
         stage('Per-bug verdict') {
+            when { expression { env.MIG_UP == 'true' } }
             steps {
                 script {
                     // node reads the manifest + the json reporter output and prints a bug-by-bug
