@@ -28,6 +28,12 @@ import {
  * Contact screen-verification set to the O12 CE Migration server: the same fact is verified, on the
  * O12 CE Contact form.
  *
+ * CONFIRMED BASELINE DEVIATION - CRM-13036 (Resolved, "Not a bug", 2026-10-05):
+ *   "Test Report" is EXCLUDED from the expected Print entries below. Khang Nguyen Thai Duy
+ *   confirmed on the ticket: "Test Report: a test-only report that the business does not use, so
+ *   it is intentionally not migrated." It is therefore a permanent, accepted difference - the
+ *   expectation is 2 reports on crm-mig, not the pre-production 3. Do NOT re-add it.
+ *
  * O12 CE deviations vs the pre-production scenario (MECHANICAL only):
  *   - Login as Admin (`users.admin_crm_mig`) - the only account provisioned on the Migration server.
  *   - Contacts is opened by URL hash (HomePageMig) because the Mig sidebar theme hides the navbar link.
@@ -158,8 +164,12 @@ test.describe(`${TC} - Print menu`, () => {
 
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
+      // CRM-13036 (Resolved - "Not a bug"): 'Test Report' deliberately dropped from this list.
+      // Khang confirmed it is a test-only report the business does not use and that it is
+      // intentionally NOT migrated to crm-mig, so expecting it here would fail forever on a
+      // difference the project has accepted. Pre-production still shows 3 entries; crm-mig shows 2.
       const EXPECTED = [
-        'Test Report',
+        // 'Test Report',  // EXCLUDED - CRM-13036: intentionally not migrated (test-only report).
         'Partner level Certificate',
         'Partner MSP Certificate',
       ];

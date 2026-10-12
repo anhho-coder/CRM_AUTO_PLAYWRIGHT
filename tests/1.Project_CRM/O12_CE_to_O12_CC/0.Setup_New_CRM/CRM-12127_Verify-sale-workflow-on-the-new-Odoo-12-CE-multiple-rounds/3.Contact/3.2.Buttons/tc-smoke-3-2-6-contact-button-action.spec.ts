@@ -28,6 +28,22 @@ import {
  * Contact screen-verification set to the O12 CE Migration server: the same fact is verified, on the
  * O12 CE Contact form.
  *
+ * CRM-13036 (Resolved, "Not a bug", 2026-10-05) - NO LONGER A DEVIATION, do not remove the entry:
+ *   The ticket reported "Clear email address" missing from this menu on 2026-09-22, and Khang Nguyen
+ *   Thai Duy answered: "a hand-made action that exists only in the Production database (not in the
+ *   code); it is added to crm-mig as a data step with the next build." That build has landed -
+ *   verified on crm-mig 2026-10-12: ir.actions.server id 2595 "Clear email address", bound to
+ *   res.partner. The entry is therefore expected again below and the expected count stays 15.
+ *
+ * APPROVED EXCEPTION TO THE BASELINE RULE - entry ORDER (tester's decision, 2026-10-12):
+ *   EXPECTED below is listed in the order crm-mig returns, NOT the pre-production order. The two
+ *   servers offer the SAME 15 entries; only their order differs. Cause: all 15 bindings carry
+ *   sequence = 5, so Odoo falls back to record id, and the crm-mig rebuild re-sequenced ids -
+ *   "Clear email address" (server action 2595, created last by the CRM-13036 data step) therefore
+ *   lands at position 15 instead of 5. The order is an id artifact, not a designed sequence.
+ *   Consequence to be aware of: this TC no longer detects an ordering regression; the CONTENT and
+ *   COUNT of the menu are still asserted in full.
+ *
  * O12 CE deviations vs the pre-production scenario (MECHANICAL only):
  *   - Login as Admin (`users.admin_crm_mig`) - the only account provisioned on the Migration server.
  *   - Contacts is opened by URL hash (HomePageMig) because the Mig sidebar theme hides the navbar link.
@@ -158,30 +174,37 @@ test.describe(`${TC} - Action menu`, () => {
 
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
+      // crm-mig ORDER (see the APPROVED EXCEPTION in the header) - same 15 entries as
+      // pre-production, listed in the order this server returns them.
       const EXPECTED = [
         'Delete',
         'Duplicate',
         'Partner Balance',
         'Grant Portal Access',
-        'Clear email address',
+        'Send SMS',
         'Start Survey',
         'Create Demo/Deployment Session',
-        'Send SMS',
+        'Send welcome letter (set Bronze level)',
         'Generate license report',
         'Change partner level',
-        'Send welcome letter (set Bronze level)',
-        'Turn-off selected',
-        'Send MSP certificate',
         'Change Partner level review date',
+        'Turn-off selected',
         'Deactivate partner',
+        'Send MSP certificate',
+        'Clear email address',  // CRM-13036: present again since the data step landed (server action 2595).
       ];
       const actual = await contactPage.getControlPanelMenuItems('Action');
 
       console.log('==================== VERIFY ====================');
       console.log('  Verify #1 - the entries of the Action menu:');
-      EXPECTED.forEach((e, i) => {
-        console.log(`     ${String(i + 1).padStart(2)}. expected "${e}" | actual "${actual[i] !== undefined ? actual[i] : '(missing)'}"`);
-      });
+      // Walk the LONGER of the two lists: pairing only over EXPECTED hides any entry the menu offers
+      // beyond the expected count, so a 15-vs-14 mismatch printed nothing about the extra entry.
+      const rows = Math.max(EXPECTED.length, actual.length);
+      for (let i = 0; i < rows; i++) {
+        const e = EXPECTED[i] !== undefined ? EXPECTED[i] : '(not expected)';
+        const a = actual[i] !== undefined ? actual[i] : '(missing)';
+        console.log(`     ${String(i + 1).padStart(2)}. expected "${e}" | actual "${a}"${e === a ? '' : '   <-- DIFFERS'}`);
+      }
       console.log(`     Result   : ${JSON.stringify(actual) === JSON.stringify(EXPECTED) ? 'PASS' : 'FAIL'}`);
       console.log('  Verify #2 - the NUMBER of Action entries:');
       console.log(`     Expected : ${EXPECTED.length}`);
