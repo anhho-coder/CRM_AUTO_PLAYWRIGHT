@@ -9,12 +9,15 @@ import { CommonUtils } from '@helpers/common.utils';
  * Automation-Type: new
  * Automation-Date: 2026-09-17
  *
+ * Manual TC cross-reference: TC.Performance.1.1.4.12 - the id this case carried before the
+ * section renumber; the crm-mig twin is CRM-12370_4.4.6 (ex CRM-12325_2.4.12).
+ *
  * Command to run:
- * npx playwright test --grep "TC\\.Performance\\.1\\.1\\.4\\.12:" --project=SalesReport_Performance
+ * npx playwright test --grep "TC\\.Performance\\.4\\.4\\.6:" --project=SalesReport_Performance
  *
  * Objective: Verify that when the Opportunity carries a Distributor, the Deal Element bills the Distributor -
- * Payer, Invoice Address and Delivery Address all become the Distributor - while the End User stays
- * the Company of the Opportunity.
+ * the Payer becomes the Distributor company and the Invoice / Delivery Address become that Distributor's
+ * OWN invoice / delivery addresses - while the End User stays the Company of the Opportunity.
  *
  * Pre-condition:
  * 1. Log in and open CRM > Opportunities (list view)
@@ -27,7 +30,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    - Salesperson    = cleared
  *    - Created manually = FALSE
  *    - Reseller       = TEST-Reseller#1_Automation_Basic
- *    - Distributor    = TEST-Distributor#1_Automation
+ *    - Distributor    = COMPUTER GROSS S.p.A.
  *    - Lead form      = License (CRM Developer tab)
  * 3. Press SAVE and wait until Odoo has created the Company/Contact from the e-mail domain
  *
@@ -40,10 +43,20 @@ import { CommonUtils } from '@helpers/common.utils';
  * 4. Press SAVE
  *
  * Verification:
- * - Payer = the Distributor of the Opportunity
- * - Invoice Address = the Distributor of the Opportunity
- * - Delivery Address = the Distributor of the Opportunity
+ * - Payer = the Distributor of the Opportunity - "COMPUTER GROSS S.p.A."
+ * - Invoice Address resolves to a CHILD address: "COMPUTER GROSS S.p.A., Invoices"
+ * - Delivery Address resolves to a CHILD address: "COMPUTER GROSS S.p.A., Delivery Licenses"
  * - End User = the Company of the Opportunity (not the Distributor)
+ *
+ * Why this Distributor - changed 2026-10-12:
+ * The Deal Element resolves Invoice Address / Delivery Address from the DISTRIBUTOR'S OWN ADDRESS
+ * BOOK. The distributor this case used before, TEST-Distributor#1_Automation, has no invoice and no
+ * delivery address, so all three fields collapsed onto the company itself and the case never
+ * exercised the resolution at all. COMPUTER GROSS S.p.A. carries dedicated children - "Invoices"
+ * (Invoice address) and "Delivery Licenses" (Shipping address) - on Production, pre-production and
+ * crm-mig alike, so the case now covers the real behaviour and lines up with its crm-mig twin
+ * CRM-12370_4.4.6. Confirmed NOT A BUG on CRM-12950 (Khang Nguyen Thai Duy, 2026-10-02).
+ * The spec only POINTS at this migrated partner from a new Opportunity; it never edits it.
  *
  * The spec creates its own Opportunity (and its own Deal Element) on pre-production, named
  * with the run token <unique> - a timestamp - so the records can always be found again.
@@ -104,7 +117,11 @@ test.describe(`${TC} - Payer and addresses follow the Distributor`, () => {
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       reseller: 'TEST-Reseller#1_Automation_Basic',
-      distributor: 'TEST-Distributor#1_Automation',
+      distributor: 'COMPUTER GROSS S.p.A.',
+      // Resolved from the Distributor's own address book, so the saved form shows the CHILD contact,
+      // not the company - see "Why this Distributor" in the docblock, and CRM-12950.
+      distributorInvoiceAddress: 'COMPUTER GROSS S.p.A., Invoices',
+      distributorDeliveryAddress: 'COMPUTER GROSS S.p.A., Delivery Licenses',
     };
 
     // The Company Odoo creates for the Opportunity out of the e-mail domain; every
@@ -214,14 +231,28 @@ test.describe(`${TC} - Payer and addresses follow the Distributor`, () => {
       const endUser = await dealElementPage.getFieldPartnerName('partner_end_user_id');
 
       record('Payer = Opportunity Distributor', DATA.distributor, payer);
-      record('Invoice Address = Opportunity Distributor', DATA.distributor, invoiceAddress);
-      record('Delivery Address = Opportunity Distributor', DATA.distributor, deliveryAddress);
+      record(
+        "Invoice Address = the Distributor's invoice address",
+        DATA.distributorInvoiceAddress,
+        invoiceAddress
+      );
+      record(
+        "Delivery Address = the Distributor's delivery address",
+        DATA.distributorDeliveryAddress,
+        deliveryAddress
+      );
       record('End User = Opportunity Company', oppCompany, endUser);
       printVerify();
 
       expect(payer, 'the Distributor pays, so the Payer is the Distributor').toBe(DATA.distributor);
-      expect(invoiceAddress, 'the invoice goes to the Distributor').toBe(DATA.distributor);
-      expect(deliveryAddress, 'the delivery goes to the Distributor').toBe(DATA.distributor);
+      expect(
+        invoiceAddress,
+        "the invoice goes to the Distributor's invoice address"
+      ).toBe(DATA.distributorInvoiceAddress);
+      expect(
+        deliveryAddress,
+        "the delivery goes to the Distributor's delivery address"
+      ).toBe(DATA.distributorDeliveryAddress);
       expect(endUser, 'the End User stays the Company of the Opportunity').toBe(oppCompany);
     });
   });

@@ -9,8 +9,11 @@ import { CommonUtils } from '@helpers/common.utils';
  * Automation-Type: new
  * Automation-Date: 2026-09-17
  *
+ * Manual TC cross-reference: TC.Performance.1.1.4.11 - the id this case carried before the
+ * section renumber; the crm-mig twin is CRM-12370_4.4.5.
+ *
  * Command to run:
- * npx playwright test --grep "TC\\.Performance\\.1\\.1\\.4\\.11:" --project=SalesReport_Performance
+ * npx playwright test --grep "TC\\.Performance\\.4\\.4\\.5:" --project=SalesReport_Performance
  *
  * Objective: Verify that an Opportunity carrying a Reseller and a Distributor produces a Deal Element whose
  * Reseller and Distributor are those same two partners, and whose contact fields stay empty because
@@ -27,7 +30,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    - Salesperson    = cleared
  *    - Created manually = FALSE
  *    - Reseller       = TEST-Reseller#1_Automation_Basic
- *    - Distributor    = TEST-Distributor#1_Automation
+ *    - Distributor    = COMPUTER GROSS S.p.A.
  *    - Lead form      = License (CRM Developer tab)
  * 3. Press SAVE and wait until Odoo has created the Company/Contact from the e-mail domain
  *
@@ -41,9 +44,17 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  * Verification:
  * - Reseller = the Reseller of the Opportunity
- * - Distributor = the Distributor of the Opportunity
+ * - Distributor = the Distributor of the Opportunity - "COMPUTER GROSS S.p.A."
  * - Reseller contact is empty
  * - Distributor contact is empty
+ *
+ * Why this Distributor - changed 2026-10-12:
+ * The pre-production reference family TC.Performance.1.1.4.x now uses the same Distributor as its
+ * crm-mig twin, COMPUTER GROSS S.p.A., so the two builds can be compared field by field
+ * (CRM-12950). The two contact checks are UNCHANGED: the Deal Element carries a Distributor
+ * CONTACT only when the Opportunity set one, and this case sets none - the child contacts in the
+ * distributor's address book are not supposed to flow into that field.
+ * The spec only POINTS at this migrated partner from a new Opportunity; it never edits it.
  *
  * The spec creates its own Opportunity (and its own Deal Element) on pre-production, named
  * with the run token <unique> - a timestamp - so the records can always be found again.
@@ -104,7 +115,7 @@ test.describe(`${TC} - Reseller and Distributor taken from the Opportunity`, () 
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       reseller: 'TEST-Reseller#1_Automation_Basic',
-      distributor: 'TEST-Distributor#1_Automation',
+      distributor: 'COMPUTER GROSS S.p.A.',
     };
 
     // The Company Odoo creates for the Opportunity out of the e-mail domain; every
