@@ -67,3 +67,4 @@ submitted/
 
 # Credentials - real passwords live here, never committed (see config/users.secrets.example.json)
 config/users.secrets.json
+bugfix-verify/

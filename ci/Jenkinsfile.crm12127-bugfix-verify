@@ -156,40 +156,18 @@ echo ffmpeg OK
                     if (!fileExists(manifestPath)) {
                         error("SPEC_MANIFEST '${manifestPath}' not found in the checkout.")
                     }
-                    def only = (params.ONLY_BUGS ?: '').trim()
-                    def wanted = []
-                    if (only) { only.split(',').each { def t = it.trim(); if (t) { wanted << t } } }
-
-                    def bugs = [] as Set
-                    def specs = []
-                    readFile(manifestPath).split('\n').each { rawLine ->
-                        def line = rawLine.trim()
-                        if (!line || line.startsWith('#')) { return }
-                        def cols = line.split('\\s+')
-                        if (cols.size() < 3) { return }
-                        def bug = cols[0]
-                        def path = cols[2]
-                        if (wanted && !wanted.contains(bug)) { return }
-                        bugs << bug
-                        if (!specs.contains(path)) { specs << path }
+                    env.MANIFEST = manifestPath
+                    // The parsing lives in node, not here: Groovy in a Jenkins pipeline runs in a
+                    // script-security sandbox that rejects ordinary methods, and a rejection would
+                    // only surface AFTER npm ci. ci/changed-specs-to-spec.js splits the work the
+                    // same way. The node step echoes the resolved list into the build log.
+                    withEnv(["MANIFEST=${manifestPath}", "ONLY_BUGS=${(params.ONLY_BUGS ?: '').trim()}"]) {
+                        bat 'node ci\\crm12127-bugfix-verify-resolve.js'
                     }
-                    if (specs.isEmpty()) {
-                        error("The manifest resolved to no specs (ONLY_BUGS='${only}'). Nothing to verify.")
+                    env.SPEC_REGEX = readFile('bugfix-verify/spec-regex.txt').trim()
+                    if (!env.SPEC_REGEX) {
+                        error('The resolver produced an empty spec regex - refusing to run an empty suite.')
                     }
-
-                    // Positional arg = a regex over the full spec path. Match on the basename:
-                    // every name here is unique inside the MigSmoke testDir, and 45 full paths
-                    // would blow past the cmd command-line limit.
-                    def names = specs.collect { it.substring(it.lastIndexOf('/') + 1).replace('.spec.ts', '') }
-                    def specRegex = '(' + names.join('|') + ')\\.spec\\.ts'
-
-                    env.SPEC_REGEX = specRegex
-                    env.SPEC_COUNT = "${specs.size()}"
-                    env.BUG_COUNT  = "${bugs.size()}"
-                    env.MANIFEST   = manifestPath
-
-                    echo "Bug-fix verification set: ${bugs.size()} bug(s) -> ${specs.size()} unique spec(s)"
-                    specs.eachWithIndex { sp, i -> echo '  ' + (i + 1) + '. ' + sp }
                 }
             }
         }
