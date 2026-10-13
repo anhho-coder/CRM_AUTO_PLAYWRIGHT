@@ -122,6 +122,12 @@ export const users = {
   // Support L2 Manager. On pre-prod this user is `nam.pham@nakivo.com` / "Nam Pham" (res.users id
   // 262, groups After-Sales / Manager + After-Sales / User), which carries read+write+create on
   // helpdesk.ticket and NO unlink - so specs archive their tickets, they cannot delete them.
+  // On crm-mig the SAME login is res.users 250 / partner 6376 and takes the SAME password key as
+  // here - provisioned 2026-10-13 (password written and `is_2fa_enable` turned off; the account
+  // had never been signed in to, login_date was empty). Its groups there are NOT the pre-prod
+  // ones: 19 groups, NONE of them After-Sales - only Internal User, "Sales / User: Own Documents
+  // Only" and Technical Settings. A helpdesk spec run against baseUrl_mig with this account does
+  // not see the module at all; it needs the After-Sales groups granted first.
   support_l2_manager_nam: {
     username: 'nam.pham@nakivo.com',
     password: pw('support_l2_manager_nam'),
@@ -160,6 +166,10 @@ export const users = {
     username: 'thomas.semerich@nakivo.com',
     password: pw('sale_ic_thomas_crm_mig'),
     displayName: 'Thomas Semerich',
+    // Default Sales Team of this account on crm-mig (res.users.sale_team_id -> crm.team 40 "BDEU").
+    // O12 CE stamps it on every Quotation/Sales Order/Invoice this account creates, so TCs that
+    // assert the inherited team read it from here instead of hardcoding the name.
+    salesTeam: 'BDEU',
   },
   manager_veronika_crm_mig: {
     username: 'veronika@nakivo.com',
@@ -197,6 +207,16 @@ export const users = {
     username: 'qa.portal@yopmail.com',
     password: pw('qa_portal_presales_mig'),
     displayName: 'QA Portal Customer',
+  },
+  // ---- Subscription service (subscription-crm-mig.nakivo.site, Odoo 19 / db odoo19). Same login
+  // as admin_crm / admin_crm_mig / anh_ho_presales_mig but a DIFFERENT password on that instance,
+  // so it is its own entry. Verified 2026-10-06 via /web/session/authenticate: uid 67,
+  // name "Ho Quoc Anh" - the Odoo 19 form, NOT the "Anh Ho" that crm-mig shows for this login.
+  admin_subscription_mig: {
+    username: 'anh.ho@nakivo.com',
+    password: pw('admin_subscription_mig'),
+    displayName: 'Ho Quoc Anh',
+    createdByName: 'Ho Quoc Anh',
   }
 } as const;
 
@@ -232,3 +252,18 @@ export const baseUrl_presales_mig = 'https://pre-sales-crm-mig.nakivo.site/';
 // The Pre-Sales instance answers /web/session/authenticate only when the database is named
 // explicitly - every other value returns "Database not found", so this is not optional.
 export const presalesDb_mig = 'odoo19';
+
+// Subscription service - a SEPARATE Odoo 19 instance, same pattern as the Pre-Sales application
+// above: pass it explicitly to loginPage.navigateTo(...); the default baseUrl stays pre-prod, so
+// existing specs are unaffected.
+export const baseUrl_subscription_mig = 'https://subscription-crm-mig.nakivo.site/';
+
+// Customer portal of that same instance - the /my front-end a portal user lands on after sign-in,
+// as opposed to the /web backend above. Unauthenticated it 303s to
+// /web/login?redirect=%2Fmy%3F, so a spec must sign in before asserting anything here.
+export const baseUrl_subscription_portal_mig = 'https://subscription-crm-mig.nakivo.site/my';
+
+// Like the Pre-Sales instance, Subscription answers /web/session/authenticate only with the
+// database named explicitly - /web/database/list is blocked by nginx (403), so the name cannot be
+// discovered at run time and has to live here. Verified 2026-10-06.
+export const subscriptionDb_mig = 'odoo19';
