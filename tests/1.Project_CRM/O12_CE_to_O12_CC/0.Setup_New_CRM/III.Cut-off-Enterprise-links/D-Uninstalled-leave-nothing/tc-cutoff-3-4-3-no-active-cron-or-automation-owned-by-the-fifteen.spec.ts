@@ -9,14 +9,22 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  * Jira: CRM-12580
  * Automation-Type: new
  * Automation-Date: 2026-09-14
- * Last-revised: 2026-09-16 - manual steps 2 and 3 split back to one test.step each
+ * Last-revised: 2026-10-12 - the left-out list drops from 15 to 14. Khang Nguyen Thai Duy,
+ *                CRM-13430 (2026-10-09): "nakivo_feature_request is installed on crm-mig on
+ *                purpose. On 2 October it was brought back because Production uses it ...
+ *                For the Community server its Helpdesk dependency was removed."
+ *                Its crons and server actions are therefore EXPECTED to be active, and this TC
+ *                now asserts they are, instead of counting them as residue of an uninstall.
+ * Previously:    2026-09-16 - manual steps 2 and 3 split back to one test.step each
  *                (they were collapsed into a single "Step 2-3", which read as one opaque
  *                block in the report and hid which action a failure came from)
  *
  * Summary:
  *   Verify no scheduled action (ir.cron), server action (ir.actions.server), or automated action
- *   (base.automation) owned by the 15 uninstalled modules is still active. A cron left enabled
+ *   (base.automation) owned by the 14 uninstalled modules is still active. A cron left enabled
  *   on a test instance can fire real outbound effects, breaking the test environment and validation data.
+ *   Verify in the same pass that nakivo_feature_request - installed on purpose since 2026-10-02 -
+ *   DOES own at least one active record of that kind.
  *
  * Source manual TC (master tab "Migration - Setup New CRM", row 99):
  *
@@ -26,12 +34,14 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  *
  * Steps to reproduce:
  *   1. Use the account of Admin to login successful.
- *   2. Resolve every ir.cron, ir.actions.server and base.automation owned by the 15 modules through ir.model.data.
+ *   2. Resolve every ir.cron, ir.actions.server and base.automation owned by the 14 modules through ir.model.data, and the same for nakivo_feature_request.
  *   3. For each record found, read its active flag and the model it targets.
  *
  * Verification Points:
- *   1. 0 active ir.cron, ir.actions.server or base.automation records are owned by any of the 15.
+ *   1. 0 active ir.cron, ir.actions.server or base.automation records are owned by any of the 14.
  *   2. Any record found is reported with its target model, so a dangling automation is distinguished from a live one.
+ *   3. nakivo_feature_request owns at least one such record - it is installed on purpose, so its
+ *      scheduled work must exist.
  *
  * EVIDENCE: stdout only - this TC drives NO UI. Every step reads over the authenticated JSON-RPC
  * and navigates nowhere, so the screenshot Playwright auto-captures (config `screenshot: 'on'`)
@@ -46,14 +56,25 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  *   npx playwright test --grep "CRM-12326_3\.4\.3:" --project=chromium
  */
 
-/** The 15 modules in scope for the CRM-12125 dependency audit but NOT installed on crm-mig. */
+/**
+ * The 14 modules in scope for the CRM-12125 dependency audit but NOT installed on crm-mig.
+ * Comment 685775 listed 15; CRM-13430 moved nakivo_feature_request off the list on 2026-10-09.
+ */
 const CUT_MODULES_UNINSTALLED = [
   'nakivo_helpdesk', 'nakivo_support_tickets', 'nakivo_support_page',
   'nakivo_helpdesk_followup', 'nakivo_helpdesk_mail_route', 'nakivo_email_rating',
-  'nakivo_feature_request', 'nakivo_leaves', 'nakivo_message_approval',
+  'nakivo_leaves', 'nakivo_message_approval',
   'helpdesk_timer', 'helpdesk_ticket_crm_lead', 'zoho_connector',
   'nakivo_website_crm_score', 'nakivo_sign', 'marketing_automation_file_template',
 ];
+
+/**
+ * The 15th name on the old list. Installed on purpose since 2026-10-02 (CRM-13430), so its
+ * crons / server actions are checked for PRESENCE, the opposite of the check applied to the 14.
+ * Asserted as "at least one", not as the exact 10 read on 2026-10-07: that was a measurement of
+ * one build, and pinning it would turn a later version of the module into a false red.
+ */
+const RETURNED_TO_SCOPE = 'nakivo_feature_request';
 
 /**
  * Step labels - declared ONCE and used for BOTH the test.step() label and the stdout banner.
@@ -64,7 +85,7 @@ const CUT_MODULES_UNINSTALLED = [
  */
 const STEP = {
   pre1:    'Pre-condition 1: Login as Admin on the O12 Migration server',
-  s2:      'Step 2: [INTERNAL check, Call API] Resolve every ir.cron, ir.actions.server and base.automation owned by the 15 modules through ir.model.data',
+  s2:      'Step 2: [INTERNAL check, Call API] Resolve every ir.cron, ir.actions.server and base.automation owned by the 14 modules through ir.model.data, and the same for nakivo_feature_request',
   s3:      'Step 3: [INTERNAL check, Call API] For each record found, read its active flag and the model it targets',
   verify:  'Verification',
 } as const;
@@ -77,7 +98,7 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
     }
   });
 
-  test('CRM-12326_3.4.3: [Part2-3.4] No active cron or automation owned by the 15', async ({ page }) => {
+  test('CRM-12326_3.4.3: [Part2-3.4] No active cron or automation owned by the 14, and nakivo_feature_request owns live ones', async ({ page }) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
     const loginPage = new LoginPageMig(page);
@@ -102,7 +123,10 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
     const recordsToRead: RecordToRead[] = [];
     let activeCount = 0;
 
-    console.log('========== CRM-12326_3.4.3 - No active cron or automation owned by the 15 ==========');
+    // nakivo_feature_request - counted separately, and expected to be NON-zero.
+    let frOwnedCount = 0;
+
+    console.log('========== CRM-12326_3.4.3 - No active cron or automation owned by the 14; nakivo_feature_request owns live ones ==========');
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
@@ -126,7 +150,7 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
         const ownedByModules = await platform.ownedRecordIds(holderModel, CUT_MODULES_UNINSTALLED);
 
         if (ownedByModules.size === 0) {
-          console.log(`    No ${holderModel} records owned by the 15 modules`);
+          console.log(`    No ${holderModel} records owned by the 14 modules`);
           continue;
         }
 
@@ -139,6 +163,16 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
       }
 
       console.log(`\n  Summary: Collected ${recordsToRead.length} record(s) to read in the next step`);
+
+      // The other side of the same question: nakivo_feature_request is installed on purpose,
+      // so the SAME three queries must come back NON-empty for it.
+      console.log(`\n  Resolving the same three models for ${RETURNED_TO_SCOPE} (expected: non-empty)...`);
+      for (const holderModel of holderModels) {
+        const owned = await platform.ownedRecordIds(holderModel, [RETURNED_TO_SCOPE]);
+        console.log(`    ${holderModel.padEnd(20)} : ${owned.size}`);
+        frOwnedCount += owned.size;
+      }
+      console.log(`    total owned by ${RETURNED_TO_SCOPE} : ${frOwnedCount}`);
     });
 
     await test.step(STEP.s3, async () => {
@@ -198,7 +232,7 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
     await test.step(STEP.verify, async () => {
       console.log('\n==================== VERIFY ====================');
 
-      console.log('  Verify #1 - No active ir.cron, ir.actions.server or base.automation owned by the 15:');
+      console.log('  Verify #1 - No active ir.cron, ir.actions.server or base.automation owned by the 14:');
       console.log(`     Expected : 0 active records`);
       console.log(`     Actual   : ${activeCount} active records`);
       console.log(`     Result   : ${activeCount === 0 ? 'PASS' : 'FAIL'}`);
@@ -209,14 +243,21 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
       console.log(`     Actual   : ${recordsWithModel} records with target model`);
       console.log(`     Result   : ${recordsWithModel === actionRecords.length ? 'PASS' : 'FAIL'}`);
 
+      console.log(`\n  Verify #3 - ${RETURNED_TO_SCOPE} owns cron / server-action records (CRM-13430):`);
+      console.log(`     Expected : >= 1`);
+      console.log(`     Actual   : ${frOwnedCount}`);
+      console.log(`     Result   : ${frOwnedCount > 0 ? 'PASS' : 'FAIL'}`);
+
       console.log('===============================================');
       console.log(
-        `OVERALL: ${activeCount === 0 && recordsWithModel === actionRecords.length ? 'PASS' : 'FAIL'} - ` +
-        `${activeCount} active actions found (expected 0); all ${actionRecords.length} records have target model resolved`,
+        `OVERALL: ${activeCount === 0 && recordsWithModel === actionRecords.length && frOwnedCount > 0 ? 'PASS' : 'FAIL'} - ` +
+        `${activeCount} active actions found (expected 0); all ${actionRecords.length} records have target model resolved; ` +
+        `${RETURNED_TO_SCOPE} owns ${frOwnedCount}`,
       );
 
-      expect(activeCount, 'no active cron/action/automation owned by the 15 should remain').toBe(0);
+      expect(activeCount, 'no active cron/action/automation owned by the 14 should remain').toBe(0);
       expect(recordsWithModel, 'all reported records must have a resolved target model').toBe(actionRecords.length);
+      expect(frOwnedCount, `${RETURNED_TO_SCOPE} is installed on purpose (CRM-13430) - it must own at least one cron or server action`).toBeGreaterThan(0);
     });
   });
 });

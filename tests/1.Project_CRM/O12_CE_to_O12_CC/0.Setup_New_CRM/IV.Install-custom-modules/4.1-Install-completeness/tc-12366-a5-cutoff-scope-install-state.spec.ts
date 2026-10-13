@@ -12,12 +12,19 @@ import { CommonUtils } from '@helpers/common.utils';
  * Target: crm-mig.nakivo.site (O12 Migration server, db nakivoCE) - READ-ONLY
  * Automation-Type: new
  * Automation-Date: 2026-09-15
+ * Last-revised: 2026-10-12 - the boundary moves from 6 installed / 15 uninstalled to
+ *                7 installed / 14 uninstalled. nakivo_feature_request crosses the line.
+ *                Khang Nguyen Thai Duy, CRM-13430 (2026-10-09): "nakivo_feature_request is
+ *                installed on crm-mig on purpose. On 2 October it was brought back because
+ *                Production uses it ... The row 'uninstalled, not mandatory, left out by design'
+ *                on CRM-12125 (comment 685775) predates that decision."
+ *                The boundary total stays 21 - the module moved sides, it did not leave scope.
  *
  * Summary:
  *   Verify the install state of the 21 modules in the CRM-12126 cut-off scope boundary:
- *   6 modules must be installed (nakivo_sale, nakivo_assets, nakivo_transfer_exhibition,
- *   jira_connector, ib_subscription_notification, utm_constructor), and 15 modules must
- *   remain uninstalled per the migration agreement.
+ *   7 modules must be installed (nakivo_sale, nakivo_assets, nakivo_transfer_exhibition,
+ *   jira_connector, ib_subscription_notification, utm_constructor, nakivo_feature_request),
+ *   and 14 modules must remain uninstalled per the migration agreement.
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12366_4.1.5:" --project=chromium
@@ -28,18 +35,18 @@ import { CommonUtils } from '@helpers/common.utils';
  *     - Host crm-mig.nakivo.site is reachable and responding normally
  *     - User anh.ho@nakivo.com logged in with admin_crm_mig credentials
  *     - Apps menu is accessible
- *     - Scope list identified: 6 must-install = nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor; 15 must-stay-uninstalled include helpdesk and support families
+ *     - Scope list identified: 7 must-install = nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor, nakivo_feature_request; 14 must-stay-uninstalled include helpdesk and support families
  *
  *   Steps:
  *     1. Use the account of Admin to login successful.
  *     2. Navigate to the Apps menu and remove the default filter.
- *     3. Search for and verify each of the 6 modules that must be installed: nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor. Record state for each.
- *     4. Search for and verify each of the 15 modules that must remain uninstalled. Record state for each.
- *     5. Compare observed states against the boundary agreement (6 installed, 15 uninstalled).
+ *     3. Search for and verify each of the 7 modules that must be installed: nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor, nakivo_feature_request. Record state for each.
+ *     4. Search for and verify each of the 14 modules that must remain uninstalled. Record state for each.
+ *     5. Compare observed states against the boundary agreement (7 installed, 14 uninstalled).
  *
  *   Expected Results:
- *     - All 6 in-scope modules show state = "Installed": nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor
- *     - All 15 out-of-scope modules show state = "Uninstalled" (or similar non-Installed state)
+ *     - All 7 in-scope modules show state = "Installed": nakivo_sale, nakivo_assets, nakivo_transfer_exhibition, jira_connector, ib_subscription_notification, utm_constructor, nakivo_feature_request
+ *     - All 14 out-of-scope modules show state = "Uninstalled" (or similar non-Installed state)
  *     - At least 21 modules from the cut-off scope are examined and their states recorded, confirming the boundary check ran
  * Evidence: stdout only - this TC drives no UI, so the auto-captured screenshot would
  *   show an idle page. Every step below is an authenticated JSON-RPC read; the console
@@ -53,10 +60,14 @@ const MUST_INSTALL = [
   'jira_connector',
   'ib_subscription_notification',
   'utm_constructor',
+  // Moved here from MUST_STAY_UNINSTALLED on 2026-10-12 by CRM-13430 (Khang, resolved "Not a bug"):
+  // the 2026-10-02 deploy installed it on purpose because Production uses it. It stays INSIDE the
+  // 21-module boundary - it changed sides, it did not leave scope - so the total below is still 21.
+  'nakivo_feature_request',
 ];
 
 /**
- * The 15 in-scope modules left out = the agreed 21 minus the 6 installed.
+ * The 14 in-scope modules left out = the agreed 21 minus the 7 installed.
  * AUTHORITATIVE SOURCE: CRM-12125 comment 683452 (the 21 + the declaration map), re-confirmed
  * "Done, 21 of 21" in comment 685775. Do NOT re-derive this list and do not guess technical names -
  * a generated list that looks plausible is how three sibling specs went false-green.
@@ -73,7 +84,7 @@ const MUST_STAY_UNINSTALLED = [
   'nakivo_helpdesk_followup',
   'nakivo_helpdesk_mail_route',
   'nakivo_email_rating',
-  'nakivo_feature_request',
+  // nakivo_feature_request was here until 2026-10-12 - see MUST_INSTALL and CRM-13430.
   'nakivo_leaves',
   'nakivo_message_approval',
   'helpdesk_timer',
@@ -125,7 +136,7 @@ test.describe('CRM-12366_4.1 - Install completeness', () => {
 
       const moduleMap = new Map(allModules.map((m) => [m.name, m.state]));
 
-      console.log(`\n  Checking 6 must-install modules:`);
+      console.log(`\n  Checking ${MUST_INSTALL.length} must-install modules:`);
       for (const mod of MUST_INSTALL) {
         const state = moduleMap.get(mod) || 'NOT FOUND';
         const ok = state === 'installed';
@@ -138,7 +149,7 @@ test.describe('CRM-12366_4.1 - Install completeness', () => {
       console.log(`\n--- ${STEP.s2} ---`);
       const moduleMap = new Map(allModules.map((m) => [m.name, m.state]));
 
-      console.log(`  Checking 15 must-stay-uninstalled modules:`);
+      console.log(`  Checking ${MUST_STAY_UNINSTALLED.length} must-stay-uninstalled modules:`);
       for (const mod of MUST_STAY_UNINSTALLED) {
         const state = moduleMap.get(mod) || 'NOT FOUND';
         const ok = state !== 'installed';
@@ -155,8 +166,8 @@ test.describe('CRM-12366_4.1 - Install completeness', () => {
       const totalFailed = mustInstallFailed.length + mustStayUninstalledFailed.length;
 
       console.log('\n==================== VERIFY ====================');
-      console.log(`  Verify #1 - 6 modules must be installed:`);
-      console.log(`    Expected : 6 installed`);
+      console.log(`  Verify #1 - ${MUST_INSTALL.length} modules must be installed:`);
+      console.log(`    Expected : ${MUST_INSTALL.length} installed`);
       console.log(`    Actual   : ${mustInstallResults.filter((r) => r.ok).length} installed`);
       console.log(`    Result   : ${mustInstallFailed.length === 0 ? 'PASS' : 'FAIL'}`);
       if (mustInstallFailed.length > 0) {
@@ -166,8 +177,8 @@ test.describe('CRM-12366_4.1 - Install completeness', () => {
         }
       }
 
-      console.log(`\n  Verify #2 - 15 modules must remain uninstalled:`);
-      console.log(`    Expected : 15 uninstalled`);
+      console.log(`\n  Verify #2 - ${MUST_STAY_UNINSTALLED.length} modules must remain uninstalled:`);
+      console.log(`    Expected : ${MUST_STAY_UNINSTALLED.length} uninstalled`);
       console.log(`    Actual   : ${mustStayUninstalledResults.filter((r) => r.ok).length} uninstalled`);
       console.log(`    Result   : ${mustStayUninstalledFailed.length === 0 ? 'PASS' : 'FAIL'}`);
       if (mustStayUninstalledFailed.length > 0) {
@@ -187,12 +198,17 @@ test.describe('CRM-12366_4.1 - Install completeness', () => {
 
       expect(
         mustInstallResults.filter((r) => r.ok).length,
-        `Only ${mustInstallResults.filter((r) => r.ok).length} of 6 must-install modules are installed`,
-      ).toBe(6);
+        `Only ${mustInstallResults.filter((r) => r.ok).length} of ${MUST_INSTALL.length} must-install modules are installed`,
+      ).toBe(MUST_INSTALL.length);
       expect(
         mustStayUninstalledResults.filter((r) => r.ok).length,
-        `Only ${mustStayUninstalledResults.filter((r) => r.ok).length} of 15 must-stay-uninstalled modules are actually uninstalled`,
-      ).toBe(15);
+        `Only ${mustStayUninstalledResults.filter((r) => r.ok).length} of ${MUST_STAY_UNINSTALLED.length} must-stay-uninstalled modules are actually uninstalled`,
+      ).toBe(MUST_STAY_UNINSTALLED.length);
+      // The boundary itself: the module moved sides, so the total must still be the agreed 21.
+      expect(
+        MUST_INSTALL.length + MUST_STAY_UNINSTALLED.length,
+        'the CRM-12126 cut-off boundary is 21 modules - a name was dropped rather than moved',
+      ).toBe(21);
     });
   });
 });

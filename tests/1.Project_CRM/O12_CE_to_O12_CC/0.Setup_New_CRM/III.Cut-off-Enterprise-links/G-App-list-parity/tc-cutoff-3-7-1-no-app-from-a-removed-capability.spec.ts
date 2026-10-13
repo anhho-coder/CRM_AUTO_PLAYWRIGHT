@@ -9,7 +9,14 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  * Jira: CRM-12590
  * Automation-Type: new
  * Automation-Date: 2026-09-14
- * Last-revised: 2026-09-16 - manual steps 2, 3 and 4 split back to one test.step each
+ * Last-revised: 2026-10-12 - the left-out list drops from 15 to 14, so the root menu
+ *                "[1502] Feature Request" is no longer a violation. Khang Nguyen Thai Duy,
+ *                CRM-13430 (2026-10-09): "nakivo_feature_request is installed on crm-mig on
+ *                purpose. On 2 October it was brought back because Production uses it: it is
+ *                installed on Production, it carries the Feature Request app ..."
+ *                The menu is asserted PRESENT here rather than just allowed: an app the ruling
+ *                says must be there is not evidence of anything if the TC merely stops looking.
+ * Previously:    2026-09-16 - manual steps 2, 3 and 4 split back to one test.step each
  *                (they were collapsed into a single "Step 2-4", which read as one opaque
  *                block in the report and hid which action a failure came from)
  *
@@ -30,11 +37,12 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  *   1. Use the account of Admin to login successful.
  *   2. Read every root ir.ui.menu on the new base.
  *   3. Resolve the owning module of each root menu.
- *   4. Confirm no root menu is owned by one of the 9 Enterprise modules or by any of the 15 left-out modules.
+ *   4. Confirm no root menu is owned by one of the 9 Enterprise modules or by any of the 14 left-out modules.
  *
  * Verification Points:
  *   1. 0 root menus are owned by an Enterprise module or by a left-out module.
  *   2. The full root-menu list is reported, so a new app appearing on the base is visible for the parity decision.
+ *   3. The Feature Request root menu owned by nakivo_feature_request IS present - CRM-13430.
  *
  * EVIDENCE: stdout only - this TC drives NO UI. Every step reads over the authenticated JSON-RPC
  * and navigates nowhere, so the screenshot Playwright auto-captures (config `screenshot: 'on'`)
@@ -58,13 +66,24 @@ const ENTERPRISE_MODULES = [
   'account_asset', 'sign', 'marketing_automation', 'web_studio',
 ];
 
-/** The 15 in-scope modules that are not installed on the new base (CRM-12125 comment 685775). */
+/**
+ * The 14 in-scope modules that are not installed on the new base. CRM-12125 comment 685775
+ * listed 15; CRM-13430 moved nakivo_feature_request off the list on 2026-10-09.
+ */
 const CUT_MODULES_UNINSTALLED = [
   'nakivo_helpdesk', 'nakivo_support_tickets', 'nakivo_support_page', 'nakivo_helpdesk_followup',
-  'nakivo_helpdesk_mail_route', 'nakivo_email_rating', 'nakivo_feature_request', 'nakivo_leaves',
+  'nakivo_helpdesk_mail_route', 'nakivo_email_rating', 'nakivo_leaves',
   'nakivo_message_approval', 'helpdesk_timer', 'helpdesk_ticket_crm_lead', 'zoho_connector',
   'nakivo_website_crm_score', 'nakivo_sign', 'marketing_automation_file_template',
 ];
+
+/**
+ * The 15th name on the old list. Installed on purpose since 2026-10-02 (CRM-13430), and it carries
+ * the Feature Request app, so its root menu is REQUIRED here rather than forbidden.
+ * Matched on OWNING MODULE, not on the menu's label: the label is translatable and a theme can
+ * re-case it, while ir.model.data.module is what actually names the owner.
+ */
+const RETURNED_TO_SCOPE = 'nakivo_feature_request';
 
 /**
  * Step labels - declared ONCE and used for BOTH the test.step() label and the stdout banner.
@@ -77,7 +96,7 @@ const STEP = {
   pre1:    'Pre-condition 1: Login as Admin on the O12 Migration server',
   s2:      'Step 2: [INTERNAL check, Call API] Read every root ir.ui.menu on the new base',
   s3:      'Step 3: [INTERNAL check, Call API] Resolve the owning module of each root menu',
-  s4:      'Step 4: [INTERNAL check, Call API] Confirm no root menu is owned by one of the 9 Enterprise modules or by any of the 15 left-out modules',
+  s4:      'Step 4: [INTERNAL check, Call API] Confirm no root menu is owned by one of the 9 Enterprise modules or by any of the 14 left-out modules',
   verify:  'Verification',
 } as const;
 
@@ -98,6 +117,7 @@ test.describe('CRM-12326 Part 2-3.7 - App list and UI parity', () => {
     let rootMenus: Array<{ id: number; name: string; sequence: number }> = [];
     let ownershipMap: Map<number, string> = new Map();
     let removedCapabilityMenus: Array<{ id: number; name: string; module: string }> = [];
+    let featureRequestMenus: Array<{ id: number; name: string }> = [];
 
     console.log('========== CRM-12326_3.7.1 - No app from a removed capability ==========');
 
@@ -157,8 +177,14 @@ test.describe('CRM-12326 Part 2-3.7 - App list and UI parity', () => {
             module: ownerModule,
           });
         }
+
+        if (ownerModule === RETURNED_TO_SCOPE) {
+          featureRequestMenus.push({ id: menu.id, name: menu.name });
+        }
       }
       console.log(`\n  Menus owned by removed modules: ${removedCapabilityMenus.length}`);
+      console.log(`  Root menus owned by ${RETURNED_TO_SCOPE} (expected >= 1): ${featureRequestMenus.length}`);
+      featureRequestMenus.forEach((m) => console.log(`    - [${m.id}] ${m.name}`));
     });
 
     await test.step(STEP.verify, async () => {
@@ -177,11 +203,19 @@ test.describe('CRM-12326 Part 2-3.7 - App list and UI parity', () => {
       console.log(`     Expected : reported length > 0`);
       console.log(`     Actual   : ${rootMenus.length}`);
       console.log(`     Result   : ${rootMenus.length > 0 ? 'PASS' : 'FAIL'}`);
+      console.log(`  Verify #3 - The Feature Request app owned by ${RETURNED_TO_SCOPE} is present (CRM-13430):`);
+      console.log(`     Expected : >= 1 root menu`);
+      console.log(`     Actual   : ${featureRequestMenus.length}`);
+      console.log(`     Result   : ${featureRequestMenus.length > 0 ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      console.log(`OVERALL: ${removedCapabilityMenus.length === 0 && rootMenus.length > 0 ? 'PASS' : 'FAIL'} - no removed-capability apps visible`);
+      console.log(`OVERALL: ${removedCapabilityMenus.length === 0 && rootMenus.length > 0 && featureRequestMenus.length > 0 ? 'PASS' : 'FAIL'} - no removed-capability apps visible, Feature Request present`);
 
       expect(removedCapabilityMenus.length, 'no root menus should be owned by removed modules').toBe(0);
       expect(rootMenus.length, 'root menu list should not be empty').toBeGreaterThan(0);
+      expect(
+        featureRequestMenus.length,
+        `${RETURNED_TO_SCOPE} is installed on purpose (CRM-13430) and carries the Feature Request app - its root menu must be present`,
+      ).toBeGreaterThan(0);
     });
   });
 });
