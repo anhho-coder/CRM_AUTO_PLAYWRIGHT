@@ -113,29 +113,17 @@ test.describe('CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing ass
     test.setTimeout(config.timeouts.test);
 
     // ---------------------------------------------------------------------------------------------
-    // SKIPPED 2026-10-07 - the case is blocked on a PRODUCT DEFECT, not on anything in this spec.
+    // SKIP REMOVED 2026-10-13 - the product defect this case was blocked on is fixed.
     //
-    // Verify #5 asserts that the first assignment's timestamp survives a re-assignment. Measured
-    // three times - 09:50:23 -> :24, 04:25:27 -> :28, 06:40:00 -> :01 - the Pre-Sales Application
-    // returns a value one second later after a re-assignment that writes `user_id` only.
+    // CRM-13373: the Pre-Sales Application used to write the assignment date again on every change
+    // of `user_id`, so Verify #5 read a value one second later after a re-assignment. Nathan Do
+    // reports (CRM-13373, comment 705832, 2026-10-12) that the date is now recorded once, on the
+    // first assignment, and survives re-assignment, un-assign + re-assign and "Assign to me"; the
+    // field was also re-labelled "First assignation date" (label only - the technical field read
+    // here is still `assigned_date`).
     //
-    // Nathan Do confirmed it on CRM-12456 (comment 703900): the requirement is IS-CRM-FUNC-0046,
-    // which "requires the first assignment to be recorded and preserved, which is also how the
-    // current system behaves, but the Pre-Sales Application sets the assigned date again on every
-    // re-assignment". The "Pre-sale Test Cases" card set omits FUNC-0046 on purpose - its own
-    // traceability page lists it under requirements checked on the development side.
-    //
-    // A minute-wide tolerance was tried on 2026-10-07 to make this green and was reverted the same
-    // day: it hid an acknowledged defect, and it would still have gone red roughly one run in sixty.
-    // The assertion is back to exact equality and the case is skipped, by the tester's decision, so
-    // the defect is tracked in Jira rather than as a permanently red automated test.
-    //
-    // Undo: when the Pre-Sales Application stops re-stamping assigned_date, drop this skip. The
-    // other four verifications in this case already pass and need no change.
+    // The assertion stays exact equality, as it was before the skip - no tolerance.
     // ---------------------------------------------------------------------------------------------
-    test.skip(true, 'BLOCKED by a product defect - the Pre-Sales Application re-stamps assigned_date on '
-      + 'every re-assignment, against IS-CRM-FUNC-0046 (confirmed by Dev, CRM-12456 comment 703900). '
-      + 'Measured 3x as a 1-second drift. Re-enable once the product preserves the first assignment.');
 
     console.log('========== CRM-12135_2.2 - Pick-up and re-assignment are manual; nothing assigns itself ==========');
 
@@ -247,6 +235,11 @@ await test.step(STEP.s3, async () => {
   console.log('    1. Change Assigned user field to another Sales Engineer');
   console.log('    2. Save the form');
   console.log('  EXPECTED: Accepted. Assigned user is now that second member.');
+  // Re-assign a clear clock second after the pick-up. `assigned_date` has second precision, so
+  // two writes inside the same second read identical even when the server re-stamps the field -
+  // that is the 0-delta run CRM-13373 describes as "not a counter-example". Without this wait the
+  // check can pass vacuously. Nathan's manual re-check on 2026-10-12 was ~4 s apart.
+  await page.waitForTimeout(4000);
   console.log(`  Using API to re-assign to secondEngineerLogin...`);
   await preSale.assignRequest(requestId, secondEngineerId);
   afterReassignment = await preSale.request(requestId);
@@ -295,7 +288,7 @@ await test.step(STEP.verify, async () => {
   expect(ownerAfterPickUp, 'after assign to me, owner should be first engineer').toBe(true);
   expect(stampWritten, 'first assignment should record a timestamp').toBe(true);
   expect(ownerAfterReassign, 'after re-assignment, owner should be second engineer').toBe(true);
-  expect(stampPreserved, 'assignment date should survive re-assignment (compared to the minute)').toBe(true);
+  expect(stampPreserved, 'assignment date should survive re-assignment (exact equality, re-assigned 4s later)').toBe(true);
 });
     } finally {
       // Evidence FIRST, while the page is still alive. afterEach runs after this block, so its
