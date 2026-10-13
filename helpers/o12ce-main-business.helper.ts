@@ -303,6 +303,26 @@ export async function createOpportunityOnO12CE(
     console.log(`  Company   : "${companyValue}"`);
     console.log(`  Contact   : "${contactValue}"`);
     console.log(`  Lead Form : "${result.leadForm}" (read back from the saved record)`);
+
+    // Queue the two partners Odoo just created for teardown. Neither used to be registered, and the
+    // afterAll sweep cannot find the Company either: it searches by the `TEST <TC id>` name marker and
+    // Odoo names the Company after the e-mail domain (`company<timestamp>.com`), which carries no
+    // marker. Every run therefore left one Company partner behind on crm-mig (CRM-13277). Registered
+    // with deleteLast because the Opportunity and the Invoice point at them.
+    const companyUrl = await opportunityPage.getCompanyFieldUrl().catch(() => '');
+    const contactUrl = await opportunityPage.getContactFieldUrl().catch(() => '');
+    // Company BEFORE Contact here on purpose: teardown walks the deleteLast group newest-first too,
+    // so registering the parent first makes the child Contact go first at deletion time.
+    if (companyUrl) {
+      registerMigRecordFromUrl(companyUrl, `Company of ${tcId}`, 'res.partner', { deleteLast: true });
+    }
+    if (contactUrl) {
+      registerMigRecordFromUrl(contactUrl, `Contact of ${tcId}`, 'res.partner', { deleteLast: true });
+    }
+    if (!companyUrl && !contactUrl) {
+      console.log('  [mig-cleanup] NOT registered - neither the Company nor the Contact link was readable on the form');
+    }
+
     expect(
       populated,
       'the async Company/Contact partner creation must complete on O12 CE before the Deal Element is opened (an empty End User blocks the Deal Element save)'
@@ -318,13 +338,17 @@ export async function createOpportunityOnO12CE(
  */
 export async function addDealElementOnO12CE(
   page: Page,
-  opts: { productQty?: number; paymentTerm?: string; pricelist?: string } = {}
+  opts: { productQty?: number; paymentTerm?: string; pricelist?: string; product?: string } = {}
 ): Promise<{ productName: string; paymentTerm: string }> {
   const opportunityPage = new OpportunityPage(page);
   const dealElementPage = new DealElementPage(page);
   const paymentTerm = opts.paymentTerm ?? O12CE_DATA.paymentTerm;
   // 2.5.26 needs a foreign-currency Quotation, so it passes the EUR pricelist here.
   const pricelist = opts.pricelist ?? O12CE_DATA.pricelist;
+  // The CRM-11806 subscription suite needs a line flagged Subscriptionable
+  // (`product.template.nakivo_subscription_ok`), which the default product is not - it passes the
+  // SKU it needs here. Everything else keeps the original default, so no existing spec changes.
+  const product = opts.product ?? O12CE_DATA.product;
   let productName = '';
 
   await test.step('Step 8: Create "DEAL ELEMENT" - press the "DEAL ELEMENT" button', async () => {
@@ -353,16 +377,29 @@ export async function addDealElementOnO12CE(
 
   await test.step('Step 10: At "Order Lines" section - add a product and set the Ordered Qty', async () => {
     console.log('\n--- Step 10: Order Lines ---');
-    const added = await dealElementPage.addProduct(O12CE_DATA.product);
-    expect(
-      added,
-      `a product line ("${O12CE_DATA.product}") must be addable on the O12 CE Deal Element`
-    ).toBeTruthy();
-    if (opts.productQty && opts.productQty !== 1) {
-      await dealElementPage.setProductQuantity(opts.productQty, CommonUtils.waitTimes.long);
-      console.log(`  Ordered Qty  : ${opts.productQty}`);
+    if (opts.product) {
+      // A caller that NAMES its product (the CRM-11806 subscription suite) gets the type-first
+      // path: `addProduct` clicks the empty m2o and waits 30 s for an unfiltered dropdown to offer
+      // a SKU it can never show, then types anyway. Same end state, ~30 s cheaper, and the screen
+      // never sits on a list of unrelated products.
+      productName = await dealElementPage.addProductBySku(product, opts.productQty);
+      expect(
+        productName,
+        `a product line ("${product}") must be addable on the O12 CE Deal Element`
+      ).not.toBe('');
+      if (opts.productQty !== undefined) console.log(`  Ordered Qty  : ${opts.productQty}`);
+    } else {
+      const added = await dealElementPage.addProduct(product);
+      expect(
+        added,
+        `a product line ("${product}") must be addable on the O12 CE Deal Element`
+      ).toBeTruthy();
+      if (opts.productQty && opts.productQty !== 1) {
+        await dealElementPage.setProductQuantity(opts.productQty, CommonUtils.waitTimes.long);
+        console.log(`  Ordered Qty  : ${opts.productQty}`);
+      }
+      productName = await dealElementPage.getFirstProductName();
     }
-    productName = await dealElementPage.getFirstProductName();
     console.log(`  Product line : "${productName}"`);
   });
 
@@ -766,6 +803,16 @@ export interface MigCreatedRecord {
   id: number;
   /** Human label for the log line ("Invoice", "Deal Element", ...). */
   label: string;
+  /**
+   * Delete this one AFTER everything else, regardless of when it was registered.
+   *
+   * Teardown deletes newest-registered-first, which is right for the Opportunity -> Deal Element ->
+   * Quotation -> Invoice chain: the child always goes before its parent. The Company and Contact
+   * partners break that rule. Odoo creates them asynchronously, so they can only be registered in the
+   * MIDDLE of the chain (step 7), yet the Opportunity and the Invoice both point at them and must go
+   * first. Without this flag they would be attempted too early and reported as leftovers.
+   */
+  deleteLast?: boolean;
 }
 
 /** Registration ledger for the CURRENT test - emptied by `loginToO12CE`. */
@@ -782,12 +829,20 @@ export function listMigCreatedRecords(): MigCreatedRecord[] {
 }
 
 /** Queue one record for deletion. Ignores empty ids and duplicates. */
-export function registerMigRecord(model: string, id: number | string, label: string): void {
+export function registerMigRecord(
+  model: string,
+  id: number | string,
+  label: string,
+  opts: { deleteLast?: boolean } = {},
+): void {
   const numericId = Number(id);
   if (!model || !Number.isInteger(numericId) || numericId <= 0) return;
   if (migCreated.some((r) => r.model === model && r.id === numericId)) return;
-  migCreated.push({ model, id: numericId, label });
-  console.log(`  [mig-cleanup] registered ${model}#${numericId} (${label})`);
+  migCreated.push({ model, id: numericId, label, deleteLast: opts.deleteLast });
+  console.log(
+    `  [mig-cleanup] registered ${model}#${numericId} (${label})` +
+    (opts.deleteLast ? ' - queued to delete LAST' : ''),
+  );
 }
 
 /**
@@ -795,14 +850,19 @@ export function registerMigRecord(model: string, id: number | string, label: str
  * (`#id=123&model=sale.order&...`) unless `modelHint` is given - the license form is the case
  * where only the URL knows the model name.
  */
-export function registerMigRecordFromUrl(url: string, label: string, modelHint?: string): void {
+export function registerMigRecordFromUrl(
+  url: string,
+  label: string,
+  modelHint?: string,
+  opts: { deleteLast?: boolean } = {},
+): void {
   const id = (url.match(/[?#&]id=(\d+)/) || [])[1];
   const model = modelHint || (url.match(/[?#&]model=([\w.]+)/) || [])[1];
   if (!id || !model) {
     console.log(`  [mig-cleanup] NOT registered (${label}) - no id/model in URL: ${url}`);
     return;
   }
-  registerMigRecord(model, id, label);
+  registerMigRecord(model, id, label, opts);
 }
 
 /** Models Odoo 12 refuses to unlink outside draft/cancel, and the action that gets them there. */
@@ -886,7 +946,13 @@ async function unlinkMigRecords(
  * caller can assert on it if it wants to, and the 16:00 check has something to match against.
  */
 export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRecord[]> {
-  const queued = [...migCreated].reverse();
+  // Newest first, so a child is always deleted before its parent - except the records flagged
+  // deleteLast (the async Company/Contact partners), which everything else points at.
+  const reversed = [...migCreated].reverse();
+  const queued = [
+    ...reversed.filter((r) => !r.deleteLast),
+    ...reversed.filter((r) => r.deleteLast),
+  ];
   if (queued.length === 0) return [];
 
   if (process.env.SKIP_CLEANUP_MIG === '1') {

@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 
@@ -790,7 +790,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * Fill Reseller field on the Opportunity form
    * @param contactName - The name of the contact to set as reseller
    */
-  async fillReseller(contactName: string) {
+  async fillReseller(contactName: string): Promise<boolean> {
     const input = this.resellerInputOpp();
     await input.click();
     await input.fill('');
@@ -800,13 +800,36 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const option = this.dropdownOption().filter({ hasText: contactName }).first();
     await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     await option.click().catch(async () => { await this.page.keyboard.press('Enter'); });
+    await this.wait(500);
+    // Callers assert on this boolean, so it must mean "the field now HOLDS contactName" - not
+    // merely "the clicks were dispatched". Both the waitFor and the click above swallow their
+    // failure, so without reading the value back this method cannot tell a real selection from a
+    // dropdown that never opened. Returning undefined is what made
+    // expect(resellerSet).toBeTruthy() in o12ce-main-business.helper unpassable on every run.
+    return this.fieldHoldsValue(input, contactName);
+  }
+
+  /**
+   * True when a many2one input has ended up holding the requested partner.
+   * Compared both ways and case-insensitively: Odoo echoes back the partner's display name, which
+   * can carry a suffix (or differ in case) from the text that was typed to find it.
+   */
+  private async fieldHoldsValue(input: Locator, requested: string): Promise<boolean> {
+    // Bounded on purpose: inputValue() auto-waits for the element, and an Odoo many2one can be
+    // re-rendered (detached) right after a selection. Unbounded it would sit on the default action
+    // timeout and read as a mysterious test hang far from this line, so cap it and treat a
+    // non-answer as "not set".
+    const actual = ((await input.inputValue({ timeout: 5000 }).catch(() => '')) || '').trim().toLowerCase();
+    const wanted = requested.trim().toLowerCase();
+    if (!actual || !wanted) return false;
+    return actual.includes(wanted) || wanted.includes(actual);
   }
 
   /**
    * Fill Distributor field on the Opportunity form
    * @param contactName - The name of the contact to set as distributor
    */
-  async fillDistributor(contactName: string) {
+  async fillDistributor(contactName: string): Promise<boolean> {
     const input = this.distributorInputOpp();
     await input.click();
     await input.fill('');
@@ -816,6 +839,9 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const option = this.dropdownOption().filter({ hasText: contactName }).first();
     await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     await option.click().catch(async () => { await this.page.keyboard.press('Enter'); });
+    await this.wait(500);
+    // Same contract as fillReseller: the boolean reports whether the field HOLDS the partner.
+    return this.fieldHoldsValue(input, contactName);
   }
 
   /**
@@ -1018,14 +1044,41 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await this.saveButton().scrollIntoViewIfNeeded();
     await this.saveButton().click();
     
-    // Wait for save to complete - URL will change to include the ID
-    await this.waitForURL('**/web?*id=*&*', CommonUtils.waitTimes.pageLoad);
-    
-    // Wait for Save button to disappear or become disabled
-    await this.saveButton().waitFor({ state: 'hidden' }).catch(async () => {
-      await this.page.waitForSelector('button.o_form_button_save:disabled', { timeout: 10000 }).catch(() => {});
-    });
-    
+    // The saved record must get a NUMERIC id. This used to wait on the glob '**/web?*id=*&*', which an
+    // UNSAVED create form satisfies too: its URL is '/web?#id=&action=1705&model=crm.lead&...', so the
+    // EMPTY id is still followed by '&action=' and the glob matches. A save that never happened sailed
+    // straight past this line (CRM-13277). waitForIdInUrlAndExtract polls for /[?&#]id=(\d+)/, so only a
+    // real id gets through.
+    try {
+      await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.pageLoad);
+    } catch {
+      throw new Error(
+        'SAVE was pressed but no record id ever appeared in the URL - the form did not save. ' +
+        'Usual causes: a required field is empty, or the browser lost its session to the server.'
+      );
+    }
+
+    // Explicit timeout for the same reason as the visibility wait above: the Playwright config sets no
+    // actionTimeout, so an unbounded waitFor inherits the 15-minute TEST timeout - a stuck form then
+    // reports "Test timeout exceeded" 15 minutes later instead of naming the problem (CRM-13277).
+    // Odoo may hide the SAVE button or merely disable it, so either one counts as "left edit mode";
+    // only neither is a failure.
+    const leftEditMode = await this.saveButton()
+      .waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.savingPage })
+      .then(() => true)
+      .catch(async () =>
+        await this.page
+          .waitForSelector('button.o_form_button_save:disabled', { timeout: 10000 })
+          .then(() => true)
+          .catch(() => false)
+      );
+    if (!leftEditMode) {
+      throw new Error(
+        'SAVE was pressed and the record has an id, but the form never left edit mode - the SAVE button ' +
+        'is still visible and enabled, so the save is incomplete.'
+      );
+    }
+
     // Wait for page to stabilize
     await this.waitForFormSaved();
   }
@@ -1123,6 +1176,29 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       const exists = await companyField.count() > 0;
       if (!exists) return '';
       const href = await companyField.getAttribute('href').catch(() => '');
+      if (!href) return '';
+      if (href.startsWith('http')) return href;
+      const origin = new URL(this.page.url()).origin;
+      return origin + (href.startsWith('/') ? href : '/' + href);
+    } catch (error) {
+      return '';
+    }
+  }
+
+  /**
+   * Get the URL (href) of the Contact field hyperlink (contact_partner_id).
+   * Sibling of getCompanyFieldUrl, same defensive contract: never throws, '' when the link is not on
+   * the form. Both partners are created asynchronously by Odoo after the Opportunity is saved, and
+   * crm-mig teardown needs their ids to delete them - the Company is named `company<timestamp>.com`
+   * and carries no TC marker, so the name-marker sweep can never find it (CRM-13277).
+   * @returns Promise<string> - The full URL of the Contact hyperlink, or empty string if not found
+   */
+  async getContactFieldUrl(): Promise<string> {
+    try {
+      const contactField = this.contactFieldXPath();
+      const exists = await contactField.count() > 0;
+      if (!exists) return '';
+      const href = await contactField.getAttribute('href').catch(() => '');
       if (!href) return '';
       if (href.startsWith('http')) return href;
       const origin = new URL(this.page.url()).origin;
