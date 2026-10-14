@@ -2260,6 +2260,60 @@ export class InvoicePage extends BasePage {
   }
 
   /**
+   * Apply ONE "Add Custom Filter" facet on a DATE field of the Invoices list (e.g. "Invoice Date"):
+   * Filters > Add Custom Filter > pick field > pick operator > type the date > Apply.
+   * A date field's value widget is a datepicker <input>, not a <select> and not a Many2one, so this
+   * types the rendered date and blurs with Tab (the datepicker commits on change) instead of waiting
+   * for an autocomplete option the way `addInvoiceListCustomFilter` does for an equality operator.
+   * @param fieldLabel   exact field label (e.g. "Invoice Date")
+   * @param renderedDate the date as the UI renders it on this build, MM/DD/YYYY (e.g. "06/29/2026")
+   * @param operator     operator label (default "is equal to"; the UI default for a date is "is between")
+   */
+  async addInvoiceListDateCustomFilter(
+    fieldLabel: string,
+    renderedDate: string,
+    operator: string = 'is equal to',
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<void> {
+    console.log(`  - Add Custom Filter: "${fieldLabel}" [${operator}] "${renderedDate}"`);
+    await this.openFiltersMenu(timeout);
+    const add = this.addCustomFilterBtn();
+    await add.waitFor({ state: 'visible', timeout });
+    await add.click();
+    await this.wait(CommonUtils.waitTimes.standard);
+
+    const field = this.cfFieldSelect();
+    await field.waitFor({ state: 'visible', timeout });
+    await field.selectOption({ label: fieldLabel });
+    await this.wait(CommonUtils.waitTimes.standard); // the value widget re-renders after the field changes
+
+    const op = this.cfOperatorSelect();
+    await op.waitFor({ state: 'visible', timeout });
+    await op.selectOption({ label: operator });
+    await this.wait(CommonUtils.waitTimes.standard); // "is equal to" swaps the two-input range for one input
+
+    const input = this.cfValueInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.click();
+    await input.fill('');
+    await input.fill(renderedDate);
+    await this.page.keyboard.press('Tab'); // blur -> the datepicker commits the typed date
+    await this.wait(CommonUtils.waitTimes.standard);
+    const typed = await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '');
+    console.log(`    - Date input now holds "${typed}"`);
+
+    const apply = this.cfApplyButton();
+    await apply.waitFor({ state: 'visible', timeout });
+    await apply.click();
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog().catch(() => {});
+    await this.closeFiltersMenu(); // guarantee a clean menu state for the next custom filter
+    await this.invoiceListTable().or(this.listNoContent()).first().waitFor({ state: 'visible', timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  ✓ Custom Filter applied: "${fieldLabel}" ${operator} "${renderedDate}"`);
+  }
+
+  /**
    * Apply the two facets: Reseller matches <name> AND Status = <status>.
    * IMPORTANT: the Reseller filter uses operator "contains" (name ilike), NOT "is equal to". There
    * can be MULTIPLE partner records sharing the display name "TEST-Reseller#Automation-Jun10" (test

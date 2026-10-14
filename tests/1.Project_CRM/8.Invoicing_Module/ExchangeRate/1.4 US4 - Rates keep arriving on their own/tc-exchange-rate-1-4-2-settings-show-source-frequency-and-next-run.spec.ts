@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, ScheduledActionPage, CurrencySettingsPage } from '@pages';
-import type { AutomaticRatesSettings } from '@pages';
+import type { AutomaticRatesSettings, ScheduledActionState } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -10,8 +10,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *  ExchangeRate  -  US4: the settings screen shows source, frequency and next run
  * ===========================================================================
  *  Test Case ID    : Exchange-rate_1.4.2
- *  Automation-Type : new
- *  Automation-Date : 2026-08-19
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-10-14
  *
  *  Summary:
  *    An administrator must be able to answer three questions without a developer: where do the rates come
@@ -58,6 +58,10 @@ import { CommonUtils } from '@helpers/common.utils';
  *      rather than "the recorded value plus one". The Master steps were updated to match.
  *    - Developer mode is NOT switched on: the scheduled action is reached by its action hash, so the
  *      Technical menu does not need to be rendered, and no global setting is changed for other people.
+ *    - TEARDOWN puts the scheduled action's "Next Execution Date" back to the value read just before step 3
+ *      changed it. Left on "today 00:00" it is already in the past, so the server's scheduler fires the job
+ *      once more and moves it on by one day from MIDNIGHT - the daily run then drifts from its usual hour
+ *      (03:00 UTC on pre-production) to 00:00 local. Seen on 14 Oct 2026.
  *    - "Service" and "Interval" are read as the LABELS a tester sees on screen, not the stored codes
  *      ("ecb" / "daily").
  * ===========================================================================
@@ -87,7 +91,11 @@ const todayForCronField = (): string => `${asDateField(new Date())} 00:00:00`;
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
 describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, frequency and next run', () => {
+  /** The scheduled action as found, read just before step 3 changes it; put back in afterEach. */
+  let cronStateToRestore: ScheduledActionState | null = null;
+
   test.beforeEach(async ({ context, page }, testInfo) => {
+    cronStateToRestore = null;
     await context.clearCookies();
     await context.grantPermissions([]);
     await page.waitForTimeout(CommonUtils.waitTimes.standard);
@@ -100,6 +108,18 @@ describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, freq
       const homePage = new HomePage(page);
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
+    }
+    // Put the shared job back on the schedule it was found on (see TEARDOWN in the header). Runs on a pass
+    // AND a failure; a restore error is logged, never thrown, so it cannot mask the test's own result.
+    if (cronStateToRestore?.nextExecution) {
+      try {
+        await new CurrencySettingsPage(page).discardSettings().catch(() => {});
+        const cronPage = new ScheduledActionPage(page);
+        await cronPage.openScheduledAction(CRON_NAME);
+        await cronPage.restoreState(cronStateToRestore);
+      } catch (e) {
+        console.log(`  ⚠ Teardown could not restore "${CRON_NAME}": ${(e as Error).message}. Set its "Next Execution Date" back to ${cronStateToRestore.nextExecution} by hand.`);
+      }
     }
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
@@ -170,6 +190,7 @@ describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, freq
         // Gate two - the scheduled action's own "Next Execution Date".
         const opened = await cronPage.openScheduledAction(CRON_NAME);
         expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
+        cronStateToRestore = await cronPage.readState(); // what afterEach puts back
         const set = await cronPage.setNextExecutionDate(todayForCronField());
         expect(set, '"Next Execution Date" should have been set to today').toBe(true);
         ranManually = await cronPage.clickRunManually();
@@ -201,8 +222,8 @@ describeBlock('Exchange-rate_1.4.2 - US4: the settings screen shows source, freq
       console.log('  Result: PASS - the next run is visible and moves forward after a run');
     });
 
-    // No teardown. "Next Run" is left on tomorrow, which is exactly where a normal daily run leaves it, and
-    // "Service" and "Interval" were never changed. Putting the originally recorded date back would instead
-    // re-arm a run that has already happened today.
+    // The company's "Next Run" is left on tomorrow, which is exactly where a normal daily run leaves it, and
+    // "Service" and "Interval" were never changed - putting the recorded date back would re-arm a run that
+    // has already happened today. The scheduled action's own "Next Execution Date" IS put back, in afterEach.
   });
 });

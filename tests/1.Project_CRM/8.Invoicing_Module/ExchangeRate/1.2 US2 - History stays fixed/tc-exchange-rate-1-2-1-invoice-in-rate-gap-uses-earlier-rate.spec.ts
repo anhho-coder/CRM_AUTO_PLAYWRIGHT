@@ -9,12 +9,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *  ExchangeRate  -  US2: an invoice inside a rate gap keeps the earlier rate
  * ===========================================================================
  *  Test Case ID    : Exchange-rate_1.2.1
- *  Automation-Type : new
- *  Automation-Date : 2026-08-18
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-10-14
  *
  *  Summary:
- *    Read the EUR rate history and locate the GAP - the stretch of dates that carries no rate row at
- *    all. Then find an issued euro invoice dated inside that gap and verify its "Total in Company
+ *    Read the EUR rate history and locate the GAP - the newest date that carries no rate row at all.
+ *    Then filter the issued euro invoices to one dated on that day and verify its "Total in Company
  *    Currency" = Total / the rate of the LAST date present before the gap. This proves a document dated
  *    where no rate was published still converts at the most recent earlier rate, and never at a rate of
  *    one.
@@ -29,9 +29,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Pre-conditions:
  *    - Login as a CRM administrator with accounting-configuration rights (e.g. Anh Ho)
  *    - Open the Invoicing module > Configuration > Accounting > Currencies > EUR > the "Rates" button,
- *      sort the list by Date descending, and write down: the two most recent dates present, and the next
- *      date present below them. On the current environment those are 18 Aug 2026, 17 Aug 2026 and then
- *      22 Jan 2026 with Rate 0.851861 - so every date from 23 Jan to 16 Aug 2026 has no row at all
+ *      sort the list by Date descending, show up to 500 rows per page, and write down the newest date
+ *      that has no row - the place where two rows next to each other are more than one day apart -
+ *      together with the last date present before it and its Rate. On the current environment that is
+ *      29 Jun 2026: the rows on either side are 30 Jun 2026 and 28 Jun 2026 with Rate 0.877116, and it
+ *      is the only day of 2026 with no EUR row
  *
  *  Steps to reproduce:
  *    1. Open the Invoicing module > Customers > Invoices, filter to Paid with "Filters" > "Add Custom
@@ -39,14 +41,14 @@ import { CommonUtils } from '@helpers/common.utils';
  *       operator "contains". Notes for this build: "Total in Company Currency" is already a default
  *       column on this list so there is nothing to tick; there is NO Currency column to tick; and Open
  *       and Paid cannot be combined because Odoo ANDs two separate custom filters
- *    2. With the list ordered newest-first, scan the newest rows and take the first invoice whose Invoice
- *       Date falls inside the gap - no date-range filter is needed, because the newest rows already
- *       straddle the gap
+ *    2. Add a THIRD custom filter on Invoice Date with the operator "is equal to" and the date that has
+ *       no rate row (29 Jun 2026 on the current environment) - the gap is months back, so the newest
+ *       rows no longer reach it
  *    3. Pick one euro invoice dated inside the gap and write down its Number, Invoice Date, Total and
  *       "Total in Company Currency"
  *    4. Divide its Total by the Rate of the last date present BEFORE the gap - READ that Rate from the
- *       history rather than assuming a value, so the case survives a backfill (it was 0.851861 when
- *       this case was written) - and round to two decimals
+ *       history rather than assuming a value, so the case survives a backfill (it is 0.877116, the Rate
+ *       of 28 Jun 2026, on the current environment) - and round to two decimals
  *    5. Compare the result with the value written down in step 3
  *
  *  Verification Point:
@@ -56,9 +58,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Automation notes:
  *    - The gap is DISCOVERED from the history at run time rather than hard-coded, so the case keeps
  *      working after the rate history is backfilled: it then simply finds a narrower gap, or reports
- *      that no gap exists and skips the comparison with an explicit message.
- *    - The invoice dated inside the gap is found by scanning the newest rows of the filtered list
- *      (the list is ordered newest-first), which avoids needing a date-range custom filter.
+ *      that no gap exists and fails with an explicit message.
+ *    - The history is widened to 500 rows before it is walked. Pre-production was rebuilt in Sep 2026
+ *      and the old 23 Jan - 16 Aug 2026 gap was filled; on 14 Oct 2026 the only EUR day of 2026 with no
+ *      row was 29 Jun 2026, about 107 rows back - past the default 80-row page.
+ *    - The invoice dated inside the gap is found with a custom filter on Invoice Date "is equal to" the
+ *      first missing day. The newest rows of the list no longer reach the gap, so scanning them alone
+ *      (the approach before the rebuild) finds nothing.
  * ===========================================================================
  */
 
@@ -66,6 +72,8 @@ import { CommonUtils } from '@helpers/common.utils';
 const CURRENCY_CODE = 'EUR';
 /** How many of the newest filtered invoice rows to scan when looking for one dated inside the gap. */
 const ROWS_TO_SCAN = 20;
+/** How many rate rows (newest first) to load before walking the history for the gap. */
+const GAP_SEARCH_ROWS = 500;
 
 /**
  * The status used to isolate an ISSUED invoice. "Paid" is chosen over "Open" because Odoo ANDs two
@@ -77,6 +85,13 @@ const ISSUED_STATUS = 'Paid';
 
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
+
+/** The day after an ISO date, rendered MM/DD/YYYY as this build shows dates - the first missing day of a gap. */
+const nextDayRendered = (iso: string): string => {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return `${String(d.getUTCMonth() + 1).padStart(2, '0')}/${String(d.getUTCDate()).padStart(2, '0')}/${d.getUTCFullYear()}`;
+};
 
 test.describe('Exchange-rate_1.2.1 - US2: an invoice inside a rate gap keeps the earlier rate', () => {
   test.beforeEach(async ({ context, page }, testInfo) => {
@@ -124,9 +139,10 @@ test.describe('Exchange-rate_1.2.1 - US2: an invoice inside a rate gap keeps the
       console.log(`✓ Logged in as the CRM administrator (${users.admin_crm.username})`);
     });
 
-    await test.step('Pre-condition - Step 2: Open the EUR rate history, sort by Date descending and locate the gap', async () => {
+    await test.step(`Pre-condition - Step 2: Open the EUR rate history, sort by Date descending, show ${GAP_SEARCH_ROWS} rows and locate the gap`, async () => {
       await currencyPage.openRatesForCurrency(CURRENCY_CODE);
       await currencyPage.sortListByColumn('Date', 'desc');
+      await currencyPage.expandListPageSize(GAP_SEARCH_ROWS);
       const rows = await currencyPage.getRateRows();
 
       // Walk the date-descending rows and take the FIRST place where two consecutive rows are more than
@@ -153,13 +169,17 @@ test.describe('Exchange-rate_1.2.1 - US2: an invoice inside a rate gap keeps the
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition - EUR history sorted, gap located').catch(() => {});
     });
 
-    await test.step('Step 1-3: Open the Invoices list, isolate issued euro invoices and pick one dated inside the gap', async () => {
+    await test.step('Step 1-3: Open the Invoices list, isolate issued euro invoices, filter Invoice Date to the day with no rate and pick one', async () => {
       await invoicePage.openCustomerInvoicesList();
       await invoicePage.clearListSearchFacets();
       await invoicePage.addInvoiceListCustomFilter('Currency', CURRENCY_CODE, { operator: 'contains' });
       await invoicePage.addInvoiceListCustomFilter('Status', ISSUED_STATUS);
+      if (gapStartsAfter) {
+        // Step 2: the gap is months back, so narrow the list to its first missing day.
+        await invoicePage.addInvoiceListDateCustomFilter('Invoice Date', nextDayRendered(gapStartsAfter));
+      }
 
-      // The list is ordered newest-first, so an invoice dated inside the gap is among the newest rows.
+      // Every filtered row should now be dated inside the gap; the date is still re-checked per row.
       for (let idx = 0; idx < ROWS_TO_SCAN; idx++) {
         const row = await invoicePage.getInvoiceListRowFields(
           ['Number', 'Invoice Date', 'Total', 'Total in Company Currency'],
