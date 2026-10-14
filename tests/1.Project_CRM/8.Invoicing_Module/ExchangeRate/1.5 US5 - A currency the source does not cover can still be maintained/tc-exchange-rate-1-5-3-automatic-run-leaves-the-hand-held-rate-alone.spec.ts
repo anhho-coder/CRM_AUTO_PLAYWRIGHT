@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, CurrencyPage, ScheduledActionPage, CurrencySettingsPage } from '@pages';
-import type { CurrencyRateRow } from '@pages';
+import type { CurrencyRateRow, ScheduledActionState } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -10,8 +10,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *  ExchangeRate  -  US5: the automatic run leaves a hand-held rate alone
  * ===========================================================================
  *  Test Case ID    : Exchange-rate_1.5.3
- *  Automation-Type : new
- *  Automation-Date : 2026-08-19
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-10-14
  *
  *  Summary:
  *    A currency the source does not publish is held by hand. Run the job and prove it does not touch that
@@ -65,8 +65,12 @@ import { CommonUtils } from '@helpers/common.utils';
  *      dated today.
  *    - Developer mode is NOT switched on: the job is reached by its action hash, so no global setting has to
  *      be changed for everyone else.
- *    - Nothing is written by this case, so there is no teardown. The rows the job adds for the covered
- *      currencies are exactly what it would have added on its own schedule.
+ *    - No rate is written by this case: the rows the job adds for the covered currencies are exactly what it
+ *      would have added on its own schedule.
+ *    - TEARDOWN puts the scheduled action's "Next Execution Date" back to the value read just before step 3
+ *      changed it. Left on "today 00:00" it is already in the past, so the server's scheduler fires the job
+ *      once more and moves it on by one day from MIDNIGHT - the daily run then drifts from its usual hour
+ *      (03:00 UTC on pre-production) to 00:00 local. Seen on 14 Oct 2026.
  * ===========================================================================
  */
 
@@ -94,7 +98,11 @@ const asKey = (r: CurrencyRateRow): string => `${r.date}=${r.rate.toFixed(6)}`;
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
 describeBlock('Exchange-rate_1.5.3 - US5: the automatic run leaves a hand-held rate alone', () => {
+  /** The scheduled action as found, read just before step 3 changes it; put back in afterEach. */
+  let cronStateToRestore: ScheduledActionState | null = null;
+
   test.beforeEach(async ({ context, page }, testInfo) => {
+    cronStateToRestore = null;
     await context.clearCookies();
     await context.grantPermissions([]);
     await page.waitForTimeout(CommonUtils.waitTimes.standard);
@@ -107,6 +115,18 @@ describeBlock('Exchange-rate_1.5.3 - US5: the automatic run leaves a hand-held r
       const homePage = new HomePage(page);
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
+    }
+    // Put the shared job back on the schedule it was found on (see TEARDOWN in the header). Runs on a pass
+    // AND a failure; a restore error is logged, never thrown, so it cannot mask the test's own result.
+    if (cronStateToRestore?.nextExecution) {
+      try {
+        await new CurrencySettingsPage(page).discardSettings().catch(() => {});
+        const cronPage = new ScheduledActionPage(page);
+        await cronPage.openScheduledAction(CRON_NAME);
+        await cronPage.restoreState(cronStateToRestore);
+      } catch (e) {
+        console.log(`  ⚠ Teardown could not restore "${CRON_NAME}": ${(e as Error).message}. Set its "Next Execution Date" back to ${cronStateToRestore.nextExecution} by hand.`);
+      }
     }
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
@@ -164,6 +184,7 @@ describeBlock('Exchange-rate_1.5.3 - US5: the automatic run leaves a hand-held r
         // Gate two - the scheduled action's own "Next Execution Date".
         const opened = await cronPage.openScheduledAction(CRON_NAME);
         expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
+        cronStateToRestore = await cronPage.readState(); // what afterEach puts back
         const set = await cronPage.setNextExecutionDate(todayForCronField());
         expect(set, '"Next Execution Date" should have been set to today').toBe(true);
         ranManually = await cronPage.clickRunManually();

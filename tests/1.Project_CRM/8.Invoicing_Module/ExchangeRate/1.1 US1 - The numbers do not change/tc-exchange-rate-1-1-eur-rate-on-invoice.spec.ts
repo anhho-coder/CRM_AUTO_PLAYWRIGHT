@@ -11,13 +11,14 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *  ExchangeRate  -  EUR exchange rate works correctly on Invoice
  * ===========================================================================
  *  Test Case ID    : Exchange-rate_1.1.5
- *  Automation-Type : new
- *  Automation-Date : 2026-06-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-10-14
  *
  *  Summary:
  *    As Thomas, create + validate a Public Pricelist_EUR (EUR) deal-registration Invoice and capture
- *    its EUR Total; as accountant Faye, read today's EUR Current Rate from Currencies, then on the
- *    Invoices list verify the invoice's "Total in Company Currency" (USD) = InvoiceTotal#1 / EURRate#1.
+ *    its EUR Total and Invoice Date; as accountant Faye, read the EUR rate that applies to that Invoice
+ *    Date from Currencies > EUR > Rates, then on the Invoices list verify the invoice's "Total in Company
+ *    Currency" (USD) = InvoiceTotal#1 / EURRate#1, to the cent.
  *
  *  Command to run:
  *    npx playwright test --grep "Exchange-rate_1\.1\.5:" --project=chromium
@@ -74,13 +75,16 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *    18. Wait until the invoice is created completely, on the invoice screen click "Validate"
  *    19. Note:
  *          - Invoice#1      = Invoice number
+ *          - InvoiceDate#1  = Invoice Date
  *          - InvoiceTotal#1 = Invoice Total value (in EUR)
  *
- *  Pre-condition #3  -  read today's EUR rate (logged in as Accountant Faye; kept through Steps + Verification):
+ *  Pre-condition #3  -  read the EUR rate of the invoice date (logged in as Accountant Faye; kept through Steps + Verification):
  *    1. Use the account of Faye (accountant) to login successful
- *    2. Open "Invoicing" > "Configuration" > "Currencies"
- *    3. On the Currencies list, read the current rate of EUR directly from the rate column
- *       -> EURRate#1 (today's "Unit per USD")
+ *    2. Open "Invoicing" > "Configuration" > "Currencies", click "EUR" and click the "Rates" button
+ *    3. Read, to six decimals, the Rate of the row that applies to InvoiceDate#1 - the row with the latest
+ *       Date on or before it -> EURRate#1. Do not use the "Current Rate" column: it is today's rate, and
+ *       the Invoice Date is not always today (INV/2026/11281, created on 14 Oct 2026, carries Invoice
+ *       Date 13 Oct 2026)
  *
  *  Steps to reproduce  (still logged in as Faye):
  *    1. Open "Invoicing" > "Customers" > "Invoices"
@@ -89,8 +93,9 @@ import { createValidatedInvoiceAsThomas, deleteCreatedOpportunityAsAdmin } from 
  *
  *  Verification Point:
  *    On the Invoices list view, for Invoice#1, verify:
- *      1. Total in Company Currency (USD) = InvoiceTotal#1 / EURRate#1
- *         (example: 100.00 EUR / 0.877116 = 114.01 USD)
+ *      1. Total in Company Currency (USD) = InvoiceTotal#1 / EURRate#1, rounded to two decimals
+ *         (example: INV/2026/11281 dated 13 Oct 2026, 289.00 EUR / 0.894374 = 323.13 USD)
+ *         _ Only a rounding difference of 0.01 is allowed
  * ===========================================================================
  */
 
@@ -100,6 +105,12 @@ const SKIP_CLEANUP_OPP = true; // true = skip Opp cleanup (validated Invoice can
 
 /** Parse a money/number string ("EUR 85.85", "$ 114.01", "1,234.56") to a number. */
 const money = (s: string | undefined | null): number => parseFloat((s || '').replace(/[^0-9.]/g, '')) || 0;
+
+/**
+ * The company total is the euro Total converted at ONE stored rate (six decimals) and rounded to the
+ * cent, so with the rate of the invoice's own date the only possible difference is rounding.
+ */
+const ROUNDING_TOLERANCE = 0.01;
 
 test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoice', () => {
   let createdOppUrl: string | null = null;
@@ -132,9 +143,11 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
     const invoicePage = new InvoicePage(page);
     const currencyPage = new CurrencyPage(page);
 
-    let eurRate = 0;            // EURRate#1 (today's EUR "Current Rate" / "Unit per USD")
+    let eurRate = 0;            // EURRate#1 (the EUR "Unit per USD" of the row that applies to InvoiceDate#1)
+    let eurRateDate = '';       // the Date of that rate row, as rendered
     let invoiceTotalEUR = 0;    // InvoiceTotal#1 (the EUR invoice Total)
     let invoiceNumber = '';     // Invoice#1
+    let invoiceDate = '';       // InvoiceDate#1 (rendered MM/DD/YYYY)
 
     // ─── Pre-condition #1: build the deal-registration Internal Note #1 (fresh data each run) ───
     const { leadName, companyEmail, compactDateTime, note: internalNote } = generateDealRegistrationNote();
@@ -173,17 +186,20 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
     });
     createdOppUrl = invoice.oppUrl;
     invoiceNumber = invoice.invoiceNumber;
+    invoiceDate = invoice.invoiceDate;
     invoiceTotalEUR = money(invoice.invoiceTotal);
 
     await test.step('Pre-condition #2 - end of section: EUR Invoice#1 created and validated', async () => {
       console.log('Pre-condition #2 captured facts:');
       console.log(`  - Invoice#1            : ${invoiceNumber}`);
+      console.log(`  - InvoiceDate#1        : ${invoiceDate}`);
       console.log(`  - InvoiceTotal#1 (EUR) : ${invoice.invoiceTotal} (${invoiceTotalEUR})`);
       console.log(`  - Invoice status       : ${invoice.status}`);
       console.log(`  - Invoice URL          : ${invoice.invoiceUrl}`);
       let __verifyPassed = false;
       try {
         expect(invoiceNumber, 'Invoice#1 (a posted invoice number) should be captured').toBeTruthy();
+        expect(invoiceDate, 'InvoiceDate#1 should be read from the validated invoice').toMatch(/^\d{2}\/\d{2}\/\d{4}$/);
         expect(invoiceTotalEUR, 'InvoiceTotal#1 (EUR) should be a positive number').toBeGreaterThan(0);
         // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #2.
         __verifyPassed = true;
@@ -192,7 +208,7 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       }
     });
 
-    // ─── Pre-condition #3 (logged in as Faye): read today's EUR rate from Currencies ───
+    // ─── Pre-condition #3 (logged in as Faye): read the EUR rate that applies to InvoiceDate#1 ───
     await test.step('Pre-condition #3 - Step 1: Use the account of Faye (accountant) to login successful', async () => {
       await loginPage.logout(baseUrl);
       await page.context().clearCookies();
@@ -202,22 +218,23 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       console.log(`✓ Logged in as Faye (${users.accountance_ic_faye.displayName})`);
     });
 
-    await test.step('Pre-condition #3 - Step 2: Open "Invoicing" > "Configuration" > "Currencies"', async () => {
-      await currencyPage.openCurrenciesList();
-      console.log('✓ Currencies list opened');
+    await test.step('Pre-condition #3 - Step 2: Open "Invoicing" > "Configuration" > "Currencies", click "EUR" and click the "Rates" button', async () => {
+      await currencyPage.openRatesForCurrency('EUR');
+      console.log('✓ EUR "Currency Rates" list opened');
     });
 
-    await test.step('Pre-condition #3 - Step 3: Read the current rate of EUR from the rate column -> EURRate#1', async () => {
-      const rateText = await currencyPage.getCurrencyRate('EUR');
-      eurRate = money(rateText);
-      console.log(`  - EURRate#1 (today's EUR Current Rate / Unit per USD): ${rateText} (${eurRate})`);
+    await test.step('Pre-condition #3 - Step 3: Read the Rate of the row that applies to InvoiceDate#1 -> EURRate#1', async () => {
+      const applicable = await currencyPage.getRateApplicableToDate(CurrencyPage.toIsoDate(invoiceDate));
+      eurRate = applicable ? applicable.rate : 0;
+      eurRateDate = applicable ? applicable.rawDate : '';
+      console.log(`  - EURRate#1 (Unit per USD, row dated ${eurRateDate || 'none found'} for InvoiceDate#1 ${invoiceDate}): ${eurRate}`);
       let __verifyPassed = false;
       try {
-        expect(eurRate, 'EURRate#1 should be a positive number read from the rate column').toBeGreaterThan(0);
+        expect(eurRate, `EURRate#1 should be a positive number read from the EUR rate row that applies to ${invoiceDate}`).toBeGreaterThan(0);
         // Boundary screenshot (REQUIREMENT #3): end of Pre-condition #3.
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - EUR rate read from Currencies', passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - EUR rate of the invoice date read from the history', passed: __verifyPassed }).catch(() => {});
       }
     });
 
@@ -239,13 +256,13 @@ test.describe('Exchange-rate_1.1.5 - EUR exchange rate works correctly on Invoic
       const totalCompanyText = await invoicePage.getTotalInCompanyCurrencyFromList(invoiceNumber);
       const actualUSD = money(totalCompanyText);
       const expectedUSD = invoiceTotalEUR / eurRate;
-      // Rate is displayed to 6 decimals and the company total is rounded to 2 dp -> allow a small,
-      // magnitude-scaled tolerance (rate-rounding error grows with the amount).
-      const tolerance = Math.max(0.05, expectedUSD * 0.002);
+      // The rate is the stored rate of the invoice's own date, so only cent rounding remains.
+      const tolerance = ROUNDING_TOLERANCE;
 
       console.log('Verification - exchange-rate math:');
       console.log(`  - InvoiceTotal#1 (EUR)              : ${invoice.invoiceTotal} (${invoiceTotalEUR})`);
-      console.log(`  - EURRate#1 (Unit per USD)          : ${eurRate}`);
+      console.log(`  - InvoiceDate#1                     : ${invoiceDate}`);
+      console.log(`  - EURRate#1 (Unit per USD)          : ${eurRate} (rate row dated ${eurRateDate})`);
       console.log(`  - Expected Total in Company Currency: ${expectedUSD.toFixed(2)} USD  (= ${invoiceTotalEUR} / ${eurRate})`);
       console.log(`  - Actual   Total in Company Currency: "${totalCompanyText}" (${actualUSD} USD)`);
       console.log(`  - Allowed tolerance                 : +/- ${tolerance.toFixed(4)} USD`);

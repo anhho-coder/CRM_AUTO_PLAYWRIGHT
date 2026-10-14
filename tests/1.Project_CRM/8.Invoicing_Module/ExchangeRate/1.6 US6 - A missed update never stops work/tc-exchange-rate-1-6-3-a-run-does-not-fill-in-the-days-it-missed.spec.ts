@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, CurrencyPage, ScheduledActionPage, CurrencySettingsPage } from '@pages';
+import type { ScheduledActionState } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -9,8 +10,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *  ExchangeRate  -  US6: a run does not fill in the days it missed
  * ===========================================================================
  *  Test Case ID    : Exchange-rate_1.6.3
- *  Automation-Type : new
- *  Automation-Date : 2026-08-19
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-10-14
  *
  *  Summary:
  *    Run the job and prove it writes a row for TODAY only. The days it never ran on stay empty, which is
@@ -28,40 +29,53 @@ import { CommonUtils } from '@helpers/common.utils';
  *    - Login as a CRM administrator with accounting-configuration rights (e.g. Anh Ho)
  *    - Turn on developer mode: Settings module > General Settings > "Developer Tools" > "Activate the
  *      developer mode"
- *    - On Currencies > EUR > the "Rates" button write down the total number of rows and pick three dates
- *      inside the gap that have no row (for example 1 Jun, 1 Jul and 1 Aug 2026 on the current environment)
+ *    - On Currencies > EUR > the "Rates" button write down the total number of rows and pick a date inside
+ *      the covered range that has no row (29 Jun 2026 on the current environment - the only day of 2026
+ *      with no EUR row)
  *
  *  Steps to reproduce:
  *    1. Open the Invoicing module > Configuration > Accounting > Currencies, click "EUR", click the "Rates"
- *       button and confirm none of the three chosen dates has a row
- *    2. Open the Settings module > Technical > Automation > Scheduled Actions, search "Currency: rate
- *       update", open it, click "EDIT", set "Next Execution Date" to today, click "SAVE" and click
- *       "RUN MANUALLY"
- *    3. Go back to Currencies > EUR > the "Rates" button and look for rows on the three chosen dates
+ *       button and confirm the chosen date has no row. Search the date in the list's search box rather
+ *       than scrolling - EUR carries thousands of rows and the list shows 80 at a time
+ *    2. Make the update due FIRST: open Invoicing > Configuration > Settings > the "Currencies" block, set
+ *       "Next Run" to today and click "SAVE". The job only acts when the company's own "Next Run" is today
+ *       or earlier, so without this it returns early and "the gap did not change" would be true only
+ *       because nothing ran. Then open the Settings module > Technical > Automation > Scheduled Actions,
+ *       search "Currency: rate update", open it, click "EDIT", set "Next Execution Date" to today, click
+ *       "SAVE" and click "RUN MANUALLY"
+ *    3. Go back to Currencies > EUR > the "Rates" button and search the chosen date again
  *    4. Read the total number of rows again
  *
  *  Verification Point:
- *    3. None of the three chosen dates has a row, count = 0 for each
+ *    3. The chosen date still has no row, count = 0
  *       _ The gap is exactly as wide as it was before the run
- *    4. The total number of rows has increased by at most 1, and that one row is dated today
+ *    4. EUR has exactly one row dated today, count = 1
+ *       _ The total number of rows has increased by at most 1, and never decreased. If a row for today
+ *         already existed the job UPDATES it instead of adding one, so an unchanged total is correct -
+ *         what matters is that there is exactly one row for today and none on the skipped days
  *       _ The skipped days are never filled in afterwards, so a figure once explained by the earlier rate
  *         stays explained by it
  *
  *  Automation notes:
- *    - The three dates are checked through the rate list's own "Date" search rather than by reading rows.
- *      EUR carries thousands of rate rows here and the list renders one page at a time, so scanning for a
+ *    - The date is checked through the rate list's own "Date" search rather than by reading rows. EUR
+ *      carries thousands of rate rows here and the list renders one page at a time, so scanning for a
  *      date would either miss it or need the whole history loaded.
- *    - The gap those three dates sit in was verified on this environment: EUR has dense daily rows up to
- *      January 2026 and then nothing at all until 17 August 2026. If someone later back-fills that stretch,
- *      step 1 fails with a message saying to pick other empty dates - which is the correct outcome, because
- *      the case needs genuinely empty days inside the covered range.
+ *    - The empty date was verified on this environment on 14 Oct 2026: pre-production was rebuilt in Sep
+ *      2026, the old 23 Jan - 16 Aug 2026 gap was filled, and 29 Jun 2026 is the only day of 2026 with no
+ *      EUR row. If someone later back-fills it, step 1 fails with a message saying to pick another empty
+ *      date - which is the correct outcome, because the case needs a genuinely empty day inside the
+ *      covered range.
  *    - TWO GATES. The job acts only on a company whose own "Next Run" is today or earlier, and then pushes
  *      that date forward. A second "RUN MANUALLY" on the same day does nothing and says nothing, so step 2
  *      sets "Next Run" to today first. Without it "the gap did not change" would be trivially true because
  *      no run happened - which is why the row count is also asserted to have grown by today's row. The
  *      Master steps were updated to match.
- *    - Nothing is written by this case beyond the row the job itself adds for today, which is exactly what
- *      the daily schedule would have written. There is nothing to undo.
+ *    - No rate is written by this case beyond the row the job itself adds for today, which is exactly what
+ *      the daily schedule would have written.
+ *    - TEARDOWN puts the scheduled action's "Next Execution Date" back to the value read just before step 2
+ *      changed it. Left on "today 00:00" it is already in the past, so the server's scheduler fires the job
+ *      once more and moves it on by one day from MIDNIGHT - the daily run then drifts from its usual hour
+ *      (03:00 UTC on pre-production) to 00:00 local. Seen on 14 Oct 2026.
  * ===========================================================================
  */
 
@@ -70,8 +84,8 @@ const SKIP_MUTATING_TESTS = false;
 
 const CRON_NAME = 'Currency: rate update';
 const CURRENCY_CODE = 'EUR';
-/** Three days with no rate row, inside the stretch the history covers. Verified on this environment. */
-const GAP_DATES = ['06/01/2026', '07/01/2026', '08/01/2026'];
+/** The day with no rate row inside the stretch the history covers - the only one in 2026 (verified 14 Oct 2026). */
+const GAP_DATES = ['06/29/2026'];
 
 const todayIso = (): string => new Date().toISOString().slice(0, 10);
 const asDateField = (d: Date): string => {
@@ -85,7 +99,11 @@ const todayForCronField = (): string => `${asDateField(new Date())} 00:00:00`;
 const describeBlock = SKIP_MUTATING_TESTS ? test.describe.skip : test.describe;
 
 describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it missed', () => {
+  /** The scheduled action as found, read just before step 2 changes it; put back in afterEach. */
+  let cronStateToRestore: ScheduledActionState | null = null;
+
   test.beforeEach(async ({ context, page }, testInfo) => {
+    cronStateToRestore = null;
     await context.clearCookies();
     await context.grantPermissions([]);
     await page.waitForTimeout(CommonUtils.waitTimes.standard);
@@ -98,6 +116,18 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
       const homePage = new HomePage(page);
       await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
+    }
+    // Put the shared job back on the schedule it was found on (see TEARDOWN in the header). Runs on a pass
+    // AND a failure; a restore error is logged, never thrown, so it cannot mask the test's own result.
+    if (cronStateToRestore?.nextExecution) {
+      try {
+        await new CurrencySettingsPage(page).discardSettings().catch(() => {});
+        const cronPage = new ScheduledActionPage(page);
+        await cronPage.openScheduledAction(CRON_NAME);
+        await cronPage.restoreState(cronStateToRestore);
+      } catch (e) {
+        console.log(`  ⚠ Teardown could not restore "${CRON_NAME}": ${(e as Error).message}. Set its "Next Execution Date" back to ${cronStateToRestore.nextExecution} by hand.`);
+      }
     }
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
@@ -126,7 +156,7 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
       console.log(`✓ Logged in as the CRM administrator (${users.admin_crm.username})`);
     });
 
-    await test.step(`Step 1: Open the ${CURRENCY_CODE} rate history, note the total, and confirm the three chosen dates have no row`, async () => {
+    await test.step(`Step 1: Open the ${CURRENCY_CODE} rate history, note the total, and confirm the chosen date has no row`, async () => {
       await currencyPage.openRatesForCurrency(CURRENCY_CODE);
       await currencyPage.clearSearchFacets().catch(() => {});
       totalBefore = await currencyPage.getListTotalCount();
@@ -141,11 +171,11 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
       for (const date of GAP_DATES) {
         expect(
           gapBefore.get(date),
-          `${date} must have NO ${CURRENCY_CODE} rate row for this case to mean anything - it needs genuinely ` +
-            `empty days inside the covered range. It has ${gapBefore.get(date)}. Pick three other empty dates.`
+          `${date} must have NO ${CURRENCY_CODE} rate row for this case to mean anything - it needs a genuinely ` +
+            `empty day inside the covered range. It has ${gapBefore.get(date)}. Pick another empty date.`
         ).toBe(0);
       }
-      console.log(`  - All three chosen dates are empty before the run: ${GAP_DATES.join(', ')}`);
+      console.log(`  - The chosen date is empty before the run: ${GAP_DATES.join(', ')}`);
     });
 
     await test.step('Step 2: Make the update due, then run the scheduled action manually', async () => {
@@ -165,6 +195,7 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
         // Gate two - the scheduled action's own "Next Execution Date".
         const opened = await cronPage.openScheduledAction(CRON_NAME);
         expect(opened, `The scheduled action "${CRON_NAME}" should open`).toBe(true);
+        cronStateToRestore = await cronPage.readState(); // what afterEach puts back
         const set = await cronPage.setNextExecutionDate(todayForCronField());
         expect(set, '"Next Execution Date" should have been set to today').toBe(true);
         ranManually = await cronPage.clickRunManually();
@@ -175,7 +206,7 @@ describeBlock('Exchange-rate_1.6.3 - US6: a run does not fill in the days it mis
       }
     });
 
-    await test.step('Step 3-4: Look for rows on the three chosen dates again, then read the total', async () => {
+    await test.step('Step 3-4: Look for rows on the chosen date again, then read the total', async () => {
       await currencyPage.openRatesForCurrency(CURRENCY_CODE);
       for (const date of GAP_DATES) {
         const count = await currencyPage.countRateRowsForDateBySearch(date);
