@@ -90,7 +90,7 @@ export class CurrencySettingsPage extends BasePage {
     await this.discardFormIfInEditMode().catch(() => {});
     await this.dismissDiscardChangesDialog().catch(() => {});
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${origin}/web?#action=303&model=res.config.settings&view_type=form&menu_id=148`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.page.goto(`${origin}/web?#action=${await this.xmlId('account.action_account_config')}&model=res.config.settings&view_type=form&menu_id=${await this.xmlId('account.menu_finance')}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
     // A hash-only change is a same-document navigation and can leave the previous screen up; the reload
     // makes the boot into this action deterministic.
     await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
