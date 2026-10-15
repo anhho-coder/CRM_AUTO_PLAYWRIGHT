@@ -567,6 +567,30 @@ await newPage.close();
     return this.chatterMessages_basePage().count();
   }
 
+  /**
+   * Every chatter message rendered on the open record, newest first: whether it is an internal note /
+   * notification (Odoo marks those `o_mail_not_discussion`; a message sent to followers lacks it), the
+   * info line ("Note by <author> - <age>"), the absolute timestamp (the info line's title) and the body.
+   */
+  async getChatterThread(): Promise<Array<{ isNote: boolean; info: string; timestamp: string; body: string }>> {
+    await this.chatterMessages_basePage().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return this.chatterMessages_basePage().evaluateAll((els) =>
+      els.map((e) => {
+        const info = e.querySelector('.o_mail_info') as HTMLElement | null;
+        const ts = e.querySelector('.o_mail_timestamp');
+        const core = e.querySelector('.o_thread_message_core') as HTMLElement | null;
+        const clean = (s: string) => s.replace(/\s+/g, ' ').trim();
+        const infoText = info ? clean(info.innerText) : '';
+        return {
+          isNote: e.classList.contains('o_mail_not_discussion'),
+          info: infoText,
+          timestamp: (ts && ts.getAttribute('title')) || '',
+          body: core ? clean(core.innerText).replace(infoText, '').trim() : '',
+        };
+      })
+    );
+  }
+
   /** Whether a chatter message containing `text` is rendered on the open record. */
   async isChatterMessageVisible(text: string): Promise<boolean> {
     return (await this.chatterMessageWithText_basePage(text).count()) > 0;
@@ -739,6 +763,63 @@ await newPage.close();
    * THROWS when the model itself is not readable by this user, so a permission problem is reported as
    * a permission problem instead of an empty result.
    */
+  /** Resolved XML id -> database id, for the instance this page is currently on. */
+  private readonly xmlIdCache = new Map<string, number>();
+
+  /**
+   * The database id behind an XML id, resolved on WHICHEVER instance this page is open on.
+   *
+   * Write XML ids, never numbers. A number is issued by one database: `#menu_id=111` is Contacts
+   * on pre-production and "Bank Accounts" on crm-mig, and `#action=152` is the CRM Pipeline on one
+   * and "Product Packagings" on the other. These page objects are shared by both environments, and
+   * four of them are extended by a `*Mig` subclass, so a number baked in here is wrong half the
+   * time - silently, by opening a real screen that is not the one the test meant.
+   *
+   * Measured 2026-10-14 across the 12 shared page objects: of 31 distinct ids, 27 pointed at a
+   * different screen on crm-mig. The four that survived are all from module `base`.
+   *
+   * Resolving through the page keeps it honest - the answer comes from the server the test is
+   * actually driving. Throws when the XML id is absent, which is the right outcome: several apps
+   * (helpdesk, sale_subscription, sale_coupon) simply do not exist on crm-mig, and "this app is
+   * not on this instance" is a far better failure than a wrong screen.
+   */
+  async xmlId(xmlId: string): Promise<number> {
+    const cached = this.xmlIdCache.get(xmlId);
+    if (cached) return cached;
+
+    const dot = xmlId.indexOf('.');
+    if (dot <= 0) throw new Error(`BasePage.xmlId: "${xmlId}" is not a <module>.<name> XML id.`);
+
+    const id = await this.page.evaluate(async ([mod, name]: [string, string]) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'ir.model.data', method: 'search_read',
+            args: [[['module', '=', mod], ['name', '=', name]], ['res_id']],
+            kwargs: { limit: 1 },
+          },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return 0;
+      return (j.result && j.result[0] && j.result[0].res_id) || 0;
+    }, [xmlId.slice(0, dot), xmlId.slice(dot + 1)] as [string, string]);
+
+    if (!id) {
+      throw new Error(
+        `BasePage.xmlId: "${xmlId}" does not exist on ${new URL(this.page.url()).host}. `
+        + 'The module is not installed there - that is a fact about the instance, not a selector '
+        + 'to fix.',
+      );
+    }
+    this.xmlIdCache.set(xmlId, id);
+    return id;
+  }
+
   async findFirstRecordId(model: string, domain: unknown[] = []): Promise<number> {
     return this.page.evaluate(async ([model, domain]: [string, unknown[]]) => {
       const r = await fetch('/web/dataset/call_kw', {

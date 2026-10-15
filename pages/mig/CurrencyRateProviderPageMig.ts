@@ -1,6 +1,7 @@
 import { Page } from '@playwright/test';
 import { BasePage } from '@pages/BasePage';
 import { CommonUtils } from '@/helpers/common.utils';
+import { resolveScreenIds, SCREEN_XMLIDS } from '@helpers/odoo-xmlid.helper';
 
 /** Configuration of a currency rate provider (OCA module res.currency.rate.provider). */
 export interface ProviderConfig {
@@ -105,6 +106,21 @@ export class CurrencyRateProviderPageMig extends BasePage {
    * @param timeout - max time to wait for the list (default: pageLoad)
    * @returns true when either the list table or empty-state view rendered
    */
+  /**
+   * Look up the Currency Rates Providers action and menu ids over the session's own JSON-RPC.
+   *
+   * crm-mig re-sequences these ids on every rebuild, so they are resolved per run rather than
+   * pinned. The values measured on 2026-10-13 (menu 300 / action 443) are the fallback, and the
+   * ones from 2026-10-05 (295 / 436) are what they replaced - neither is trusted blindly.
+   */
+  /**
+   * The OCA "Currency Rates Providers" screen, resolved by XML ID
+   * (`currency_rate_update.action_res_currency_rate_provider`) rather than by a pinned number.
+   */
+  protected async resolveProvidersScreenIds(): Promise<{ menuId: number; actionId: number }> {
+    return resolveScreenIds(this.page, SCREEN_XMLIDS.currencyRateProviders);
+  }
+
   async openProvidersList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<boolean> {
     const origin = new URL(this.page.url()).origin;
     console.log('  - Opening Currency Rate Providers list');
@@ -119,20 +135,40 @@ export class CurrencyRateProviderPageMig extends BasePage {
     // rewrites the URL - measured 2026-10-13, the page ended on Discuss
     // (#action=124&active_id=mailbox_inbox&menu_id=98) while the DB had the provider all along.
     // So: navigate, settle, CHECK the url, and only re-drive the route if it did not take.
-    const target = `${origin}/web#menu_id=295&action=436`;
+    // A provider FORM is the SAME action 436 with `&id=<n>&view_type=form`, so "the URL contains
+    // action=436" is NOT evidence that the LIST is on screen. Coming back from a saved form, that
+    // check passed on attempt 1, the route was never re-driven, the form stayed up and the list
+    // lookup then reported "did not open" - which is what cost CRM-11857_5.1 and 5.2 their runs on
+    // 2026-10-13, and, worse, made 5.2's teardown skip the restore it owed the base.
+    // So the route is only "taken" when the hash asks for the LIST view and is not showing a form.
+    // RESOLVE the ids instead of hard-coding them. A crm-mig rebuild RE-SEQUENCES menu and action
+    // ids (it happened twice in two weeks: the provider screen was menu 295 / action 436 on
+    // 2026-10-05 and is menu 300 / action 443 after the 2026-10-13 rebuild). Hard-coded ids made 11
+    // of the 26 failures in the 2026-10-14 full run - every one of them reported "the provider form
+    // should open" on a base where the provider record was present and healthy.
+    const ids = await this.resolveProvidersScreenIds();
+    const HASH = `#menu_id=${ids.menuId}&action=${ids.actionId}&model=res.currency.rate.provider&view_type=list`;
+    const onList = (): boolean => {
+      const u = this.page.url();
+      return u.includes(`action=${ids.actionId}`) && !u.includes('view_type=form') && !/[?&#]id=\d/.test(u);
+    };
+    const target = `${origin}/web${HASH}`;
     for (let attempt = 1; attempt <= 3; attempt++) {
+      // Leaving a form that is still dirty raises Odoo's discard dialog, which silently swallows the
+      // navigation; clear it before asking for the list.
+      await this.dismissDiscardChangesDialog().catch(() => {});
       if (attempt === 1) {
         await this.page.goto(target, { waitUntil: 'domcontentloaded' }).catch(() => {});
       } else {
         // a hash change on an already-loaded client: set it, then tell the router about it
-        await this.page.evaluate(() => {
-          window.location.hash = '#menu_id=295&action=436';
+        await this.page.evaluate((hash) => {
+          window.location.hash = hash;
           window.dispatchEvent(new HashChangeEvent('hashchange'));
-        }).catch(() => {});
+        }, HASH).catch(() => {});
         await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
       await this.wait(CommonUtils.waitTimes.long);
-      if (this.page.url().includes('action=436')) break;
+      if (onList()) break;
       console.log(`  - route did not take (attempt ${attempt}); now on ${this.page.url()}`);
     }
     await this.dismissErrorDialogWithRetry().catch(() => {});
@@ -153,8 +189,8 @@ export class CurrencyRateProviderPageMig extends BasePage {
     // Guard against a false positive: Odoo falls back to its default action when the route is not
     // applied, and that fallback screen has its own empty state. Only action 436 counts as open.
     const landedOn = this.page.url();
-    if (!landedOn.includes('action=436')) {
-      console.log(`  ! Not on the Currency Rate Providers action - landed on ${landedOn}`);
+    if (!onList()) {
+      console.log(`  ! Not on the Currency Rate Providers LIST - landed on ${landedOn}`);
       return false;
     }
 

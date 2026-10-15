@@ -138,6 +138,22 @@ import { CommonUtils } from '@helpers/common.utils';
  *    deleted: they are the ordinary daily rates the scheduled cron would have written anyway, and
  *    removing them would re-create the very per-day gap CRM-13459 was raised and fixed for. No
  *    migrated record is touched.
+ * ---------------------------------------------------------------------------
+ *  SKIPPED - environment limitation, not a product or spec defect
+ * ---------------------------------------------------------------------------
+ *
+ *  Measured on crm-mig 2026-10-14, after the rebuild that re-sequenced the ids:
+ *    - `currency_rate_update` 12.0.1.3.1 is INSTALLED
+ *    - the ECB provider record EXISTS, with all 6 currencies and interval 1 Day
+ *    - but `ir.cron` holds NO record whose name contains "rate" - the scheduled
+ *      action "Currency Rates Update (OCA) daily" was not created by the deploy.
+ *
+ *  This case drives that scheduled action, so it cannot run at all until the cron
+ *  is restored on the build. Skipped at DECLARATION level on the tester's ruling
+ *  (2026-10-14) so no browser is launched for it.
+ *
+ *  RE-ENABLE by deleting the `.skip` below once the cron exists again.
+ *
  * ===========================================================================
  */
 
@@ -201,7 +217,7 @@ test.describe('CRM-11857_1.1 - Exchange Rates: the currency rate update fetches 
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-11857_1.1: Running the currency rate update fetches the latest ECB rates for the covered currencies', async ({ page }, testInfo) => {
+  test.skip('CRM-11857_1.1: Running the currency rate update fetches the latest ECB rates for the covered currencies [SKIPPED - the OCA scheduled action is absent from this crm-mig build]', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
