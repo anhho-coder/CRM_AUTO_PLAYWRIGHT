@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@/helpers/common.utils';
 
@@ -108,7 +108,11 @@ export class InvoicePage extends BasePage {
   // The header "Add Credit Note" button is permission-gated: it is rendered-but-hidden
   // (o_invisible_modifier) for some accountants (e.g. Faye) and VISIBLE for others (e.g. Yulia).
   // Target the VISIBLE instance (the hidden one carries o_invisible_modifier).
-  private readonly addCreditNoteButton         = () => this.page.locator('xpath=//button[normalize-space(.)="Add Credit Note" and not(contains(@class,"o_invisible_modifier"))]').or(this.page.locator('xpath=//button[@name="281"]')).filter({ visible: true }).first();
+  // Async because the numeric fallback is resolved from the XML id on the instance under test:
+  // 281 is Credit Note on pre-prod and "Send a sample invoice" on crm-mig after the rebuild.
+  private async addCreditNoteButton(): Promise<Locator> {
+    return this.page.locator('xpath=//button[normalize-space(.)="Add Credit Note" and not(contains(@class,"o_invisible_modifier"))]').or(this.page.locator(`xpath=//button[@name="${await this.xmlId('account.action_account_invoice_refund')}"]`)).filter({ visible: true }).first();
+  }
   // Refund wizard "Credit Method" (filter_refund) - vertical radio; option "Create a draft credit note"
   // = data-value "refund". The radio input is a hidden custom-control, so click its sibling <label>.
   private readonly creditMethodLabel           = (label: string) => this.page.locator(`xpath=//div[@name="filter_refund"]//label[normalize-space()="${label}"]`).first();
@@ -1594,7 +1598,7 @@ export class InvoicePage extends BasePage {
    */
   async clickAddCreditNote(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
     console.log('  - Looking for the visible "Add Credit Note" button');
-    const btn = this.addCreditNoteButton();
+    const btn = await this.addCreditNoteButton();
     await btn.waitFor({ state: 'visible', timeout });
     await btn.click({ timeout });
     console.log('  - Clicked "Add Credit Note" (refund wizard opening)');
@@ -1743,7 +1747,7 @@ export class InvoicePage extends BasePage {
    * sale_subscription puts on a subscription invoice line). Column map is documented on
    * getInvoiceLineData: 3 = Start, 4 = End.
    *
-   * Needed by the recurrence cases (CRM-11806_1.2.x), which must prove the generated line
+   * Needed by the recurrence cases (subscription-1.2.x), which must prove the generated line
    * really covers one month / one quarter / one year and not some other span.
    *
    * @returns { start, end } trimmed date strings; empty strings when the line/columns are absent
@@ -1795,7 +1799,7 @@ export class InvoicePage extends BasePage {
   /**
    * Read the full chatter / message-history text of the open invoice.
    *
-   * The "invoice only, nothing sent" cases (e.g. CRM-11806_1.2.6) assert on the ABSENCE of an
+   * The "invoice only, nothing sent" cases (e.g. subscription-3.5) assert on the ABSENCE of an
    * outgoing invoice email, and the message history is the only end-user-visible signal for that.
    * Mirrors DealElementPage.getChatterText.
    *
@@ -1951,7 +1955,7 @@ export class InvoicePage extends BasePage {
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
     // Explicitly request the LIST view (view_type=list). Without it, navigating from a FORM of the
     // same action can keep the form view mounted.
-    await this.page.goto(`${origin}/web?#action=289&model=account.invoice&view_type=list&menu_id=148`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${origin}/web?#action=${await this.xmlId('account.action_invoice_tree1')}&model=account.invoice&view_type=list&menu_id=${await this.xmlId('account.menu_finance')}`, { waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialogWithRetry().catch(() => {});
     await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
     // Land on the LIST. A hash-only nav from a FORM may not re-render the action, so reload ONLY when
@@ -2407,7 +2411,7 @@ export class InvoicePage extends BasePage {
   async openInvoiceById(id: number | string, timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     const origin = new URL(this.page.url()).origin;
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${origin}/web?#id=${id}&action=289&model=account.invoice&view_type=form`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${origin}/web?#id=${id}&action=${await this.xmlId('account.action_invoice_tree1')}&model=account.invoice&view_type=form`, { waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialogWithRetry();
     await this.waitForPageLoad(timeout);
   }
@@ -3138,7 +3142,6 @@ export class InvoicePage extends BasePage {
       .catch(() => false);
   }
 
-  // ---- Breadcrumb + reload readers, used by CRM-12370_6.2.12 ----
   /**
    * The breadcrumb trail above the form, left to right - on the chain this suite drives that is
    * "All Pipeline" / the Opportunity / the Deal Element / the Sale Order / "Invoice".
@@ -3170,5 +3173,4 @@ export class InvoicePage extends BasePage {
     await this.page.reload({ waitUntil: 'load', timeout });
     await this.editButtonLoc().waitFor({ state: 'visible', timeout });
   }
-
 }
