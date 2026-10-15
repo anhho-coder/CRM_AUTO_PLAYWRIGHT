@@ -213,6 +213,74 @@ export class DealElementPage extends BasePage {
   }
 
   /**
+   * Add ONE order line by SKU and set its Ordered Qty, in a single pass.
+   *
+   * Why this exists next to `addProduct`: that one CLICKS the empty product input and then waits up
+   * to `abnormalWait` (30 s) for a dropdown option carrying the full product name. An unfiltered
+   * Odoo m2o dropdown only offers the first few products, so for a SKU like `CP-NC-PM-ENT` the
+   * option can never appear - the wait always burns its full 30 s before falling through to the
+   * type-and-Enter branch. On screen that reads as "it picked some other product first", because the
+   * unfiltered list is what is showing for those 30 seconds.
+   *
+   * Here the SKU is TYPED FIRST, so the dropdown is already filtered to it, and the wait is short
+   * and meaningful: if the filtered option does not appear the SKU is genuinely not selectable, and
+   * that is worth failing on rather than hiding behind a blind Enter.
+   *
+   * `addProduct` is left exactly as it is - the existing specs that call it keep their behaviour.
+   *
+   * @param sku      - the SKU or search term, e.g. "CP-NC-PM-ENT"
+   * @param quantity - Ordered Qty to set on the row; omit to leave it at the default
+   * @returns the product label the row ended up carrying
+   */
+  async addProductBySku(sku: string, quantity?: number): Promise<string> {
+    let clicked = await this.addProductButton()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
+    if (!clicked) {
+      clicked = await this.addProductLink()
+        .click({ timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true)
+        .catch(() => false);
+    }
+    if (!clicked) {
+      const blocking = (await this.getBlockingPopupText().catch(() => '') || '').replace(/\s+/g, ' ').trim();
+      throw new Error(
+        '"Add a product" could not be clicked' +
+        (blocking ? ` - a blocking dialog is open: "${blocking.substring(0, 160)}"` : ' - no blocking dialog on screen')
+      );
+    }
+
+    const row = this.orderLineRows().last();
+    const input = row.locator('[name="product_id"] input');
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill(sku);
+
+    const escaped = sku.replace(/[[\]\\^$.|?*+(){}]/g, '\\$&');
+    const option = this.dropdownOption().filter({ hasText: new RegExp(escaped, 'i') }).first();
+    const picked = await option
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long })
+      .then(() => true)
+      .catch(() => false);
+    if (picked) {
+      await option.click();
+      console.log(`  - Product: "${sku}" picked from the filtered dropdown`);
+    } else {
+      await this.page.keyboard.press('Enter');
+      console.log(`  - Product: "${sku}" - no filtered option appeared, fell back to Enter`);
+    }
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+
+    if (quantity !== undefined) {
+      await this.setLastRowQty(quantity);
+    }
+
+    const label = await this.getFirstProductName().catch(() => '');
+    return label;
+  }
+
+  /**
    * Set product quantity for the first product in Order Lines
    * @param quantity - Quantity to set
    * @param waitTime - Wait time after setting quantity (default: 2000ms)
@@ -1035,6 +1103,50 @@ export class DealElementPage extends BasePage {
   }
 
   /**
+   * Set the End User (partner_end_user_id) on the Deal Element form.
+   *
+   * The field is REQUIRED and does NOT auto-fill from the Customer/Payer (CRM-4383 gotcha), so a
+   * Deal Element left without it is refused by SAVE while the form stays on "New" - with no error
+   * dialog, only a red field.
+   *
+   * THROWS when nothing was selected. A many2one that keeps text it never resolved looks filled on
+   * screen but is invalid to Odoo; a silent return here is exactly what made an earlier
+   * subscription-1.1 failure look like a CONFIRM defect when the record had simply never saved.
+   *
+   * @param searchText - partner to search for (must already exist; "Create ..." entries are skipped)
+   * @returns the label of the option actually selected
+   */
+  async setEndUser(searchText: string): Promise<string> {
+    const input = this.endUserInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // Scope to the VISIBLE autocomplete: Odoo 12 keeps one hidden <ul> per many2one in the DOM, and
+    // an unscoped .first() resolves to a hidden list whose <a> never becomes clickable.
+    const options = this.page.locator('.ui-autocomplete:visible li.ui-menu-item');
+    await options.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+
+    const count = await options.count();
+    for (let i = 0; i < count; i++) {
+      const txt = ((await options.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      if (!txt || /^create\b/i.test(txt)) continue;
+      await options.nth(i).click();
+      await this.wait(CommonUtils.waitTimes.standard);
+      console.log(`  ✓ End User set to "${txt}"`);
+      return txt;
+    }
+
+    throw new Error(
+      `End User "${searchText}" matched no existing partner (${count} autocomplete entries, all of them ` +
+      '"Create ..." or empty). The Deal Element cannot be saved without a resolved End User.'
+    );
+  }
+
+  /**
    * Get the End User field value from the Deal Element form
    * @returns The input value of the End User field, or empty string if not found
    */
@@ -1606,6 +1718,63 @@ export class DealElementPage extends BasePage {
         return out;
       }, rowIndex)
       .catch(() => ({} as Record<string, string>));
+  }
+
+  /**
+   * The horizontal alignment of one Order Lines row, read as
+   * { column caption -> { header, cell } } where each value is the COMPUTED `text-align`.
+   *
+   * Two traps this normalises, so a reader never has to:
+   *  - Chromium reports the INITIAL value of `text-align` as `start` / `end`, not as
+   *    `left` / `right`. A cell the stylesheet never touched would therefore read `start`
+   *    and could never be compared against a cell it styled `right`. Both are resolved
+   *    against the element's own `direction` (LTR: start -> left, end -> right).
+   *  - Odoo puts the alignment on the `<td>` / `<th>` itself (`.o_list_number` is what
+   *    right-aligns a numeric column), so the computed style is read from the cell node,
+   *    not from the widget inside it.
+   *
+   * Cells are zipped onto the header row by position, exactly as getOrderLineRowCells()
+   * does, so a column that moved cannot silently shift an alignment onto its neighbour.
+   * The leading drag-handle column carries no caption and is dropped.
+   */
+  async getOrderLineCellAlignments(
+    rowIndex: number = 0
+  ): Promise<Record<string, { header: string; cell: string }>> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement, index: number) => {
+        const clean = (n: Element) => ((n as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+        const align = (n: Element | undefined) => {
+          if (!n) return '(missing)';
+          const style = window.getComputedStyle(n as HTMLElement);
+          const ltr = (style.direction || 'ltr') !== 'rtl';
+          const value = (style.textAlign || '').trim();
+          if (value === 'start') return ltr ? 'left' : 'right';
+          if (value === 'end') return ltr ? 'right' : 'left';
+          return value;
+        };
+        const headers = Array.from(el.querySelectorAll('thead th'));
+        const row = el.querySelectorAll('tbody tr.o_data_row')[index];
+        const cells = row ? Array.from(row.querySelectorAll('td')) : [];
+        const out: Record<string, { header: string; cell: string }> = {};
+        headers.forEach((th, i) => {
+          const caption = clean(th);
+          if (caption.length === 0) return;
+          out[caption] = { header: align(th), cell: align(cells[i]) };
+        });
+        return out;
+      }, rowIndex)
+      .catch(() => ({} as Record<string, { header: string; cell: string }>));
+  }
+
+  /** How many data rows the Order Lines list currently renders. */
+  async getOrderLineRowCount(): Promise<number> {
+    const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return await table
+      .evaluate((el: HTMLElement) => el.querySelectorAll('tbody tr.o_data_row').length)
+      .catch(() => 0);
   }
 
   /**

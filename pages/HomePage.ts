@@ -21,10 +21,16 @@ export class HomePage extends BasePage {
   // Locators (using XPath where possible for consistency)
   private readonly crmLink = () => this.page.locator('xpath=//a[contains(@data-menu-xmlid, "crm.crm_menu_root")]').first();
   private readonly investmentLink = () => this.page.getByRole('link', { name: 'Investments', exact: true });
-  private readonly crmMenuLink = () => this.page.locator('//a[contains(@href, "menu_id=111")]');
+  /** CRM app link. menu id resolved per instance - 111 on pre-prod, 179 on crm-mig. */
+  private crmMenuLinkFor = (menuId: number) =>
+    this.page.locator(`//a[contains(@href, "menu_id=${menuId}")]`);
   // Sidebar menu link for Contacts (not a button)
   private readonly odooClientError_OK_Btn = () => this.page.locator('xpath=//button/span[contains(text(),"Ok")]');
-  private readonly contactsMenuLink = () => this.page.locator('//a[contains(., "Contacts") and contains(@href, "menu_id=94")]');
+  // Selected by the menu's XML id, which Odoo renders into the DOM as `data-menu-xmlid`. No RPC and
+  // no number: `menu_id=94` is Contacts on pre-production and "Channel Moderation" on crm-mig, so
+  // the old href match silently picked a different menu there. LoginPage already used this pattern.
+  private readonly contactsMenuLink = () =>
+    this.page.locator('xpath=//a[contains(@data-menu-xmlid, "contacts.menu_contacts")]').first();
   // Home page Contacts link (top-level navigation) - exact text match
   private readonly contactsLink = () => this.page.locator('(//a[@class="o_app o_menuitem" and normalize-space(.)="Contacts"])').first();
   private readonly leadsButton = () => this.page.getByRole('button', { name: 'Leads' });
@@ -73,7 +79,7 @@ export class HomePage extends BasePage {
     //await this.wait(CommonUtils.waitTimes.login);
     await this.investmentLink().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
     await this.investmentLink().click();
-    await this.waitForURL('**/web?*menu_id=866*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForURL(`**/web?*menu_id=${await this.xmlId('nakivo_invesment_tracking.invesment_tracking_menu_root')}*`, CommonUtils.waitTimes.pageLoad);
 
     //[Feb 05, 2026] Quoc Anh: Dismiss Odoo Client Error if it appears
     await this.dismissOdooClientError();
@@ -97,7 +103,7 @@ export class HomePage extends BasePage {
     // Click the Contacts link in the sidebar menu
     await this.contactsMenuLink().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
     await this.contactsMenuLink().click();
-    await this.page.waitForURL('**menu_id=94**', { timeout: 60000 });
+    await this.page.waitForURL(`**menu_id=${await this.xmlId('contacts.menu_contacts')}**`, { timeout: 60000 });
     await this.wait(2000);
   }
 
@@ -163,7 +169,8 @@ export class HomePage extends BasePage {
     } catch {
       console.log('  ⚠ Contacts list did not render via tile click - forcing the Contacts action via URL hash...');
       const href = await this.contactsLink().getAttribute('href').catch(() => null);
-      const contactsHash = href && href.startsWith('#') ? href : '#menu_id=94&action_id=118';
+      const contactsHash = href && href.startsWith('#') ? href
+      : `#menu_id=${await this.xmlId('contacts.menu_contacts')}&action_id=${await this.xmlId('contacts.action_contacts')}`;
       await this.page.evaluate((h) => { window.location.hash = h; }, contactsHash);
       await this.page.reload({ waitUntil: 'domcontentloaded' });
       await contactsCreateButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
@@ -206,7 +213,29 @@ export class HomePage extends BasePage {
    * Navigate to CRM > Opportunities (Pipeline)
    */
   async navigateToOpportunities() {
-    await this.navigateToCRM();
+    // navigateToCRM() waits for the APP-SWITCHER "CRM" link. That link only exists on the apps home
+    // screen - from inside a record form (a Contact detail, say) the top bar shows that app's own
+    // menus instead, so the wait can never succeed and burns its whole budget. subscription-10.3
+    // lost 240 s there:
+    //   waiting for locator('//a[contains(@data-menu-xmlid, "crm.crm_menu_root")]') to be visible
+    // So: probe for the link BRIEFLY, and fall back to navigating straight to the Opportunities
+    // action. This is a different route, not a longer wait - raising the timeout would not have
+    // helped, the element was never going to render.
+    const switcherVisible = await this.crmLink()
+      .isVisible({ timeout: CommonUtils.waitTimes.elementVisibility })
+      .catch(() => false);
+
+    if (switcherVisible) {
+      await this.navigateToCRM();
+    } else {
+      console.log('  - CRM app-switcher link not on screen, navigating to the Opportunities action by URL');
+      const origin = new URL(this.page.url()).origin;
+      await this.page.goto(`${origin}/web#action=${await this.xmlId('crm.crm_lead_opportunities_tree_view')}&model=crm.lead&view_type=kanban&menu_id=${await this.xmlId('crm.crm_menu_root')}`, {
+        waitUntil: 'domcontentloaded',
+      });
+      await this.dismissErrorDialog().catch(() => {});
+    }
+
     await this.waitForURL(CRM_KANBAN_URL, CommonUtils.waitTimes.pageLoad);
   }
 

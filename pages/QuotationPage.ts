@@ -1089,6 +1089,64 @@ export class QuotationPage extends BasePage {
   }
 
   /**
+   * Press the form's "Save" button and report what the save produced.
+   *
+   * Written for the Duplicate test case: Odoo 12 opens the COPY in EDIT mode (Save / Discard in the
+   * breadcrumb), so the copy is only committed once Save is pressed. The save is confirmed by the
+   * form LEAVING edit mode - the Edit button returns and the Save button is gone - never by a fixed
+   * wait, and the record id is re-read so a caller can prove Save stayed on the same record instead
+   * of creating another one.
+   *
+   * @param timeout - how long to wait for the form to leave edit mode
+   */
+  async saveQuotationForm(timeout: number = CommonUtils.waitTimes.savingPage): Promise<{
+    wasInEditMode: boolean;
+    saved: boolean;
+    editButtonVisible: boolean;
+    saveButtonGone: boolean;
+    recordIdBefore: string;
+    recordIdAfter: string;
+    elapsedMs: number;
+    popupText: string;
+  }> {
+    const recordIdBefore = this.getRecordIdFromUrl();
+    const wasInEditMode = await this.saveButton()
+      .isVisible({ timeout: CommonUtils.waitTimes.elementVisibility })
+      .catch(() => false);
+    console.log(`  - Form is in edit mode before Save: ${wasInEditMode} (record id: ${recordIdBefore || '(none)'})`);
+
+    const start = Date.now();
+    if (wasInEditMode) {
+      await this.saveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      console.log('  - Clicked "Save"');
+    }
+
+    const editButtonVisible = await this.editButtonLoc()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+    const saveStillVisible = await this.saveButton().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
+    const saveButtonGone = !saveStillVisible;
+    const elapsedMs = Date.now() - start;
+
+    const popupText = await this.getBlockingPopupText(CommonUtils.waitTimes.extraLong);
+    if (popupText) {
+      console.log(`  - Save answered with a popup: "${popupText.substring(0, 300)}"`);
+      await this.dismissBlockingPopup();
+    }
+
+    const recordIdAfter = this.getRecordIdFromUrl();
+    // A form that was never in edit mode has nothing to save - reporting that as "saved" would
+    // turn a Duplicate that never opened the copy into a vacuous PASS.
+    const saved = wasInEditMode && editButtonVisible && saveButtonGone;
+    console.log(`  - Edit button back: ${editButtonVisible}`);
+    console.log(`  - Save button gone: ${saveButtonGone}`);
+    console.log(`  - Record id after Save: ${recordIdAfter || '(none)'}`);
+    console.log(`  ${saved ? '\u2713' : '\u26a0'} Saved (form left edit mode): ${saved} (${(elapsedMs / 1000).toFixed(2)}s)`);
+    return { wasInEditMode, saved, editButtonVisible, saveButtonGone, recordIdBefore, recordIdAfter, elapsedMs, popupText };
+  }
+
+  /**
    * Verify the Quotation was confirmed into a Sales Order (call after clickConfirm()).
    *
    * After a successful CONFIRM the status becomes "Sales Order", the CONFIRM button disappears
@@ -1329,9 +1387,25 @@ export class QuotationPage extends BasePage {
 
   /** Read the order line "Subtotal After All Discounts" for the given product code as a number (line Sub Total). */
   async getLineSubtotalAfterAllDiscounts(productCode: string): Promise<number> {
-    const raw = await this.getOrderLineCellByHeader(productCode, 'Subtotal After All Discounts');
+    // The Deal Element order-line grid carries "Subtotal After All Discounts", but the QUOTATION
+    // grid does not - there the column is plain "Subtotal". Reading the absent header returned an
+    // empty cell, which parsed to 0, and subscription-1.4 then compared a real 287.5 against
+    // that 0 and failed on what looked like a product discrepancy.
+    // Fall back, and THROW when neither column is present: a silent 0 is how this hid for weeks.
+    let header = 'Subtotal After All Discounts';
+    let raw = await this.getOrderLineCellByHeader(productCode, header);
+    if (!raw || !raw.trim()) {
+      header = 'Subtotal';
+      raw = await this.getOrderLineCellByHeader(productCode, header);
+    }
+    if (!raw || !raw.trim()) {
+      throw new Error(
+        `No "Subtotal After All Discounts" and no "Subtotal" cell found for product "${productCode}" ` +
+        'on this order-line grid - the column names have changed, or the line is not on screen.'
+      );
+    }
     const value = this.parseAmount(raw);
-    console.log(`  - Quotation line Subtotal After All Discounts (${productCode}): ${value} (raw: "${raw}")`);
+    console.log(`  - Quotation line "${header}" (${productCode}): ${value} (raw: "${raw}")`);
     return value;
   }
 
@@ -1366,7 +1440,7 @@ export class QuotationPage extends BasePage {
    */
   async openNewQuotationForm(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#action=344&model=sale.order&view_type=form&menu_id=202`, { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('sale.action_quotations_with_onboarding')}&model=sale.order&view_type=form&menu_id=${await this.xmlId('sale.sale_menu_root')}`, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialog().catch(() => {});
     await this.customerInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
@@ -1450,6 +1524,28 @@ export class QuotationPage extends BasePage {
     const n = await this.listDataRows().count().catch(() => 0);
     console.log(`  - Quotations list row count = ${n}`);
     return n;
+  }
+
+  /**
+   * Open the first data row of an order LIST and wait for its form.
+   *
+   * Needed because a smart button that links to a single order does not always open that order's
+   * form - Odoo 12 can land on a one-row list instead, where every form-field reader (the order
+   * number included) correctly returns "" and reads as "the link went nowhere".
+   *
+   * @returns true when a row was opened, false when the list held no data rows
+   */
+  async openFirstListRow(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<boolean> {
+    const n = await this.listDataRows().count().catch(() => 0);
+    if (n === 0) {
+      console.log('  - openFirstListRow: no data rows on screen');
+      return false;
+    }
+    await this.listDataRows().first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForFormView(timeout).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - openFirstListRow: opened row 1 of ${n}`);
+    return true;
   }
 
   /**
@@ -1546,13 +1642,25 @@ export class QuotationPage extends BasePage {
   async addOrderLineBySku(productTerm: string, quantity: number): Promise<void> {
     await this.page.locator('a.nav-link').filter({ hasText: 'Order Lines' }).first().click().catch(() => {});
     await this.wait(CommonUtils.waitTimes.standard);
+    // The tab click above is best-effort - on the NAKIVO theme the header can overflow that tab into
+    // "More" ~0.5s after render. Assert the tab really opened, so a miss fails here in 30s instead of
+    // hanging on a row that was never on screen until the 15-minute test timeout.
+    await this.qOrderLinesContainer().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage });
     await this.qOrderLinesAddRow().click();
     await this.wait(CommonUtils.waitTimes.long);
     const productInput = this.qOrderLinesContainer().locator('div[name="product_id"] input').first();
     await productInput.click();
     await productInput.pressSequentially(productTerm, { delay: 40 });
     await this.wait(CommonUtils.waitTimes.extraLong);
-    await this.page.locator('.ui-autocomplete li.ui-menu-item a').first().click();
+    // Odoo 12 keeps ONE ul.ui-autocomplete per many2one field in the DOM and hides the ones not in
+    // use. On a quotation the partner field has already left a hidden list earlier in the document,
+    // so an unscoped .first() picks THAT one: the locator resolves, the <a> never becomes visible,
+    // and the click retries for 15 minutes. This is what timed out subscription-1.1 / 1.2 /
+    // 1.3 / 10.1 twice over (2026-10-07, 900000ms each, always at this line). Scope to the list
+    // that is actually on screen, and bound the wait.
+    const productSuggestion = this.page.locator('.ui-autocomplete:visible li.ui-menu-item a').first();
+    await productSuggestion.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage });
+    await productSuggestion.click();
     await this.wait(CommonUtils.waitTimes.long);
     const qtyInput = this.qOrderLinesContainer().locator('input[name="product_uom_qty"]').first();
     await qtyInput.click();
@@ -2103,5 +2211,130 @@ export class QuotationPage extends BasePage {
           .filter((t) => t.length > 0 && !/^\(/.test(t))
       )
       .catch(() => [] as string[]);
+  }
+
+  // ─── Setters the CRM-11857 exchange-rate cases need ───────────────────────
+  // CRM-13394 (3.3) changes a quotation's Order Date and a line's quantity; CRM-13404 (4.6) does the
+  // same; CRM-13416 (8.4) changes the quotation's Pricelist. Before 2026-10-13 the class could only
+  // READ those three things, so all three cases were parked as [BLOCKED].
+  // The form must be in EDIT mode first - the caller does that with `clickEdit()`.
+
+  /** The Order Date input (`date_order`) on the quotation form, in edit mode. */
+  private readonly orderDateInput = () =>
+    this.page
+      .locator('xpath=//input[@name="date_order"]')
+      .or(this.page.locator('input[name="date_order"]'))
+      .first();
+
+  /** The Pricelist many2one input, in edit mode. */
+  private readonly pricelistInput = () =>
+    this.page
+      .locator('xpath=//div[@name="pricelist_id" and not(contains(@class,"o_invisible_modifier"))]//input')
+      .or(this.page.locator('div[name="pricelist_id"]:not(.o_invisible_modifier) input'))
+      .first();
+
+  /** The order-line row carrying a product, matched on the product text of the row. */
+  private readonly orderLineRowFor = (productTerm: string) =>
+    this.qOrderLinesContainer()
+      .locator(`xpath=.//tr[contains(@class,"o_data_row")][.//*[contains(normalize-space(),"${productTerm}")]]`)
+      .or(this.qOrderLinesContainer().locator(`tr.o_data_row:has-text("${productTerm}")`))
+      .first();
+
+  /**
+   * Set the quotation's Order Date. The form must already be in EDIT mode.
+   *
+   * @param dateText - exactly as the form renders/accepts it on this build, e.g. "08/03/2026 10:00:00"
+   * @returns true when the input reads back the value that was typed
+   */
+  async setOrderDate(dateText: string): Promise<boolean> {
+    console.log(`  - Setting Order Date = ${dateText}`);
+    const input = this.orderDateInput();
+    const visible = await input
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
+    if (!visible) {
+      console.log('  ! No "date_order" input on the quotation form - is it in edit mode?');
+      return false;
+    }
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.keyboard.press('Control+A');
+    await this.page.keyboard.press('Backspace');
+    await input.fill(dateText, { timeout: CommonUtils.waitTimes.abnormalWait });
+    // Escape closes the datepicker overlay without discarding the typed value.
+    await this.page.keyboard.press('Escape');
+    await this.wait(CommonUtils.waitTimes.medium);
+    const readBack = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    console.log(`  - Order Date reads back as "${readBack}"`);
+    return readBack.trim() === dateText.trim();
+  }
+
+  /**
+   * Set the quotation's Pricelist. The form must already be in EDIT mode.
+   *
+   * Changing the pricelist re-prices the order lines, which Odoo does server-side, so the caller
+   * must save and re-read the totals rather than trusting what is on screen immediately after.
+   *
+   * @param pricelistLabel - e.g. "Public Pricelist_GBP (GBP)"
+   * @returns true when the input reads back a value matching what was asked for
+   */
+  async setQuotationPricelist(pricelistLabel: string): Promise<boolean> {
+    console.log(`  - Setting Pricelist = ${pricelistLabel}`);
+    const input = this.pricelistInput();
+    const visible = await input
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
+    if (!visible) {
+      console.log('  ! No "pricelist_id" input on the quotation form - is it in edit mode?');
+      return false;
+    }
+    await input.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.fill(pricelistLabel, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Enter');
+    await this.wait(CommonUtils.waitTimes.long);
+    const readBack = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    const ok = readBack.trim().length > 0;
+    console.log(`  - Pricelist reads back as "${readBack}"`);
+    return ok;
+  }
+
+  /**
+   * Change the quantity of an EXISTING order line. The form must already be in EDIT mode.
+   *
+   * @param productTerm - text identifying the line (SKU or product name as the row renders it)
+   * @param quantity - the new quantity
+   * @returns true when the quantity cell reads back the new value
+   */
+  async setOrderLineQuantity(productTerm: string, quantity: number): Promise<boolean> {
+    console.log(`  - Setting the quantity of the "${productTerm}" line to ${quantity}`);
+    const row = this.orderLineRowFor(productTerm);
+    const present = await row
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
+    if (!present) {
+      console.log(`  ! No order line matching "${productTerm}"`);
+      return false;
+    }
+    await row.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const qtyInput = this.qOrderLinesContainer().locator('tr.o_selected_row input[name="product_uom_qty"]').first();
+    const editable = await qtyInput
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .then(() => true)
+      .catch(() => false);
+    if (!editable) {
+      console.log('  ! The line did not become editable - no product_uom_qty input in the selected row');
+      return false;
+    }
+    await qtyInput.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await qtyInput.fill(String(quantity), { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const readBack = await qtyInput.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    console.log(`  - Quantity reads back as "${readBack}"`);
+    return parseFloat(readBack) === quantity;
   }
 }

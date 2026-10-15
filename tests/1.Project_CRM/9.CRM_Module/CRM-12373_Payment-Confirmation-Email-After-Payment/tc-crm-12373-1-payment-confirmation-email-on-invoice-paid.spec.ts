@@ -54,7 +54,7 @@ import {
  *    CRM-12373 rather than a defect.
  *
  *    The Stripe / partner-portal leg of AC #1 is NOT automated here: the card is typed on the payment
- *    provider's own page, outside the system under test (same reason CRM-11806_1.2.12 is [Manual]).
+ *    provider's own page, outside the system under test (same reason subscription-4.4 is [Manual]).
  *
  *  Command to run:
  *    npx playwright test --grep "CRM-12373_1:" --project=chromium

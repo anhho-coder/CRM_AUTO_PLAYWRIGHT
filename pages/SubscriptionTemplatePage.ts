@@ -77,7 +77,7 @@ export class SubscriptionTemplatePage extends BasePage {
   /** Open the Subscription Templates list (action 433 / menu 279). */
   async openList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#action=433&model=sale.subscription.template&view_type=list&menu_id=279`, { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('sale_subscription.sale_subscription_template_action')}&model=sale.subscription.template&view_type=list&menu_id=${await this.xmlId('sale_subscription.menu_template_of_subscription')}`, { waitUntil: 'domcontentloaded' });
     await this.waitForLoadingSpinnerToHide(timeout).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
     await this.ensureListView();
@@ -176,7 +176,7 @@ export class SubscriptionTemplatePage extends BasePage {
    * The radio branch is NOT optional. Odoo renders `widget="radio"` fields (Payment Mode) as a
    * Bootstrap custom-radio group whose <input> carries the technical value in `data-value` and has
    * NO `value` attribute at all - so `inputValue()` returns "" and the generic input branch would
-   * silently report an empty Payment Mode. That is exactly how CRM-11806_1.1.4 came to save the
+   * silently report an empty Payment Mode. That is exactly how subscription-2.2 came to save the
    * wrong template configuration while still logging a plausible-looking value.
    */
   private async readValue(fieldName: string): Promise<string> {
@@ -381,9 +381,9 @@ export class SubscriptionTemplatePage extends BasePage {
    * Archive every ACTIVE template whose name starts with `prefix`, and report how many were dealt
    * with. Best-effort: a template that cannot be opened or archived is logged and skipped.
    *
-   * Housekeeping for the template cases. CRM-11806_1.1.4 creates a throwaway "Tmpl-Off-<unique>"
+   * Housekeeping for the template cases. subscription-2.2 creates a throwaway "Tmpl-Off-<unique>"
    * template and archives it as part of the case - but when the case fails BEFORE the archive step,
-   * the template stays active and the next run of CRM-11806_1.1.3 ("the list holds exactly the five
+   * the template stays active and the next run of subscription-2.1 ("the list holds exactly the five
    * templates in use") fails on the leftovers rather than on a real defect. Sweep first, so a red
    * 1.1.3 always means something real.
    */

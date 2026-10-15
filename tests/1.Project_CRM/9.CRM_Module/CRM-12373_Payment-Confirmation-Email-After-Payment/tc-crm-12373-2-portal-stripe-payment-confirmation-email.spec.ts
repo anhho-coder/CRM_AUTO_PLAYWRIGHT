@@ -24,7 +24,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    This is the counterpart of CRM-12373_1, which showed that a BACK-OFFICE Register Payment creates
  *    only an `account.payment` (`transaction_ids = []`) and so emails the payer nothing.
  *
- *  WHY THIS IS AUTOMATABLE (CRM-11806_1.2.12 assumed it was not)
+ *  WHY THIS IS AUTOMATABLE (subscription-4.4 assumed it was not)
  *    Probed on pre-prod 2026-08-25: "Pay now" expands the `#pay_with` block ON THE INVOICE PAGE. The
  *    card fields are Stripe.js v3 Elements mounted in iframes served from js.stripe.com - they are not
  *    a provider-hosted page - so Playwright can type into them. Acquirer 8 "Stripe (Credit Сard)" runs

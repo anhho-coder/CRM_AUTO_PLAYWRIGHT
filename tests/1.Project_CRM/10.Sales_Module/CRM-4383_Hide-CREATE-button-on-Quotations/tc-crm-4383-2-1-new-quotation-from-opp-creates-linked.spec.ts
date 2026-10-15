@@ -39,7 +39,7 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
  *      (the customer inherited from the Opportunity). The intended create path is unaffected by the fix.
  *
  *  Design notes:
- *    - Mirrors the proven Subscription-1.1 create path (Opp -> Deal Element -> add product -> New
+ *    - Mirrors the proven subscription-1.4 create path (Opp -> Deal Element -> add product -> New
  *      Quotation). "New Quotation" here = the Deal Element's action_create_quote_from_de button
  *      (QuotationPage.clickNewQuotation), i.e. the only sanctioned way for a Salesperson to raise a
  *      quotation now that the list CREATE button is hidden.
