@@ -297,15 +297,55 @@ export async function createSubscriptionMig(
   console.log(`  draft-state observations: Date of Next Invoice visible = ${dateVisibleInDraft}, "Generate Invoice" visible = ${linkVisibleInDraft}`);
 
   const reference = await subs.saveInEmbed(frame);
+
+  // Same fix as createSubscriptionViaEmbed, and for the same reason: the id comes from the frame
+  // URL, not from a `code` search. See that function for the measurement.
+  const peerId = await subs.waitForEmbedRecordId(frame);
+  if (peerId === null) {
+    throw new Error(
+      'The embed saved but the peer id never appeared in the frame URL, so this run would leave an ' +
+      'orphan on the peer. Nothing was handed back.\n' +
+      `  frame URL  : ${frame.url()}\n` +
+      `  Reference  : ${reference || '(the form carried none)'}\n` +
+      `  Customer   : ${customerUsed}`,
+    );
+  }
   expect(reference, 'the subscription saved in the embed should carry a SUB reference').toMatch(/SUB\d+/i);
   if (opts.nextInvoiceDate) await subs.setEmbedStage(frame, 'In Progress');
 
   const rows = await subs.presalesCallKw<any[]>(
-    'sale.subscription', 'search_read', [[['code', '=', reference]], ['code']], { limit: 1 },
+    'sale.subscription', 'read', [[peerId], ['code', 'name']], {},
   );
-  const peerId = rows?.[0]?.id ?? null;
-  expect(peerId, `the subscription "${reference}" should be readable back on the peer`).not.toBeNull();
-  console.log(`  created on the peer: ${reference} (id ${peerId}) for "${customerUsed}"`);
+  const code = String(rows?.[0]?.code || reference);
+  expect(rows?.[0], `the subscription this run created (peer id ${peerId}) should be readable back on the peer`)
+    .toBeTruthy();
+  console.log(`  created on the peer: ${code} (id ${peerId}) for "${customerUsed}"`);
 
-  return { reference, dateVisibleInDraft, linkVisibleInDraft, peerId: peerId as number, customerUsed };
+  return { reference: code, dateVisibleInDraft, linkVisibleInDraft, peerId, customerUsed };
+}
+
+/**
+ * Print an OBSERVATION - a reading that is deliberately NOT scored.
+ *
+ * Two QA cards in "Subscription Test Cases" (CRM-12140) carry an explicit **DO NOT SCORE** rule
+ * because the specification text and the delivered configuration disagree, and the disagreement is
+ * the card's whole subject:
+ *   - **SC-21** (CRM-11806_5.4): the spec says a Monthly subscription "shall not be terminated
+ *     automatically", but the delivered Monthly template sets no closing limit, so the run applies
+ *     the 15-day fallback and the subscription closes.
+ *   - **SC-34** (CRM-11806_7.1): FUNC-0161 describes an upsell quotation, but the delivered
+ *     configuration switches upsell off.
+ * The document's own convention: *"Record as an observation" = a known difference between sources:
+ * write down what you saw and do not score it.*
+ *
+ * So these two cases must not `expect()` their subject - a PASS would certify behaviour the
+ * specification contradicts, and a FAIL would report a defect nobody has ruled on. This prints the
+ * reading in the same shape as `logVerify` but with **OBSERVED** where the verdict would be, so a
+ * reader of the run log cannot mistake it for a result. Awaiting the PM's ruling on CRM-11806.
+ */
+export function logObservation(label: string, specSays: string, observed: string): void {
+  console.log(`OBSERVATION (${label}) - DO NOT SCORE:`);
+  console.log(`  Specification: ${specSays}`);
+  console.log(`  Observed     : ${observed}`);
+  console.log('  Result       : OBSERVED (not scored - awaiting the PM ruling on CRM-11806)');
 }

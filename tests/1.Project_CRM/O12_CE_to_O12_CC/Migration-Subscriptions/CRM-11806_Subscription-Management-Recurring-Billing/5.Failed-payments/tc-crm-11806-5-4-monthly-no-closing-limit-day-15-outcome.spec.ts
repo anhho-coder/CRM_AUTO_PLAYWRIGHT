@@ -7,6 +7,7 @@ import { SubscriptionPageEmbed as SubscriptionPage } from '@pages/mig';
 import { HomePageMig as HomePage, LoginPageMig as LoginPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import { logVerify } from '@helpers/crm-11806-subscription.helper';
+import { logObservation } from '@helpers/crm-11806-mig-subscription.helper';
 
 /**
  * ============================================================================================
@@ -286,10 +287,24 @@ test.describe(`${TC_ID} - Record what day 15 produces on a Monthly Subscription 
       console.log('(whether the subscription was closed and the failure message appeared) for comparison against the');
       console.log('spec requirement. Report any discrepancy to the PM (specification owner).');
 
-      // Expectations after VERIFY block is printed
+      // The PRE-CONDITION is still a hard assertion: without a reference this case verified nothing.
       expect(TARGET_SUBSCRIPTION_REFERENCE, 'TARGET_SUBSCRIPTION_REFERENCE must be set when READY_FOR_VERIFICATION is true').not.toBe('');
-      expect(subscriptionStageBar, 'VP3: the stage bar should show "Closed" after the 15-day dunning limit').toBe('Closed');
-      expect(chatterText, 'VP3: the chatter should carry the automatic dunning failure message').toContain('Automatic payment failed after multiple attempts. Subscription closed automatically.');
+
+      // VP3 IS NOT SCORED (changed 2026-10-16, at the tester's direction).
+      // SC-21 carries an explicit "DO NOT SCORE THIS CARD - record the outcome for the PM", and
+      // VP3 is exactly its subject. These were two `expect()`s:
+      //     expect(subscriptionStageBar).toBe('Closed')
+      //     expect(chatterText).toContain('Automatic payment failed after multiple attempts...')
+      // Either verdict would have been wrong to publish. A PASS certifies that a Monthly
+      // subscription closes automatically - which the specification says it "shall not" do. A FAIL
+      // reports a defect against delivered behaviour nobody has ruled on yet. The reading is
+      // recorded instead, and the ruling is open with the PM on CRM-11806.
+      logObservation(
+        'VP3 - day 15 on a Monthly subscription with no closing limit',
+        'the specification says a Monthly subscription "shall not be terminated automatically"',
+        `stage bar = "${subscriptionStageBar}"; the automatic-closure chatter line was ` +
+        `${chatterText.includes('Automatic payment failed after multiple attempts. Subscription closed automatically.') ? 'PRESENT' : 'ABSENT'}`,
+      );
     });
   });
 });

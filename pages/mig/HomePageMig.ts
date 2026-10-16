@@ -27,7 +27,7 @@ export class HomePageMig extends HomePage {
       .first();
 
   async navigateToCRM() {
-    await this.goto(MigPlatformPage.appUrl(MigPlatformPage.HASH.crm));
+    await this.goto(await new MigPlatformPage(this.page).appUrlFor('crm'));
     await this.waitForURL(HomePageMig.CRM_KANBAN_URL_RE, CommonUtils.waitTimes.pageLoad);
     await this.dismissErrorDialog();
   }
@@ -43,7 +43,7 @@ export class HomePageMig extends HomePage {
    * `navigateToCRM()` already uses here.
    */
   async returnToHome() {
-    await this.goto(MigPlatformPage.appUrl(MigPlatformPage.HASH.apps));
+    await this.goto(await new MigPlatformPage(this.page).appUrlFor('apps'));
     await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad);
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.dismissErrorDialog();
@@ -68,24 +68,67 @@ export class HomePageMig extends HomePage {
     await this.wait(CommonUtils.waitTimes.standard);
   }
 
-  /** Open an action by its Mig URL hash and wait until its LIST view has rendered. */
-  private async openListByHash(hash: string) {
-    await this.goto(MigPlatformPage.appUrl(hash));
-    await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad);
-    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
-    await this.dismissErrorDialog();
-    await this.recordsViewRoot().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
-    await this.wait(CommonUtils.waitTimes.long);
+  /**
+   * Open an action by its Mig URL hash and wait until its records view has rendered.
+   *
+   * TWO ATTEMPTS, AND A NAMED FAILURE (2026-10-16). A single `goto` + one long `waitFor` was not
+   * enough: on 2026-10-16 CRM-11806_1.1 sat here for the full 240 s and the page snapshot showed
+   * **Discuss / Inbox**, not the Opportunities list - while CRM-11806_1.2 and 1.3 opened the same
+   * action from the same hash minutes later in the same run. So the hash is right (the log records
+   * `#menu_id=482&action=864&model=crm.lead&view_type=list`, the form that renders) and the screen
+   * is reachable; what happens is that the client sometimes finishes booting on the session's last
+   * action before it applies the fragment, and then nothing ever re-applies it.
+   *
+   * Re-applying the hash and RELOADING is the fix already proven for the embed menus
+   * (`SubscriptionPageMig.openEmbedMenu`): a hash-only change does not reload, so the client has to
+   * boot WITH the fragment in place. The first wait is therefore short enough to leave the retry a
+   * budget, and a run that still lands elsewhere says WHERE it landed - a bare
+   * `locator.waitFor: Timeout 240000ms exceeded` sent the last session looking for a selector
+   * problem that was never there.
+   */
+  private async openListByHash(appKey: string) {
+    const url = await new MigPlatformPage(this.page).appUrlFor(appKey);
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      if (attempt === 1) {
+        await this.goto(url);
+      } else {
+        console.log(`  - "${appKey}" did not render a records view; re-applying the hash and reloading once`);
+        await this.goto(url);
+        await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      }
+      await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad).catch(() => {});
+      await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+      await this.dismissErrorDialog();
+
+      const rendered = await this.recordsViewRoot()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true).catch(() => false);
+      if (rendered) {
+        await this.wait(CommonUtils.waitTimes.long);
+        return;
+      }
+    }
+
+    // Say what IS on screen. "Discuss" here is the client having booted on the wrong action, which
+    // is a different problem from the action not existing or the list being slow.
+    const heading = (await this.page.locator('.breadcrumb-item.active, .o_control_panel h1, h1')
+      .first().textContent({ timeout: CommonUtils.waitTimes.long }).catch(() => '') || '').trim();
+    throw new Error(
+      `"${appKey}" never rendered a records view, twice. URL = ${this.page.url()}; the screen reads ` +
+      `"${heading || '(no heading)'}". If that is Discuss/Inbox the client booted on the session's ` +
+      'last action instead of the hash - that is this navigation, not a slow list and not a wrong selector.',
+    );
   }
 
   /** CRM > Leads (list view) - replaces the navbar/dropdown click of the base object. */
   async navigateToLeads() {
-    await this.openListByHash(MigPlatformPage.HASH.leads);
+    await this.openListByHash('leads');
   }
 
   /** Contacts (list view) - replaces the sidebar-menu click of the base object. */
   async navigateToContacts() {
-    await this.openListByHash(MigPlatformPage.HASH.contactsList);
+    await this.openListByHash('contactsList');
   }
 
   /**
@@ -93,6 +136,55 @@ export class HomePageMig extends HomePage {
    * "click at CRM, then click at view list" pair of steps.
    */
   async navigateToOpportunitiesList() {
-    await this.openListByHash(MigPlatformPage.HASH.opportunitiesList);
+    await this.openListByHash('opportunitiesList');
+  }
+
+  /**
+   * Search the Apps Kanban view for a module by its name.
+   *
+   * On Mig, the Apps screen uses a Kanban layout. This method:
+   * 1. Opens the Apps screen
+   * 2. Looks for a search input and clears any existing filter
+   * 3. Searches for the module name
+   * 4. Returns true if the module card is found, false if not (empty state or not listed)
+   *
+   * @param moduleName - the name to search for, e.g. "Live Currency Exchange Rate"
+   * @returns true when the module is found in the search results
+   */
+  async searchAppsForModule(moduleName: string): Promise<boolean> {
+    console.log(`  - Searching Apps for module: "${moduleName}"`);
+    await this.returnToHome();
+
+    // Wait for the Apps Kanban to load
+    await this.waitForHomePageLoad(CommonUtils.waitTimes.pageLoad);
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // Look for the search input on the Apps Kanban (selector: input[type="text"] - the Apps search box)
+    const searchInput = this.page.locator('input[type="text"]').first();
+    const searchVisible = await searchInput.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    if (!searchVisible) {
+      console.log('  ! Apps search input not found');
+      return false;
+    }
+
+    // Clear the search input and type the module name
+    await searchInput.click().catch(() => {});
+    await searchInput.press('Control+a').catch(() => {});
+    await searchInput.press('Backspace').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+
+    // Type the search term
+    await searchInput.type(moduleName, { delay: 50 });
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // Check if the module card is found or if we get the "no results" message
+    // Look for a module card with the name (usually in a .o_kanban_record or similar)
+    const moduleCard = this.page.locator('xpath=//div[contains(@class,"o_kanban_record")] | //div[contains(@class,"oe_kanban_card")]')
+      .filter({ hasText: new RegExp(moduleName, 'i') })
+      .first();
+
+    const found = await moduleCard.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false);
+    console.log(`  ${found ? '✓' : '!'} Module "${moduleName}" search result: ${found ? 'FOUND' : 'NOT FOUND'}`);
+    return found;
   }
 }

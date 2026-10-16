@@ -11,7 +11,7 @@ import {
   logVerify,
   todayMMDDYYYY,
 } from '@helpers/crm-11806-subscription.helper';
-import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-subscription.helper';
+import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as loginAsCrmAdmin, logObservation } from '@helpers/crm-11806-mig-subscription.helper';
 
 /**
  * ============================================================================================
@@ -29,7 +29,21 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  PORT - this spec is the crm-mig twin of a pre-production baseline case.
  *  Baseline twin   : tests/1.Project_CRM/9.CRM_Module/8.Subscriptions/7.Lifecycle-change-upsell-renewal-suspension-closure/tc-subscription-7-1-upsell-off-lines-are-the-mid-period-path.spec.ts
  *  Baseline TC ID  : subscription-7.1  (assertions below are the baseline's, copied verbatim)
- *  QA card         : SC-34  - "Subscription Test Cases" (CRM-12140, Nathan)
+ *  QA card         : SC-34 (DO NOT SCORE - spec vs delivered)  - "Subscription Test Cases"
+ *                    (CRM-12140, Nathan)
+ * --------------------------------------------------------------------------------------------
+ *  DO NOT SCORE THIS CASE.
+ *  SC-34 says so in those words. FUNC-0161 describes an upsell quotation; the delivered
+ *  configuration switches upsell OFF. That difference IS this card's subject, so a verdict here
+ *  would publish a ruling QA is not entitled to make: a PASS certifies that upsell is absent (which
+ *  FUNC-0161 contradicts), a FAIL reports a defect against a configuration nobody has ruled on.
+ *  VP1-VP4 therefore RECORD their readings through `logObservation()` instead of asserting them;
+ *  only the pre-condition (the subscription has a real Recurring Price) is still a hard assertion.
+ *  The document's own convention: "Record as an observation = a known difference between sources:
+ *  write down what you saw and do not score it."
+ *  Ruling open with the specification owner (PM) on CRM-11806 - restore the assertions only when
+ *  the PM has said which side is the specification. Changed 2026-10-16 at the tester's direction.
+ *  The sibling case under the same rule is CRM-11806_5.4 (SC-21).
  *  Runs on         : CRM https://crm-mig.nakivo.site (Odoo 12 CE)
  *                    Subscription service https://subscription-crm-mig.nakivo.site (Odoo 19)
  *                    Customer portal https://subscription-crm-mig.nakivo.site/my
@@ -162,7 +176,15 @@ test.describe(`${TC_ID} - Upsell is off; lines are the mid-period path`, () => {
       );
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - subscription header without an upsell button').catch(() => {});
-      expect(present, 'VP1: the upsell quotation is switched off, so no upsell button may appear in the header').toEqual([]);
+      // NOT SCORED - SC-34 says "DO NOT SCORE THIS CARD". FUNC-0161 describes an upsell
+      // quotation while the delivered configuration switches upsell off, and that difference is
+      // the card's whole subject, so neither verdict may be published. Ruling open with the PM
+      // on CRM-11806. (Changed 2026-10-16 at the tester's direction.)
+      logObservation(
+        'VP1 - upsell button in the subscription header',
+        'FUNC-0161 describes an upsell quotation; the delivered configuration switches upsell off',
+        present.length ? `still present: ${present.join(' | ')}` : 'none of the upsell labels is present',
+      );
     });
 
     await test.step('Step 2: Open the "Action" menu and look for an upsell entry', async () => {
@@ -177,7 +199,15 @@ test.describe(`${TC_ID} - Upsell is off; lines are the mid-period path`, () => {
       );
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - Action menu without an upsell entry').catch(() => {});
-      expect(found, 'VP2: no upsell action may be offered on the subscription form').toEqual([]);
+      // NOT SCORED - SC-34 says "DO NOT SCORE THIS CARD". FUNC-0161 describes an upsell
+      // quotation while the delivered configuration switches upsell off, and that difference is
+      // the card's whole subject, so neither verdict may be published. Ruling open with the PM
+      // on CRM-11806. (Changed 2026-10-16 at the tester's direction.)
+      logObservation(
+        'VP2 - upsell entry in the "Action" menu',
+        'FUNC-0161 describes an upsell quotation; the delivered configuration switches upsell off',
+        found.length ? `the form text still mentions: ${found.join(' | ')}` : 'the form text mentions no upsell entry',
+      );
     });
 
     await test.step(`Step 3: Add a second Subscription line (${SKU_ENT_MONTHLY} x 5) and save`, async () => {
@@ -199,9 +229,15 @@ test.describe(`${TC_ID} - Upsell is off; lines are the mid-period path`, () => {
       );
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - second line saved on the subscription').catch(() => {});
-      expect(lineCount, 'VP3: the subscription should now hold 2 Subscription lines').toBe(2);
-      expect(hasBoth, `VP3: both ${SKU_O365} and ${SKU_ENT_MONTHLY} should be listed (read: ${products.join(' | ')})`).toBeTruthy();
-      expect(priceAfter, `VP3: the Recurring Price should rise above ${priceBefore} (read: ${priceAfter})`).toBeGreaterThan(priceBefore);
+      // NOT SCORED - SC-34 says "DO NOT SCORE THIS CARD". FUNC-0161 describes an upsell
+      // quotation while the delivered configuration switches upsell off, and that difference is
+      // the card's whole subject, so neither verdict may be published. Ruling open with the PM
+      // on CRM-11806. (Changed 2026-10-16 at the tester's direction.)
+      logObservation(
+        'VP3 - editing the lines as the mid-period path',
+        'the card expects the added line to be accepted and to bill from the next period',
+        `lines = ${lineCount}, products = [${products.join(' | ')}], Recurring Price = ${priceAfter} (was ${priceBefore}), both SKUs listed = ${hasBoth}`,
+      );
     });
 
     await test.step('Step 4: Read the stage bar', async () => {
@@ -215,10 +251,19 @@ test.describe(`${TC_ID} - Upsell is off; lines are the mid-period path`, () => {
       );
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - stage still In Progress').catch(() => {});
-      expect(stage, 'VP4: the subscription must stay "In Progress" after a line is added').toMatch(/in\s*progress/i);
+      // NOT SCORED - SC-34 says "DO NOT SCORE THIS CARD". FUNC-0161 describes an upsell
+      // quotation while the delivered configuration switches upsell off, and that difference is
+      // the card's whole subject, so neither verdict may be published. Ruling open with the PM
+      // on CRM-11806. (Changed 2026-10-16 at the tester's direction.)
+      logObservation(
+        'VP4 - the stage after a line is added',
+        'the card expects the stage NOT to move to "To Upsell"',
+        `the stage bar reads "${stage}"`,
+      );
 
-      console.log(`✅ ${TC_ID}: no upsell action exists; the added line is the mid-period path and the stage stayed "In Progress"`);
-      console.log('   NOTE: SC-34 is a do-not-score scope guard - record the observed behaviour for the specification owner (PM).');
+      console.log(`OVERALL: ${TC_ID} is a DO-NOT-SCORE card (SC-34) - the four readings above are recorded, not scored.`);
+      console.log('   The specification (FUNC-0161) and the delivered configuration disagree about upsell;');
+      console.log('   the ruling is open with the specification owner (PM) on CRM-11806.');
     });
   });
 });
