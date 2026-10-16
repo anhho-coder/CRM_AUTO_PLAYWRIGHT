@@ -237,6 +237,107 @@ export class DataTablesDashboardPage extends BasePage {
     return rendered;
   }
 
+  /**
+   * The date-range inputs that belong to the TABLE, not to the charts above it.
+   *
+   * These dashboards filter by a date period and several of them default to a period that holds no
+   * rows - Time escalated opens on "this quarter" and HR Contractors Ranking on "this month", both
+   * empty on pre-production while the same screens hold hundreds of rows in other periods. The
+   * period is driven by Odoo datepicker inputs, and a screen can carry several pairs (one per
+   * widget), so the pair is identified by DOM position: the last two datepickers that appear
+   * BEFORE the DataTables wrapper are the ones the table reads.
+   *
+   * @returns the current values of that pair, newest-to-the-table first, or [] when none exist.
+   */
+  async getTableDateRangeInputs(): Promise<string[]> {
+    return this.page.evaluate(() => {
+      const wrapper = document.querySelector('.dataTables_wrapper');
+      if (!wrapper) return [];
+      const all = Array.from(document.querySelectorAll('input.o_datepicker_input')) as HTMLInputElement[];
+      const before = all.filter(
+        (i) => i.compareDocumentPosition(wrapper) & Node.DOCUMENT_POSITION_FOLLOWING
+      );
+      return before.slice(-2).map((i) => i.value);
+    });
+  }
+
+  /**
+   * Set the table's date range and wait for the dashboard to refetch.
+   *
+   * Odoo's datepicker commits on the input's own change event, so the value is written and the
+   * event dispatched explicitly rather than typed - a keyboard entry opens the calendar overlay and
+   * leaves the widget mid-edit. The wait is on the info line CHANGING, not a fixed delay: the
+   * refetch goes through the dashboard's own controller route and its duration varies.
+   *
+   * @param startDate first date, in the format the inputs already display (e.g. '01/01/2025')
+   * @param endDate   last date, same format
+   * @returns true when the info line changed, false when it never did within the budget.
+   */
+  async setTableDateRange(startDate: string, endDate: string): Promise<boolean> {
+    const infoBefore = (await this.getTableSummary()).infoText;
+
+    await this.page.evaluate(
+      ({ startDate, endDate }) => {
+        const wrapper = document.querySelector('.dataTables_wrapper');
+        if (!wrapper) return;
+        const all = Array.from(document.querySelectorAll('input.o_datepicker_input')) as HTMLInputElement[];
+        const before = all.filter(
+          (i) => i.compareDocumentPosition(wrapper) & Node.DOCUMENT_POSITION_FOLLOWING
+        );
+        const pair = before.slice(-2);
+        const values = [startDate, endDate];
+        pair.forEach((input, i) => {
+          input.value = values[i];
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          input.dispatchEvent(new Event('blur', { bubbles: true }));
+        });
+      },
+      { startDate, endDate }
+    );
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await this.page.waitForTimeout(CommonUtils.waitTimes.long);
+      const info = (await this.getTableSummary()).infoText;
+      if (info && info !== infoBefore) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Set a single-month period, for the dashboards whose table shows ONE month rather than a range.
+   *
+   * HR Contractors Ranking Report is of this kind: its pickers read "10/2026", and feeding it a
+   * start/end PAIR is silently ignored - the inputs change, the table does not refetch and stays
+   * empty, which reads exactly like a screen with no data. Writing the same month into every
+   * picker does refetch it: 09/2025 returned 282 entries when measured on 2026-10-16.
+   *
+   * @param month the month in the format the inputs display, e.g. '09/2025'
+   * @returns true when the info line changed, false when it never did within the budget.
+   */
+  async setTableMonth(month: string): Promise<boolean> {
+    const infoBefore = (await this.getTableSummary()).infoText;
+
+    await this.page.evaluate((m: string) => {
+      const inputs = Array.from(
+        document.querySelectorAll('input.o_datepicker_input')
+      ) as HTMLInputElement[];
+      inputs.forEach((input) => {
+        input.value = m;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('blur', { bubbles: true }));
+      });
+    }, month);
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await this.page.waitForTimeout(CommonUtils.waitTimes.long);
+      const info = (await this.getTableSummary()).infoText;
+      if (info && info !== infoBefore) return true;
+    }
+    return false;
+  }
+
   /** Click a column header to sort by it. Index is 0-based, left to right. */
   async clickColumnHeader(index: number): Promise<void> {
     const header = this.columnHeader_dashboard(index);

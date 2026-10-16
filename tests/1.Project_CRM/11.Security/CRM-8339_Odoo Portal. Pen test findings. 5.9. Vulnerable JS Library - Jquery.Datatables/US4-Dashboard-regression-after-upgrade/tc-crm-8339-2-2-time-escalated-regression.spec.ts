@@ -8,7 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
  * =============================================================================================
  *  CRM-8339 - Pen test findings 5.9 (Vulnerable JS Library - jQuery DataTables)
  *  US4 - Dashboard regression after the 1.10.21 -> 1.13.11 upgrade
- *  Screen 2 of 6 - Helpdesk > Reporting > Time escalated
+ *  Screen 2 - Helpdesk > Reporting > Time escalated
  * =============================================================================================
  *  Test Case ID     : CRM-8339_2.2
  *  Jira             : CRM-12630 (Implementation - Dev), parent CRM-8339, spec CRM-11483
@@ -17,8 +17,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Target           : pre-production.nakivo.site
  *  Run as           : CRM admin (admin_crm, anh.ho@nakivo.com) - the dashboards are internal
  *                     back-office screens, so a portal account cannot reach them
- *  Automation-Type  : new
- *  Automation-Date  : 2026-10-13
+ *  Automation-Type  : refactored
+ *  Automation-Date  : 2026-10-16
  *  Source           : Vitalii Ivanov, comments on CRM-12630 (2026-09-25 and 2026-10-09)
  *  Source version   : CRM-12630 updated 2026-10-09T19:16+0300 - re-check before trusting this spec
  *  Evidence         : one screenshot at the end of each "Steps to reproduce" section, a
@@ -26,10 +26,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *
  *  Summary
  *  ---------------------------------------------------------------------------------------------
- *  Runs Vitalii's post-upgrade regression checklist against Time escalated. This dashboard holds
- *  NO ROWS on pre-production, so the spec verifies everything that does not need data - the
- *  columns, the empty state, the sort arrows, the controls - and reports the row-dependent items
- *  as unexercised rather than claiming a pass it did not earn.
+ *  Runs Vitalii's post-upgrade regression checklist against Time escalated.
+ *
+ *  This case used to assert an empty table: the screen opens on "this quarter", which holds no rows
+ *  on pre-production, so sorting, search narrowing and paging were all unexercised and Vitalii
+ *  asked on 2026-10-15 for the screen to be seeded. It does not need seeding - the data is there,
+ *  just outside the default period. Pre-condition 2 below widens the table's own date range to
+ *  01/01/2025 - 12/31/2026, which yields 893 entries, and the full checklist then runs for real.
  *
  *  Command to run
  *  ---------------------------------------------------------------------------------------------
@@ -42,24 +45,18 @@ import { CommonUtils } from '@helpers/common.utils';
  *   escalated, [...]. Look at: table renders, sorting by column header, sort arrows, pagination
  *   and "Show N entries", the search box, CSV export, general appearance."
  *
- *  ---------------------------------------------------------------------------------------------
- *  WHY THIS CASE SCORES LESS THAN ITS SIBLINGS - READ BEFORE QUOTING IT AS COVERAGE
- *  ---------------------------------------------------------------------------------------------
- *  Measured on pre-production 2026-10-13: time_escalated_table renders with its four column
- *  headers, the DataTables controls and the cell "No data available in table" - and ZERO rows.
- *  With no rows:
- *    - sorting cannot be shown to re-order anything (there is nothing to re-order),
- *    - the search box cannot be shown to filter anything down,
- *    - the paginator cannot be shown to reach a second page.
- *  Those three are therefore reported as OBSERVATIONS, not scored. What IS scored is everything
- *  the upgrade could still have broken without data: the table initialises, the columns are
- *  unchanged, the empty state is the library's own, the sort arrows still toggle on a header
- *  click, the length menu offers its values and all four injected controls are on screen.
- *  A green run of this case does NOT establish that sorting, searching and paging work here - it
- *  establishes that the library still drives the screen. Seeding rows is what would close it.
- *
  *  Pre-condition(s):
  *    1. Log in to http://pre-production.nakivo.site/web#home as the CRM admin.
+ *    2. Widen the table's date range to a period that holds rows: 01/01/2025 - 12/31/2026.
+ *       WHY THIS IS A PRE-CONDITION AND NOT A STEP: it is setup, not what the case verifies. The
+ *       screen defaults to "this quarter" (10/01/2026 - 12/31/2026 at the time of writing), which
+ *       holds zero rows on pre-production. Without this the table renders its empty state and
+ *       every row-dependent check below is vacuous.
+ *       AUTOMATION: the period is a pair of Odoo datepicker inputs. A screen can carry several
+ *       pairs - Time escalated has one for its chart and one for its table - so the page object
+ *       picks the last two that appear BEFORE the DataTables wrapper, writes the values and
+ *       dispatches the change event the widget listens for, then waits for the info line to
+ *       change rather than for a fixed delay.
  *
  *  Steps to reproduce #1 - the table renders:
  *    1. Open Helpdesk > Reporting > Time escalated.
@@ -67,30 +64,27 @@ import { CommonUtils } from '@helpers/common.utils';
  *       2026-10-13).
  *    2. Check the table renders.
  *       Expected: DataTables has taken over time_escalated_table and shows exactly four columns,
- *       in this order: (1) Ticket ID (2) Priority type (3) Developer (4) Time escalated, min.
- *       With no data the body holds the library's own empty cell reading exactly "No data
- *       available in table" and the info line reads exactly "Showing 0 to 0 of 0 entries".
+ *       in this order: (1) Ticket ID (2) Priority type (3) Developer (4) Time escalated, min; the
+ *       info line reports a non-zero number of entries.
  *
  *  Steps to reproduce #2 - sorting:
  *    3. Click a column header to sort.
- *       Expected: the click is accepted and the table stays in its empty state - no error, and the
- *       empty cell and info line are unchanged. (The ORDER cannot be checked: there are no rows.)
+ *       Expected: two clicks produce the two opposite orderings of the Ticket ID column, and each
+ *       rendered order matches the direction the header's own arrow reports.
+ *       NOTE: sorting is asserted on the CURRENT PAGE only. DataTables re-sorts the whole data
+ *       set and then re-renders page 1, so the ten names on screen are the first ten of the new
+ *       order - which is exactly what a user sees and what a broken sort would disturb.
  *    4. Check the sort arrows.
- *       Expected: across two clicks the header carries sorting_asc once and sorting_desc once -
- *       the arrow is drawn from that class, so this still verifies the sort UI after the upgrade
- *       even with no data behind it.
+ *       Expected: across the two clicks the header carries sorting_asc once and sorting_desc once.
  *
  *  Steps to reproduce #3 - pagination and search:
  *    5. Use pagination and "Show N entries".
- *       Expected: the length menu offers exactly these values, in this order: 10, 25, 50, 100, and
- *       the paginator is on screen. With 0 entries Next does not advance and the info line stays
- *       "Showing 0 to 0 of 0 entries".
+ *       Expected: the length menu offers exactly these values, in this order: 10, 25, 50, 100.
+ *       At the default length the info line reports "Showing 1 to 10 of N entries" and Next moves
+ *       to a second page whose info line starts at entry 11.
  *    6. Use the search box.
- *       Expected: the box holds the text that was typed and the table stays empty, with the info
- *       line unchanged at "Showing 0 to 0 of 0 entries"; clearing the box empties it again.
- *       MEASURED 2026-10-13: with 0 records DataTables omits its "(filtered from N total entries)"
- *       clause altogether, so its ABSENCE here is correct behaviour and not a defect. The input's
- *       own value is therefore what evidences that the search box still works.
+ *       Expected: typing the first row's Ticket ID value filters the table to only matching rows
+ *       and the info line gains "(filtered from N total entries)"; clearing it restores the table.
  *
  *  Steps to reproduce #4 - export and appearance:
  *    7. CSV export.
@@ -104,14 +98,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *  ---------------------------------------------------------------------------------------------
  *  OPEN POINTS raised by this spec (for CRM-12630, not invented answers)
  *  ---------------------------------------------------------------------------------------------
- *  1. This screen has no rows on pre-production, so sorting, searching and paging are unexercised
- *     here. Vitalii has to say whether that is acceptable coverage for the upgrade or whether the
- *     screen should be seeded before sign-off.
- *  2. RESOLVED 2026-10-15 - Vitalii Ivanov confirmed CSV export comes OFF the checklist: "My error
+ *  1. RESOLVED 2026-10-15 - Vitalii Ivanov confirmed CSV export comes OFF the checklist: "My error
  *     in the checklist. The control does exist - it belongs to the widgets of the main dashboards,
  *     which is why it shows on the Sales screen's charts - but none of the six screens' templates
  *     carry it. It was never a DataTables feature here, so there is nothing to score."
- *  3. These CRM-8339_2.x cases are not yet filed as Xray Test Cases.
+ *  2. These CRM-8339_2.x cases are not yet filed as Xray Test Cases.
  * =============================================================================================
  */
 
@@ -120,22 +111,24 @@ const TC = 'CRM-8339_2.2';
 /** Helpdesk > Reporting > Time escalated - ir.ui.menu 759. */
 const DASHBOARD_MENU_PATH = 'Helpdesk > Reporting > Time escalated';
 const DASHBOARD_ACTION_ID = 1945;
+/**
+ * The period the table is widened to in Pre-condition 2. The screen opens on "this quarter", which
+ * holds no rows on pre-production; this range held 893 entries when measured on 2026-10-16.
+ */
+const DATE_RANGE_START = '01/01/2025';
+const DATE_RANGE_END = '12/31/2026';
 
 /** Grounded on pre-production 2026-10-13. */
 const EXPECTED_TABLE_ID = 'time_escalated_table';
 const EXPECTED_HEADERS = ['Ticket ID', 'Priority type', 'Developer', 'Time escalated, min'];
 const EXPECTED_LENGTH_OPTIONS = ['10', '25', '50', '100'];
-/** The library's own empty-state text and info line, asserted verbatim. */
-const EXPECTED_EMPTY_MESSAGE = 'No data available in table';
-const EXPECTED_EMPTY_INFO = 'Showing 0 to 0 of 0 entries';
-/** The column the sort-arrow check drives. */
+/** The column the sort check drives - a text column, so ordering is unambiguous. */
 const SORT_COLUMN_INDEX = 0;
-/** Any string - with no rows the point is that the box accepts input and nothing breaks. */
-const SEARCH_TERM = 'zzz-no-such-row';
 
 /** Step labels - one source of truth for the test.step() label AND the stdout banner. */
 const STEP = {
   pre1: 'Pre-condition 1: Log in to http://pre-production.nakivo.site/web#home as the CRM admin',
+  pre2: "Pre-condition 2: Widen the table's date range to 01/01/2025 - 12/31/2026, a period that holds rows",
   s1: 'Step 1: Open Helpdesk > Reporting > Time escalated',
   s2: 'Step 2: Check the table renders',
   s3: 'Step 3: Click a column header to sort',
@@ -147,11 +140,40 @@ const STEP = {
   verify: 'Verification',
 } as const;
 
+/**
+ * Ascending compare the way DataTables itself orders a text column: its built-in "string" type
+ * lower-cases each value and compares with plain < / >, i.e. by code unit.
+ *
+ * It deliberately does NOT use localeCompare. Locale collation files an accented name next to its
+ * unaccented neighbour ("Aland Islands" beside "Albania") while the library files it after "Zimbabwe",
+ * so a locale comparator reports a perfectly good sort as broken. Measured on 2026-10-13 against the
+ * 175 country rows of Outside and Inside CM team.
+ */
+const ascending = (values: string[]): string[] =>
+  [...values].sort((a, b) => {
+    const x = a.toLowerCase();
+    const y = b.toLowerCase();
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+
 /** Which way the header's own arrow says the column is sorted. */
 const directionOf = (headerClass: string): 'ascending' | 'descending' | 'none' => {
   if (headerClass.includes('sorting_asc')) return 'ascending';
   if (headerClass.includes('sorting_desc')) return 'descending';
   return 'none';
+};
+
+/**
+ * Whether the rendered order agrees with the arrow the header is drawing. Holding the rows to the
+ * ARROW rather than to a fixed direction means a change of the table's default sort is not
+ * misreported as a sorting regression.
+ */
+const orderMatchesArrow = (values: string[], headerClass: string): boolean => {
+  const dir = directionOf(headerClass);
+  if (dir === 'none' || values.length === 0) return false;
+  const asc = ascending(values);
+  const expected = dir === 'ascending' ? asc : [...asc].reverse();
+  return JSON.stringify(values) === JSON.stringify(expected);
 };
 
 test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () => {
@@ -183,7 +205,7 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
     ).catch(() => {});
   });
 
-  test(`${TC}: ${DASHBOARD_MENU_PATH} still renders its columns, empty state and sort controls after the DataTables upgrade`, async ({
+  test(`${TC}: ${DASHBOARD_MENU_PATH} still renders, sorts, paginates and searches after the DataTables upgrade`, async ({
     page,
   }, testInfo) => {
     test.setTimeout(config.timeouts.test);
@@ -193,19 +215,22 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
     const dashboardPage = new DataTablesDashboardPage(page);
 
     let summary = await dashboardPage.getTableSummary();
+    let valuesBeforeSort: string[] = [];
+    let valuesAfterFirstClick: string[] = [];
+    let valuesAfterSecondClick: string[] = [];
     let classAfterFirstClick = '';
     let classAfterSecondClick = '';
-    let emptyMessageAfterSort = '';
-    let infoAfterSort = '';
     let infoDefault = '';
+    let infoOnPageTwo = '';
     let movedToPageTwo = false;
-    let infoAfterNext = '';
+    let searchTerm = '';
     let infoWhileFiltered = '';
-    let rowsWhileFiltered = 0;
-    let searchBoxWhileFiltered = '';
-    let searchBoxAfterClearing = '';
+    let filteredRows = 0;
     let infoAfterClearing = '';
     let exportControls: string[] = [];
+    let dateInputsBefore: string[] = [];
+    let dateInputsAfter: string[] = [];
+    let periodApplied = false;
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
@@ -226,6 +251,24 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`  - URL              : ${page.url()}`);
     });
 
+    await test.step(STEP.pre2, async () => {
+      console.log(`\n--- ${STEP.pre2} ---`);
+      dateInputsBefore = await dashboardPage.getTableDateRangeInputs();
+      const emptyBefore = await dashboardPage.getTableSummary();
+      console.log(`  - Table date inputs as the screen opens : ${JSON.stringify(dateInputsBefore)}`);
+      console.log(`  - Info line on that default period      : ${emptyBefore.infoText}`);
+      console.log(`  - Rows on that default period           : ${emptyBefore.renderedRows}`);
+
+      periodApplied = await dashboardPage.setTableDateRange(DATE_RANGE_START, DATE_RANGE_END);
+      dateInputsAfter = await dashboardPage.getTableDateRangeInputs();
+      const afterWiden = await dashboardPage.getTableSummary();
+      console.log(`  - Widened to                            : ${DATE_RANGE_START} .. ${DATE_RANGE_END}`);
+      console.log(`  - Table date inputs now                 : ${JSON.stringify(dateInputsAfter)}`);
+      console.log(`  - Info line now                         : ${afterWiden.infoText}`);
+      console.log(`  - Rows now                              : ${afterWiden.renderedRows}`);
+      console.log(`  - Dashboard refetched                   : ${periodApplied}`);
+    });
+
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
       summary = await dashboardPage.getTableSummary();
@@ -234,46 +277,49 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`  - Column count     : ${summary.headers.length}`);
       summary.headers.forEach((h, i) => console.log(`      (${i + 1}) ${h}`));
       console.log(`  - Rendered rows    : ${summary.renderedRows}`);
-      console.log(`  - Empty message    : ${summary.emptyMessage}`);
       console.log(`  - Info line        : ${summary.infoText}`);
 
       await CommonUtils.captureAndAttachScreenshot(
         page,
         testInfo,
-        `${TC} - Steps to reproduce I - dashboard open with the empty table rendered`
+        `${TC} - Steps to reproduce I - dashboard open with the table rendered`
       );
     });
 
     // ------------------------------------------------- Steps to reproduce #2
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
+      valuesBeforeSort = await dashboardPage.getColumnValues(SORT_COLUMN_INDEX);
       console.log(`  - Sorting by column : "${EXPECTED_HEADERS[SORT_COLUMN_INDEX]}"`);
-      console.log('  - NOTE: 0 rows on this dashboard, so only the sort UI can be checked here.');
+      console.log(`  - Order before      : ${JSON.stringify(valuesBeforeSort)}`);
 
       await dashboardPage.clickColumnHeader(SORT_COLUMN_INDEX);
-      const afterFirst = await dashboardPage.getTableSummary();
-      classAfterFirstClick = afterFirst.headerSortClasses[SORT_COLUMN_INDEX] ?? '';
-      console.log(`  - Header class after click 1 : ${classAfterFirstClick}`);
+      valuesAfterFirstClick = await dashboardPage.getColumnValues(SORT_COLUMN_INDEX);
+      classAfterFirstClick =
+        (await dashboardPage.getTableSummary()).headerSortClasses[SORT_COLUMN_INDEX] ?? '';
+      console.log(`  - Order after 1 click : ${JSON.stringify(valuesAfterFirstClick)}`);
+      console.log(`  - Header class        : ${classAfterFirstClick}`);
 
       await dashboardPage.clickColumnHeader(SORT_COLUMN_INDEX);
-      const afterSecond = await dashboardPage.getTableSummary();
-      classAfterSecondClick = afterSecond.headerSortClasses[SORT_COLUMN_INDEX] ?? '';
-      emptyMessageAfterSort = afterSecond.emptyMessage;
-      infoAfterSort = afterSecond.infoText;
-      console.log(`  - Header class after click 2 : ${classAfterSecondClick}`);
-      console.log(`  - Empty message after sorting: ${emptyMessageAfterSort}`);
-      console.log(`  - Info line after sorting    : ${infoAfterSort}`);
+      valuesAfterSecondClick = await dashboardPage.getColumnValues(SORT_COLUMN_INDEX);
+      classAfterSecondClick =
+        (await dashboardPage.getTableSummary()).headerSortClasses[SORT_COLUMN_INDEX] ?? '';
+      console.log(`  - Order after 2 clicks: ${JSON.stringify(valuesAfterSecondClick)}`);
+      console.log(`  - Header class        : ${classAfterSecondClick}`);
     });
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
-      console.log(`  - Direction after click 1 : ${directionOf(classAfterFirstClick)}`);
-      console.log(`  - Direction after click 2 : ${directionOf(classAfterSecondClick)}`);
+      console.log(`  - Header class after click 1 : ${classAfterFirstClick}`);
+      console.log(`  - Header class after click 2 : ${classAfterSecondClick}`);
+      console.log(
+        `  - Directions seen            : ${directionOf(classAfterFirstClick)} then ${directionOf(classAfterSecondClick)}`
+      );
 
       await CommonUtils.captureAndAttachScreenshot(
         page,
         testInfo,
-        `${TC} - Steps to reproduce II - sort arrow drawn on the empty table`
+        `${TC} - Steps to reproduce II - column sorted and the sort arrow shown`
       );
     });
 
@@ -282,36 +328,33 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`\n--- ${STEP.s5} ---`);
       console.log(`  - "Show N entries" offers : ${JSON.stringify(summary.lengthOptions)}`);
       console.log(`  - Info line at default    : ${infoDefault}`);
-      console.log(`  - Page buttons            : ${JSON.stringify(summary.pageButtons)}`);
 
       movedToPageTwo = await dashboardPage.goToNextPage();
-      infoAfterNext = (await dashboardPage.getTableSummary()).infoText;
-      console.log(`  - Next advanced the page  : ${movedToPageTwo}`);
-      console.log(`  - Info line after Next    : ${infoAfterNext}`);
+      infoOnPageTwo = (await dashboardPage.getTableSummary()).infoText;
+      console.log(`  - Next clicked            : ${movedToPageTwo}`);
+      console.log(`  - Info line on page 2     : ${infoOnPageTwo}`);
     });
 
     await test.step(STEP.s6, async () => {
       console.log(`\n--- ${STEP.s6} ---`);
-      await dashboardPage.searchInTable(SEARCH_TERM);
+      searchTerm = valuesAfterSecondClick[0] ?? '';
+      await dashboardPage.searchInTable(searchTerm);
       const filtered = await dashboardPage.getTableSummary();
       infoWhileFiltered = filtered.infoText;
-      rowsWhileFiltered = filtered.renderedRows;
-      searchBoxWhileFiltered = await dashboardPage.getSearchBoxValue();
-      console.log(`  - Searched for         : "${SEARCH_TERM}"`);
-      console.log(`  - Search box holds     : "${searchBoxWhileFiltered}"`);
-      console.log(`  - Rows while filtered  : ${rowsWhileFiltered}`);
-      console.log(`  - Info while filtered  : ${infoWhileFiltered}`);
+      filteredRows = filtered.renderedRows;
+      console.log(`  - Searched for          : "${searchTerm}"`);
+      console.log(`  - Rows while filtered   : ${filteredRows}`);
+      console.log(`  - Values while filtered : ${JSON.stringify(await dashboardPage.getColumnValues(SORT_COLUMN_INDEX))}`);
+      console.log(`  - Info while filtered   : ${infoWhileFiltered}`);
 
       await dashboardPage.clearTableSearch();
       infoAfterClearing = (await dashboardPage.getTableSummary()).infoText;
-      searchBoxAfterClearing = await dashboardPage.getSearchBoxValue();
-      console.log(`  - Search box after clearing : "${searchBoxAfterClearing}"`);
-      console.log(`  - Info after clearing       : ${infoAfterClearing}`);
+      console.log(`  - Info after clearing   : ${infoAfterClearing}`);
 
       await CommonUtils.captureAndAttachScreenshot(
         page,
         testInfo,
-        `${TC} - Steps to reproduce III - pagination and search exercised on the empty table`
+        `${TC} - Steps to reproduce III - pagination and search exercised`
       );
     });
 
@@ -323,6 +366,7 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       exportControls.forEach((c) => console.log(`      - ${c}`));
       if (exportControls.length === 0) {
         console.log('    -> none. The checklist item cannot be executed on this screen.');
+        console.log('       Reported as an observation; see OPEN POINTS in the header.');
       }
     });
 
@@ -333,6 +377,7 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`  - Search box on screen  : ${current.hasSearchBox}`);
       console.log(`  - Info line on screen   : ${current.hasInfoLine}`);
       console.log(`  - Paginator on screen   : ${current.hasPagination}`);
+      console.log(`  - Page buttons          : ${JSON.stringify(current.pageButtons)}`);
       summary = current;
 
       await CommonUtils.captureAndAttachScreenshot(
@@ -346,38 +391,40 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
 
+      const periodOk =
+        periodApplied &&
+        JSON.stringify(dateInputsAfter) === JSON.stringify([DATE_RANGE_START, DATE_RANGE_END]);
       const dir1 = directionOf(classAfterFirstClick);
       const dir2 = directionOf(classAfterSecondClick);
       const tableOk = summary.id === EXPECTED_TABLE_ID;
       const headersOk = JSON.stringify(summary.headers) === JSON.stringify(EXPECTED_HEADERS);
-      const emptyStateOk =
-        summary.renderedRows === 0 &&
-        summary.emptyMessage === EXPECTED_EMPTY_MESSAGE &&
-        infoDefault === EXPECTED_EMPTY_INFO;
-      const sortSurvivedOk =
-        emptyMessageAfterSort === EXPECTED_EMPTY_MESSAGE && infoAfterSort === EXPECTED_EMPTY_INFO;
+      const hadRows = valuesBeforeSort.length > 0;
+      const sort1Ok = hadRows && orderMatchesArrow(valuesAfterFirstClick, classAfterFirstClick);
+      const sort2Ok = hadRows && orderMatchesArrow(valuesAfterSecondClick, classAfterSecondClick);
       const arrowsOk = dir1 !== 'none' && dir2 !== 'none' && dir1 !== dir2;
       const lengthOptionsOk =
         JSON.stringify(summary.lengthOptions) === JSON.stringify(EXPECTED_LENGTH_OPTIONS);
-      const paginationOk = movedToPageTwo === false && infoAfterNext === EXPECTED_EMPTY_INFO;
-      const searchOk =
-        searchBoxWhileFiltered === SEARCH_TERM &&
-        rowsWhileFiltered === 0 &&
-        infoWhileFiltered === EXPECTED_EMPTY_INFO;
-      const searchClearedOk =
-        searchBoxAfterClearing === '' && infoAfterClearing === EXPECTED_EMPTY_INFO;
+      const paginationOk = movedToPageTwo && /Showing 11 to/.test(infoOnPageTwo);
+      const searchOk = filteredRows > 0 && /filtered from/.test(infoWhileFiltered);
+      const searchClearedOk = !/filtered from/.test(infoAfterClearing);
       const controlsOk =
         summary.hasLengthMenu && summary.hasSearchBox && summary.hasInfoLine && summary.hasPagination;
 
       const verifyLines = [
-        `Table        : ${summary.id}`,
-        `Columns      : ${summary.headers.length}`,
-        `Rows         : ${summary.renderedRows} (empty on pre-production)`,
-        `Sort arrows  : ${dir1} / ${dir2}`,
-        `Info         : ${summary.infoText}`,
+        `Period           : ${dateInputsAfter.join(' .. ')}`,
+        `Table            : ${summary.id}`,
+        `Columns          : ${summary.headers.length}`,
+        `Sort c1 / c2     : ${dir1} / ${dir2}`,
+        `Pagination       : ${infoOnPageTwo}`,
+        `Search           : ${infoWhileFiltered}`,
       ];
 
       console.log('\n==================== VERIFY ====================');
+      console.log('  Verify #0 - The pre-condition took: the table is showing a period that has rows:');
+      console.log(`     Expected : the date inputs read ${DATE_RANGE_START} / ${DATE_RANGE_END} and the dashboard refetched. Without this the screen sits on its default period, which holds ZERO rows on pre-production - every row-dependent check below would pass vacuously against an empty table, which is exactly what this case used to do`);
+      console.log(`     Actual   : inputs ${JSON.stringify(dateInputsBefore)} -> ${JSON.stringify(dateInputsAfter)}, refetched=${periodApplied}`);
+      console.log(`     Result   : ${periodOk ? 'PASS' : 'FAIL'}`);
+
       console.log('  Verify #1 - DataTables still drives this dashboard table:');
       console.log(`     Expected : the library takes over ${EXPECTED_TABLE_ID} (a different id means the dashboard changed - re-ground this spec before reading anything below it)`);
       console.log(`     Actual   : ${summary.id}`);
@@ -388,18 +435,18 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`     Actual   : ${summary.headers.join(', ')}`);
       console.log(`     Result   : ${headersOk ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Verify #3 - The empty state is the library\'s own, drawn verbatim:');
-      console.log(`     Expected : 0 rows, the cell "${EXPECTED_EMPTY_MESSAGE}" and the info line "${EXPECTED_EMPTY_INFO}" (this text comes from DataTables itself, so a change to it is a change in the library's rendering - which is exactly what this upgrade could have broken)`);
-      console.log(`     Actual   : ${summary.renderedRows} rows, "${summary.emptyMessage}", "${infoDefault}"`);
-      console.log(`     Result   : ${emptyStateOk ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #3 - The first header click re-orders the rows to match its arrow:');
+      console.log(`     Expected : the "${EXPECTED_HEADERS[SORT_COLUMN_INDEX]}" column on the current page is in ${dir1} order, because that is what the header's arrow reports after click 1`);
+      console.log(`     Actual   : ${JSON.stringify(valuesAfterFirstClick)}`);
+      console.log(`     Result   : ${sort1Ok ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Verify #4 - Sorting an empty table leaves it intact:');
-      console.log(`     Expected : after two header clicks the empty cell and info line are unchanged (a blank body or a JS error here would mean the sort path breaks on an empty data set)`);
-      console.log(`     Actual   : "${emptyMessageAfterSort}", "${infoAfterSort}"`);
-      console.log(`     Result   : ${sortSurvivedOk ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #4 - The second click re-orders them the other way, again matching its arrow:');
+      console.log(`     Expected : the same column in ${dir2} order`);
+      console.log(`     Actual   : ${JSON.stringify(valuesAfterSecondClick)}`);
+      console.log(`     Result   : ${sort2Ok ? 'PASS' : 'FAIL'}`);
 
       console.log('  Verify #5 - The sort arrows show both directions across the two clicks:');
-      console.log(`     Expected : one click draws sorting_asc and the other sorting_desc - with no rows to re-order, this class is the ONLY evidence left that the sort UI survived the upgrade`);
+      console.log(`     Expected : one click draws sorting_asc and the other sorting_desc - that class is what draws the arrow, so "none" on either click means the arrow is gone even if the rows moved`);
       console.log(`     Actual   : click 1 = ${dir1} ("${classAfterFirstClick}"), click 2 = ${dir2} ("${classAfterSecondClick}")`);
       console.log(`     Result   : ${arrowsOk ? 'PASS' : 'FAIL'}`);
 
@@ -408,19 +455,19 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`     Actual   : ${summary.lengthOptions.join(', ')}`);
       console.log(`     Result   : ${lengthOptionsOk ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Verify #7 - The paginator does not advance past an empty page:');
-      console.log(`     Expected : Next is disabled and the info line stays "${EXPECTED_EMPTY_INFO}" (if Next DID advance, the paginator is drawing pages that hold no data)`);
-      console.log(`     Actual   : Next advanced=${movedToPageTwo}, info="${infoAfterNext}"`);
+      console.log('  Verify #7 - Pagination moves to the second page:');
+      console.log(`     Expected : Next reaches a page whose info line starts at entry 11 (this is the only one of the six screens whose own data paginates, so a broken paginator shows here first)`);
+      console.log(`     Actual   : Next clicked=${movedToPageTwo}, info="${infoOnPageTwo}"`);
       console.log(`     Result   : ${paginationOk ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Verify #8 - The search box takes the typed text and the empty table is undisturbed:');
-      console.log(`     Expected : the input holds "${SEARCH_TERM}", the table still shows 0 rows and the info line is unchanged at "${EXPECTED_EMPTY_INFO}". NOTE: with 0 records DataTables omits its "(filtered from N total entries)" clause, so looking for that clause here would fail against correct behaviour - the input's own value is the evidence instead`);
-      console.log(`     Actual   : input="${searchBoxWhileFiltered}", ${rowsWhileFiltered} row(s), info="${infoWhileFiltered}"`);
+      console.log('  Verify #8 - The search box filters the table:');
+      console.log(`     Expected : searching "${searchTerm}" leaves at least one row and the info line reports "(filtered from N total entries)"`);
+      console.log(`     Actual   : ${filteredRows} row(s), info="${infoWhileFiltered}"`);
       console.log(`     Result   : ${searchOk ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Verify #9 - Clearing the search empties the box and leaves the table intact:');
-      console.log(`     Expected : the input is empty and the info line is still "${EXPECTED_EMPTY_INFO}" (a box that cannot be cleared would strand the dashboard on a filter)`);
-      console.log(`     Actual   : input="${searchBoxAfterClearing}", info="${infoAfterClearing}"`);
+      console.log('  Verify #9 - Clearing the search restores the table:');
+      console.log(`     Expected : the info line no longer reports a filter`);
+      console.log(`     Actual   : ${infoAfterClearing}`);
       console.log(`     Result   : ${searchClearedOk ? 'PASS' : 'FAIL'}`);
 
       console.log('  Verify #10 - Every control the library injects is on screen:');
@@ -428,19 +475,15 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
       console.log(`     Actual   : length=${summary.hasLengthMenu}, search=${summary.hasSearchBox}, info=${summary.hasInfoLine}, paginate=${summary.hasPagination}`);
       console.log(`     Result   : ${controlsOk ? 'PASS' : 'FAIL'}`);
 
-      console.log('  Observation (not scored) - rows on this dashboard : 0');
-      console.log('     With no rows, three of Vitalii\'s checklist items are UNEXERCISED here:');
-      console.log('     row re-ordering by a column header, the search narrowing a result set, and');
-      console.log('     the paginator reaching a second page. A green run of this case does NOT');
-      console.log('     establish them - see the header note.');
       console.log(`  Observation (not scored) - export controls offered on this dashboard : ${exportControls.length === 0 ? 'none' : exportControls.join(', ')}`);
       console.log('===============================================');
 
       const overall =
+        periodOk &&
         tableOk &&
         headersOk &&
-        emptyStateOk &&
-        sortSurvivedOk &&
+        sort1Ok &&
+        sort2Ok &&
         arrowsOk &&
         lengthOptionsOk &&
         paginationOk &&
@@ -448,28 +491,33 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
         searchClearedOk &&
         controlsOk;
       console.log(
-        `OVERALL: ${overall ? 'PASS' : 'FAIL'} - ${DASHBOARD_MENU_PATH} after the DataTables 1.13.11 upgrade (no rows - partial coverage by design)`
+        `OVERALL: ${overall ? 'PASS' : 'FAIL'} - ${DASHBOARD_MENU_PATH} after the DataTables 1.13.11 upgrade`
       );
 
       let verifyPassed = false;
       try {
+        expect(
+          dateInputsAfter,
+          'the pre-condition should have widened the table to a period that holds rows'
+        ).toEqual([DATE_RANGE_START, DATE_RANGE_END]);
+        expect(periodApplied, 'the dashboard should have refetched after the period changed').toBe(
+          true
+        );
         expect(summary.id, 'DataTables should still drive the dashboard table').toBe(
           EXPECTED_TABLE_ID
         );
         expect(summary.headers, 'the column headers should be unchanged by the upgrade').toEqual(
           EXPECTED_HEADERS
         );
-        expect(summary.renderedRows, 'this dashboard holds no rows on pre-production').toBe(0);
-        expect(summary.emptyMessage, 'the library should draw its own empty-state text').toBe(
-          EXPECTED_EMPTY_MESSAGE
-        );
-        expect(infoDefault, 'the info line should report an empty data set').toBe(
-          EXPECTED_EMPTY_INFO
-        );
-        expect(emptyMessageAfterSort, 'sorting should leave the empty state intact').toBe(
-          EXPECTED_EMPTY_MESSAGE
-        );
-        expect(infoAfterSort, 'sorting should leave the info line intact').toBe(EXPECTED_EMPTY_INFO);
+        expect(valuesBeforeSort.length, 'the dashboard should have rows to sort').toBeGreaterThan(0);
+        expect(
+          sort1Ok,
+          `after click 1 the header's arrow reported "${dir1}" but the rows read ${JSON.stringify(valuesAfterFirstClick)}`
+        ).toBe(true);
+        expect(
+          sort2Ok,
+          `after click 2 the header's arrow reported "${dir2}" but the rows read ${JSON.stringify(valuesAfterSecondClick)}`
+        ).toBe(true);
         expect([dir1, dir2].sort(), 'the two clicks should draw the two opposite sort arrows').toEqual([
           'ascending',
           'descending',
@@ -477,20 +525,14 @@ test.describe('CRM-8339 Security - DataTables dashboard regression (US4)', () =>
         expect(summary.lengthOptions, 'the "Show N entries" values should be unchanged').toEqual(
           EXPECTED_LENGTH_OPTIONS
         );
-        expect(movedToPageTwo, 'Next should not advance past an empty page').toBe(false);
-        expect(infoAfterNext, 'the info line should stay on the empty page').toBe(
-          EXPECTED_EMPTY_INFO
+        expect(movedToPageTwo, 'Next should move to a second page').toBe(true);
+        expect(infoOnPageTwo, 'page 2 should start at entry 11').toMatch(/Showing 11 to/);
+        expect(filteredRows, 'the search should leave at least one matching row').toBeGreaterThan(0);
+        expect(infoWhileFiltered, 'the info line should report the filtering').toContain(
+          'filtered from'
         );
-        expect(searchBoxWhileFiltered, 'the search box should hold the typed text').toBe(
-          SEARCH_TERM
-        );
-        expect(rowsWhileFiltered, 'the filtered table should hold no rows').toBe(0);
-        expect(infoWhileFiltered, 'the info line should stay on the empty data set').toBe(
-          EXPECTED_EMPTY_INFO
-        );
-        expect(searchBoxAfterClearing, 'clearing should empty the search box').toBe('');
-        expect(infoAfterClearing, 'clearing the search should restore the info line').toBe(
-          EXPECTED_EMPTY_INFO
+        expect(infoAfterClearing, 'clearing the search should restore the table').not.toContain(
+          'filtered from'
         );
         expect(summary.hasLengthMenu, 'the length menu should be on screen').toBe(true);
         expect(summary.hasSearchBox, 'the search box should be on screen').toBe(true);
