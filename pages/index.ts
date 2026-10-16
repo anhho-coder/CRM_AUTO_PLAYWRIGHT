@@ -33,3 +33,7 @@ export type { TemplateSettings } from './SubscriptionTemplatePage';
 export { SESupportPage } from './SESupportPage';
 export { HelpdeskPage } from './HelpdeskPage';
 export { SEMeetingPage } from './SEMeetingPage';
+export { DataTablesDashboardPage } from './DataTablesDashboardPage';
+export { PortalSecurityPage } from './PortalSecurityPage';
+export { PortalFunctionalityPage } from './PortalFunctionalityPage';
+export { BackOfficeHealthPage } from './BackOfficeHealthPage';
