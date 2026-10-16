@@ -160,16 +160,18 @@ test.describe(`${TC} - A salesperson creates an Opportunity, raises a request an
       leadId = Number(await opportunityPage.waitForIdInUrlAndExtract(CommonUtils.waitTimes.savingPage));
       salesperson = await thomasUi.opportunitySalesperson();
       baselineN = await thomasUi.isTicketsStatVisible() ? await thomasUi.ticketsStatCount() : 0;
-      // Observation, not scored: an "Odoo Server Error - Missing Record" (mail.followers) dialog has
-      // stood over the form after this SAVE on every run since 2026-10-16. The scenario gives no expectation.
+      // CRM-13563 guard: every SAVE on crm-mig used to leave "Odoo Server Error - Missing Record"
+      // (mail.followers) over the form. Fixed 2026-10-16, so the dialog now fails the case.
       saveErrorDialog = await opportunityPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long)
         ? await opportunityPage.waitForServerErrorDialog(CommonUtils.waitTimes.standard) : '';
       console.log(`  Opportunity id  : ${leadId}`);
       console.log(`  Opportunity URL : ${MigPreSalePage.opportunityUrl(leadId)}`);
       console.log(`  Salesperson     : ${salesperson}`);
       console.log(`  Tickets button  : N = ${baselineN} (hidden = 0)`);
-      console.log(`  Observation (not scored) - error dialog after SAVE : ${saveErrorDialog.replace(/\s+/g, ' ') || 'none'}`);
+      console.log(`  Error dialog after SAVE (CRM-13563, must be none) : ${saveErrorDialog.replace(/\s+/g, ' ') || 'none'}`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 1 - Opportunity saved by Thomas');
+      expect(saveErrorDialog.replace(/\s+/g, ' '),
+        'CRM-13563: no "Odoo Server Error - Missing Record" dialog may stand over the form after SAVE').toBe('');
     });
 
     await test.step(STEP.s2, async () => {
@@ -254,7 +256,6 @@ test.describe(`${TC} - A salesperson creates an Opportunity, raises a request an
       const passed = ok1 && ok2 && ok3 && ok4 && ok5 && ok6;
       console.log('==================== VERIFY ====================');
       for (const l of lines) console.log(`  ${l}`);
-      console.log(`  Observation (not scored) - error dialog after the Opportunity SAVE : ${saveErrorDialog.replace(/\s+/g, ' ') || 'none'}`);
       console.log('===============================================');
       console.log(`OVERALL: ${passed ? 'PASS' : 'FAIL'} - Thomas ${passed ? 'opened his own request inside the CRM with no second sign-in' : 'did NOT reach his own request as specified'}`);
 
