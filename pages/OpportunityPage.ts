@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 
@@ -790,7 +790,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * Fill Reseller field on the Opportunity form
    * @param contactName - The name of the contact to set as reseller
    */
-  async fillReseller(contactName: string) {
+  async fillReseller(contactName: string): Promise<boolean> {
     const input = this.resellerInputOpp();
     await input.click();
     await input.fill('');
@@ -800,13 +800,36 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const option = this.dropdownOption().filter({ hasText: contactName }).first();
     await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     await option.click().catch(async () => { await this.page.keyboard.press('Enter'); });
+    await this.wait(500);
+    // Callers assert on this boolean, so it must mean "the field now HOLDS contactName" - not
+    // merely "the clicks were dispatched". Both the waitFor and the click above swallow their
+    // failure, so without reading the value back this method cannot tell a real selection from a
+    // dropdown that never opened. Returning undefined is what made
+    // expect(resellerSet).toBeTruthy() in o12ce-main-business.helper unpassable on every run.
+    return this.fieldHoldsValue(input, contactName);
+  }
+
+  /**
+   * True when a many2one input has ended up holding the requested partner.
+   * Compared both ways and case-insensitively: Odoo echoes back the partner's display name, which
+   * can carry a suffix (or differ in case) from the text that was typed to find it.
+   */
+  private async fieldHoldsValue(input: Locator, requested: string): Promise<boolean> {
+    // Bounded on purpose: inputValue() auto-waits for the element, and an Odoo many2one can be
+    // re-rendered (detached) right after a selection. Unbounded it would sit on the default action
+    // timeout and read as a mysterious test hang far from this line, so cap it and treat a
+    // non-answer as "not set".
+    const actual = ((await input.inputValue({ timeout: 5000 }).catch(() => '')) || '').trim().toLowerCase();
+    const wanted = requested.trim().toLowerCase();
+    if (!actual || !wanted) return false;
+    return actual.includes(wanted) || wanted.includes(actual);
   }
 
   /**
    * Fill Distributor field on the Opportunity form
    * @param contactName - The name of the contact to set as distributor
    */
-  async fillDistributor(contactName: string) {
+  async fillDistributor(contactName: string): Promise<boolean> {
     const input = this.distributorInputOpp();
     await input.click();
     await input.fill('');
@@ -816,6 +839,9 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const option = this.dropdownOption().filter({ hasText: contactName }).first();
     await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     await option.click().catch(async () => { await this.page.keyboard.press('Enter'); });
+    await this.wait(500);
+    // Same contract as fillReseller: the boolean reports whether the field HOLDS the partner.
+    return this.fieldHoldsValue(input, contactName);
   }
 
   /**
