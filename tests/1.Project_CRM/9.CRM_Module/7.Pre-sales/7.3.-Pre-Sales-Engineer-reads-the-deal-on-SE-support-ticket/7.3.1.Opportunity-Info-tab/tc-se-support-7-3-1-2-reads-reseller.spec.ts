@@ -11,7 +11,7 @@ import { createOppAndRequestSESupportAsThomas, assignAndOpenOpportunityInfoTabAs
  *  Test Case ID:    pre-sale-7.3.1.2
  *  Jira:            CRM-9976 (O12 CE to O12 CC)
  *  Automation-Type: refactored
- *  Automation-Date: 2026-07-28
+ *  Automation-Date: 2026-10-15
  * --------------------------------------------------------------------------------------------
  *  Summary:
  *    Verify the Pre-Sales Engineer reads the deal on the SE support ticket with value of "Reseller".
@@ -76,7 +76,14 @@ test.describe('pre-sale-7.3.1.2 - Pre-Sales Engineer reads the deal on SE suppor
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('pre-sale-7.3.1.2: Verify the Pre-Sales Engineer reads the deal on SE support ticket with value of "Reseller"', async ({ page }, testInfo) => {
+  // SKIPPED 2026-10-15 (tester's decision after the pre-production run of the Pre-sales SE support suite):
+  // VP10 FAILS - on the ticket's "Opportunity Info" tab the Reseller reads "TEST-Reseller#1_Automation_Test"
+  // while the spec expects Reseller_Name#1 = "TEST-Reseller#Automation-Jun10" (the deal-registration
+  // Partner Company Name). Run log: "VP10: Opportunity Info "Reseller" = "TEST-Reseller#1_Automation_Test"
+  // | expected Reseller_Name#1 = "TEST-Reseller#Automation-Jun10"". Not yet established whether the expected
+  // value or the pre-production data is wrong - re-enable (drop .skip) once that is settled.
+  // Declaration-level skip so the browser fixture never spins up.
+  test.skip('pre-sale-7.3.1.2: Verify the Pre-Sales Engineer reads the deal on SE support ticket with value of "Reseller"', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

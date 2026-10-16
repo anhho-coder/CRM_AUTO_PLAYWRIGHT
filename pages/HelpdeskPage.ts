@@ -659,4 +659,283 @@ export class HelpdeskPage extends BasePage {
   async getStoredLastMessageText(ticketId: number | string): Promise<string> {
     return this.getStoredChatterMessageText('helpdesk.ticket', ticketId);
   }
+
+  // ─── pre-sale-7.7 .. 7.15 (CRM-12203 .. CRM-12235): ticket form reads/edits on PRE-PRODUCTION ───
+  // Form Edit / Save / Discard (Odoo 12 form control panel).
+  private readonly ticketEditButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_edit')]").or(this.page.locator('button.o_form_button_edit')).first();
+  private readonly ticketSaveButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_save')]").or(this.page.locator('button.o_form_button_save')).first();
+  private readonly ticketDiscardButton = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_form_button_cancel')]").or(this.page.locator('button.o_form_button_cancel')).first();
+  // Priority widget stars (Odoo priority radiogroup). The lowest level carries no star - it is the
+  // state with no star checked.
+  private readonly priorityStars = () =>
+    this.page.locator("xpath=//div[@name='priority']//a[contains(@class,'o_priority_star')]").or(this.page.locator("div[name='priority'] a.o_priority_star"));
+  private readonly priorityStarByTitle = (title: string) =>
+    this.page.locator(`xpath=//div[@name='priority']//a[contains(@class,'o_priority_star')][@title='${title}']`).first();
+  // Many2one "Assigned to" input in edit mode + its autocomplete items.
+  private readonly assignedToInput = () =>
+    this.page.locator("xpath=//div[@name='user_id']//input").or(this.page.locator("div[name='user_id'] input")).first();
+  private readonly autocompleteItems = () =>
+    this.page.locator("xpath=//ul[contains(@class,'ui-autocomplete')]//li").or(this.page.locator('ul.ui-autocomplete li'));
+  // Statusbar stage buttons.
+  private readonly stageButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]//button").or(this.page.locator('.o_statusbar_status button'));
+  // Header action buttons that are displayed (Odoo hides the rest with o_invisible_modifier).
+  private readonly visibleHeaderButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_statusbar_buttons')]/button[not(contains(@class,'o_invisible_modifier'))]")
+      .or(this.page.locator('.o_statusbar_buttons > button:not(.o_invisible_modifier)'));
+  // List rows of the ticket list view.
+  private readonly listRows = () =>
+    this.page.locator("xpath=//tr[contains(@class,'o_data_row')]").or(this.page.locator('tr.o_data_row'));
+  // The dialog Odoo is currently showing (validation error, warning, access error).
+  private readonly shownDialog = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')]").or(this.page.locator('div.modal.show')).last();
+
+  /** Put the ticket form in edit mode. */
+  async clickEditTicket(): Promise<void> {
+    await this.dismissErrorDialog();
+    await this.ticketEditButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.ticketEditButton().click();
+    await this.ticketSaveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /** Whether the form offers EDIT to the signed-in user. */
+  async isEditTicketAvailable(): Promise<boolean> {
+    return this.ticketEditButton().isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+  }
+
+  /** Save the ticket form and wait for read mode - returns false when something (a dialog) blocked the save. */
+  async clickSaveTicket(): Promise<boolean> {
+    await this.ticketSaveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    const saved = await this.ticketEditButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage }).then(() => true).catch(() => false);
+    await this.wait(CommonUtils.waitTimes.long);
+    return saved;
+  }
+
+  /** Discard pending edits (and confirm the discard dialog if Odoo raises one). */
+  async discardTicketEdits(): Promise<void> {
+    if (await this.ticketDiscardButton().isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+      await this.ticketDiscardButton().click().catch(() => {});
+      await this.dismissDiscardChangesDialog().catch(() => false);
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+  }
+
+  /** Subject of the open ticket (field `name`). */
+  async getTicketSubject(): Promise<string> {
+    return this.getFieldValueByName('name');
+  }
+
+  /** Helpdesk Team of the open ticket (field `team_id`). */
+  async getHelpdeskTeam(): Promise<string> {
+    return this.getFieldValueByName('team_id');
+  }
+
+  /** Titles of the priority stars, in order (e.g. Medium, High, Urgent). */
+  async getPriorityStarTitles(): Promise<string[]> {
+    await this.priorityStars().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.priorityStars().evaluateAll((els) => els.map((e) => e.getAttribute('title') || ''));
+  }
+
+  /**
+   * The current priority label: the title of the highest checked star, or `lowLabel` (default "Low")
+   * when no star is checked - the lowest level of the scale carries no star.
+   */
+  async getPriorityLabel(lowLabel: string = 'Low'): Promise<string> {
+    await this.priorityStars().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const checked = await this.priorityStars().evaluateAll((els) =>
+      els.filter((e) => e.getAttribute('aria-checked') === 'true').map((e) => e.getAttribute('title') || '')
+    );
+    return checked.length ? checked[checked.length - 1] : lowLabel;
+  }
+
+  /**
+   * Set the priority in EDIT mode. A star label clicks that star; `lowLabel` clicks the currently
+   * highest checked star, which the Odoo priority widget turns into "no star" (the lowest level).
+   */
+  async setPriority(label: string, lowLabel: string = 'Low'): Promise<void> {
+    if (label === lowLabel) {
+      const current = await this.getPriorityLabel(lowLabel);
+      if (current === lowLabel) return;
+      await this.priorityStarByTitle(current).click();
+    } else {
+      await this.priorityStarByTitle(label).click();
+    }
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Priority set to "${label}"`);
+  }
+
+  /** Set "Assigned to" (user_id) in EDIT mode to `userName` via the many2one autocomplete. */
+  async setAssignedTo(userName: string): Promise<void> {
+    const input = this.assignedToInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.short);
+    await input.pressSequentially(userName, { delay: 20 });
+    const item = this.autocompleteItems().filter({ hasText: userName }).first();
+    await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await item.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Assigned to set to "${userName}"`);
+  }
+
+  /** Labels of the statusbar stages, in on-screen order. */
+  async getStageButtonLabels(): Promise<string[]> {
+    const raw = await this.stageButtons().allTextContents();
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /** Whether the statusbar lets the signed-in user click a stage (Odoo renders it disabled when readonly). */
+  async isStageBarClickable(): Promise<boolean> {
+    return this.stageButtons().evaluateAll((els) => els.some((e) => !(e as HTMLButtonElement).disabled && !e.hasAttribute('disabled')));
+  }
+
+  /** Labels of the header action buttons the signed-in user can see (e.g. ASSIGN TO ME, Close). */
+  async getVisibleHeaderButtons(): Promise<string[]> {
+    const raw = await this.visibleHeaderButtons().allTextContents();
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /** Number of ticket rows in the current list whose text contains `text`. */
+  async countTicketRows(text: string): Promise<number> {
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    return this.listRows().filter({ hasText: text }).count();
+  }
+
+  /**
+   * Priority shown in the LIST row of the ticket matching `subject`: title of the highest checked
+   * star, or `lowLabel` when no star is checked.
+   */
+  async getListRowPriority(subject: string, lowLabel: string = 'Low'): Promise<string> {
+    const row = this.ticketRowByText(subject);
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const checked = await row.locator("xpath=.//div[@name='priority']//a[@aria-checked='true'] | .//*[contains(@class,'o_priority')]//a[@aria-checked='true']")
+      .evaluateAll((els) => els.map((e) => e.getAttribute('title') || ''));
+    return checked.length ? checked[checked.length - 1] : lowLabel;
+  }
+
+  /**
+   * Open the Sales Engineers ticket LIST by its action (same target as Helpdesk > Sales Engineers >
+   * Tickets) and report what the signed-in user got - WITHOUT dismissing an access error first, so the
+   * refusal itself can be evidenced. `listShown` = a ticket list view rendered; `error` = the dialog text.
+   */
+  async openSalesEngineersTicketsListReportingAccess(): Promise<{ listShown: boolean; error: string }> {
+    const origin = new URL(this.page.url()).origin;
+    const url = `${origin}/web?#action=${await this.xmlId('helpdesk.helpdesk_ticket_action_team')}&active_id=5&model=helpdesk.ticket&view_type=list&menu_id=${await this.xmlId('helpdesk.menu_helpdesk_root')}`;
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    const list = this.page.locator("xpath=//div[contains(@class,'o_list_view')]").or(this.page.locator('.o_list_view')).first();
+    await Promise.race([
+      list.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }),
+      this.shownDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }),
+    ]).catch(() => {});
+    const error = await this.getShownDialogText();
+    const listShown = await list.isVisible().catch(() => false);
+    console.log(`  - Sales Engineers list shown: ${listShown}${error ? ` | dialog: ${error.slice(0, 160)}` : ''}`);
+    return { listShown, error };
+  }
+
+  /** Open a ticket-form notebook tab by its label (e.g. "Description"); the tab content is lazy. */
+  async openTicketTab(label: string): Promise<void> {
+    const tab = this.page.locator(`xpath=//div[contains(@class,'o_notebook')]//a[normalize-space()='${label}']`)
+      .or(this.page.locator('.o_notebook a.nav-link', { hasText: label })).first();
+    await tab.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await tab.click();
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
+
+  /** Whether the Helpdesk app entry point (the SE working surface's door) is on the apps home. */
+  async isHelpdeskEntryVisible(): Promise<boolean> {
+    return this.helpdeskAppLinkXPath().or(this.helpdeskAppLinkRole()).first().isVisible({ timeout: CommonUtils.waitTimes.elementAppear }).catch(() => false);
+  }
+
+  /** Column labels of the current ticket list (selector column dropped). */
+  async getListHeaders(): Promise<string[]> {
+    await this.listHeaderCells().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const raw = await this.listHeaderCells().allTextContents();
+    return raw.map((t) => t.replace(/[\s​]+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /** Title + body of the dialog Odoo is showing ('' when none). */
+  async getShownDialogText(): Promise<string> {
+    const dlg = this.shownDialog();
+    if (!(await dlg.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false))) return '';
+    return ((await dlg.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Close the shown dialog with its first footer button (OK / Close). */
+  async closeShownDialog(): Promise<void> {
+    const dlg = this.shownDialog();
+    if (await dlg.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+      await dlg.locator("xpath=.//footer//button | .//div[contains(@class,'modal-footer')]//button").first()
+        .click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+  }
+
+  // "Ticket Type" under CLASSIFICATION (classification_ticket_type) - a native <select> in edit mode.
+  private readonly classificationTicketTypeSelect = () =>
+    this.page.locator("xpath=//select[@name='classification_ticket_type']").or(this.page.locator("select[name='classification_ticket_type']")).first();
+
+  /** Every option label of the CLASSIFICATION "Ticket Type" select (EDIT mode; the empty option dropped). */
+  async getClassificationTicketTypeOptions(): Promise<string[]> {
+    const select = this.classificationTicketTypeSelect();
+    await select.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const raw = await select.locator('option').allTextContents();
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter((t) => t && t !== 'false');
+  }
+
+  /** Set the CLASSIFICATION "Ticket Type" in EDIT mode; '' empties it. */
+  async setClassificationTicketType(label: string): Promise<void> {
+    const select = this.classificationTicketTypeSelect();
+    await select.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    if (label === '') await select.selectOption({ index: 0 });
+    else await select.selectOption({ label });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Ticket Type set to "${label || '(empty)'}"`);
+  }
+
+  /**
+   * Click a statusbar stage ONCE (no reload loop) - for the negative path where the move is expected to
+   * be refused by a dialog. Returns the dialog text Odoo shows ('' when none).
+   */
+  async clickStageExpectingRefusal(stageName: string): Promise<string> {
+    await this.dismissErrorDialog();
+    const btn = this.stageButtonByName(stageName);
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await btn.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    // The refusal comes back from the server several seconds after the click (~4 s measured) - wait for
+    // the dialog itself rather than reading the screen once.
+    await this.shownDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return this.getShownDialogText();
+  }
+
+  /**
+   * On the "Opportunity Info" tab, follow the Opportunity link (opportunity_id many2one) back to the
+   * CRM. Returns the record id it opened (from the URL), or '' when the link is absent.
+   */
+  async followLinkedOpportunity(): Promise<string> {
+    const link = this.page.locator("xpath=//*[@name='opportunity_id']//a | //a[@name='opportunity_id']").or(this.page.locator("a[name='opportunity_id'], [name='opportunity_id'] a")).first();
+    if (!(await link.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return '';
+    await link.click();
+    await this.page.waitForURL(/model=crm\.lead/, { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const m = this.page.url().match(/[#&?]id=(\d+)/);
+    console.log(`  - Followed the Opportunity link -> ${this.page.url()}`);
+    return m ? m[1] : '';
+  }
+
+  /** Reload the open ticket form (a fresh read of every field + chatter). */
+  async reloadTicket(): Promise<void> {
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.fieldByName('name').waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
 }

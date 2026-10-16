@@ -3322,9 +3322,33 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * integer parsed from its label (e.g. "1 Tickets" -> 1), or 0 if the button/label is absent.
    * This is the CRM's automatic link between the deal and the SE support ticket(s).
    */
+  /** The smart-button box "More" toggle - Odoo moves overflowing stat buttons into its dropdown. */
+  private readonly buttonBoxMoreToggle = () =>
+    this.page.locator("xpath=//div[contains(@class,'oe_button_box')]//button[contains(@class,'o_button_more') or normalize-space()='More']")
+      .or(this.page.locator('.oe_button_box .o_button_more, .oe_button_box .o_dropdown_more > button')).first();
+
+  /**
+   * Make the "Tickets" smart button visible: when the button box overflows, Odoo hides it under the box's
+   * "More" dropdown, where isVisible() is false although the ticket exists. Returns whether it is visible.
+   */
+  private async revealLinkedTicketsButton(): Promise<boolean> {
+    const btn = this.linkedTicketsButton();
+    if (await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false)) return true;
+    const more = this.buttonBoxMoreToggle();
+    if (await more.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+      await more.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+      if (await btn.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+        console.log('  - "Tickets" smart button found under the button box "More" dropdown');
+        return true;
+      }
+    }
+    return false;
+  }
+
   async getLinkedTicketsCount(): Promise<number> {
     const btn = this.linkedTicketsButton();
-    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+    if (!(await this.revealLinkedTicketsButton())) {
       console.log('  - "Tickets" smart button not visible on the Opportunity');
       return 0;
     }
@@ -3333,6 +3357,42 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const count = m ? parseInt(m[1], 10) : 0;
     console.log(`  - Opportunity "Tickets" smart button: "${txt}" -> ${count}`);
     return count;
+  }
+
+  /**
+   * Click the Opportunity's "Tickets" smart button (open_customer_tickets) and wait for the linked
+   * ticket view to load (a list, a kanban, or the single ticket's form). Returns false when the button
+   * is not on screen (no linked ticket).
+   */
+  async openLinkedTickets(): Promise<boolean> {
+    const btn = this.linkedTicketsButton();
+    if (!(await this.revealLinkedTicketsButton())) {
+      console.log('  - "Tickets" smart button not visible (nor under "More") - nothing to open');
+      return false;
+    }
+    const before = this.page.url();
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.waitForURL((u) => u.toString() !== before && /model=helpdesk\.ticket/.test(u.toString()), { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Tickets smart button opened: ${this.page.url()}`);
+    return true;
+  }
+
+  /**
+   * In READ mode, follow the Opportunity's "Reseller" (reseller_id) link to the reseller partner form.
+   * Returns the partner URL, or '' when the Opportunity has no Reseller link.
+   */
+  async openResellerFromOpportunity(): Promise<string> {
+    const link = this.page.locator("xpath=//*[@name='reseller_id']//a | //a[@name='reseller_id']")
+      .or(this.page.locator("a[name='reseller_id'], [name='reseller_id'] a")).first();
+    if (!(await link.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return '';
+    await link.click();
+    await this.page.waitForURL(/model=res\.partner/, { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Reseller partner opened: ${this.page.url()}`);
+    return this.page.url();
   }
 
   // --- CRM-12060: Customer (partner_id) many2one on the Opp form + autocomplete options ---
