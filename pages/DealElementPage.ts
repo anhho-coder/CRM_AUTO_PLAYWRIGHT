@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@/helpers/common.utils';
 
@@ -334,6 +334,92 @@ export class DealElementPage extends BasePage {
   }
 
   /**
+   * Position of an order-line column, resolved from its HEADER text.
+   *
+   * Readonly cells carry no `name` attribute, so a saved row can only be addressed positionally.
+   * THROWS with the headers it actually read rather than returning -1, so a renamed or missing
+   * column fails loudly instead of silently reading the wrong cell.
+   */
+  private async orderLineColumnIndex(headerText: string): Promise<number> {
+    const headers = await this.page
+      .locator('[name="order_line"] thead th')
+      .allTextContents()
+      .catch(() => [] as string[]);
+    const index = headers.findIndex((h) => h.trim().toLowerCase() === headerText.trim().toLowerCase());
+    if (index < 0) {
+      throw new Error(
+        `Order line "${headerText}" column not found. Headers read: ` +
+          headers.map((h) => `"${h.trim()}"`).join(' | ')
+      );
+    }
+    return index;
+  }
+
+  /**
+   * Set "End Date" on the last order line row.
+   *
+   * The Deal Element order line renders both a wrapper `div[name="end_date"]` and the editable
+   * `input[name="end_date"]` (column 3, between "Start Date" and "Description") - measured on
+   * pre-production 2026-10-16. The row is an EDITABLE LIST row, so the value is committed with
+   * Tab, never Escape: Escape inside an Odoo editable row discards the whole row edit.
+   *
+   * @param mmddyyyy - date in the UI's MM/DD/YYYY format
+   * @returns the value the field holds after the edit, so the caller can verify it stuck
+   */
+  async setLastRowEndDate(mmddyyyy: string): Promise<string> {
+    console.log(`  - Setting last row End Date to ${mmddyyyy}...`);
+    const row = this.orderLineRows().last();
+    let input = row.locator('xpath=//input[@name="end_date"]').first();
+    if (!(await input.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false))) {
+      // A row that was SAVED renders readonly cells; form-level EDIT alone does not turn them into
+      // inputs - the ROW itself must be put into inline-edit mode by clicking the cell. A freshly
+      // added row is already in edit mode, which is why this was not needed at first. Measured
+      // 2026-10-16: without this click the input never appears and the wait burns its budget.
+      const index = await this.orderLineColumnIndex('End Date');
+      console.log('  - the row is readonly - clicking the "End Date" cell to enter inline edit mode');
+      await row.locator('td').nth(index).click();
+      await this.wait(CommonUtils.waitTimes.standard);
+      input = row.locator('xpath=//input[@name="end_date"]').first();
+    }
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ clickCount: 3 });
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.standard);
+    await input.fill(mmddyyyy);
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.page.keyboard.press('Tab');
+    await this.wait(CommonUtils.waitTimes.standard);
+    const readBack = (await input.inputValue().catch(() => '')) || '';
+    console.log(`  - Last row End Date: requested "${mmddyyyy}", field now reads "${readBack}"`);
+    return readBack;
+  }
+
+  /**
+   * Read "End Date" from the last order line row (empty string when the cell is blank).
+   *
+   * The cell renders TWO different ways and both must be handled: while the row is in EDIT mode it
+   * is an `input[name="end_date"]` (an Odoo datepicker, `data-target="#datepicker<n>"`); once the
+   * record is saved the row goes readonly and the input is gone, leaving only the cell's text.
+   * Reading only the input made a saved 12/16/2026 come back as "" - measured 2026-10-16.
+   */
+  async getLastRowEndDate(): Promise<string> {
+    const row = this.orderLineRows().last();
+    const input = row.locator('xpath=//input[@name="end_date"]').first();
+    if (await input.isVisible({ timeout: CommonUtils.waitTimes.standard }).catch(() => false)) {
+      const edited = (await input.inputValue().catch(() => '')) || '';
+      console.log(`  - Last row End Date reads (edit mode): "${edited}"`);
+      return edited.trim();
+    }
+    // Readonly rows render the cell as a plain <td class="o_data_cell"> that carries NO name
+    // attribute, so the field cannot be addressed by name - resolve the column by its HEADER text
+    // instead (measured 2026-10-16: a saved 12/16/2026 read as "" through [name="end_date"]).
+    const index = await this.orderLineColumnIndex('End Date');
+    const text = ((await row.locator('td').nth(index).textContent().catch(() => '')) || '').trim();
+    console.log(`  - Last row End Date reads (readonly, column ${index} "End Date"): "${text}"`);
+    return text;
+  }
+
+  /**
    * Set the Unit of Measure on the last order line row
    * @param uom - UoM value to select (e.g. "Socket")
    */
@@ -581,6 +667,146 @@ export class DealElementPage extends BasePage {
     await priceInput.click({ clickCount: 3 }); // triple-click to select all existing text
     await priceInput.fill(String(price));
     console.log(`  \u2713 Unit Price set to "${price}"`);
+  }
+
+  /**
+   * Set "End Date" on the Order Line row matching the given product.
+   *
+   * ADDRESSED BY HEADER TEXT, NOT BY FIELD NAME - and that is not a preference. Measured on
+   * crm-mig (Odoo 12 CE, 2026-10-16): `sale.order.line.end_date` exists (type date, label
+   * "End Date", writable), the Order Lines list renders START DATE and END DATE as its 3rd and 4th
+   * columns, but an Odoo 12 list `<td>` carries NO `name` attribute, so `[name="end_date"]` cannot
+   * reach the cell while the row is read-only. The column index is therefore resolved from the
+   * `<th>` text, and the input is only addressed by name once the row is in edit mode, where the
+   * datepicker widget does render one.
+   *
+   * THROWS RATHER THAN NO-OPS. The END DATE column carries `o_invisible_modifier` on this form, so
+   * a setter that quietly did nothing when the column was hidden would hand the caller a green tick
+   * for a date that was never set - the exact failure mode CRM-11806_1.5 already has. If the column
+   * is absent or hidden, this says so and names what it saw.
+   *
+   * @param productName - product code identifying the row, e.g. "[CP-NC-O365]"
+   * @param date - the date as the form renders it (MM/DD/YYYY on this instance)
+   */
+  async setEndDateOnOrderLine(productName: string, date: string): Promise<void> {
+    console.log(`  - Setting End Date for row "${productName}" → "${date}"...`);
+    await this.setOrderLineDateColumn(productName, 'End Date', date, 'end_date');
+  }
+
+  /**
+   * Set "Start Date" on the Order Line row matching the given product.
+   * Same mechanics and the same measurements as {@link setEndDateOnOrderLine}.
+   */
+  async setStartDateOnOrderLine(productName: string, date: string): Promise<void> {
+    console.log(`  - Setting Start Date for row "${productName}" → "${date}"...`);
+    await this.setOrderLineDateColumn(productName, 'Start Date', date, 'start_date');
+  }
+
+  /**
+   * The shared mechanics behind the two Order Line date setters.
+   *
+   * @param productName  - product code identifying the row
+   * @param headerText   - the column header exactly as the list prints it
+   * @param date         - the value to type
+   * @param fieldName    - the field the edit-mode input carries, used only as a fallback locator
+   */
+  private async setOrderLineDateColumn(
+    productName: string,
+    headerText: string,
+    date: string,
+    fieldName: string,
+  ): Promise<void> {
+    const table = this.page.locator('.o_field_x2many_list table, table.o_list_view').first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+
+    // 1. the column index, from the header row. Odoo 12 prints the label uppercased by CSS, so the
+    //    comparison is case-insensitive and whitespace-tolerant.
+    const headers = table.locator('thead th');
+    const count = await headers.count();
+    let columnIndex = -1;
+    const seen: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const label = (await headers.nth(i).innerText({ timeout: CommonUtils.waitTimes.long }).catch(() => '')).trim();
+      seen.push(label);
+      if (label.toLowerCase() === headerText.toLowerCase()) { columnIndex = i; break; }
+    }
+    if (columnIndex === -1) {
+      throw new Error(
+        `The Order Lines list has no "${headerText}" column, so nothing was set. ` +
+        `Columns actually present: ${seen.filter(Boolean).map((s) => `"${s}"`).join(', ')}. ` +
+        'On crm-mig this column carries o_invisible_modifier - check whether the form hid it rather ' +
+        'than treating this as a selector problem.',
+      );
+    }
+    console.log(`  - "${headerText}" is column ${columnIndex + 1} of ${count}`);
+
+    // 2. activate the row, exactly as changeUnitPriceInRow does
+    const productCell = this.page.locator(
+      `xpath=//span[@name="product_id" and contains(text(),'${productName}')]`
+    ).first();
+    await productCell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await productCell.click({ force: true });
+    await this.wait(500);
+
+    const row = this.page.locator('tr.o_data_row.o_selected_row').first();
+    const hasSelectedRow = await row.count().catch(() => 0);
+    if (!hasSelectedRow) {
+      throw new Error(
+        `Clicking "${productName}" did not put the Order Line row into edit mode, so "${headerText}" ` +
+        'could not be typed. The form is most likely still in read mode - click EDIT first.',
+      );
+    }
+
+    // 3. the cell in that row, at the index the header gave us
+    const cell = row.locator('td.o_data_cell').nth(columnIndex - await this.leadingNonDataCells(row));
+    if (!(await cell.count().catch(() => 0))) {
+      throw new Error(`Row "${productName}" has no cell under "${headerText}" (column ${columnIndex + 1}).`);
+    }
+    const hidden = await cell.evaluate(
+      (el) => el.classList.contains('o_invisible_modifier') ||
+              getComputedStyle(el).display === 'none',
+    ).catch(() => false);
+    if (hidden) {
+      throw new Error(
+        `The "${headerText}" cell on row "${productName}" is hidden (o_invisible_modifier), so the ` +
+        'date cannot be typed into the form. This is a finding about the view, not a wait to extend.',
+      );
+    }
+    await cell.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(300);
+
+    // 4. the input the datepicker widget renders once the cell is active; by name when it has one
+    const input = cell.locator(`input[name="${fieldName}"], input.o_datepicker_input, input`).first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ clickCount: 3 });
+    await input.fill(date, { timeout: CommonUtils.waitTimes.abnormalWait });
+    // close the datepicker without letting it overwrite what was typed
+    await input.press('Escape');
+    await this.wait(300);
+
+    const readBack = await input.inputValue({ timeout: CommonUtils.waitTimes.long }).catch(() => '');
+    if (readBack.trim() !== date.trim()) {
+      throw new Error(
+        `"${headerText}" on row "${productName}" did not keep the typed value: asked for "${date}", ` +
+        `the cell now reads "${readBack}". Check the instance's date format before widening this.`,
+      );
+    }
+    console.log(`  ✓ ${headerText} set to "${date}" on row "${productName}"`);
+  }
+
+  /**
+   * How many leading `<td>`s of a row are NOT data cells (Odoo 12 puts a handle/checkbox column in
+   * front), so a header index can be mapped onto `td.o_data_cell` positions.
+   */
+  private async leadingNonDataCells(row: Locator): Promise<number> {
+    return await row.evaluate((tr: HTMLElement) => {
+      let n = 0;
+      for (const td of Array.from(tr.children)) {
+        if ((td as HTMLElement).classList.contains('o_data_cell')) break;
+        n++;
+      }
+      return n;
+    }).catch(() => 0);
   }
 
   /**
@@ -976,7 +1202,27 @@ export class DealElementPage extends BasePage {
         // Quoc Anh: Save button is not stable, need to wait before clicking to avoid "Save failed" error
         await button.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear }).catch(() => {});
         await this.wait(CommonUtils.waitTimes.extraLong);
-        await button.click();
+        // BOUNDED ON PURPOSE (2026-10-16). This was a bare `button.click()`, and `playwright.config.ts`
+        // sets no `actionTimeout`, so Playwright's default (0 = forever) applied: when the button was
+        // visible but not yet ACTIONABLE - still re-rendering, or covered by the sticky control panel -
+        // the click never returned and the whole test died on its 900 s budget. That is how
+        // CRM-11806_1.1 and 1.2 failed on 2026-10-16: the log reads "SAVE button found" and then
+        // "Test timeout of 900000ms exceeded" at the click, with no error of its own. Bound it, settle
+        // once, retry, and only then force - so an unclickable SAVE reports itself in seconds.
+        await button.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async (first: Error) => {
+          console.log('  ⚠ SAVE was visible but not actionable; settling once and retrying');
+          await this.wait(CommonUtils.waitTimes.standard * 5);
+          await button.scrollIntoViewIfNeeded().catch(() => {});
+          await button.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
+            console.log('  ⚠ still not actionable - clicking through whatever is covering it');
+            await button.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {
+              throw new Error(
+                'The SAVE button is on the page but cannot be clicked, even forced. ' +
+                `First attempt said: ${first.message.split('\n')[0]}`,
+              );
+            });
+          });
+        });
         await CommonUtils.waitForSpinnersToHide(this.page);
         console.log('  ✓ Clicked SAVE button successfully');
 

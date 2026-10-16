@@ -95,7 +95,7 @@ const EXPECTED_QTY = 50;
  * a bug. SET IT BACK TO false once that evidence is captured - a spec that leaves its Opportunity
  * behind on every run is a leftover generator.
  */
-const SKIP_CLEANUP_OPP = true;
+const SKIP_CLEANUP_OPP = false;
 
 test.describe(`${TC_ID} - Confirming a subscription order creates exactly one subscription`, () => {
 

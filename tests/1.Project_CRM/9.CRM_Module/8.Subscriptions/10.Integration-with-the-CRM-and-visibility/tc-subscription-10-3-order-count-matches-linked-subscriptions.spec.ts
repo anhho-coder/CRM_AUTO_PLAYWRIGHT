@@ -13,8 +13,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Spec ID:         SC-29 / FUNC-0174
  *  Spec:            CRM reflection and portal
  *  Jira:            CRM-12188 (subscription management)
- *  Automation-Type: new
- *  Automation-Date: 2026-10-08
+ *  Automation-Type: refactored
+ *  Automation-Date: 2026-10-16
  *
  *  Source manual TC (mirrors the manual steps - same order, same content):
  *
@@ -120,6 +120,8 @@ test.describe('subscription-10.3 - Order Subscription smart button matches linke
     console.log(`  Product: "${PRODUCT_SKU_SUBSCRIPTIONABLE}" (flagged Subscriptionable)`);
     await homePage.navigateToOpportunities();
     await opportunityPage.quickCreateOpportunity(opportunityNameA);
+    // quick-create only adds a kanban CARD - the form must be opened before DEAL ELEMENT exists
+    await opportunityPage.openKanbanCardByText(opportunityNameA);
     await opportunityPage.fillContactName(customerName);
     await opportunityPage.clickDealElement();
     await dealElementPage.addProductLine(PRODUCT_SKU_SUBSCRIPTIONABLE, QUANTITY);
@@ -130,7 +132,9 @@ test.describe('subscription-10.3 - Order Subscription smart button matches linke
     console.log('  Creating and confirming quotation...');
     await opportunityPage.clickNewQuotation();
     await quotationPage.waitForQuotationNavigation();
-    await quotationPage.confirmQuotation();
+    await quotationPage.clickConfirm(CommonUtils.waitTimes.savingPage);
+    await quotationPage.dismissErrorDialogWithRetry().catch(() => {});
+    await quotationPage.waitForFormView(CommonUtils.waitTimes.pageLoad);
     await quotationPage.waitForPageLoad();
     orderASalesOrderNumber = await quotationPage.getSalesOrderNumber();
     console.log(`✓ Order A confirmed - Sales Order Number: ${orderASalesOrderNumber}`);
@@ -141,6 +145,8 @@ test.describe('subscription-10.3 - Order Subscription smart button matches linke
     console.log(`  Product: "${PRODUCT_SKU_NON_SUBSCRIPTIONABLE}" (NOT flagged Subscriptionable)`);
     await homePage.navigateToOpportunities();
     await opportunityPage.quickCreateOpportunity(opportunityNameB);
+    // quick-create only adds a kanban CARD - the form must be opened before DEAL ELEMENT exists
+    await opportunityPage.openKanbanCardByText(opportunityNameB);
     await opportunityPage.fillContactName(customerName);
     await opportunityPage.clickDealElement();
     await dealElementPage.addProductLine(PRODUCT_SKU_NON_SUBSCRIPTIONABLE, QUANTITY);
@@ -151,7 +157,9 @@ test.describe('subscription-10.3 - Order Subscription smart button matches linke
     console.log('  Creating and confirming quotation...');
     await opportunityPage.clickNewQuotation();
     await quotationPage.waitForQuotationNavigation();
-    await quotationPage.confirmQuotation();
+    await quotationPage.clickConfirm(CommonUtils.waitTimes.savingPage);
+    await quotationPage.dismissErrorDialogWithRetry().catch(() => {});
+    await quotationPage.waitForFormView(CommonUtils.waitTimes.pageLoad);
     await quotationPage.waitForPageLoad();
     orderBSalesOrderNumber = await quotationPage.getSalesOrderNumber();
     console.log(`✓ Order B confirmed - Sales Order Number: ${orderBSalesOrderNumber}`);

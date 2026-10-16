@@ -309,7 +309,7 @@ test.describe('TC.Performance.5.1.3 - Send Quotation Performance', () => {
       await page.waitForTimeout(CommonUtils.waitTimes.extraLong);
       console.log('  - Screen stabilized');
       
-      await quotationPage.confirmQuotation();
+      await quotationPage.clickConfirm(CommonUtils.waitTimes.savingPage);
       console.log('  - Quotation confirmed');
       
       performanceMetrics['Confirm Quotation'] = Date.now() - stepStartTime;

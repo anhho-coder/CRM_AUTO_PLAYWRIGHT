@@ -307,7 +307,19 @@ export class QuotationPage extends BasePage {
    * This enables additional actions like "SEND BY EMAIL"
    * @param saveTimeout - Maximum time to wait for save completion (default: 10000ms)
    */
-  async confirmQuotation(saveTimeout: number = 10000): Promise<void> {
+  /**
+   * Click EDIT then SAVE on the quotation form. This does NOT press CONFIRM and does NOT move the
+   * order out of the "Quotation" state.
+   *
+   * Renamed from confirmQuotation() on 2026-10-16 (the name saveQuotation was already taken by the
+   * measured save at the top of this class): the old name made four specs believe they were
+   * confirming an order. They were not - the order stayed a Quotation, and in subscription-1.5 the
+   * failure surfaced 240s later on a hidden "Subscriptions" smart button (SO221484).
+   *
+   * To really confirm a quotation use {@link clickConfirm}, then re-read getQuotationStatus() -
+   * clickConfirm returns as soon as the click lands, while the status bar still reads "Quotation".
+   */
+  async editAndSaveQuotation(saveTimeout: number = 10000): Promise<void> {
     // Click Edit button to enter edit mode
     await this.editButtonLoc().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.editButtonLoc().click();
@@ -317,7 +329,7 @@ export class QuotationPage extends BasePage {
     // Click Save button to confirm the quotation
     await this.saveButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.saveButton().click();
-    console.log('  - Clicked SAVE button to confirm quotation');
+    console.log('  - Clicked SAVE button on the quotation form');
     
     // Wait for Save button to disappear or become disabled
     await this.saveButton().waitFor({ state: 'hidden', timeout: saveTimeout }).catch(async () => {

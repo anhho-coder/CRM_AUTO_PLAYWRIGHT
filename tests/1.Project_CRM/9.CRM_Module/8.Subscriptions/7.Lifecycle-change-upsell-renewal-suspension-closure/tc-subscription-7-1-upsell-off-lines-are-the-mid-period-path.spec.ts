@@ -22,8 +22,8 @@ import {
  *                   supersedes the FRD: [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature) / CRM-12140 (implementation)
- *  Automation-Type: new
- *  Automation-Date: 2026-08-19
+ *  Automation-Type: refactored
+ *  Automation-Date: 2026-10-16
  *  Automation-Update: 2026-10-07 - inverted. The FRD's upsell quotation (US8) is switched off by
  *                   configuration (nakivo_subscription_integration.upsell_enabled = 0), so this
  *                   case now checks SC-34: no upsell action exists, and a line added on the
@@ -62,6 +62,15 @@ import {
  *
  *  NOT automated here: step 5 / the billing-day check. The billing run is a scheduled job the
  *  development team triggers for a named date, so it stays on the manual card.
+ *
+ *
+ *  MEASURED 2026-10-16 (un-skipped once on the tester's request, then skipped again):
+ *  the run FAILS at VP1 - the subscription header DOES carry an "Upsell" button on
+ *  pre-production. Independently visible in the 2026-10-15 full-run page snapshot of
+ *  subscription-4.2 (button "Upsell" on a different subscription). VP2/VP3/VP4 never ran,
+ *  because VP1 throws in Step 1. This is the observation SC-34 asks the tester to record for
+ *  the specification owner - it is NOT an established defect, which is why this stays a
+ *  do-not-score card rather than a test.fail().
  *
  *  Command to run:
  *    npx playwright test --grep "subscription-7\.1:" --project=chromium

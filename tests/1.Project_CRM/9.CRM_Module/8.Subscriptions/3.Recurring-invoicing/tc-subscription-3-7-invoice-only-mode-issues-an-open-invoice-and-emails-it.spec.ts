@@ -21,8 +21,8 @@ import {
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
- *  Automation-Type: new
- *  Automation-Date: 2026-08-19
+ *  Automation-Type: refactored
+ *  Automation-Date: 2026-10-16
  * --------------------------------------------------------------------------------------------
  *  Source manual TC (mirrors the manual steps - same order, same content):
  *
@@ -57,6 +57,22 @@ import {
  *  Command to run:
  *    npx playwright test --grep "subscription-3\.7:" --project=chromium
  * ============================================================================================
+ * --------------------------------------------------------------------------------------------
+ *  SKIPPED - the product leaves the invoice in DRAFT, so this case cannot be automated.
+ *
+ *  Measured on the full pre-production run of 2026-10-15 (report 2026-10-15-154614): after
+ *  "Generate Invoice" the record is a "Draft Invoice" - the status bar reads Draft [checked],
+ *  Open [disabled], Paid [disabled], and the Validate button is still offered. Odoo 12 renders
+ *  no residual / Amount Due on a draft invoice, so InvoicePage.getAmountDue() has nothing to
+ *  wait for and times out after 15s. Same cause in subscription-3.7, 4.3 and 4.5.
+ *
+ *  The manual TC carries NO validate step and expects an OPEN invoice - adding one would make
+ *  the test green by doing something the TC never asks, and would hide the finding.
+ *  Decision 2026-10-16 (tester): keep the case out of the run, Automation scope = unautomatable.
+ *
+ *  TO UNBLOCK: if "Generate Invoice" is changed to issue an OPEN invoice, change
+ *  `test.skip(` back to `test(`.
+ * --------------------------------------------------------------------------------------------
  */
 
 const TC_ID = 'subscription-3.7';
@@ -76,7 +92,7 @@ test.describe(`${TC_ID} - Invoice-only mode issues an open invoice and emails it
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test(`${TC_ID}: An "Invoice only" template validates and emails the invoice but collects no payment`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: An "Invoice only" template validates and emails the invoice but collects no payment`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
