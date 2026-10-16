@@ -999,6 +999,12 @@ export class MigPreSalePage extends MigDataParityPage {
     // sidebar entry highlights and the page stays on Discuss (5.4, first run, 2026-10-16).
     for (let attempt = 1; attempt <= 2; attempt++) {
       await this.page.locator('.o_loading').waitFor({ state: 'hidden', timeout }).catch(() => {});
+      // An intermittent "Odoo Client Error - An error occurred" can sit over Discuss right after the
+      // sign-in and swallow the click for the whole budget (5.5, 2nd of 5 runs, 2026-10-16). It is
+      // closed here and SAID in the log - it is a crm-mig symptom, not something to hide.
+      if (await this.dismissErrorDialog(CommonUtils.waitTimes.standard)) {
+        console.log('  Observation (not scored) - an Odoo error popup stood over the page before the CRM click; closed with OK');
+      }
       await this.crmSidebarEntry().first().click({ timeout });
       try {
         await this.page.waitForURL(/model=crm\.lead/, { timeout, waitUntil: 'commit' });
@@ -1565,6 +1571,56 @@ export class MigPreSalePage extends MigDataParityPage {
       out.push(...texts.map((t) => t.replace(/\s+/g, ' ').trim()));
     }
     return out;
+  }
+
+  /**
+   * Record every document the Pre-Sales host serves into a FRAME of this page, with the headers that
+   * decide whether the browser may show it there. Call it before the click; the array fills as the
+   * frame navigates.
+   *
+   * CRM-13517 (Nathan Do, 2026-10-15): with the CRM and the Pre-Sales Application signed in to two
+   * different accounts in one browser, the first Tickets click was blocked and "the last response
+   * carries X-Frame-Options: DENY". This is how a spec sees that header instead of only the symptom.
+   */
+  recordEmbedDocuments(): { path: string; status: number; xFrameOptions: string; frameAncestors: string }[] {
+    const host = new URL(baseUrl_presales_mig).host;
+    const out: { path: string; status: number; xFrameOptions: string; frameAncestors: string }[] = [];
+    this.page.on('response', (res) => {
+      try {
+        const req = res.request();
+        if (req.resourceType() !== 'document' || !res.url().includes(host)) return;
+        if (req.frame() === this.page.mainFrame()) return;
+        const headers = res.headers();
+        const url = new URL(res.url());
+        out.push({
+          path: url.pathname,
+          status: res.status(),
+          xFrameOptions: headers['x-frame-options'] ?? '',
+          frameAncestors: (headers['content-security-policy'] ?? '').match(/frame-ancestors[^;]*/)?.[0] ?? '',
+        });
+      } catch { /* a response without a frame (service worker) is not the embed */ }
+    });
+    return out;
+  }
+
+  /** Is a child frame showing the browser's own error page - what "refused to connect" is? */
+  embedShowsBrowserError(): boolean {
+    return this.page.frames().some((f) => f !== this.page.mainFrame() && f.url().startsWith('chrome-error://'));
+  }
+
+  /**
+   * Which account THIS BROWSER's Pre-Sales session belongs to, asked with the browser's own cookies
+   * (`page.context().request` shares them). Read-only. uid false = no Pre-Sales session at all.
+   */
+  async presalesBrowserSession(): Promise<{ uid: number | false; name: string; username: string }> {
+    const res = await this.api.post(`${baseUrl_presales_mig}web/session/get_session_info`, {
+      headers: { 'Content-Type': 'application/json' },
+      data: { jsonrpc: '2.0', method: 'call', params: {} },
+      timeout: CommonUtils.waitTimes.abnormalWait,
+    });
+    const body = await res.json().catch(() => ({} as any));
+    const r = body?.result ?? {};
+    return { uid: r.uid ?? false, name: String(r.name ?? ''), username: String(r.username ?? '') };
   }
 
   /** How many frames the CRM page holds - the embedded helpdesk adds one. */
