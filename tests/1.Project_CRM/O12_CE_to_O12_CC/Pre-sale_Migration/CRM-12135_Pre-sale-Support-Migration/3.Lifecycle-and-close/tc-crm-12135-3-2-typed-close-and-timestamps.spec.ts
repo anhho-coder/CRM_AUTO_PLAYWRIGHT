@@ -2,322 +2,329 @@ import { test, expect } from '@playwright/test';
 import { users, baseUrl_mig } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPageMig, MigPreSalePage } from '@pages/mig';
+import { OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
  * ============================================================================================
- * CRM-12135_3.2 - A typed close succeeds and the timestamps hold
+ * CRM-12135_3.2 - A request moves freely between stages and a typed close records the closed date
  * ============================================================================================
  * Test Case ID   : CRM-12135_3.2
- * Jira           : CRM-12135
+ * Jira           : CRM-12931
  * Requirements   : FUNC-0050, FUNC-0051, FUNC-0052
- * Run as         : Engineer
+ * Run as         : admin_crm_mig on the CRM (the TC's "Salesperson admin_crm_mig") with a Pre-Sales
+ *                  Application session for the same person, Ho Quoc Anh (anh.ho@nakivo.com)
  * Automation-Type: new
- * Automation-Date: 2026-09-21
- * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
+ * Automation-Date: 2026-09-21 (re-automated on the Pre-Sales UI 2026-10-16 - it used to drive the
+ *                  steps over RPC)
+ * Source TC      : CRM-12931 (Xray Manual Steps, 6 steps)
+ * Source version : updated 2026-10-06T12:36:31.683+0300 - re-check before trusting this spec
+ * Evidence       : screenshot at the end of each sub-section, a verify-point capture, afterEach
+ *                  start/end, video.
  *
  * Summary
  * -------
- *    Verify that a request can move freely between stages and that a typed close (with
- *   classification recorded) preserves the created timestamp and writes the closed timestamp.
+ *   A request raised from a fresh Opportunity is walked across On Product Team, In Progress, On Support
+ *   Team and Closed on the Pre-Sales stage bar; the created date must hold and the closed date be step 5's.
  *
  * Command to run
  * --------------
- *   npx playwright test --grep "CRM\-12135_TC\-17:" --project=chromium
+ *   npx playwright test --grep "CRM\-12135_3\.2:" --project=O12
  *
- * Source manual TC
- * ----------------
- * CRM-12931 (TC-17) - rewritten by Thuat Phung on 2026-09-23.
- *
+ * Source manual TC (CRM-12931, verbatim)
+ * --------------------------------------
  *   Pre-condition(s):
- *      A request on the Pre-Sales Application with Ticket Type already filled.
+ *      1. Logged in to crm-mig.nakivo.site as Salesperson admin_crm_mig with Pre-Sales Application
+ *         session active
+ *      2. Create a new Opportunity AUTO-CRM-12135-TC-17-<runId>-close with Expected Revenue Deal = $900,
+ *         from the list view.
+ *      3. From that Opportunity, click "Request SE support" and create one request with:
+ *            - Subject      = AUTO-CRM-12135-TC-17-<runId>-close
+ *            - Description  = Automated check of CRM-12135 TC-17.
+ *            - Support type = Offline technical assistance
  *
  *   Steps to reproduce:
- *      1. Open the request on the Pre-Sales Application, read the Classification group, and note
- *     the created date as C.
- *      2. Click On Product Team on the stage bar.
- *      3. Click In Progress on the stage bar.
- *      4. Click On Support Team on the stage bar.
- *      5. Click Closed on the stage bar.
+ *      1. Open the request on the Pre-Sales Application, read the Classification group, and note the
+ *         created date as C.
+ *         Expected: Ticket Type is already filled. The created date C is recorded.
+ *      2. Click On Product Team on the stage bar.      Expected: No error popup.
+ *      3. Click In Progress on the stage bar.          Expected: No error popup.
+ *      4. Click On Support Team on the stage bar.      Expected: No error popup.
+ *      5. Click Closed on the stage bar.               Expected: No error popup.
  *      6. Refresh the page and re-open the request.
+ *         Expected: The stage is Closed. The created date is still C, and the closed date is the time
+ *         of step 5.
  *
- *   Verification (expected results):
- *      1. Ticket Type is already filled.
- *      2. No error popup when moving to On Product Team.
- *      3. No error popup when moving to In Progress.
- *      4. No error popup when moving to On Support Team.
- *      5. No error popup when moving to Closed.
- *      6. After refresh, the stage is Closed, the created date is still C, and the closed date
- *     is the time of step 5.
+ * Added by the automation (not in the TC)
+ * ---------------------------------------
+ *   - Steps 2-5 also assert that the stage bar marks the clicked stage current. "No error popup" alone
+ *     passes against a stage bar that silently does nothing (skill REQUIREMENT 6c).
+ *   - "Open the request" walks Pre-sale tickets > Tickets > All Tickets and searches its Subject.
+ *   - Closed is folded under the stage bar's "More" menu; Closed Date sits in the "Other Information" tab.
+ *   - Dates read as the form shows them ("Oct 16, 11:17 AM", minute precision, the browser's zone), so
+ *     "the time of step 5" = between the minute the Closed click started and the moment it returned.
  *
  * Data
  * ----
- * Every record this case creates is named AUTO-CRM-12135-TC-17-<runId> and is removed
- * in the finally block, on a passing AND on a failing run. Set
- * SKIP_CLEANUP_PRESALE=true to keep the records for a manual look.
+ *   The Opportunity and its request are named AUTO-CRM-12135-TC-17-<runId>-close and removed in
+ *   afterEach by an administrator session, on a passing, failing or timed-out run.
+ *   SKIP_CLEANUP_PRESALE=true keeps them.
  */
+
+const TC = 'CRM-12135_3.2';
 
 // Step labels - ONE source of truth for the test.step() label AND the stdout banner.
 const STEP = {
-  s1: 'Step 1: Open the request on the Pre-Sales Application, read the Classification group, and note the created date as C',
-  s2: 'Step 2: Click On Product Team on the stage bar',
-  s3: 'Step 3: Click In Progress on the stage bar',
-  s4: 'Step 4: Click On Support Team on the stage bar',
-  s5: 'Step 5: Click Closed on the stage bar',
-  s6: 'Step 6: Refresh the page and re-open the request',
+  pre1:   'Pre-condition 1: Sign in to the Pre-Sales Application as Ho Quoc Anh, then to the CRM (crm-mig) as admin_crm_mig - logged in to the CRM with a Pre-Sales Application session active',
+  pre2:   'Pre-condition 2: Create a new Opportunity AUTO-CRM-12135-TC-17-<runId>-close with Expected Revenue Deal = $900, from the list view (CRM left sidebar > Pipeline > LIST view - in kanban CREATE opens a quick-create card without Expected Revenue Deal)',
+  pre3:   'Pre-condition 3: From that Opportunity, click "Request SE support" (under More when the header row is full) and create one request',
+  s1:     'Step 1: Open the request on the Pre-Sales Application (Pre-sale tickets > Tickets > All Tickets, search its Subject), read the Classification group, and note the created date as C',
+  s2:     'Step 2: Click On Product Team on the stage bar',
+  s3:     'Step 3: Click In Progress on the stage bar',
+  s4:     'Step 4: Click On Support Team on the stage bar',
+  s5:     'Step 5: Click Closed on the stage bar (folded under More)',
+  s6:     'Step 6: Refresh the page and re-open the request',
   verify: 'Verification',
 } as const;
+
+const EXPECTED_REVENUE = 900;
+const SUPPORT_TYPE = 'Offline technical assistance';
 
 /** Keep the records this run creates, for a manual look. Default: clean up. */
 const SKIP_CLEANUP = process.env.SKIP_CLEANUP_PRESALE === 'true';
 
-/** The page the test drives, shared with afterEach so its screenshots show the real session. */
-let sharedPage: import('@playwright/test').Page | undefined;
+/** The marker this run's records carry - set before the first record exists, swept in afterEach. */
+let runMarker = '';
 
-/** Installed by the pre-condition that first creates data; runs in the finally block. */
-let teardown: (() => Promise<void>) | undefined;
+/** What one stage-bar click produced. */
+interface StageMove { target: string; current: string; dialog: string }
 
-test.describe('CRM-12135_3.2 - A typed close succeeds and the timestamps hold', () => {
-  test.afterEach(async ({ browser }, testInfo) => {
-    if (sharedPage) {
-      await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - start').catch(() => {});
-    }
-    if (teardown) {
-      // The test left the try block without cleaning up - a TIMEOUT skips finally. Sweep from here
-      // on a fresh session instead of only reporting it; a timeout used to leave records behind.
-      console.log('TEARDOWN DID NOT RUN in the test body - sweeping from afterEach on a fresh session.');
-      const swept = await MigPreSalePage.sweepLeftovers(browser);
-      console.log(`  afterEach SWEEP: removed requests [${swept.requests.join(', ')}] and `
-        + `opportunities [${swept.opportunities.join(', ')}]`
-        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
-      teardown = undefined;
-    }
+test.describe(`${TC} - A request moves freely between stages and a typed close records the closed date`, () => {
+  test.afterEach(async ({ page, browser }, testInfo) => {
+    await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - start').catch(() => {});
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       console.log(`TEST FAILED - reason: ${testInfo.error?.message?.split('\n')[0] ?? 'unknown'}`);
     }
-    if (sharedPage) {
-      await CommonUtils.captureAndAttachScreenshot(sharedPage, testInfo, 'afterEach - teardown done').catch(() => {});
+    if (!runMarker) {
+      console.log('  TEARDOWN: nothing was created');
+    } else if (SKIP_CLEANUP) {
+      console.log(`  TEARDOWN SKIPPED (SKIP_CLEANUP_PRESALE=true) - marker ${runMarker}`);
+    } else {
+      // An administrator session of its own, on a pass, a fail and a timeout alike.
+      const swept = await MigPreSalePage.sweepLeftovers(browser, runMarker);
+      console.log(`  TEARDOWN: removed requests [${swept.requests.join(', ')}] and opportunities [${swept.opportunities.join(', ')}]`
+        + (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
     }
-    sharedPage = undefined;
+    runMarker = '';
+    await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('CRM-12135_3.2: A typed close succeeds and the timestamps hold', async ({ browser }, testInfo) => {
+  test(`${TC}: A request moves freely between stages and a typed close records the closed date`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    console.log('========== CRM-12135_3.2 - A typed close succeeds and the timestamps hold ==========');
+    console.log(`========== ${TC} - A request moves freely between stages and a typed close records the closed date ==========`);
 
-    const context = await browser.newContext({
-      viewport: { width: 1920, height: 1080 },
-      ignoreHTTPSErrors: true,
-      // recordVideo must be passed HERE: `video: 'on'` in playwright.config.ts only reaches
-      // contexts Playwright creates itself, never one built by hand with browser.newContext().
-      recordVideo: { dir: testInfo.outputDir, size: { width: 1920, height: 1080 } },
-    });
-    const page = await context.newPage();
-    sharedPage = page;
+    const runId = MigPreSalePage.runId();
+    const name = `${MigPreSalePage.marker('TC-17', runId)}-close`;
+    const description = 'Automated check of CRM-12135 TC-17.';
+    const ui = new MigPreSalePage(page);
+    const opportunityPage = new OpportunityPage(page);
 
-    try {
+    let leadId = 0;
+    let saveErrorDialog = '';
+    let rowCount = 0;
+    let requestId = 0;
+    let ticketType = '';
+    let createdC = '';
+    const moves: StageMove[] = [];
+    let closeStartedAt = new Date(0);
+    let closeReturnedAt = new Date(0);
+    let stageAfterRefresh = '';
+    let createdAfterRefresh = '';
+    let closedDate = '';
+
+    /** Click one stage and record what the bar and the screen showed. */
+    const moveTo = async (target: string): Promise<void> => {
+      await ui.clickPresalesStage(target);
+      const dialog = await ui.presalesDialog();
+      const current = await ui.presalesCurrentStage();
+      const text = dialog ? `${dialog.title}: ${dialog.body}`.replace(/\s+/g, ' ').trim() : '';
+      moves.push({ target, current, dialog: text });
+      console.log(`  Stage bar current : ${current}`);
+      console.log(`  Popup             : ${text || 'none'}`);
+      if (dialog) await ui.closePresalesDialog();
+    };
+
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
+      const landed = await MigPreSalePage.loginPresalesUi(
+        page, users.anh_ho_presales_mig.username, users.anh_ho_presales_mig.password,
+      );
+      console.log(`  Pre-Sales account : ${users.anh_ho_presales_mig.username} (landed on ${landed})`);
       const loginPage = new LoginPageMig(page);
       await loginPage.navigateTo(baseUrl_mig);
       await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
-
-      const preSale = new MigPreSalePage(page);
-      const presalesUid = await preSale.loginPresales(
-        users.anh_ho_presales_mig.username,
-        users.anh_ho_presales_mig.password,
-      );
-      console.log(`  Pre-Sales Application session uid: ${presalesUid}`);
-
-const runId = MigPreSalePage.runId();
-    const marker = MigPreSalePage.marker('TC-17', runId);
-    let leadId = 0;
-    let requestId = 0;
-    let createdAtRaise = '';
-    let closedRequest: Awaited<ReturnType<typeof preSale.request>> | undefined;
-
-    // ==== FIXTURE SETUP - Create the request with Ticket Type filled ====
-    leadId = await preSale.createOpportunity(`${marker} source`, 900);
-    teardown = async () => {
-      if (process.env.SKIP_CLEANUP_PRESALE === 'true') {
-        console.log(`  TEARDOWN SKIPPED (SKIP_CLEANUP_PRESALE=true) - marker ${marker}`);
-        return;
-      }
-      const swept = await preSale.sweepByMarker(marker);
-      console.log(`  TEARDOWN: removed requests [${swept.requests.join(', ')}] and ` +
-        `opportunities [${swept.opportunities.join(', ')}]` +
-        (swept.errors.length ? ` with errors: ${swept.errors.join(' | ')}` : ''));
-    };
-
-    // Open the Opportunity and create the request via the raise dialog.
-    await preSale.openOpportunity(leadId);
-    await preSale.openRaiseDialog();
-    await preSale.fillRaiseDialog({
-      subject: `${marker} request`,
-      description: 'Automated check of CRM-12135 TC-17 - the engineer flow.',
-      supportType: 'Offline technical assistance',
+      console.log(`  CRM account       : ${users.admin_crm_mig.username} (${users.admin_crm_mig.displayName})`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 1 - signed in to both servers');
     });
-    await preSale.saveRaiseDialog();
-    await preSale.waitForRaiseDialogClosed();
 
-    // Get the request and set its Ticket Type so it matches the pre-condition.
-    const raised = await preSale.requestsForLead(leadId);
-    expect(raised.length === 1, 'exactly one request should be created').toBe(true);
-    requestId = raised[0].id;
-    const typeId = await preSale.requestTypeIdByName(MigPreSalePage.EXPECTED_TYPES[1]);
-    await preSale.setRequestType(requestId, typeId);
+    await test.step(STEP.pre2, async () => {
+      console.log(`\n--- ${STEP.pre2} ---`);
+      await ui.openPipelineListFromSidebar();
+      await opportunityPage.clickCreate();
+      runMarker = name;
+      console.log(`  - Opportunity name      : ${name}`);
+      console.log(`  - Expected Revenue Deal : ${EXPECTED_REVENUE}`);
+      await opportunityPage.fillOpportunityName(name);
+      await opportunityPage.fillExpectedRevenueDeal(String(EXPECTED_REVENUE));
+      await opportunityPage.saveAndWaitForCompletion();
+      leadId = Number(await opportunityPage.waitForIdInUrlAndExtract(CommonUtils.waitTimes.savingPage));
+      // Observation, not scored: an "Odoo Server Error - Missing Record" (mail.followers) dialog has
+      // stood over the form after this SAVE on every run since 2026-10-16. The TC gives no expectation.
+      saveErrorDialog = await opportunityPage.isServerErrorDialogVisible(CommonUtils.waitTimes.long)
+        ? await opportunityPage.waitForServerErrorDialog(CommonUtils.waitTimes.standard) : '';
+      console.log(`  Opportunity id  : ${leadId}`);
+      console.log(`  Opportunity URL : ${MigPreSalePage.opportunityUrl(leadId)}`);
+      console.log(`  Observation (not scored) - error dialog after SAVE : ${saveErrorDialog.replace(/\s+/g, ' ') || 'none'}`);
+      expect(leadId, 'the Opportunity this case builds on must be saved').toBeGreaterThan(0);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 2 - Opportunity saved');
+    });
 
-    let baseRequest = await preSale.request(requestId);
-    createdAtRaise = baseRequest.createDate;
-    console.log(`Pre-condition setup: Request ${requestId} created with Ticket Type = ${MigPreSalePage.EXPECTED_TYPES[1]}`);
-    console.log(`  Created date (C) : ${createdAtRaise}`);
-
-    // ==== RE-SYNC GAP (CRM-12931, 2026-09-24) ====
-    // The new manual TC requires opening the request form on the Pre-Sales Application and
-    // clicking stage buttons in the UI. MigPreSalePage has NO method to navigate to a request
-    // form on the Pre-Sales Application (all request operations go through API calls via
-    // presalesCallKw). Without a navigation method, the following cannot be done:
-    //   - Step 1: Open the request on the Pre-Sales Application UI and read the Classification group
-    //   - Step 2-5: Click stage buttons on the stage bar (no page object selectors or methods)
-    //   - Step 6: Refresh and verify via the UI
-    // The test CAN verify the scenario via API calls, below. A page object enhancement is needed:
-    //   - navigateToPresalesRequest(requestId) method (similar to openOpportunity for the CRM)
-    //   - Selectors for stage buttons and date fields on the request form
-    // =====================================================================
+    await test.step(STEP.pre3, async () => {
+      console.log(`\n--- ${STEP.pre3} ---`);
+      await ui.openOpportunity(leadId);
+      await ui.openRaiseDialog();
+      console.log(`  - Subject      : ${name}`);
+      console.log(`  - Description  : ${description}`);
+      console.log(`  - Support type : ${SUPPORT_TYPE}`);
+      await ui.fillRaiseDialog({ subject: name, description, supportType: SUPPORT_TYPE });
+      await ui.saveRaiseDialog();
+      await ui.waitForRaiseDialogClosed();
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 3 - request raised');
+    });
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      console.log(`  RE-SYNC GAP: cannot navigate to request form on Pre-Sales Application.`);
-      console.log(`  Verifying via API instead:`);
-      baseRequest = await preSale.request(requestId);
-      console.log(`    Ticket Type : ${baseRequest.typeName || '(not set)'}`);
-      console.log(`    Created date (C) : ${baseRequest.createDate}`);
-      expect(baseRequest.typeId, 'Ticket Type should be filled').not.toBe(false);
+      await ui.openPresalesHome();
+      await ui.openPresalesAllTickets();
+      rowCount = await ui.searchPresalesList(name);
+      console.log(`  Rows carrying the Subject : ${rowCount}`);
+      expect(rowCount, 'the request raised in pre-condition 3 must be in All Tickets').toBeGreaterThan(0);
+      await ui.openPresalesRow(name);
+      requestId = (await ui.presalesOpenRequest()).id;
+      ticketType = await ui.presalesFieldText('type_id');
+      createdC = await ui.presalesFieldText('create_date');
+      console.log(`  Request id             : ${requestId}`);
+      console.log(`  Request URL            : ${MigPreSalePage.requestUrl(requestId)}`);
+      console.log(`  Ticket Type            : ${ticketType || '(empty)'}`);
+      console.log(`  Created date C         : ${createdC}`);
+      console.log(`  Stage                  : ${await ui.presalesCurrentStage()}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 1 - request open, C noted');
     });
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      console.log(`  RE-SYNC GAP: cannot click stage buttons on the Pre-Sales Application form.`);
-      const stageId = await preSale.stageIdByName('On Product Team');
-      await preSale.moveRequestToStage(requestId, stageId);
-      const r = await preSale.request(requestId);
-      console.log(`    Stage moved via API: ${r.stage}`);
-      expect(r.stage, 'No error popup - move to On Product Team should succeed').toBe('On Product Team');
+      await moveTo('On Product Team');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 2 - On Product Team');
     });
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      console.log(`  RE-SYNC GAP: cannot click stage buttons on the Pre-Sales Application form.`);
-      const stageId = await preSale.stageIdByName('In Progress');
-      await preSale.moveRequestToStage(requestId, stageId);
-      const r = await preSale.request(requestId);
-      console.log(`    Stage moved via API: ${r.stage}`);
-      expect(r.stage, 'No error popup - move to In Progress should succeed').toBe('In Progress');
+      await moveTo('In Progress');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 3 - In Progress');
     });
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
-      console.log(`  RE-SYNC GAP: cannot click stage buttons on the Pre-Sales Application form.`);
-      const stageId = await preSale.stageIdByName('On Support Team');
-      await preSale.moveRequestToStage(requestId, stageId);
-      const r = await preSale.request(requestId);
-      console.log(`    Stage moved via API: ${r.stage}`);
-      expect(r.stage, 'No error popup - move to On Support Team should succeed').toBe('On Support Team');
+      await moveTo('On Support Team');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 4 - On Support Team');
     });
 
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
-      console.log(`  RE-SYNC GAP: cannot click stage buttons on the Pre-Sales Application form.`);
-      const closedStageId = await preSale.stageIdByName('Closed');
-      await preSale.moveRequestToStage(requestId, closedStageId);
-      closedRequest = await preSale.request(requestId);
-      console.log(`    Stage moved via API: ${closedRequest.stage}`);
-      expect(closedRequest.stage, 'No error popup - move to Closed should succeed').toBe('Closed');
+      closeStartedAt = new Date();
+      await moveTo('Closed');
+      closeReturnedAt = new Date();
+      console.log(`  Closed clicked between ${closeStartedAt.toLocaleString()} and ${closeReturnedAt.toLocaleString()}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 5 - Closed');
     });
 
     await test.step(STEP.s6, async () => {
       console.log(`\n--- ${STEP.s6} ---`);
-      console.log(`  RE-SYNC GAP: cannot refresh or re-open the request on the Pre-Sales Application form.`);
-      console.log(`  Verifying via API instead:`);
-      closedRequest = await preSale.request(requestId);
-      const createdUnchanged = closedRequest.createDate === createdAtRaise;
-      const closedStamp = Boolean(closedRequest.closedDate) && String(closedRequest.closedDate) >= createdAtRaise;
-      console.log(`    Stage        : ${closedRequest.stage}`);
-      console.log(`    Created at   : ${closedRequest.createDate} (expected: ${createdAtRaise})`);
-      console.log(`    Closed at    : ${closedRequest.closedDate || '(none)'}`);
-      console.log(`    Created stable: ${createdUnchanged ? 'yes' : 'no'}`);
-      console.log(`    Closed valid : ${closedStamp ? 'yes' : 'no'}`);
-      expect(closedRequest.stage, 'stage should be Closed').toBe('Closed');
-      expect(createdUnchanged, 'created date should be unchanged').toBe(true);
-      expect(closedStamp, 'closed date should be written and >= created date').toBe(true);
+      await ui.reloadPresalesForm();
+      stageAfterRefresh = await ui.presalesCurrentStage();
+      createdAfterRefresh = await ui.presalesFieldText('create_date');
+      closedDate = await ui.presalesClosedDate();
+      console.log(`  Stage        : ${stageAfterRefresh}`);
+      console.log(`  Created date : ${createdAfterRefresh}`);
+      console.log(`  Closed Date  : ${closedDate || '(empty)'}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce 6 - re-opened after refresh');
     });
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      const r = closedRequest!;
-      const createdHeld = r.createDate === createdAtRaise;
-      const closedStamp = Boolean(r.closedDate) && String(r.closedDate) >= createdAtRaise;
+      const closedAt = MigPreSalePage.parseShortDateTime(closedDate);
+      const windowStart = new Date(closeStartedAt);
+      windowStart.setSeconds(0, 0);
+      const closedInWindow = !!closedAt && closedAt >= windowStart && closedAt <= closeReturnedAt;
 
-      console.log('\n==================== VERIFY ====================');
-      console.log('Verify #1 - Ticket Type is filled:');
-      console.log(`     Expected : a request type (not empty)`);
-      console.log(`     Actual   : ${r.typeName || '(not set)'}`);
-      console.log(`     Result   : ${r.typeId ? 'PASS' : 'FAIL'}`);
-      console.log('Verify #2 - Stage move to On Product Team succeeds with no error:');
-      console.log(`     Result   : PASS (no error thrown)`);
-      console.log('Verify #3 - Stage move to In Progress succeeds with no error:');
-      console.log(`     Result   : PASS (no error thrown)`);
-      console.log('Verify #4 - Stage move to On Support Team succeeds with no error:');
-      console.log(`     Result   : PASS (no error thrown)`);
-      console.log('Verify #5 - Stage move to Closed succeeds with no error:');
-      console.log(`     Expected : Closed`);
-      console.log(`     Actual   : ${r.stage}`);
-      console.log(`     Result   : ${r.stage === 'Closed' ? 'PASS' : 'FAIL'}`);
-      console.log('Verify #6 - After refresh, created date is unchanged and closed date is written:');
-      console.log(`     Created at   : ${r.createDate} (expected: ${createdAtRaise})`);
-      console.log(`     Closed at    : ${r.closedDate || '(none)'}`);
-      console.log(`     Created stable: ${createdHeld ? 'PASS' : 'FAIL'}`);
-      console.log(`     Closed valid : ${closedStamp ? 'PASS' : 'FAIL'}`);
+      const ok1 = ticketType !== '' && createdC !== '';
+      const moveOk = (m: StageMove | undefined, target: string) =>
+        !!m && m.dialog === '' && m.current.toLowerCase() === target.toLowerCase();
+      const targets = ['On Product Team', 'In Progress', 'On Support Team', 'Closed'];
+      const okMoves = targets.map((t) => moveOk(moves.find((m) => m.target === t), t));
+      const ok6 = stageAfterRefresh.toLowerCase() === 'closed';
+      const ok7 = createdAfterRefresh === createdC && createdC !== '';
+      const ok8 = closedInWindow;
+      const lines = [
+        'Verify #1 - Ticket Type is already filled, and the created date C is recorded:',
+        '   Expected : Ticket Type not empty, C read',
+        `   Actual   : Ticket Type "${ticketType}", C = ${createdC || '(none)'}`,
+        `   Result   : ${ok1 ? 'PASS' : 'FAIL'}`,
+        ...targets.flatMap((t, i) => {
+          const m = moves.find((x) => x.target === t);
+          return [
+            `Verify #${i + 2} - Step ${i + 2}: ${t} - no error popup, and the bar marks ${t} current:`,
+            `   Expected : no popup, current = ${t}`,
+            `   Actual   : popup ${m?.dialog || 'none'}, current = ${m?.current || '(not reached)'}`,
+            `   Result   : ${okMoves[i] ? 'PASS' : 'FAIL'}`,
+          ];
+        }),
+        'Verify #6 - After the refresh the stage is Closed:',
+        '   Expected : Closed',
+        `   Actual   : ${stageAfterRefresh || '(none)'}`,
+        `   Result   : ${ok6 ? 'PASS' : 'FAIL'}`,
+        'Verify #7 - The created date is still C:',
+        `   Expected : ${createdC || '(C not read)'}`,
+        `   Actual   : ${createdAfterRefresh || '(none)'}`,
+        `   Result   : ${ok7 ? 'PASS' : 'FAIL'}`,
+        'Verify #8 - The closed date is the time of step 5:',
+        `   Expected : between ${windowStart.toLocaleString()} and ${closeReturnedAt.toLocaleString()} (empty = the close wrote no date)`,
+        `   Actual   : ${closedDate || '(empty)'}`,
+        `   Result   : ${ok8 ? 'PASS' : 'FAIL'}`,
+      ];
+      const passed = ok1 && okMoves.every(Boolean) && ok6 && ok7 && ok8;
+      console.log('==================== VERIFY ====================');
+      for (const l of lines) console.log(`  ${l}`);
+      console.log(`  Observation (not scored) - error dialog after the Opportunity SAVE : ${saveErrorDialog.replace(/\s+/g, ' ') || 'none'}`);
       console.log('===============================================');
-      const overallPass = r.typeId && r.stage === 'Closed' && createdHeld && closedStamp;
-      console.log(`OVERALL: ${overallPass ? 'PASS' : 'FAIL'} - Request moves freely between stages and close records timestamps`);
-      expect(r.typeId, 'Ticket Type should be filled').not.toBe(false);
-      expect(r.stage, 'stage should be Closed').toBe('Closed');
-      expect(createdHeld, 'created date should be unchanged').toBe(true);
-      expect(closedStamp, 'closed date should be written and not precede created date').toBe(true);
-    });
-    } finally {
-      // Evidence FIRST, while the page is still alive. afterEach runs after this block, so its
-      // screenshots could only ever find a closed page - which is why every run logged
-      // "Screenshot skipped ... has been closed". A thrown assertion also passes through
-      // finally, so a red run is captured the same way.
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Final state before teardown')
-        .catch(() => {});
+      console.log(`OVERALL: ${passed ? 'PASS' : 'FAIL'} - the request ${passed ? 'moved freely and the typed close kept C and recorded the closed date' : 'did NOT behave as specified'}`);
 
-      // Teardown runs HERE, not in afterEach: it needs the live session, and afterEach only
-      // sees a closed context. A thrown assertion still passes through finally, so a red run
-      // cleans up too.
-      if (teardown) {
-        try {
-          await teardown();
-        } catch (err) {
-          console.log(`TEARDOWN ERROR: ${(err as Error).message}`);
-        }
-        teardown = undefined;
-      }
-      // The Video handle must be taken BEFORE close; the file is only written on close, and
-      // path() resolves once it is. A hand-made context does not attach it to the report
-      // either, so attach it explicitly.
-      const video = page.video();
-      await context.close();
-      if (video) {
-        try {
-          await testInfo.attach('video', { path: await video.path(), contentType: 'video/webm' });
-          console.log('\u{1F3A5} Video attached');
-        } catch (err) {
-          console.log(`Video not attached: ${(err as Error).message.split('\n')[0]}`);
-        }
-      }
-      // afterEach must not chase a page this block has just closed.
-      sharedPage = undefined;
-    }
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - closed request after refresh`,
+        passed,
+        highlight: ['.o_statusbar_status', '.o_form_renderer div[name="create_date"]', '.o_form_renderer div[name="closed_date"]'],
+        lines,
+      }).catch(() => {});
+
+      expect(ticketType, 'Ticket Type must already be filled on the raised request').not.toBe('');
+      targets.forEach((t, i) => {
+        const m = moves.find((x) => x.target === t);
+        expect(m?.dialog ?? 'not clicked', `step ${i + 2}: clicking ${t} must raise no popup`).toBe('');
+        expect((m?.current ?? '').toLowerCase(), `step ${i + 2}: the stage bar must mark ${t} current`).toBe(t.toLowerCase());
+      });
+      expect(stageAfterRefresh.toLowerCase(), 'after the refresh the stage must be Closed').toBe('closed');
+      expect(createdAfterRefresh, 'the created date must still be C').toBe(createdC);
+      expect(closedInWindow, `the closed date "${closedDate}" must be the time of step 5`).toBe(true);
+    });
   });
 });

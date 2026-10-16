@@ -4,7 +4,7 @@ import { baseUrl_mig, baseUrl_presales_mig, presalesDb_mig, users } from '@confi
 // Imported by FILE, not through the `@pages/mig` barrel: the barrel also exports this very class,
 // so going through it would make the module import itself.
 import { LoginPageMig } from './LoginPageMig';
-import type { Page, APIRequestContext } from '@playwright/test';
+import type { Page, APIRequestContext, Frame } from '@playwright/test';
 
 /** One pre-sale request, as the specs read it off the Pre-Sales Application. */
 export interface PreSaleRequest {
@@ -219,6 +219,50 @@ export class MigPreSalePage extends MigDataParityPage {
     return uid;
   }
 
+  /**
+   * Sign in to the Pre-Sales Application through its own login FORM, in the page handed in.
+   *
+   * `loginPresales()` above authenticates over RPC: it hands this object a session for reads and
+   * writes, but it drives no screen. A case whose SUBJECT is the sign-in therefore cannot use it -
+   * TC-26 must see an administrator shown a form, TC-39 must see a portal account kept on its own
+   * pages - so those two need the form filled for real.
+   *
+   * Takes the page rather than using `this.page`, because both callers sign in from a SECOND,
+   * clean context: the point of each is what a fresh browser does, and a shared cookie jar would
+   * answer the question before the test asked it.
+   *
+   * The form (read off /web/login on 2026-10-13): `input[name=login]`, `input[name=password]`,
+   * `button[type=submit]`. There is no database selector - this host serves one db and answers
+   * /web/database/list with 403 - so nothing is chosen here.
+   *
+   * Returns the path the browser ended on, so a caller asserts WHERE the sign-in landed instead of
+   * inferring it: a portal account lands under /my, an internal one on /odoo or /web.
+   * Throws when the form is still on screen afterwards, which is what a refused password looks
+   * like - a silent failure here would read as "the portal saw nothing", the very thing TC-39 is
+   * trying to prove.
+   */
+  static async loginPresalesUi(page: Page, username: string, password: string): Promise<string> {
+    await page.goto(`${baseUrl_presales_mig}web/login`, { waitUntil: 'domcontentloaded' });
+    await page.locator('input[name="login"]').first().fill(username);
+    await page.locator('input[name="password"]').first().fill(password);
+    await page.locator('button[type="submit"]').first().click();
+    await page.waitForLoadState('domcontentloaded');
+    // Bounded on purpose: the Odoo 19 web client keeps long-polling, so `networkidle` reaches its
+    // 30 s default and the catch below hides that as a pause nobody can see. Ten seconds is past
+    // the point where the landing page has rendered.
+    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+
+    const stillOnForm = await page.locator('input[name="password"]').count().catch(() => 0);
+    if (stillOnForm > 0) {
+      const alert = await page.locator('.alert, .o_login_message').first().innerText().catch(() => '');
+      throw new Error(
+        `Pre-Sales UI sign-in failed for "${username}": the login form is still on screen`
+        + (alert ? ` - ${alert.trim().slice(0, 200)}` : ''),
+      );
+    }
+    return new URL(page.url()).pathname;
+  }
+
   /** The uid the current Pre-Sales session runs as; throws when nothing signed in yet. */
   presalesSessionUid(): number {
     if (!this.presalesUid) {
@@ -350,6 +394,32 @@ export class MigPreSalePage extends MigDataParityPage {
   }
 
   /**
+   * An administrator session on BOTH servers, in a browser context of its own: the CRM as
+   * admin_crm_mig, the Pre-Sales Application over RPC as anh.ho. For teardown and API cross-checks only.
+   *
+   * Never the browser a case observes: the RPC sign-in writes a Pre-Sales cookie into its context, and a
+   * Pre-Sales session for another account in the observing browser is the two-accounts case of CRM-13517.
+   * The caller closes `context`.
+   */
+  static async openAdminSession(
+    browser: import('@playwright/test').Browser,
+  ): Promise<{ preSale: MigPreSalePage; context: import('@playwright/test').BrowserContext }> {
+    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    try {
+      const page = await context.newPage();
+      const login = new LoginPageMig(page);
+      await login.navigateTo(baseUrl_mig);
+      await login.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
+      const preSale = new MigPreSalePage(page);
+      await preSale.loginPresales(users.anh_ho_presales_mig.username, users.anh_ho_presales_mig.password);
+      return { preSale, context };
+    } catch (err) {
+      await context.close().catch(() => {});
+      throw err;
+    }
+  }
+
+  /**
    * Sweep the last run's records from a FRESH session - the afterEach safety net.
    *
    * The in-test sweep lives in a finally block, which a Playwright TEST TIMEOUT skips entirely.
@@ -370,17 +440,9 @@ export class MigPreSalePage extends MigDataParityPage {
     }
     let context: import('@playwright/test').BrowserContext | undefined;
     try {
-      context = await browser.newContext({ ignoreHTTPSErrors: true });
-      const page = await context.newPage();
-      const login = new LoginPageMig(page);
-      await login.navigateTo(baseUrl_mig);
-      await login.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
-      const preSale = new MigPreSalePage(page);
-      await preSale.loginPresales(
-        users.anh_ho_presales_mig.username,
-        users.anh_ho_presales_mig.password,
-      );
-      return await preSale.sweepByMarker(marker);
+      const session = await MigPreSalePage.openAdminSession(browser);
+      context = session.context;
+      return await session.preSale.sweepByMarker(marker);
     } catch (err) {
       out.errors.push(`standalone sweep failed: ${(err as Error).message}`);
       return out;
@@ -705,7 +767,31 @@ export class MigPreSalePage extends MigDataParityPage {
       },
       { name, expectedRevenue, field: MigPreSalePage.THRESHOLD_FIELD },
     );
+    console.log(`  Opportunity URL: ${MigPreSalePage.opportunityUrl(id)}`);
     return id;
+  }
+
+  /**
+   * Deep link to an Opportunity on the CRM - the address a human pastes into a browser.
+   *
+   * Printed next to every id this suite creates, because an id on its own is not actionable: the
+   * feature spans TWO hosts, so "Opportunity 885037, request 379" leaves the reader to guess which
+   * server each number belongs to and to hand-assemble the URL. Guessing that URL is exactly how
+   * `/odoo/helpdesk.ticket/<id>` got into this suite on 2026-10-13.
+   */
+  static opportunityUrl(leadId: number): string {
+    return `${baseUrl_mig}web#id=${leadId}&model=crm.lead&view_type=form`;
+  }
+
+  /**
+   * Deep link to a request on the Pre-Sales Application (Odoo 19).
+   *
+   * `/odoo/<action path>/<id>`, where the path is a field on the window action - `helpdesk-tickets`
+   * (ir.actions.act_window 237, read off the instance 2026-10-13). Not `/odoo/tickets/<id>`, which
+   * lands on /odoo/discuss.
+   */
+  static requestUrl(ticketId: number): string {
+    return `${baseUrl_presales_mig}odoo/helpdesk-tickets/${ticketId}`;
   }
 
   /** Set the Expected Revenue Deal on an Opportunity - the value the raise gate reads. */
@@ -761,6 +847,26 @@ export class MigPreSalePage extends MigDataParityPage {
    */
   async sweepByMarker(marker: string): Promise<{ requests: number[]; opportunities: number[]; errors: string[] }> {
     const out = { requests: [] as number[], opportunities: [] as number[], errors: [] as string[] };
+
+    // Re-authenticate before deleting. The sweep otherwise inherits whatever Pre-Sales account the
+    // TEST signed in as, and for several cases that account deliberately cannot delete: 6.2 runs as
+    // `pre_sales_engineer_crm_mig`, and a Sales Engineer being unable to delete a request is the
+    // very thing TC-37 asserts. Teardown is infrastructure, not part of the role-play, so it runs
+    // as an account that may delete.
+    //
+    // Measured 2026-10-13: 6.2 passed while its teardown reported `request 381: ... You are not
+    // allowed to delete 'Helpdesk Ticket' (helpdesk.ticket) records`, and 11 of its requests had
+    // piled up on the Pre-Sales Application since 2026-09-23 - one per run, each one silently
+    // recorded in `errors` and never read.
+    try {
+      await this.loginPresales(
+        users.anh_ho_presales_mig.username,
+        users.anh_ho_presales_mig.password,
+      );
+    } catch (err) {
+      out.errors.push(`sweep could not switch to the cleanup account: ${(err as Error).message}`);
+    }
+
     try {
       const reqs = await this.requestsByMarker(marker);
       for (const r of reqs) {
@@ -792,8 +898,37 @@ export class MigPreSalePage extends MigDataParityPage {
 
   // ------------------------------------------------------------------ CRM side - the UI
 
+  /**
+   * The id of the "Request SE support" window action, resolved from its XML id at run time.
+   *
+   * It used to be hard-coded as `button[name="2543"]`. On 2026-10-13 crm-mig was rebuilt, every
+   * sequence was re-issued (crm.lead ids jumped from 885xxx to 100000xxx) and that action came
+   * back as **1328**. The button then existed on screen and no selector in this suite could find
+   * it, which surfaced as "the raise dialog never opened" - in EVERY spec that raises a request,
+   * not just the one being debugged. An id minted by a database is not a stable address; the XML
+   * id is, so it is looked up once per page object and cached.
+   */
+  private static readonly RAISE_ACTION_XMLID = 'nakivo_presale_bridge.new_ticket_wizard_form_action';
+
+  private raiseActionId?: number;
+
+  private async resolveRaiseActionId(): Promise<number> {
+    if (this.raiseActionId) return this.raiseActionId;
+    try {
+      this.raiseActionId = await this.resolveXmlId(MigPreSalePage.RAISE_ACTION_XMLID);
+    } catch (err) {
+      throw new Error(
+        `The "Request SE support" action (${MigPreSalePage.RAISE_ACTION_XMLID}) is not on this CRM, `
+        + 'so no spec in this suite can raise a request. '
+        + (err as Error).message,
+      );
+    }
+    console.log(`  Request SE support action resolved to id ${this.raiseActionId}`);
+    return this.raiseActionId;
+  }
+
   private readonly raiseButton = () =>
-    this.page.locator('.o_form_statusbar button[name="2543"]');
+    this.page.locator(`.o_form_statusbar button[name="${this.raiseActionId ?? 0}"]`);
 
   private readonly raiseButtonDisabled = () =>
     this.page.locator('.o_form_statusbar button[name="presale_request_below_threshold"]');
@@ -840,6 +975,56 @@ export class MigPreSalePage extends MigDataParityPage {
       .catch(() => { /* the spinner may never have rendered */ });
   }
 
+  /** The CRM entry of the left sidebar. A hidden `dropdown-item o_app` twin carries the same xmlid. */
+  private readonly crmSidebarEntry = () =>
+    this.page.locator('a.nav-link[data-menu-xmlid="crm.crm_menu_root"]');
+
+  private readonly listSwitchButton = () =>
+    this.page.locator('.o_cp_switch_buttons .o_cp_switch_list');
+
+  /**
+   * CRM > Pipeline in LIST view, opened the way a salesperson does it: the CRM entry in the left
+   * sidebar, then the list switcher.
+   *
+   * Not by URL hash. On 2026-10-16 `HomePageMig.navigateToOpportunitiesList()`, which opens the
+   * resolved `#menu_id=..&action=..` hash, left Thomas Semerich's session on Discuss for its whole
+   * 240 s budget, while the sidebar click reached the Pipeline in seconds. LIST, not kanban: in
+   * kanban CREATE opens an inline quick-create card, which has no Expected Revenue Deal field.
+   */
+  async openPipelineListFromSidebar(): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.crmSidebarEntry().first().waitFor({ state: 'visible', timeout });
+    // The click is VERIFIED by the URL and retried once. Clicked while the landing action is still
+    // loading - Discuss, and Thomas's inbox holds 3000+ messages - the web client drops it: the
+    // sidebar entry highlights and the page stays on Discuss (5.4, first run, 2026-10-16).
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await this.page.locator('.o_loading').waitFor({ state: 'hidden', timeout }).catch(() => {});
+      await this.crmSidebarEntry().first().click({ timeout });
+      try {
+        await this.page.waitForURL(/model=crm\.lead/, { timeout, waitUntil: 'commit' });
+        break;
+      } catch {
+        if (attempt === 2) {
+          throw new Error(
+            'The CRM entry of the left sidebar was clicked twice and the page never reached the '
+            + `Pipeline (URL is still ${this.page.url()}).`,
+          );
+        }
+      }
+    }
+    await this.listSwitchButton().first().waitFor({ state: 'visible', timeout });
+    await this.listSwitchButton().first().click({ timeout });
+    await this.page.waitForURL(/view_type=list/, { timeout, waitUntil: 'commit' });
+    await this.page.locator('.o_list_view').first().waitFor({ state: 'visible', timeout });
+  }
+
+  /** The Salesperson the Opportunity form on screen shows (`user_id`), as its display name. */
+  async opportunitySalesperson(): Promise<string> {
+    const text = await this.page.locator('.o_form_view .o_field_widget[name="user_id"]').first()
+      .innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    return text.trim();
+  }
+
   private readonly moreToggle = () =>
     this.page.locator('.o_form_statusbar .dropdown-toggle, .o_statusbar_buttons .dropdown-toggle');
 
@@ -861,6 +1046,11 @@ export class MigPreSalePage extends MigDataParityPage {
 
   /** Is the live "Request SE support" control available to the user, inline or under More? */
   async isRaiseButtonVisible(): Promise<boolean> {
+    // Resolve FIRST. `raiseButton()` builds its selector from `raiseActionId`, and until that is
+    // resolved the selector is `button[name="0"]`, which matches nothing. Only openRaiseDialog()
+    // used to resolve it, so a spec that merely asks "is the control visible" - 1.1 does exactly
+    // that - got a confident `false` about a button that was on screen the whole time.
+    await this.resolveRaiseActionId();
     if (await this.raiseButton().isVisible().catch(() => false)) return true;
     await this.revealHeaderButtons();
     return await this.raiseButton().isVisible().catch(() => false);
@@ -892,6 +1082,7 @@ export class MigPreSalePage extends MigDataParityPage {
    * So do not decide once. Re-check and re-reveal on every attempt until the dialog is actually up.
    */
   async openRaiseDialog(): Promise<void> {
+    await this.resolveRaiseActionId();
     const deadline = Date.now() + MigPreSalePage.RAISE_OPEN_BUDGET_MS;
     let attempts = 0;
     while (Date.now() < deadline) {
@@ -1118,9 +1309,37 @@ export class MigPreSalePage extends MigDataParityPage {
    * IS-CRM-FUNC-0063 - so this waits for the embedded surface rather than for a new tab.
    */
   async openTicketsPanel(): Promise<void> {
-    await this.ticketsStatButton().click();
-    await this.page.waitForLoadState('domcontentloaded');
-    await this.page.waitForTimeout(CommonUtils.waitTimes.extraLong);
+    // The click is VERIFIED, not assumed. This used to click and wait a fixed time, then return
+    // whether or not anything happened - and on 2026-10-13 a run reported "Tickets panel opened"
+    // while the screenshot showed the page still sitting on the Opportunity form. Every check
+    // downstream then read the CRM page and called it the embed.
+    //
+    // The signal is the URL: a successful click routes the CRM page to
+    // `web#embed_model=crm.lead&embed_id=<id>&embed_target=helpdesk.ticket&action=nakivo_remote_embed.embed`.
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      await this.ticketsStatButton().scrollIntoViewIfNeeded().catch(() => {});
+      await this.ticketsStatButton().click();
+      try {
+        await this.page.waitForURL(/embed_target=helpdesk\.ticket/, {
+          timeout: CommonUtils.waitTimes.extraLong,
+        });
+        await this.page.waitForLoadState('domcontentloaded');
+        return;
+      } catch {
+        if (attempt === 2) {
+          throw new Error(
+            'The Tickets smart button was clicked twice and the CRM never routed to the embedded '
+            + `helpdesk (URL is still ${this.page.url()}). The panel did not open, so nothing `
+            + 'downstream can be read as evidence about the embed.',
+          );
+        }
+      }
+    }
+  }
+
+  /** True once the CRM page is showing the embedded helpdesk action rather than a CRM view. */
+  embedIsRouted(): boolean {
+    return /embed_target=helpdesk\.ticket/.test(this.page.url());
   }
 
   /**
@@ -1129,30 +1348,517 @@ export class MigPreSalePage extends MigDataParityPage {
    * Looks in the CRM page AND in every frame it holds: the embedded helpdesk renders in a frame,
    * and a login form inside that frame is exactly the "second login" the requirement is about.
    */
-  async embeddedLoginFormVisible(): Promise<boolean> {
-    for (const frame of this.page.frames()) {
-      const count = await frame.locator('input[type="password"]').count().catch(() => 0);
-      if (count > 0) {
-        const visible = await frame.locator('input[type="password"]').first().isVisible().catch(() => false);
-        if (visible) return true;
+  async embeddedLoginFormVisible(timeout: number = 20000): Promise<boolean> {
+    // POLLED. This used to answer in one shot, immediately after openTicketsPanel(), and the
+    // embedded helpdesk is an iframe that loads over the network - so it answered "no form" before
+    // the frame had rendered anything at all. On 2026-10-13 that false negative was reported as a
+    // product defect ("an administrator is auto-signed-in"); the run's own video shows the panel
+    // blank from the click to the end of the test. A one-shot check cannot tell "no form" from
+    // "nothing yet".
+    // Searches EVERY frame, the CRM document included. The embed is not always a child frame:
+    // clicking Tickets routes the CRM page itself to
+    // `web#embed_model=crm.lead&embed_id=<id>&embed_target=helpdesk.ticket&action=nakivo_remote_embed.embed`
+    // and the sign-in form renders inside that document (reproduced by hand 2026-10-13). A CRM form
+    // view has no password field of its own, so a visible one anywhere means the embed is asking.
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      for (const frame of this.page.frames()) {
+        const pwd = frame.locator('input[type="password"]');
+        if (await pwd.count().catch(() => 0) > 0
+          && await pwd.first().isVisible().catch(() => false)) return true;
       }
+      if (Date.now() >= deadline) return false;
+      await this.page.waitForTimeout(500);
+    }
+  }
+
+  /**
+   * Wait for the embedded helpdesk to render, and say WHAT it rendered.
+   *
+   * 'form'    - a sign-in form stands between the user and the helpdesk
+   * 'content' - the helpdesk itself rendered
+   * 'empty'   - nothing rendered inside the panel before the timeout
+   *
+   * A caller must distinguish 'empty' from the other two: a blank panel is evidence about the
+   * environment or the page object, never about the product's sign-in behaviour.
+   */
+  async waitForEmbeddedPanel(timeout: number = 30000): Promise<'form' | 'content' | 'empty'> {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      for (const frame of this.page.frames()) {
+        const pwd = frame.locator('input[type="password"]');
+        if (await pwd.count().catch(() => 0) > 0
+          && await pwd.first().isVisible().catch(() => false)) return 'form';
+      }
+      // 'content' is decided ONLY while the page is actually routed to the embed, and only on
+      // helpdesk wording. Both guards were learned the hard way on 2026-10-13: a length test called
+      // a blank panel "content", and once that was tightened to helpdesk wording the regex matched
+      // `HT00383` in the CRM's own CHATTER - "SE support requested by ... (HT00383)" - on a page
+      // where the panel had never opened. If the URL does not carry the embed action, nothing on
+      // this page is the embed.
+      if (this.embedIsRouted()) {
+        const body = await this.embeddedText();
+        if (/Sales Engineers|ASSIGN TO ME|ON SUPPORT TEAM|ON PRODUCT TEAM/i.test(body)) {
+          return 'content';
+        }
+      }
+      if (Date.now() >= deadline) return 'empty';
+      await this.page.waitForTimeout(500);
+    }
+  }
+
+  /**
+   * Fill and submit the login form the embedded helpdesk renders inside the CRM page.
+   *
+   * The counterpart of `embeddedLoginFormVisible()`: that one answers "is a second login being
+   * demanded", this one answers "and does signing in there get the user through". TC-26 needs
+   * both halves - an administrator must be shown the form (step 1) and must then reach the
+   * requests by signing in by hand (step 2).
+   *
+   * Searches the same frames `embeddedLoginFormVisible()` does, because the helpdesk renders in a
+   * frame and the form belongs to that frame, not to the CRM document.
+   *
+   * Returns false when no visible form was found - the caller decides whether that is a failure
+   * (TC-26 step 2) or the expected outcome (an eligible user, TC-25).
+   */
+  async signInEmbeddedLoginForm(username: string, password: string): Promise<boolean> {
+    for (const frame of this.page.frames()) {
+      const password_ = frame.locator('input[type="password"]');
+      if (await password_.count().catch(() => 0) === 0) continue;
+      if (!await password_.first().isVisible().catch(() => false)) continue;
+
+      // What the form carries BEFORE it is submitted. Odoo's sign-in returns the user to the page
+      // they asked for by posting a hidden `redirect` field; if that field is empty the server
+      // falls back to a default screen. A human reaching this form through the Tickets button
+      // lands back on the request (verified in an incognito window 2026-10-13), so when the
+      // automated submit does not, the first thing to compare is this payload.
+      const formShape = await frame.evaluate(() => {
+        const form = document.querySelector('form');
+        if (!form) return { action: '(no form element)', hidden: [] as string[] };
+        return {
+          action: (form as HTMLFormElement).getAttribute('action') || '(none)',
+          hidden: Array.from(form.querySelectorAll('input[type="hidden"]'))
+            .map((el) => `${(el as HTMLInputElement).name}=${(el as HTMLInputElement).value}`),
+        };
+      }).catch(() => ({ action: '(unreadable)', hidden: [] as string[] }));
+      console.log(`  embedded login form action: ${formShape.action}`);
+      for (const h of formShape.hidden) console.log(`    hidden: ${h}`);
+
+      await frame.locator('input[name="login"]').first().fill(username);
+      await password_.first().fill(password);
+      await frame.locator('button[type="submit"]').first().click();
+      await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+      // Bounded for the same reason as loginPresalesUi: the web client never goes quiet.
+      await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+      return true;
     }
     return false;
   }
 
-  /** The text of the embedded helpdesk surface, or the page text when it renders inline. */
+  /**
+   * The text of the embedded helpdesk surface - the FRAMES only, never the CRM page around them.
+   *
+   * Returns '' when no frame rendered. An empty string means "the panel showed nothing", and a
+   * caller must not read that as "the thing I was looking for is absent": see embeddedFrames()
+   * for the false PASS the old parent-page fallback produced.
+   */
   async embeddedText(): Promise<string> {
-    const frames = this.page.frames();
-    let best = '';
-    for (const frame of frames) {
+    // The EMBED's own frame wins, always - never "whichever frame has the most text".
+    //
+    // Two bugs lived in that one line. Taking the longest text conflates the panel with the page
+    // around it: the CRM's left menu alone (Discuss, Investments, Calendar, Contacts, CRM, ...)
+    // outweighs a freshly rendered request, so the longest text is the PARENT on practically every
+    // read. And the parent's breadcrumb carries the Opportunity's name, which in this suite is
+    // built from the same marker as its request - so "is the request in the panel?" was answered
+    // `true` by the breadcrumb while the panel was blank (2026-10-13), and `false` by the left
+    // menu while the request was fully rendered (2026-10-14). Both directions, same line.
+    for (const frame of this.page.frames()) {
+      if (frame === this.page.mainFrame()) continue;
+      // locator().innerText(), not frame.evaluate(): the embed is cross-origin and a locator read
+      // is the one that works there.
       const text = await frame.locator('body').innerText().catch(() => '');
-      if (text.length > best.length) best = text;
+      if (text.trim()) return text;
     }
-    return best;
+
+    // No child frame carried anything. The embed also renders INLINE in the CRM document in some
+    // states (the sign-in step does), so fall back to that - minus the breadcrumb, for the reason
+    // above.
+    return this.page.mainFrame().evaluate(() => {
+      const clone = document.body.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('.o_control_panel, .breadcrumb, ol.breadcrumb, .o_cp_breadcrumb')
+        .forEach((el) => el.remove());
+      return clone.innerText || '';
+    }).catch(() => '');
+  }
+
+  /**
+   * Poll the embedded helpdesk until `needle` shows up there, or the timeout runs out.
+   *
+   * `embeddedText()` answers about the DOM at the instant it is called, and the embed loads over
+   * the network, so reading it straight after openTicketsPanel() asks the question before there is
+   * anything to answer. Until 2026-10-13 that was masked: embeddedText() fell back to the longest
+   * text ON THE PAGE, which is the CRM document, whose breadcrumb carries the Opportunity name -
+   * and in this suite the Opportunity and its request share one marker. So the read matched the
+   * breadcrumb and reported "found" without the embed having rendered at all.
+   */
+  async waitForTextInEmbed(needle: string, timeout: number = 30000): Promise<boolean> {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      if ((await this.embeddedText()).includes(needle)) return true;
+      if (Date.now() >= deadline) return false;
+      await this.page.waitForTimeout(500);
+    }
+  }
+
+  /** The child frame that serves the Pre-Sales Application inside the CRM page, if one is attached. */
+  private presalesEmbedFrame(): Frame | undefined {
+    const host = new URL(baseUrl_presales_mig).host;
+    return this.page.frames().find((f) => f !== this.page.mainFrame() && f.url().includes(host));
+  }
+
+  /**
+   * Wait until the embed has a request FORM open, and say which request it is.
+   *
+   * When the Opportunity has exactly one request, the Tickets button opens that request's form
+   * directly - the frame routes to `/odoo/action-<n>/<id>` - rather than a list (read off crm-mig
+   * 2026-10-16). The id comes from that frame URL and the Subject from the form's `name` field, both
+   * inside the embed's own frame, so the CRM breadcrumb (which carries the same marker) cannot answer.
+   *
+   * Returns id 0 and an empty subject when no request form rendered before the timeout.
+   */
+  async waitForEmbeddedRequestForm(timeout: number = 90000): Promise<{ id: number; subject: string; url: string }> {
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      const frame = this.presalesEmbedFrame();
+      if (frame) {
+        const m = frame.url().match(/\/odoo\/[^/?#]+\/(\d+)(?:[/?#]|$)/);
+        const subject = await frame.locator('.o_form_renderer div[name="name"]').first()
+          .innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '');
+        if (m && subject.trim()) return { id: Number(m[1]), subject: subject.trim(), url: frame.url() };
+      }
+      if (Date.now() >= deadline) {
+        return { id: 0, subject: '', url: this.presalesEmbedFrame()?.url() ?? '(no Pre-Sales frame)' };
+      }
+      await this.page.waitForTimeout(CommonUtils.waitTimes.medium);
+    }
+  }
+
+  /** Rows of the embed's request LIST carrying `text` - 0 when the embed shows a form, or nothing. */
+  async embeddedListRowCount(text: string): Promise<number> {
+    const frame = this.presalesEmbedFrame();
+    if (!frame) return 0;
+    return await frame.locator('.o_data_row', { hasText: text }).count().catch(() => 0);
+  }
+
+  /** Open the row carrying `text` in the embed's request list. */
+  async openEmbeddedListRow(text: string): Promise<void> {
+    const frame = this.presalesEmbedFrame();
+    if (!frame) throw new Error('There is no Pre-Sales frame in the CRM page to open a row in.');
+    await frame.locator('.o_data_row', { hasText: text }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /** Every dialog on screen, in the CRM page AND inside the embed - an error popup lands in one of them. */
+  async visibleDialogTexts(): Promise<string[]> {
+    const out: string[] = [];
+    for (const frame of this.page.frames()) {
+      const texts = await frame.locator('.modal:visible').allInnerTexts().catch(() => [] as string[]);
+      out.push(...texts.map((t) => t.replace(/\s+/g, ' ').trim()));
+    }
+    return out;
   }
 
   /** How many frames the CRM page holds - the embedded helpdesk adds one. */
   frameCount(): number {
     return this.page.frames().length;
+  }
+
+  // ------------------------------------------------------------------ Pre-Sales Application - the UI
+  //
+  // These drive the Pre-Sales Application's own web client (Odoo 19) in a page signed in there with
+  // loginPresalesUi(). Menu xmlids read off the instance on 2026-10-16.
+
+  private readonly presalesAppsMenuButton = () => this.page.locator('.o_navbar_apps_menu button');
+
+  private readonly presalesTicketsApp = () =>
+    this.page.locator('.o_app[data-menu-xmlid="helpdesk_mgmt.helpdesk_ticket_main_menu"]');
+
+  private readonly presalesTicketsSection = () =>
+    this.page.locator('.o_menu_sections [data-menu-xmlid="helpdesk_mgmt.helpdesk_ticket_menu"]');
+
+  private readonly presalesAllTicketsEntry = () =>
+    this.page.locator('[data-menu-xmlid="helpdesk_mgmt.helpdesk_all_ticket_menu"]');
+
+  private readonly presalesSearchInput = () => this.page.locator('.o_searchview_input');
+
+  private readonly presalesRows = (text: string) => this.page.locator('.o_data_row', { hasText: text });
+
+  private readonly presalesFormSubject = () => this.page.locator('.o_form_renderer div[name="name"]');
+
+  /** Open the Pre-Sales Application's web client in this page - the browser must already hold its session. */
+  async openPresalesHome(): Promise<void> {
+    await this.page.goto(`${baseUrl_presales_mig}odoo`, { waitUntil: 'domcontentloaded' });
+    await this.presalesAppsMenuButton().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /** Pre-sale tickets > Tickets > All Tickets, through the apps switcher and the top menu. */
+  async openPresalesAllTickets(): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.presalesAppsMenuButton().first().click({ timeout });
+    await this.presalesTicketsApp().first().click({ timeout });
+    await this.presalesTicketsSection().first().click({ timeout });
+    await this.presalesAllTicketsEntry().first().click({ timeout });
+    await this.page.waitForURL(/\/odoo\/helpdesk-tickets(?:[?#]|$)/, { timeout });
+    await this.page.locator('.o_list_view, .o_kanban_view').first().waitFor({ state: 'visible', timeout });
+  }
+
+  /**
+   * Type `text` into the list's search box, press Enter, and return how many rows carry it.
+   *
+   * Polled: the list reloads after Enter, and a read straight after it can still see the unfiltered
+   * page. Returns once at least one row carries the text, or 0 at the timeout.
+   */
+  async searchPresalesList(text: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    await this.presalesSearchInput().first().fill(text, { timeout });
+    await this.presalesSearchInput().first().press('Enter');
+    const deadline = Date.now() + timeout;
+    for (;;) {
+      const n = await this.presalesRows(text).count();
+      if (n > 0 || Date.now() >= deadline) return n;
+      await this.page.waitForTimeout(CommonUtils.waitTimes.medium);
+    }
+  }
+
+  /** Open the list row that carries `text` and wait for that request's form. */
+  async openPresalesRow(text: string): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.presalesRows(text).first().click({ timeout });
+    await this.page.waitForURL(/\/odoo\/helpdesk-tickets\/\d+/, { timeout });
+    await this.presalesFormSubject().first().waitFor({ state: 'visible', timeout });
+  }
+
+  /** The request the Pre-Sales form shows: id from the URL, Subject from the `name` field. */
+  async presalesOpenRequest(): Promise<{ id: number; subject: string; url: string }> {
+    const m = this.page.url().match(/\/odoo\/helpdesk-tickets\/(\d+)/);
+    const subject = await this.presalesFormSubject().first()
+      .innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    return { id: m ? Number(m[1]) : 0, subject: subject.trim(), url: this.page.url() };
+  }
+
+  // -------------------------------------------- Pre-Sales Application - the request FORM (read 2026-10-16)
+  //
+  // A saved request opens READ-ONLY with an EDIT button; the stage bar stays clickable. The stage bar shows
+  // On Product Team / On Support Team / In Progress / New inline and folds Closed into a "More" dropdown.
+  // Labels are upper-cased by CSS, so stage names are compared case-insensitively on the DOM text.
+
+  private readonly presalesField = (name: string) =>
+    this.page.locator(`.o_form_renderer div[name="${name}"]`);
+
+  private readonly presalesFieldInput = (name: string) =>
+    this.page.locator(`.o_form_renderer div[name="${name}"] input:visible`);
+
+  /** A many2one suggestion that is a RECORD - never "Create ...", "Create and Edit..." or "Search More...". */
+  private readonly presalesRecordOption = (value: string) =>
+    this.page.locator('.o-autocomplete--dropdown-item:not(.o_m2o_dropdown_option)', {
+      hasText: new RegExp(`^\\s*${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`),
+    });
+
+  private readonly presalesStageRadio = (stage: string) =>
+    this.page.locator('.o_statusbar_status button.o_arrow_button[data-value]', {
+      hasText: new RegExp(`^\\s*${stage}\\b`, 'i'),
+    });
+
+  private readonly presalesStageMoreToggle = () =>
+    this.page.locator('.o_statusbar_status button.dropdown-toggle:not(.d-none)');
+
+  private readonly presalesStageMenuItem = (stage: string) =>
+    this.page.locator('.o-dropdown--menu .dropdown-item', { hasText: new RegExp(`^\\s*${stage}\\s*$`, 'i') });
+
+  private readonly presalesModal = () => this.page.locator('.modal:visible');
+
+  /** CREATE on the All Tickets list; waits for the empty request form. */
+  async clickPresalesCreate(): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.page.locator('.o_control_panel button.o_list_button_add').first().click({ timeout });
+    await this.page.waitForURL(/\/odoo\/helpdesk-tickets\/new/, { timeout, waitUntil: 'commit' });
+    await this.presalesField('name').first().waitFor({ state: 'visible', timeout });
+  }
+
+  /** EDIT on a saved request, which opens read-only. No-op when the form is already editable. */
+  async editPresalesForm(): Promise<void> {
+    const edit = this.page.locator('.o_control_panel button.o_form_button_edit');
+    if (await edit.count() === 0) return;
+    await edit.first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('.o_control_panel .o_form_button_save').first()
+      .waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+  }
+
+  /** Type into a char field of the request form (`name` = Title). */
+  async fillPresalesChar(field: string, value: string): Promise<void> {
+    await this.presalesFieldInput(field).first().fill(value, { timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /**
+   * Choose an EXISTING record in a many2one of the request form, by its exact name.
+   *
+   * Waits for the record suggestion itself and clicks only that. On 2026-10-16 an exploration that
+   * clicked "the first suggestion containing Sales Engineers" hit `Create "Sales Engineers"` and made a
+   * duplicate team on the Pre-Sales Application. Throws when no record suggestion appears.
+   */
+  async pickPresalesMany2one(field: string, value: string): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.presalesFieldInput(field).first().fill(value, { timeout });
+    const option = this.presalesRecordOption(value).first();
+    try {
+      await option.waitFor({ state: 'visible', timeout });
+    } catch {
+      throw new Error(`"${value}" is not offered as an existing record in the "${field}" field - only create options are.`);
+    }
+    await option.click({ timeout });
+  }
+
+  /** Empty a many2one of the request form. */
+  async clearPresalesMany2one(field: string): Promise<void> {
+    await this.presalesFieldInput(field).first().fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.keyboard.press('Tab');
+    await this.page.waitForTimeout(CommonUtils.waitTimes.standard);
+  }
+
+  /** Type into the Description editor (an HTML field - required on this form). */
+  async fillPresalesDescription(text: string): Promise<void> {
+    await this.page.locator('.o_form_renderer div[name="description"] [contenteditable="true"]').first()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.keyboard.type(text);
+  }
+
+  /**
+   * SAVE the request form and return the record id from the URL. Throws with what the form reported
+   * (notification + invalid fields) when no id appears - an unsaved form must never read as saved.
+   */
+  async savePresalesForm(): Promise<number> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.page.locator('.o_control_panel .o_form_button_save').first().click({ timeout });
+    try {
+      await this.page.waitForURL(/\/odoo\/helpdesk-tickets\/\d+/, { timeout, waitUntil: 'commit' });
+    } catch {
+      const notes = await this.page.locator('.o_notification').allInnerTexts().catch(() => [] as string[]);
+      const invalid = await this.page.locator('.o_form_renderer .o_field_invalid')
+        .evaluateAll((els) => els.map((e) => e.getAttribute('name'))).catch(() => [] as (string | null)[]);
+      throw new Error(`The request form did not save (URL ${this.page.url()}): `
+        + `notifications [${notes.join(' | ')}], invalid fields [${invalid.join(', ')}]`);
+    }
+    await this.page.locator('.o_control_panel .o_form_button_save')
+      .waitFor({ state: 'detached', timeout }).catch(() => {});
+    return Number(this.page.url().match(/\/odoo\/helpdesk-tickets\/(\d+)/)![1]);
+  }
+
+  /** The stage the stage bar marks current, as the DOM spells it ("New"), not as CSS shows it. */
+  async presalesCurrentStage(): Promise<string> {
+    const text = await this.page.locator('.o_statusbar_status button.o_arrow_button_current span').first()
+      .textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    return (text ?? '').trim();
+  }
+
+  /**
+   * Click a stage on the stage bar - inline, or under "More" when it is folded there (Closed is).
+   * Returns once a dialog opens, or once the bar has marked that stage current and stayed so with no
+   * dialog for a settle window; the caller reads which.
+   *
+   * The settle window is not optional. The bar marks the clicked stage current BEFORE the server
+   * answers, and a refusal arrives afterwards as a dialog that puts the old stage back. Returning on
+   * the first "current = Closed" read missed the refusal entirely (3.1, 2026-10-16).
+   */
+  async clickPresalesStage(stage: string): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    const radio = this.presalesStageRadio(stage).first();
+    if (await radio.isVisible().catch(() => false)) {
+      await radio.click({ timeout });
+    } else {
+      await this.presalesStageMoreToggle().first().click({ timeout });
+      await this.presalesStageMenuItem(stage).first().click({ timeout });
+    }
+    const deadline = Date.now() + timeout;
+    let settledSince = 0;
+    for (;;) {
+      if (await this.presalesModal().count() > 0) return;
+      if ((await this.presalesCurrentStage()).toLowerCase() === stage.toLowerCase()) {
+        settledSince = settledSince || Date.now();
+        if (Date.now() - settledSince >= CommonUtils.waitTimes.extraLong) return;
+      } else {
+        settledSince = 0;
+      }
+      if (Date.now() >= deadline) return;
+      await this.page.waitForTimeout(CommonUtils.waitTimes.medium);
+    }
+  }
+
+  /** The dialog on screen, if any: its title and body as the user reads them. */
+  async presalesDialog(): Promise<{ title: string; body: string } | undefined> {
+    const modal = this.presalesModal().first();
+    if (await modal.count() === 0) return undefined;
+    const title = await modal.locator('.modal-title').first().innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '');
+    const body = await modal.locator('.modal-body').first().innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '');
+    return { title: title.trim(), body: body.trim() };
+  }
+
+  /** Close the dialog on screen with its default button (Close / Ok). */
+  async closePresalesDialog(): Promise<void> {
+    await this.presalesModal().first().locator('.modal-footer button').first()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.presalesModal().first().waitFor({ state: 'detached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+  }
+
+  /**
+   * Reload the request form (F5) and wait until it shows the SAVED record.
+   *
+   * "Visible" is not enough. On 2026-10-16 (3.2) a read straight after the reload got stage "New" on a
+   * request that was Closed - and the screenshot taken moments later showed Closed. So this also waits
+   * for Created on to carry a value (it is empty until the record's data is in) and for the stage bar to
+   * read the same twice in a row.
+   */
+  async reloadPresalesForm(): Promise<void> {
+    const timeout = CommonUtils.waitTimes.abnormalWait;
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.presalesFormSubject().first().waitFor({ state: 'visible', timeout });
+    await this.page.locator('.o_statusbar_status button.o_arrow_button_current').first()
+      .waitFor({ state: 'visible', timeout });
+    const deadline = Date.now() + timeout;
+    let previous = '';
+    for (;;) {
+      const created = await this.presalesFieldText('create_date');
+      const stage = await this.presalesCurrentStage();
+      if (created && stage && stage === previous) return;
+      previous = stage;
+      if (Date.now() >= deadline) return;
+      await this.page.waitForTimeout(CommonUtils.waitTimes.standard);
+    }
+  }
+
+  /** What a field of the request form displays ('' when empty). Reads the visible widget. */
+  async presalesFieldText(field: string): Promise<string> {
+    const widget = this.page.locator(`.o_form_renderer div[name="${field}"]:visible`).first();
+    const input = await widget.locator('input').first().inputValue({ timeout: CommonUtils.waitTimes.standard }).catch(() => '');
+    if (input.trim()) return input.trim();
+    return (await widget.innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '')).trim();
+  }
+
+  /** Closed Date - it sits in the "Other Information" tab, so that tab is opened first. */
+  async presalesClosedDate(): Promise<string> {
+    await this.page.locator('.o_notebook .nav-link', { hasText: 'Other Information' }).first()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    return await this.presalesFieldText('closed_date');
+  }
+
+  /**
+   * Parse the form's short datetime ("Oct 16, 11:17 AM", the browser's zone) into a Date. The format
+   * carries no year, so the current year is assumed. Returns undefined for anything else.
+   */
+  static parseShortDateTime(text: string, year: number = new Date().getFullYear()): Date | undefined {
+    const m = text.trim().match(/^([A-Z][a-z]{2}) (\d{1,2}), (\d{1,2}):(\d{2}) (AM|PM)$/);
+    if (!m) return undefined;
+    const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].indexOf(m[1]);
+    if (month < 0) return undefined;
+    let hour = Number(m[3]) % 12;
+    if (m[5] === 'PM') hour += 12;
+    return new Date(year, month, Number(m[2]), hour, Number(m[4]), 0, 0);
   }
 }
