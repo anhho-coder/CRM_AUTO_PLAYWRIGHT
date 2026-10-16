@@ -443,7 +443,16 @@ export class MigPlatformPage extends BasePage {
       );
     }
 
-    let hash = `#menu_id=${menuId}&action_id=${actionId}`;
+    // `action=`, NOT `action_id=`. Measured on crm-mig 2026-10-15 against act_window 864
+    // (CRM/Sales/All Pipeline), with the SAME menu and action id in both forms:
+    //     #menu_id=482&action_id=864&model=crm.lead&view_type=list -> nothing renders, breadcrumb empty
+    //     #menu_id=482&action=864&model=crm.lead&view_type=list    -> the list renders, 1-80 / 135061
+    // With `action_id=` the web client silently drops the request and, on the next reload, falls
+    // back to the default landing app (Discuss/Inbox) - which reads as "the page is slow" and cost
+    // four specs a 240 s timeout each. The menu and action ids were correct the whole time; only
+    // the key was wrong. Odoo rewrites the live hash to `action=` itself, which is why a session
+    // that navigated by clicking never showed the problem.
+    let hash = `#menu_id=${menuId}&action=${actionId}`;
     if (sub?.model) hash += `&model=${sub.model}`;
     if (sub?.viewType) hash += `&view_type=${sub.viewType}`;
     MigPlatformPage.hashCache.set(key, hash);
