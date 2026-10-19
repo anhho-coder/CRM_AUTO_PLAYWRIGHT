@@ -20,8 +20,34 @@ import {
  *  CRM-11806_1.1 - Confirming a subscription order creates exactly one subscription
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_1.1
- *  Spec ID:         IS-CRM-FUNC-0135 / SC-01
- *                   Spec text  : a subscription is created at the moment of confirmation, in stage In Progress
+ *  Spec ID:         IS-CRM-FUNC-0135, IS-CRM-FUNC-0172 (in part) / SC-01
+ *                   Spec text  : FUNC-0135 - a subscription is created at the moment of
+ *                   confirmation, in stage In Progress, linked to the customer and to the
+ *                   originating order and its licensing.
+ *
+ *                   IS-CRM-FUNC-0172 IS COVERED ONLY IN PART, AND HERE IS WHICH PART.
+ *                   The requirement reads: "Subscriptions shall continue to originate in the CRM
+ *                   (confirmed quotes), and the CRM shall remain the home of sales, licensing, and
+ *                   customer data." It has two clauses and they are not equally testable:
+ *                     (a) COVERED - "originate in the CRM (confirmed quotes)". This case does
+ *                         exactly that: it confirms a CRM quotation and the subscription appears
+ *                         because of it. Step 1's check that NO subscription exists before the
+ *                         Confirm is what makes it an origination test rather than an existence
+ *                         test.
+ *                     (b) NOT COVERED - "the CRM shall remain the home of sales, licensing, and
+ *                         customer data". That is a standing property of the architecture over
+ *                         time, not an outcome a run can falsify. What this case does touch is
+ *                         that the order, the customer and the licensing it uses are crm-mig
+ *                         records and the subscription points back at them - which is consistent
+ *                         with (b) but does not prove it. Nobody should read a green tick here as
+ *                         FUNC-0172 being verified in full.
+ *                   Added 2026-10-19 on the tester's instruction: cover whatever part of FUNC-0172
+ *                   is verifiable and note the rest here. The PDF maps FUNC-0172 to SC-01 on page
+ *                   4 and simultaneously calls it an out-of-scope design note on page 6; the
+ *                   specification settles it - FUNC-0172 is typed Functional and sits in the
+ *                   testable section "Integration with the CRM & visibility", while the spec's own
+ *                   "Design notes (not under test)" section holds only FUNC-0183/0184/0185 and
+ *                   PERF-0003. See IS-CRM-FUNC-0177 for one that IS typed Architecture.
  *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
  *                   Was        : "SC-01 / FUNC-0135, FUNC-0137" - an FRD user story, replaced 2026-10-19.
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY

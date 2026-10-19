@@ -14,8 +14,16 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *                    its exact billing settings
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_2.1
- *  Spec ID:         IS-CRM-FUNC-0140, IS-CRM-FUNC-0140-01, IS-CRM-FUNC-0140-02, IS-CRM-FUNC-0140-03, IS-CRM-FUNC-0140-04, IS-CRM-UI-0010 / SC-04
- *                   Spec text  : the in-use templates carried over with their configuration intact
+ *  Spec ID:         IS-CRM-FUNC-0140, IS-CRM-FUNC-0140-01, IS-CRM-FUNC-0140-02, IS-CRM-FUNC-0140-03, IS-CRM-FUNC-0140-04, IS-CRM-UI-0010, IS-CRM-SUPP-0006 / SC-04
+ *                   Spec text  : the in-use templates carried over with their configuration intact;
+ *                   SUPP-0006 - "Authorized users shall be able to add, change, and disable
+ *                   subscription templates ... without redevelopment", which step 2's throwaway
+ *                   template exercises. (SUPP-0006 was dropped by the 2026-10-19 re-key and is
+ *                   restored here; the PDF maps it to SC-04 too.)
+ *                   NOT COVERED HERE - IS-CRM-FUNC-0141, the dormancy test ("Daily(test) ... not
+ *                   carried"). This case was changed on 2026-10-07, at the tester's call, to IGNORE
+ *                   "Daily(test)" entirely, so nothing here can fail when it is present. That is a
+ *                   deliberate gap, not an oversight: FUNC-0141 needs its own case.
  *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
  *                   Was        : "US2 / SC-04" - an FRD user story, replaced 2026-10-19.
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY

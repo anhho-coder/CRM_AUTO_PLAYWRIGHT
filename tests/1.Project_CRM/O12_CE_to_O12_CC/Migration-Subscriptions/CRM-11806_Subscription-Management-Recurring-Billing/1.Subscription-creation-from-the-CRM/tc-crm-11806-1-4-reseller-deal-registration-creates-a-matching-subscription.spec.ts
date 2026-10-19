@@ -17,7 +17,35 @@ import { assertOnMigHost } from '@helpers/crm-11806-mig-subscription.helper';
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_1.4
  *  Spec ID:         IS-CRM-FUNC-0135 / SC-01
- *                   Spec text  : same requirement as 1.1 - the spec never mentions deal registration; this is one way of raising the quote
+ *                   Spec text  : "When a CRM quote containing a subscription product is confirmed,
+ *                   a subscription shall be created at the moment of confirmation, in stage In
+ *                   Progress, linked to the customer and to the originating order and its
+ *                   licensing."
+ *
+ *                   THIS IS A ROUTE VARIANT OF CRM-11806_1.1, NOT A REQUIREMENT OF ITS OWN.
+ *                   Reviewed against the specification 2026-10-19. "Deal registration" appears
+ *                   ZERO times on the specification page - FUNC-0135 cares that a CRM quote
+ *                   containing a subscription product was confirmed, not how that quote came to
+ *                   exist. So this case asserts the same outcome as 1.1 and differs only in the
+ *                   route: the quotation is raised from a reseller deal-registration Opportunity
+ *                   instead of a plain one.
+ *
+ *                   IT IS KEPT ON PURPOSE (tester's call, 2026-10-19), because deal registration
+ *                   is how a large share of real NAKIVO orders are raised, and a route that only
+ *                   the reseller flow takes is worth exercising even when the requirement behind
+ *                   it is already covered. A reader comparing counts should know that 1.1 and 1.4
+ *                   both answer for FUNC-0135, so the suite has 2 cases against 1 requirement -
+ *                   that is intentional, not double-counting.
+ *
+ *                   THE SECTION IS CORRECT. The spec places FUNC-0135 under "Subscription
+ *                   creation from the CRM", which is block 1, where this file already sits. There
+ *                   is no reseller / partner section in the specification to move it to.
+ *
+ *                   HANDLE WITH CARE. This is the only case in the suite that calls
+ *                   `uc-a-2-deal-registration.helper`, and it is the one that ran against
+ *                   PRE-PRODUCTION on 2026-10-12 and created crm.lead 1099978, a Sales Order and
+ *                   subscription SUB1732 there. It must pass `baseUrlOverride: baseUrl_mig`; the
+ *                   guard CRM-11806_0.1 fails the suite if that ever regresses.
  *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
  *                   Was        : "US3 (Subscription creation)" - an FRD user story, replaced 2026-10-19.
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
