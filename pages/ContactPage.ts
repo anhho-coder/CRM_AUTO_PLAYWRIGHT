@@ -1444,7 +1444,7 @@ export class ContactPage extends BasePage {
     // Set the hash, then reload() so the Odoo web client boots fresh on that hash and loads the action -
     // a plain goto from another /web#... URL is a same-document hash change and would NOT load the action.
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#menu_id=840&action=2224`, { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#menu_id=${await this.xmlId('nakivo_partner_level_management.res_partners_program_conditions')}&action=${await this.xmlId('nakivo_partner_level_management.res_partner_grade_program_conditions_action')}`, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialog().catch(() => {});
     let ready = await this.programConditionRowByName('Bronze')
@@ -1511,7 +1511,7 @@ export class ContactPage extends BasePage {
    */
   async openContactsList(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    const listUrl = `${origin}/web#action=118&model=res.partner&view_type=list&menu_id=94`;
+    const listUrl = `${origin}/web#action=${await this.xmlId('contacts.action_contacts')}&model=res.partner&view_type=list&menu_id=${await this.xmlId('contacts.menu_contacts')}`;
     // Retried once: coming from a JUST-SAVED contact form, the hash hop + reload sometimes boots the
     // web client on the APPS HOME instead of the list action (measured on pre-prod 2026-08-13 - the
     // failure snapshot showed the app menu, so CREATE never appeared and the single attempt burned
@@ -1792,6 +1792,35 @@ export class ContactPage extends BasePage {
     const count = m ? parseInt(m[1].replace(/,/g, ''), 10) : 0;
     console.log(`  - Contact "Opportunities" stat-button count: ${count}`);
     return count;
+  }
+
+  /** The "Subscriptions" smart button on the open Contact (res.partner) form, found by its label. */
+  private readonly subscriptionsStatButton = () =>
+    this.page
+      .locator("xpath=//button[contains(@class,'oe_stat_button')][.//*[contains(normalize-space(),'Subscription')]]")
+      .first();
+
+  /** True when the open Contact form offers a "Subscriptions" smart button. */
+  async hasSubscriptionsStatButton(): Promise<boolean> {
+    const visible = await this.subscriptionsStatButton()
+      .isVisible({ timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => false);
+    console.log(`  - Contact "Subscriptions" stat button visible: ${visible}`);
+    return visible;
+  }
+
+  /**
+   * Open the customer's subscriptions behind the "Subscriptions" smart button on the Contact form.
+   * THROWS when the button is not on screen, rather than clicking nothing and letting the next
+   * read fail somewhere unrelated.
+   */
+  async clickSubscriptionsStatButton(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
+    const btn = this.subscriptionsStatButton();
+    await btn.waitFor({ state: 'visible', timeout });
+    await btn.click({ timeout });
+    await this.waitForLoadingSpinnerToHide().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log('  - Contact "Subscriptions" smart button opened');
   }
 
   /**

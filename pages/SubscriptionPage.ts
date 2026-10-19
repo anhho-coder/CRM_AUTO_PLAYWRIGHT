@@ -332,9 +332,19 @@ export class SubscriptionPage extends BasePage {
     const origin = new URL(this.page.url()).origin;
     await this.goto(`${origin}/web#action=${await this.xmlId('sale_subscription.sale_subscription_action')}&model=sale.subscription&view_type=list&menu_id=${await this.xmlId('sale_subscription.menu_sale_subscription_action')}`, { waitUntil: 'domcontentloaded' });
     await this.waitForLoadingSpinnerToHide(timeout).catch(() => {});
+    // The spinner can be gone while the view container is still being built: a probe on
+    // 2026-10-19 read 0 group headers, 0 data rows, no facets and no no-content box right after
+    // this call - the DOM simply had neither .o_list_view nor .o_kanban_view yet. Callers then
+    // reported "no such row" for a subscription that does exist. Wait for the view itself.
+    await this.page
+      .locator('.o_list_view, .o_kanban_view')
+      .first()
+      .waitFor({ state: 'visible', timeout })
+      .catch(() => console.log('  ⚠ Subscriptions view did not render within the timeout'));
     await this.wait(CommonUtils.waitTimes.long);
     await this.clearSearchFacets();
-    console.log('  - Subscriptions list opened (all records)');
+    const rendered = await this.page.locator('.o_list_view, .o_kanban_view').first().isVisible().catch(() => false);
+    console.log('  - Subscriptions list opened (all records), view rendered: ' + rendered);
   }
 
   /** Open the Subscription Templates list (action 433 / menu 279). */
@@ -559,8 +569,20 @@ export class SubscriptionPage extends BasePage {
 
   /** Open the subscription whose list row carries `reference`, and wait for its form. */
   async openRowByReference(reference: string): Promise<void> {
+    // Scanning the rendered list is not enough: the list is grouped by Stage and paginated, so a
+    // brand-new subscription is often on no visible page even once every group is expanded
+    // (measured 2026-10-19 - SUB1804 was missing after "Expanded 4 of 4 list group(s)").
+    // Narrow by Reference FIRST, then expand whatever groups the result leaves.
+    const hits = await this.searchInListByField(reference, 'Reference').catch(() => -1);
+    console.log(`  - searched the list for Reference "${reference}" -> ${hits} row(s)`);
     await this.expandAllListGroups();
-    const row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    let row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    if (!(await row.count().catch(() => 0))) {
+      // Fall back to the unfiltered list in case the search box behaved differently.
+      await this.clearSearchFacets().catch(() => {});
+      await this.expandAllListGroups();
+      row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    }
     if (!(await row.count().catch(() => 0))) {
       throw new Error(`Cannot open "${reference}" - no such row on the Subscriptions list.`);
     }

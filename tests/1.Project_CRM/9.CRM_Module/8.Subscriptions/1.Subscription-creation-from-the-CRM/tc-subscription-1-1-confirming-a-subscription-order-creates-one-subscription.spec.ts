@@ -8,6 +8,8 @@ import { createDealRegistrationOpportunityAsThomas, deleteCreatedOpportunityAsAd
 import {
   SKU_ENT_MONTHLY,
   SUBSCRIPTION_PRICELIST_USD,
+  dayDiff,
+  parseMMDDYYYY,
   logVerify,
 } from '@helpers/crm-11806-subscription.helper';
 
@@ -82,6 +84,8 @@ const SALESPERSON = users.sale_ic_thomas;
  * Odoo listed first - so the full display name is pinned here.
  */
 const PRODUCT_FULL_NAME = '[CP-NC-PM-ENT] min 20Ent Machines, 1Month Subscription';
+/** Pre-prod's server timezone can show the date a day behind the runner's clock - same as 1.4. */
+const START_DATE_TOLERANCE_DAYS = 1;
 const PRICELIST = 'Public Pricelist_USD';
 const PAYMENT_TERM = 'Immediate Payment';
 /** The deal-registration lead's company - the end customer behind the reseller's registration. */
@@ -274,7 +278,19 @@ test.describe(`${TC_ID} - Confirming a subscription order creates exactly one su
       expect(customer, `VP5: the subscription Customer should be the order's Payer "${quotationPayer}"`).toContain(quotationPayer);
       expect(pricelist, `VP5: the subscription Pricelist should be "${PRICELIST}"`).toContain(PRICELIST);
       expect(salesperson, 'VP5: the subscription should carry a Salesperson').not.toBe('');
-      expect(startDate, `VP5: the Start Date should be the confirmation date ${confirmedOn}`).toContain(confirmedOn);
+      // Start Date = the confirmation date, tolerant of the pre-production server timezone showing
+      // the date a day behind the test runner's clock - the same ±1 day allowance subscription-1.4
+      // already makes. Measured 2026-10-19: a run started at 09:44 (+07) read Start Date 10/18
+      // while the runner's own date was 10/19; the 2026-10-15 run started at 15:46 and read 10/19.
+      // Without the allowance this case is green in the afternoon and red in the morning.
+      const startParsed = parseMMDDYYYY(startDate);
+      expect(startParsed, `VP5: the Start Date should be parseable (got "${startDate}")`).not.toBeNull();
+      const startDiff = startParsed ? Math.abs(dayDiff(startParsed, new Date())) : 999;
+      console.log(`  VP5: Start Date "${startDate}" vs today "${confirmedOn}" -> diff ${startDiff} day(s)`);
+      expect(
+        startDiff,
+        `VP5: the Start Date ("${startDate}") should be within ${START_DATE_TOLERANCE_DAYS} day of the confirmation date ${confirmedOn}`
+      ).toBeLessThanOrEqual(START_DATE_TOLERANCE_DAYS);
       expect(lineCount, 'VP5: the subscription should hold exactly 1 Subscription Line').toBe(1);
       expect(lineProduct, `VP5: the line product should be "${PRODUCT_FULL_NAME}"`).toContain(SKU_ENT_MONTHLY);
       expect(lineQuantity, `VP5: the line Quantity should be ${EXPECTED_QTY}`).toBe(EXPECTED_QTY);

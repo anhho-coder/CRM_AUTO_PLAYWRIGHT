@@ -111,6 +111,15 @@ export class HomePage extends BasePage {
    * Get the application menu link locator
    * @returns Playwright Locator for the application menu link
    */
+  /**
+   * True when the Odoo web client shell is on screen - i.e. the page is rendering INSIDE the CRM
+   * and not on a bare login page. Reuses the existing "Applications" navbar locator rather than a
+   * new selector. Used by subscription-11.4 to check every subscription screen keeps the CRM look.
+   */
+  async isCrmShellVisible(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<boolean> {
+    return await this.applicationMenuLink().isVisible({ timeout }).catch(() => false);
+  }
+
   async getApplicationMenuLink() {
     await this.applicationMenuLink().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
     return this.applicationMenuLink();
