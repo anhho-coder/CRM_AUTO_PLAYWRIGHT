@@ -16,9 +16,13 @@ import { assertOnMigHost } from '@helpers/crm-11806-mig-subscription.helper';
  *                     the confirmed quotation
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_1.4
- *  Spec ID:         US3 (Subscription creation)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0135 / SC-01
+ *                   Spec text  : same requirement as 1.1 - the spec never mentions deal registration; this is one way of raising the quote
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US3 (Subscription creation)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature) / CRM-12188 (FRD review)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

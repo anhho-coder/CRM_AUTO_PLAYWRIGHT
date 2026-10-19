@@ -19,9 +19,13 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  CRM-11806_3.6 - A EUR subscription invoices in EUR, not the company default USD
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_3.6
- *  Spec ID:         US5 (Currency)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0144, IS-CRM-FUNC-0186 / SC-09
+ *                   Spec text  : USD, EUR and GBP are each supported; the invoice reproduces the lines in the subscription currency
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US5 (Currency)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

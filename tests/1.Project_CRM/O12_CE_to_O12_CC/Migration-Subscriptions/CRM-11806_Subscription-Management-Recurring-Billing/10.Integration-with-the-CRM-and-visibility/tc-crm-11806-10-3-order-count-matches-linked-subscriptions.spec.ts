@@ -13,8 +13,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *                      and an order without one carries no button
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_10.3
- *  Spec ID:         SC-29 / FUNC-0174
- *  Spec:            CRM reflection and portal
+ *  Spec ID:         IS-CRM-FUNC-0174 / SC-29
+ *                   Spec text  : the count and links shown on an order match the subscriptions actually linked to it
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-29 / FUNC-0174" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (subscription management)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

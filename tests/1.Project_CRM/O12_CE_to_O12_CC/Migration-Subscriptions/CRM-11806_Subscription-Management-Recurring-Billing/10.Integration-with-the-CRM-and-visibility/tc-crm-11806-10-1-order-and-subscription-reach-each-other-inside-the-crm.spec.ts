@@ -20,8 +20,13 @@ import {
  *  CRM-11806_10.1 - Order and subscription reach each other inside the CRM
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_10.1
- *  Spec ID:         SC-28
- *  Spec:            [Migration] Subscription Management (Recurring Billing)
+ *  Spec ID:         IS-CRM-FUNC-0173 / SC-28
+ *                   Spec text  : status, invoices and source order are reachable from the customer and the order WITHOUT leaving the CRM
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-28" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12140 (implementation) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-09

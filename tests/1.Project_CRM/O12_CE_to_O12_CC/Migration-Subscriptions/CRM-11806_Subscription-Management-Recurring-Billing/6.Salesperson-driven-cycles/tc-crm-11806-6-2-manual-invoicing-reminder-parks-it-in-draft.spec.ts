@@ -19,9 +19,13 @@ import {
  *                       and the billing day then issues nothing
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_6.2
- *  Spec ID:         SC-23 / FUNC-0158, FUNC-0187
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0158, IS-CRM-FUNC-0187 / SC-23
+ *                   Spec text  : the subscription is withheld from automatic billing; the reminder run completes before the billing run
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-23 / FUNC-0158, FUNC-0187" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

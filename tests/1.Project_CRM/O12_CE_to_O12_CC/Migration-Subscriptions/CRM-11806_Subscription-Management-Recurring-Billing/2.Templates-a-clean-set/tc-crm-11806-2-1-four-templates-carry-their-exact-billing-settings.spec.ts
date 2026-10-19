@@ -14,11 +14,15 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *                    its exact billing settings
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_2.1
- *  Spec ID:         US2 / SC-04
- *  Spec:            Subscription Test Cases (CRM-12140) - SC-04
+ *  Spec ID:         IS-CRM-FUNC-0140, IS-CRM-FUNC-0140-01, IS-CRM-FUNC-0140-02, IS-CRM-FUNC-0140-03, IS-CRM-FUNC-0140-04, IS-CRM-UI-0010 / SC-04
+ *                   Spec text  : the in-use templates carried over with their configuration intact
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US2 / SC-04" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *                   FUNC-0140 / 0141 / 0142, UI-0010, SUPP-0006
  *                   supersedes the FRD: [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature) / CRM-12140 (implementation)
  *  Automation-Type: new
  *  Automation-Type: ported

@@ -17,8 +17,13 @@ import { SKU_O365, TEMPLATE_MONTHLY_INVOICE_ONLY } from '@helpers/crm-11806-subs
  *  CRM-11806_11.1 - A "See Subscriptions" user can read but not change a subscription
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_11.1
- *  Spec ID:         US14 (Access rights) / SC-33
- *  Spec:            [Migration] Subscription Management (Recurring Billing)
+ *  Spec ID:         IS-CRM-SEC-0012 / SC-33
+ *                   Spec text  : access rights mirror today’s split, neither widened nor tightened
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US14 (Access rights) / SC-33" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12140 (implementation) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-09

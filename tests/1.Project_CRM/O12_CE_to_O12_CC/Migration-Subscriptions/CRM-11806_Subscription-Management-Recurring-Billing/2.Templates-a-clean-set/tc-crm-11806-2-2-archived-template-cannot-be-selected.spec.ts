@@ -16,9 +16,13 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *                    new subscription
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_2.2
- *  Spec ID:         US2 (A clean set)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0142 / SC-04
+ *                   Spec text  : a template is disable-able without deletion and a disabled one stops being offered
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US2 (A clean set)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

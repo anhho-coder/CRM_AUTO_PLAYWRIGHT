@@ -17,8 +17,13 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *  CRM-11806_11.3 - Stored card is a masked number only
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_11.3
- *  Spec ID:         SC-17 / SEC-0014
- *  Spec:            Stored card is a masked number only
+ *  Spec ID:         IS-CRM-SEC-0014 / SC-17
+ *                   Spec text  : a stored payment method is held only as a provider-side reference; no card data is stored
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-17 / SEC-0014" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature)
  *  Automation-Type: new
  *  Automation-Type: ported

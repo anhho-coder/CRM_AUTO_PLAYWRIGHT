@@ -17,9 +17,13 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  CRM-11806_7.4 - A subscription left in Draft stops billing SILENTLY
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_7.4
- *  Spec ID:         US9 (Termination) / US14 (Visibility)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0162-1 / SC-06
+ *                   Spec text  : Draft is the suspension mechanism - no invoices, no alerts, no auto-close
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US9 (Termination) / US14 (Visibility)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

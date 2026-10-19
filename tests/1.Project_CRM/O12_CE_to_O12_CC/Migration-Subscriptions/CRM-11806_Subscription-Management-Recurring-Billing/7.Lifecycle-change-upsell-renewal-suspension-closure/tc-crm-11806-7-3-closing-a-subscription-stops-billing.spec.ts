@@ -17,9 +17,13 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  CRM-11806_7.3 - Closing a subscription stops its billing
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_7.3
- *  Spec ID:         US9 (Termination)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0163, IS-CRM-FUNC-0164 / SC-07
+ *                   Spec text  : closing stops billing and records the reason; a closed subscription can be reopened
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US9 (Termination)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

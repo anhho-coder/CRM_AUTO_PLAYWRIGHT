@@ -7,9 +7,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *  CRM-11806_12.1 - The first cycle after the cut-over bills once and only once
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_12.1
- *  Spec ID:         US11 (Data continuity)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0168
+ *                   Spec text  : each in-flight subscription’s cycle position is preserved so its FIRST post-cutover cycle bills exactly once
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US11 (Data continuity)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

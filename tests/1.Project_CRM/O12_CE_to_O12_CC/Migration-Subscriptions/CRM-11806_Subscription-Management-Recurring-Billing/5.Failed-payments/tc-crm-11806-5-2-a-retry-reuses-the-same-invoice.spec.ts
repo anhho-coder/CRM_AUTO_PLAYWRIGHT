@@ -18,9 +18,13 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  CRM-11806_5.2 - Retrying a declined collection reuses the SAME invoice
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_5.2
- *  Spec ID:         US10 (Dunning)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0147, IS-CRM-FUNC-0154 / SC-19
+ *                   Spec text  : later attempts retry the cycle’s EXISTING unpaid invoice - no additional invoice for the same cycle
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US10 (Dunning)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

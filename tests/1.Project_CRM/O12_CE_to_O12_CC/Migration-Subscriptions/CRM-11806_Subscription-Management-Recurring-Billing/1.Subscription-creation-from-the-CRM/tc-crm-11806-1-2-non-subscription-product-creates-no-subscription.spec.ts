@@ -19,8 +19,13 @@ import {
  *  CRM-11806_1.2 - An order with no subscription product creates no subscription
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_1.2
- *  Spec ID:         SC-02 / FUNC-0136
- *  Spec:            [Migration] Subscription Management (Recurring Billing)
+ *  Spec ID:         IS-CRM-FUNC-0136 / SC-02
+ *                   Spec text  : a quote with no subscription product creates no subscription
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-02 / FUNC-0136" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12140 (implementation) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

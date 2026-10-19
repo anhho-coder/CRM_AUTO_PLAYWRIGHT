@@ -12,8 +12,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *  CRM-11806_11.4 - Screens open inside the CRM, no second sign-in
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_11.4
- *  Spec ID:         SC-31 / FUNC-0178, UI-0009
- *  Spec:            screens open inside the CRM, no second sign-in
+ *  Spec ID:         IS-CRM-FUNC-0178, IS-CRM-UI-0009 / SC-31
+ *                   Spec text  : subscription management is reached from within the CRM under single sign-on
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-31 / FUNC-0178, UI-0009" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

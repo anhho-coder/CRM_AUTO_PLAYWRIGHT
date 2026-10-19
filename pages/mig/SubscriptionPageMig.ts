@@ -88,8 +88,24 @@ export class SubscriptionPageMig extends MigPreSalePage {
     runs: 'action_embed_subscription_runs',
   } as const;
 
-  /** The two CRM groups that gate the menu. */
-  static readonly GROUP = { see: 115, manage: 116 } as const;
+  /**
+   * The two CRM groups that gate the menu, addressed by XML id.
+   *
+   * THE NUMBERS MOVED (measured 2026-10-19). They were hardcoded as `{ see: 115, manage: 116 }`
+   * from a 2026-10-09 reading. On crm-mig today:
+   *     res.groups 115 - does not exist
+   *     res.groups 116 - "Super User" (users 14, 48)
+   *     nakivo_subscription_integration.group_see_subscriptions    -> 100000001
+   *     nakivo_subscription_integration.group_manage_subscriptions -> 100000002 (implies 100000001)
+   * So `hasSubscriptionGroup('manage')` was reading SUPER USER membership, and would have answered
+   * "yes" for a super user who holds no subscription right at all - a negative case passing for the
+   * wrong reason. Same failure mode as the menu and action ids after the 2026-10-13 rebuild; the
+   * fix is the same, resolve from the XML id, which survives a rebuild.
+   */
+  static readonly GROUP_XMLID = {
+    see: 'nakivo_subscription_integration.group_see_subscriptions',
+    manage: 'nakivo_subscription_integration.group_manage_subscriptions',
+  } as const;
 
   /** The remote models the embeds target, read off each action's `params.embed_target`. */
   static readonly REMOTE = {
@@ -167,10 +183,22 @@ export class SubscriptionPageMig extends MigPreSalePage {
 
   /** Does the signed-in CRM user hold a subscription group? Drives the SC-33 / 1.4.3 negatives. */
   async hasSubscriptionGroup(which: 'see' | 'manage'): Promise<boolean> {
-    const gid = SubscriptionPageMig.GROUP[which];
+    const gid = await this.subscriptionGroupId(which);
     const rows = await this.readKw<any[]>('res.groups', 'read', [[gid], ['users']]);
     const uid = await this.page.evaluate(() => (window as any).odoo?.session_info?.uid);
     return Array.isArray(rows?.[0]?.users) && rows[0].users.includes(uid);
+  }
+
+  /** Resolve a subscription group's live id from its XML id - see GROUP_XMLID for why. */
+  async subscriptionGroupId(which: 'see' | 'manage'): Promise<number> {
+    return await this.xmlId(SubscriptionPageMig.GROUP_XMLID[which]);
+  }
+
+  /** The user ids a subscription group holds on the CRM, by XML id. */
+  async subscriptionGroupMembers(which: 'see' | 'manage'): Promise<number[]> {
+    const gid = await this.subscriptionGroupId(which);
+    const rows = await this.readKw<any[]>('res.groups', 'read', [[gid], ['name', 'users', 'implied_ids']]);
+    return Array.isArray(rows?.[0]?.users) ? rows[0].users as number[] : [];
   }
 
   /**

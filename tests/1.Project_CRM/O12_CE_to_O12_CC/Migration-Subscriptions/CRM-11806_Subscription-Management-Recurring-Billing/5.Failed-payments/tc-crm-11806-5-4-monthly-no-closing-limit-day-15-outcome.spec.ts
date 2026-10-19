@@ -15,8 +15,13 @@ import { logObservation } from '@helpers/crm-11806-mig-subscription.helper';
  *                      closing limit
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_5.4
- *  Spec ID:         SC-21 / FUNC-0156
- *  Spec:            Monthly, no closing limit: day 15 outcome
+ *  Spec ID:         IS-CRM-FUNC-0156 / SC-21
+ *                   Spec text  : Monthly retries indefinitely; the spec’s Out of Scope puts an auto-close limit on Monthly outside this workstream
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-21 / FUNC-0156" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

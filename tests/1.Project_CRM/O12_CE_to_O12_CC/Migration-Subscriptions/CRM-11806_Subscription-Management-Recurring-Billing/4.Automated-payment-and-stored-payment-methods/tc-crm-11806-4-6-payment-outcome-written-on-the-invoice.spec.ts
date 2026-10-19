@@ -18,8 +18,13 @@ import {
  *  CRM-11806_4.6 - Payment outcome written on the invoice
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_4.6
- *  Spec ID:         SC-16 / FUNC-0152
- *  Spec:            Subscription Management (Recurring Billing)
+ *  Spec ID:         IS-CRM-FUNC-0152 / SC-16
+ *                   Spec text  : the payment outcome is written on the invoice
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-16 / FUNC-0152" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

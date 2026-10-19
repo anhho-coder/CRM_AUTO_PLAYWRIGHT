@@ -13,8 +13,13 @@ import { logVerify } from '@helpers/crm-11806-subscription.helper';
  *  CRM-11806_7.5 - Line change bills from the next period
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_7.5
- *  Spec ID:         SC-05 / FUNC-0160
- *  Spec:            Subscription Management (Order and subscription screen)
+ *  Spec ID:         IS-CRM-FUNC-0160 / SC-05
+ *                   Spec text  : a change made in place is billed from the next cycle
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-05 / FUNC-0160" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

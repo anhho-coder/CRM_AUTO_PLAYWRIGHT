@@ -18,10 +18,14 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  CRM-11806_7.1 - Upsell is OFF; editing the Subscription lines is the mid-period path
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_7.1
- *  Spec ID:         US7 / SC-34
- *  Spec:            Subscription Test Cases (CRM-12140) - SC-34 - FUNC-0161
+ *  Spec ID:         IS-CRM-FUNC-0161 / SC-34
+ *                   Spec text  : the spec REQUIRES an upsell quotation and a move to To Upsell; the delivered configuration switches upsell off
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US7 / SC-34" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *                   supersedes the FRD: [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature) / CRM-12140 (implementation)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

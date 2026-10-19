@@ -7,6 +7,9 @@ import * as path from 'path';
  *  CRM-11806_0.1 - GUARD: every spec in this suite must run on crm-mig, never on pre-production
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_0.1
+ *  Spec ID:         (none - this case guards the suite, it asserts no product requirement)
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)"
+ *                   pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD (pageId 222528736).
  *  Automation-Type: guard (static analysis of the suite's own source - opens no browser)
  *  Automation-Date: 2026-10-12
  * --------------------------------------------------------------------------------------------

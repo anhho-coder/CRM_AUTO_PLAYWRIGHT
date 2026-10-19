@@ -13,9 +13,13 @@ import { logVerify } from '@helpers/crm-11806-subscription.helper';
  *                    recurring invoice
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_3.1
- *  Spec ID:         US1 (No billing gap)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0144, IS-CRM-FUNC-0146 / SC-09, SC-11
+ *                   Spec text  : the recurring invoice is generated on the billing date; each cycle produces exactly one invoice
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US1 (No billing gap)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

@@ -21,9 +21,13 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin, createSubscriptionMig as createS
  *                    months
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_3.4
- *  Spec ID:         US4 (Recurring invoicing)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0145, IS-CRM-FUNC-0140-03 / SC-10
+ *                   Spec text  : Quarterly bills every three months
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US4 (Recurring invoicing)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

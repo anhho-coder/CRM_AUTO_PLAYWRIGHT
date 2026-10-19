@@ -20,8 +20,13 @@ import {
  *  CRM-11806_1.3 - Two subscription lines land on one subscription
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_1.3
- *  Spec ID:         SC-01
- *  Spec:            [Migration] Subscription Management (Recurring Billing)
+ *  Spec ID:         IS-CRM-FUNC-0137 / SC-01
+ *                   Spec text  : more than one subscription product creates ONE subscription for the whole order
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-01" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12140 (implementation) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-12

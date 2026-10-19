@@ -19,8 +19,13 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *  CRM-11806_7.6 - Weekly run closes a subscription past its end date
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_7.6
- *  Spec ID:         SC-26 / FUNC-0190
- *  Spec:            [FRD] Subscription Management (End date and notifications)
+ *  Spec ID:         IS-CRM-FUNC-0190, IS-CRM-FUNC-0187 / SC-26
+ *                   Spec text  : a subscription past its end date is closed by a scheduled run, weekly as today
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-26 / FUNC-0190" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

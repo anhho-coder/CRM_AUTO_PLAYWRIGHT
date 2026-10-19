@@ -7,9 +7,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *  CRM-11806_4.4 - Paying by card in the portal saves the card for the next cycles
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_4.4
- *  Spec ID:         US7 (Collection) / US12 (Portal experience)
- *  Spec:            [FRD] Subscription Management (Recurring Billing)
- *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
+ *  Spec ID:         IS-CRM-FUNC-0150 / SC-12
+ *                   Spec text  : a card paid online becomes a stored token
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "US7 (Collection) / US12 (Portal experience)" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08

@@ -12,8 +12,13 @@ import { CommonUtils } from '@helpers/common.utils';
  *                       read-only
  * --------------------------------------------------------------------------------------------
  *  Test Case ID:    CRM-11806_11.5
- *  Spec ID:         SC-32 / FUNC-0179
- *  Spec:            Portal customer sees only their own, read-only
+ *  Spec ID:         IS-CRM-FUNC-0179 / SC-32
+ *                   Spec text  : customers view their own subscriptions in the portal, restricted to their own organisation - viewing only
+ *                   Authority  : Confluence "[Migration] Subscription Management (Recurring Billing)" pageId 222538152 v4 (2026-09-07), which SUPERSEDES the FRD.
+ *                   Was        : "SC-32 / FUNC-0179" - an FRD user story, replaced 2026-10-19.
+ *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
+ *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
+ *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *  Jira:            CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
