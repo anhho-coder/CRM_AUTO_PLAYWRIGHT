@@ -8,13 +8,18 @@ import * as path from 'path';
 
 /**
  * Investments - Verify value of "Investment" field from a Source Lead to Target Lead
- * Test Case ID: CRM-3902_1.1
+ * Test Case ID: CRM-3902_1.2.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-10-19
+ * Jira: CRM-9963 (source manual TC, ID renamed 1.2 -> 1.2.1 and "Investment ID" CSV column added,
+ *       updated 2026-10-19T11:46+0300 - re-check before trusting this spec)
+ * NOTE: CRM-9963 section "II. Verify point - Target Opp" states no expected result, so this spec only
+ *       asserts that the two audience CSV files were created (un-skipped on request 2026-10-19).
  *
- * Summary: Verify the value of "Investment" field from a Source Lead is NOT applied to Target Lead
- *          after importing new audience using csv file
+ * Summary: Verify the value of "Investment" field from a Source Lead to Target Lead after importing new audience using csv file
  *
  * Command to run:
- * npx playwright test --grep "CRM-3902_1\.1:" --project=chromium
+ * npx playwright test --grep "CRM-3902_1\.2\.1:" --project=chromium
  *
  * Pre-condition #1:
  * 1. After login successful, click at "Investments" button
@@ -31,6 +36,7 @@ import * as path from 'path';
  *    - Phone         = 1234125125  |  Country = China
  *    - Sales Team    = CMR         |  Salesperson = Sergey Karachin
  *    - Tags          = test        |  Create manually = FALSE
+ *    - Investment ID = value of the "Investment ID" textbox of Investment#1 (step 4)
  *
  * Steps to reproduce #1:
  * 1. On Investment#1 page, press "EDIT" button and wait
@@ -65,6 +71,7 @@ import * as path from 'path';
  *    - Email         = Email_Contact#1 (reused from Pre-condition #1)
  *    - Company, Phone, Country, Sales Team, Salesperson same as #1
  *    - Tags          = Can_Merge      |  Create manually = TRUE
+ *    - Investment ID = value of the "Investment ID" textbox of Investment#2 (step 4)
  *
  * Steps to reproduce #2:
  * 1. On Investment#2 page, press "EDIT" button and wait
@@ -79,7 +86,7 @@ import * as path from 'path';
  * 3. Delete both CSV files
  */
 
-test.describe('CRM-3902_1.1 - Verify new contact/new Opp are created after importing new audience using csv file', () => {
+test.describe('CRM-3902_1.2.1 - Verify the value of "Investment" field from a Source Lead to Target Lead after importing new audience using csv file', () => {
 
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -117,7 +124,7 @@ test.describe('CRM-3902_1.1 - Verify new contact/new Opp are created after impor
     }
   });
 
-  test('CRM-3902_1.1: Verify new contact/new Opp are created after importing new audience using csv file', async ({ page }, testInfo) => {
+  test('CRM-3902_1.2.1: Verify the value of "Investment" field from a Source Lead to Target Lead after importing new audience using csv file', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Maximize browser window
@@ -223,6 +230,7 @@ test.describe('CRM-3902_1.1 - Verify new contact/new Opp are created after impor
         contactName:   `TEST_SOURCE_name_${timestamp}`,
         tags:          'test',
         createManually: 'FALSE',
+        investmentId:   investmentID1,
         outputFileName: 'CSV-Audience-copy1.csv',
       });
       csvCopy1Path = csvData1.outputPath;
@@ -409,6 +417,7 @@ test.describe('CRM-3902_1.1 - Verify new contact/new Opp are created after impor
         email:          csvData1.emailContact1,
         tags:           'Can_Merge',
         createManually: 'TRUE',
+        investmentId:   investmentID2,
         outputFileName: 'CSV-Audience-copy2.csv',
       });
       csvCopy2Path = csvData2.outputPath;
@@ -467,9 +476,9 @@ test.describe('CRM-3902_1.1 - Verify new contact/new Opp are created after impor
     });
 
     await test.step('Tear down Step 2: Navigate to Investment#1 and delete', async () => {
-      await page.goto(urlInvestment1);
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
-      await investmentPage.deleteCurrentRecord();
+      // Delete in a fresh tab: a same-tab goto() that differs only by #hash may leave the PREVIOUS record
+      // on screen, and deleteCurrentRecord() would then delete someone else's record (seen 2026-10-19).
+      await CommonUtils.deleteRecordByUrl(page, urlInvestment1, testInfo);
       console.log(`✓ Investment#1 deleted: ${investmentName1}`);
     });
 

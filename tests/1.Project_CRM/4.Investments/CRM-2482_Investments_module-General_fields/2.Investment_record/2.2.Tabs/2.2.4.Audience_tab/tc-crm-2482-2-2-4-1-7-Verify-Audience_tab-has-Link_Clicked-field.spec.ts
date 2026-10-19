@@ -8,12 +8,15 @@ import * as path from 'path';
 
 /**
  * Investments - Audience Tab Verification Test
- * Test Case ID: CRM-2482_2.2.4.1.4
+ * Test Case ID: CRM-2482_2.2.4.1.7
+ * Automation-Type: refactored
+ * Automation-Date: 2026-10-19
+ * Jira: CRM-9650 (source manual TC, updated 2026-03-18T12:40+0200 - re-check before trusting this spec)
  *
- * Summary: Verify the Audience tab of a Investment record includes "Lead Category" field
+ * Summary: Verify the Audience tab of a Investment record includes "Link Clicked" field
  *
  * Command to run:
- * npx playwright test --grep "CRM-2482_2.2.4.1.4" --project=chromium
+ * npx playwright test --grep "CRM-2482_2.2.4.1.7" --project=chromium
  *
  * Pre-condition:
  * 1. Login and navigate to the Investments module
@@ -53,7 +56,7 @@ import * as path from 'path';
  * 1. Import a Company from CSV-Audience-copy1 file
  * 2. Click at "Audience" tab
  * 3. Verify the following:
- *    3.1. Value at "Lead Category" row = BLANK
+ *    3.1. Value at "Link Clicked" row = Value of "0.00"
  *
  * Tear down (Clean up test data):
  * 1. Delete the Investment record:
@@ -63,7 +66,7 @@ import * as path from 'path';
  * 2. Delete the created CSV file (CSV-Audience-copy1.csv)
  */
 
-test.describe('CRM-2482_2.2.4.1.4 - Verify the Audience tab of a Investment record includes "Lead Category" field', () => {
+test.describe('CRM-2482_2.2.4.1.7 - Verify the Audience tab of a Investment record includes "Link Clicked" field', () => {
 
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -101,7 +104,7 @@ test.describe('CRM-2482_2.2.4.1.4 - Verify the Audience tab of a Investment reco
     }
   });
 
-  test('CRM-2482_2.2.4.1.4: Verify the Audience tab of a Investment record includes "Lead Category" field', async ({ page }, testInfo) => {
+  test('CRM-2482_2.2.4.1.7: Verify the Audience tab of a Investment record includes "Link Clicked" field', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Maximize browser window
@@ -236,15 +239,15 @@ test.describe('CRM-2482_2.2.4.1.4 - Verify the Audience tab of a Investment reco
     });
 
 
-    // Step 3: Verify Lead Category = BLANK
-    await test.step('Step 3: Verify "Lead Category" value in Audience tab is BLANK', async () => {
-      console.log('=== STEP 3: VERIFY LEAD CATEGORY ===');
+    // Step 3: Verify Link Clicked = 0.00
+    await test.step('Step 3: Verify "Link Clicked" value in Audience tab equals 0.00', async () => {
+      console.log('=== STEP 3: VERIFY LINK CLICKED ===');
 
-      const leadCategoryText = await investmentPage.getAudienceFirstRowCellText('Lead Category');
-      console.log(`  3.1 Lead Category actual  : "${leadCategoryText}"`);
-      console.log(`  3.1 Lead Category expected: "" (BLANK)`);
-      expect(leadCategoryText.trim(), 'Step 3.1: Lead Category should be blank').toBe('');
-      console.log('  ✓ 3.1 Lead Category verified (blank)');
+      const linkClickedText = await investmentPage.getAudienceFirstRowCellText('Link Clicked');
+      console.log(`  3.1 Link Clicked actual  : "${linkClickedText}"`);
+      console.log(`  3.1 Link Clicked expected: "0.00"`);
+      expect(linkClickedText.trim(), 'Step 3.1: Link Clicked should equal 0.00').toBe('0.00');
+      console.log('  ✓ 3.1 Link Clicked verified');
     });
 
     console.log('\n✅ STEPS TO REPRODUCE COMPLETED SUCCESSFULLY');
