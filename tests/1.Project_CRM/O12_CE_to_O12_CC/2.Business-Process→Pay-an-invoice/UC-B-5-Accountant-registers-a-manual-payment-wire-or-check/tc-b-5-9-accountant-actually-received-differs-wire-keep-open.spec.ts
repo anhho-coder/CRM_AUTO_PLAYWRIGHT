@@ -128,11 +128,16 @@ test.describe('TC.-B.5.9 - Accountant partial wire payment with Actually Receive
       actuallyReceived = round2(paymentAmount - BANK_FEE);
       remaining = round2(setup.invoiceTotal - paymentAmount);
       console.log(`  - InvoiceTotal#1 = ${setup.invoiceTotal} | PaymentAmount = ${paymentAmount} | ActuallyReceived = ${actuallyReceived} (BankFee ${BANK_FEE}) | remaining = ${remaining}`);
-      expect(paymentAmount).toBeGreaterThan(0);
-      expect(paymentAmount).toBeLessThan(setup.invoiceTotal);
-      expect(actuallyReceived, 'Actually Received should be less than the Payment Amount').toBeLessThan(paymentAmount);
-      expect(actuallyReceived).toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(paymentAmount).toBeGreaterThan(0);
+        expect(paymentAmount).toBeLessThan(setup.invoiceTotal);
+        expect(actuallyReceived, 'Actually Received should be less than the Payment Amount').toBeLessThan(paymentAmount);
+        expect(actuallyReceived).toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Use the account of Faye (accountant) to login successful, then open Invoice#1 (back-office)', async () => {

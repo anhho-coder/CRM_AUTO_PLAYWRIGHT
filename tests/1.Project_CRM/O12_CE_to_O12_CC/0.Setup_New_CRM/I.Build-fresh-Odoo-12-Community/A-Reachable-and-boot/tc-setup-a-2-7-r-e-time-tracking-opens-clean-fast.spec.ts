@@ -32,7 +32,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *   - the sidebar on the resulting screen lists 24 apps and contains no "R&E Time Tracking" entry.
  *
  * WHAT THAT POINTS AT INSTEAD: `MigPlatformPage.ABSENT_ON_MIG` already records this app as having no
- * live `ir.ui.menu` row at any depth, and `MigPlatformPage.HASH.reTimeTracking` states that opening
+ * live `ir.ui.menu` row at any depth, and the `reTimeTracking` entry of `MigPlatformPage.APP_MENU_NAME`
+ * states that opening
  * the hash "WILL raise an Odoo error dialog ... the truth about the instance, not a bug in the spec".
  * The same file adds that a dead-hash "An error occurred" shell is "an automation defect, not a
  * product defect - so do NOT raise a bug for them". On that evidence this failure is the app being
@@ -122,7 +123,7 @@ test.describe('CRM-12325 Part 2-A.2 - R&E Time Tracking opens cleanly and fast',
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.reTimeTracking);
+      ms = await platform.openAppAndMeasureMs('reTimeTracking');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  R&E Time Tracking opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

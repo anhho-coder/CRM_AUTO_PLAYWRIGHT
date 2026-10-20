@@ -179,8 +179,13 @@ test.describe('TC.-A.4.2.1 - Convert qualified Lead to Opportunity by merging wi
       console.log(`Step 5: Selecting Lead#1 by its Opportunity name ("${lead1OppName}") or email (${lead1Email})`);
       // The picker searches the Opportunity NAME field, so target Lead#1 by its name (retry/fallback by email).
       const { rowCount } = await leadPage.addOpportunityToMergeByNameOrEmail(lead1OppName, lead1Email);
-      expect(rowCount, 'The "Add: Opportunities" picker should list Lead#1 when searched by its Opportunity name/email').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-A.4.2.1 - Opportunity added to merge list');
+      let __verifyPassed = false;
+      try {
+        expect(rowCount, 'The "Add: Opportunities" picker should list Lead#1 when searched by its Opportunity name/email').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-A.4.2.1 - Opportunity added to merge list', passed: __verifyPassed }).catch(() => {});
+      }
       console.log(`✓ Lead#1 added to the merge list (${rowCount} row(s) matched)`);
     });
 

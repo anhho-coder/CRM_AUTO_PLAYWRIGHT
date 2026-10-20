@@ -2737,8 +2737,11 @@ export class LeadPage extends BasePage {
    */
   async navigateToMergedLeadWithAction682(leadUrl: string, leadId: string, loadingSpinnerTimeout: number = 30000): Promise<string> {
     // Replace action=149 with action=682 in leadUrl
-    const modifiedUrl = leadUrl.replace('action=149', 'action=682');
-    console.log(`Modified Lead URL with action=682: ${modifiedUrl}`);
+    const modifiedUrl = leadUrl.replace(
+      `action=${await this.xmlId('crm.crm_lead_all_leads')}`,
+      `action=${await this.xmlId('filter_mail.crm_lead_all_archive_leads')}`,
+    );
+    console.log(`Modified Lead URL (filter_mail.crm_lead_all_archive_leads): ${modifiedUrl}`);
     
     try {
       // Use location.replace for hash-based navigation in Odoo
@@ -2761,7 +2764,7 @@ export class LeadPage extends BasePage {
       await this.formView().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       
       console.log(`Current URL after navigation: ${this.page.url()}`);
-      console.log('✓ Lead opened successfully with action=682\n');
+      console.log('✓ Lead opened successfully via filter_mail.crm_lead_all_archive_leads\n');
       
       // Bring browser window to front
       await this.page.bringToFront();

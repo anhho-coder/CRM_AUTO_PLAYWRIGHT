@@ -94,8 +94,13 @@ test.describe('TC.-B.6.7 - A foreign-partner credit is not offered on the invoic
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber; invoiceTotal1 = setup.invoiceTotal;
       amt = round2(invoiceTotal1 * 0.5);
       console.log(`  - Invoice#1="${invoiceNumber1}" Total=${invoiceTotal1} credit amount=${amt}`);
-      expect(invoiceTotal1).toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1).toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3 (Reseller credit): As Faye, pre-create JournalItem#R for the Reseller', async () => {

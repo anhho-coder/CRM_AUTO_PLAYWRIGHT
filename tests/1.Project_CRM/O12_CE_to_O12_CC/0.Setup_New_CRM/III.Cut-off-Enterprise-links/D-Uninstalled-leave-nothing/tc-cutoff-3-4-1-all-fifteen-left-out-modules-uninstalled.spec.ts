@@ -9,29 +9,42 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  * Jira: CRM-12578
  * Automation-Type: new
  * Automation-Date: 2026-09-14
- * Last-revised: 2026-09-16 - manual steps 2 and 3 split back to one test.step each
+ * Last-revised: 2026-10-12 - the left-out list drops from 15 to 14 and nakivo_feature_request
+ *                moves to the installed side. Khang Nguyen Thai Duy, CRM-13430 (2026-10-09):
+ *                "nakivo_feature_request is installed on crm-mig on purpose. On 2 October it was
+ *                brought back because Production uses it ... For the Community server its Helpdesk
+ *                dependency was removed. The row 'uninstalled, not mandatory, left out by design'
+ *                on CRM-12125 (comment 685775) predates that decision."
+ *                Ticket resolved "Not a bug". The module is asserted INSTALLED here rather than
+ *                merely deleted from the list: dropping a name would leave the TC unable to tell
+ *                "installed on purpose" from "silently gone".
+ * Previously:    2026-09-16 - manual steps 2 and 3 split back to one test.step each
  *                (they were collapsed into a single "Step 2-3", which read as one opaque
  *                block in the report and hid which action a failure came from)
  *
  * Summary:
- *   Verify that all 15 in-scope modules left out of the O12 CC scope remain
+ *   Verify that the 14 in-scope modules left out of the O12 CC scope remain
  *   uninstalled on crm-mig.nakivo.site. These modules must not have been pulled in
- *   as a side effect of installing the 21 in-scope modules or their dependencies.
+ *   as a side effect of installing the in-scope modules or their dependencies.
+ *   Verify in the same pass that nakivo_feature_request - the 15th name on the old list,
+ *   returned to scope on 2026-10-02 - IS installed.
  *
  * Source manual TC (master tab "Migration - Setup New CRM", row 97):
  *
  * Pre-conditions:
  *   - VPN connected; the O12 CE Migration server crm-mig.nakivo.site is reachable
  *   - Login: anh.ho@nakivo.com (admin_crm_mig)
- *   - The 15 left-out modules per CRM-12125 comment 685775
+ *   - The 14 left-out modules: CRM-12125 comment 685775 minus nakivo_feature_request,
+ *     which CRM-13430 returned to scope on 2026-10-02
  *
  * Steps to reproduce:
  *   1. Use the account of Admin to login successful.
- *   2. Read the ir.module.module row of each of the 15 left-out modules.
+ *   2. Read the ir.module.module row of each of the 14 left-out modules, and of nakivo_feature_request.
  *   3. Record the state of each, or record that no row exists.
  *
  * Verification Points:
- *   1. 0 of the 15 is in state installed (tolerates modules being absent from the registry).
+ *   1. 0 of the 14 is in state installed (tolerates modules being absent from the registry).
+ *   2. nakivo_feature_request is in state installed.
  *
  * EVIDENCE: stdout only - this TC drives NO UI. Every step reads over the authenticated JSON-RPC
  * and navigates nowhere, so the screenshot Playwright auto-captures (config `screenshot: 'on'`)
@@ -46,13 +59,19 @@ import { LoginPageMig, MigPlatformPage } from '@pages/mig';
  *   npx playwright test --grep "CRM-12326_3\.4\.1:" --project=chromium
  */
 
-/** The 15 in-scope modules left out of O12 CC scope (CRM-12125 comment 685775). */
+/**
+ * The 14 in-scope modules left out of O12 CC scope: CRM-12125 comment 685775's list of 15,
+ * minus nakivo_feature_request, which CRM-13430 confirmed is installed on purpose since 2026-10-02.
+ */
 const CUT_MODULES_UNINSTALLED = [
   'nakivo_helpdesk', 'nakivo_support_tickets', 'nakivo_support_page', 'nakivo_helpdesk_followup',
-  'nakivo_helpdesk_mail_route', 'nakivo_email_rating', 'nakivo_feature_request', 'nakivo_leaves',
+  'nakivo_helpdesk_mail_route', 'nakivo_email_rating', 'nakivo_leaves',
   'nakivo_message_approval', 'helpdesk_timer', 'helpdesk_ticket_crm_lead', 'zoho_connector',
   'nakivo_website_crm_score', 'nakivo_sign', 'marketing_automation_file_template',
 ];
+
+/** The 15th name on the old list, now in scope and expected INSTALLED (CRM-13430). */
+const RETURNED_TO_SCOPE = 'nakivo_feature_request';
 
 /**
  * Step labels - declared ONCE and used for BOTH the test.step() label and the stdout banner.
@@ -67,7 +86,7 @@ const STEP = {
   // manual steps. They were previously collapsed into a single "Step 2-3: Read module states and
   // record each", which read as one opaque block in the report: a reader could not tell which of
   // the two actions a failure came from.
-  s2:      'Step 2: [INTERNAL check, Call API] Read the ir.module.module row of each of the 15 left-out modules',
+  s2:      'Step 2: [INTERNAL check, Call API] Read the ir.module.module row of each of the 14 left-out modules, and of nakivo_feature_request',
   s3:      'Step 3: [INTERNAL check, Call API] Record the state of each, or record that no row exists',
   verify:  'Verification',
 } as const;
@@ -80,7 +99,7 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
     }
   });
 
-  test('CRM-12326_3.4.1: [Part2-3.4] All 15 left-out modules are uninstalled', async ({ page }) => {
+  test('CRM-12326_3.4.1: [Part2-3.4] All 14 left-out modules are uninstalled and nakivo_feature_request is installed', async ({ page }) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
     const loginPage = new LoginPageMig(page);
@@ -94,8 +113,9 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
     let moduleStates: ModuleState[] = [];
     let installedModules: ModuleState[] = [];
     let allModules: any[] = [];
+    let featureRequestState = 'absent';
 
-    console.log('========== CRM-12326_3.4.1 - All 15 left-out modules are uninstalled ==========');
+    console.log('========== CRM-12326_3.4.1 - All 14 left-out modules are uninstalled, nakivo_feature_request is installed ==========');
 
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
@@ -110,8 +130,9 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      console.log('  The 15 modules being checked:');
+      console.log('  The 14 modules that must stay uninstalled:');
       CUT_MODULES_UNINSTALLED.forEach((m) => console.log(`    - ${m}`));
+      console.log(`  Plus the module that must be INSTALLED (CRM-13430): ${RETURNED_TO_SCOPE}`);
 
       allModules = await platform.getModules();
       console.log(`\n  Total ir.module.module rows read : ${allModules.length}`);
@@ -130,19 +151,28 @@ test.describe('CRM-12326 Part 2-3.4 - Uninstalled modules leave nothing executab
           installedModules.push({ name: moduleName, state });
         }
       }
-      console.log(`\n  Of the 15, in state installed (offenders) : ${installedModules.length}`);
+      console.log(`\n  Of the 14, in state installed (offenders) : ${installedModules.length}`);
+
+      const fr = allModules.find((m: any) => m.name === RETURNED_TO_SCOPE);
+      featureRequestState = fr?.state ?? 'absent';
+      console.log(`  ${RETURNED_TO_SCOPE.padEnd(36)} : ${featureRequestState}  (expected installed)`);
     });
 
     await test.step(STEP.verify, async () => {
       console.log('\n==================== VERIFY ====================');
-      console.log('  Verify #1 - 0 of the 15 is in state installed:');
+      console.log('  Verify #1 - 0 of the 14 is in state installed:');
       console.log(`     Expected : 0`);
       console.log(`     Actual   : ${installedModules.length}`);
       console.log(`     Result   : ${installedModules.length === 0 ? 'PASS' : 'FAIL'}`);
+      console.log(`  Verify #2 - ${RETURNED_TO_SCOPE} is installed (CRM-13430, Khang 2026-10-09):`);
+      console.log(`     Expected : installed`);
+      console.log(`     Actual   : ${featureRequestState}`);
+      console.log(`     Result   : ${featureRequestState === 'installed' ? 'PASS' : 'FAIL'}`);
       console.log('===============================================');
-      console.log(`OVERALL: ${installedModules.length === 0 ? 'PASS' : 'FAIL'} - No left-out modules are in installed state`);
+      console.log(`OVERALL: ${installedModules.length === 0 && featureRequestState === 'installed' ? 'PASS' : 'FAIL'} - 14 left out, nakivo_feature_request installed`);
 
-      expect(installedModules.length, 'none of the 15 modules should be in installed state').toBe(0);
+      expect(installedModules.length, 'none of the 14 modules should be in installed state').toBe(0);
+      expect(featureRequestState, 'nakivo_feature_request must be installed - CRM-13430 returned it to scope on 2026-10-02').toBe('installed');
     });
   });
 });

@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: refactored
  * Automation-Date: 2026-09-24
+ * Source TC      : CRM-12929 (Xray Manual Steps, 5 steps)
+ * Source version : updated 2026-10-06T12:36:01.360+0300 - re-check before trusting this spec
  * Evidence       : Screenshots of All Tickets list and request form after priority changes.
  *
  * Summary
@@ -191,6 +193,7 @@ test.describe('CRM-12135_2.5 - Four priority levels, and both engineer screens c
         console.log(`  Dialog closed`);
         const raised = await preSale.requestsForLead(leadId);
         requestId = raised[0].id;
+        console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
         console.log(`  Raised request: ${requestId} (${raised[0].number})`);
       });
 

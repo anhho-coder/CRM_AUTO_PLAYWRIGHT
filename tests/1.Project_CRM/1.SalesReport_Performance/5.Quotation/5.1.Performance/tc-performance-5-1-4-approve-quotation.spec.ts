@@ -432,17 +432,43 @@ let maxContext: any;
     await test.step('Verification: Verify approval completed (not included in performance measurement)', async () => {
       console.log('\nVerification: Verifying approval status (not included in performance measurement)');
       
-      // Check if quotation is approved
-      const pageContent = await maxPage.textContent('body').catch(() => '') || '';
-      const isApproved = pageContent.includes('Approved') || pageContent.includes('Sales Order') || pageContent.includes('SO');
-      
-      if (isApproved) {
-        console.log('  ✓ Quotation approved successfully');
-      } else {
-        console.log('  ⚠ Approval verification: Status unclear');
-      }
-      
-      console.log('✅ Data verification completed');
+      // This step used to compute
+      //   isApproved = body.includes('Approved') || body.includes('Sales Order') || body.includes('SO')
+      // and then only LOG it - there was no expect(), so the case could not fail on the approval
+      // itself, only on the elapsed time. The substring test was vacuous as well: the Quotation
+      // number rendered on the page starts with "SO", so `includes('SO')` was true by construction.
+      // Replaced with the same checks the crm-mig counterpart makes, so the two are comparable.
+      // maxQuotationPage is scoped to the step above; the approver's page itself is test-scoped.
+      const approverQuotationPage = new QuotationPage(maxPage);
+      const approvalCheck = await approverQuotationPage.verifyApprovalSuccess();
+      const statusAfter = await approverQuotationPage.getQuotationStatusFromServer();
+      const leftPending = statusAfter !== '' && !/pending/i.test(statusAfter);
+      const withinThreshold = approveTime < PERFORMANCE_THRESHOLD;
+
+      console.log('\n==================== VERIFY ====================');
+      console.log('  Verify #1 - The APPROVE button is consumed and a post-approval action is offered:');
+      console.log('     Expected : APPROVE gone AND (CONFIRM or SEND BY EMAIL) visible');
+      console.log(`     Actual   : approveGone=${approvalCheck.approveButtonGone} | confirmVisible=${approvalCheck.confirmVisible} | sendByEmailVisible=${approvalCheck.sendByEmailVisible}`);
+      console.log(`     Result   : ${approvalCheck.approved ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #2 - The Quotation has left "Pending Approval":');
+      console.log('     Expected : the server-read status no longer contains "Pending"');
+      console.log(`     Actual   : "${statusAfter}"`);
+      console.log(`     Result   : ${leftPending ? 'PASS' : 'FAIL'}`);
+      console.log('  Verify #3 - The approval completed within the performance threshold:');
+      console.log(`     Expected : < ${(PERFORMANCE_THRESHOLD / 1000).toFixed(0)}s`);
+      console.log(`     Actual   : ${approveSeconds}s`);
+      console.log(`     Result   : ${withinThreshold ? 'PASS' : 'FAIL'}`);
+      console.log('===============================================');
+      console.log(`OVERALL: ${approvalCheck.approved && leftPending && withinThreshold ? 'PASS' : 'FAIL'} - the Quotation approval completed on pre-production`);
+
+      expect(
+        approvalCheck.approved,
+        `APPROVE must complete the approval - the button must be consumed and a post-approval action offered (approveGone=${approvalCheck.approveButtonGone}, confirmVisible=${approvalCheck.confirmVisible}, sendByEmailVisible=${approvalCheck.sendByEmailVisible})`
+      ).toBe(true);
+      expect(
+        leftPending,
+        `after APPROVE the Quotation must leave "Pending Approval", but the server-read status is "${statusAfter}"`
+      ).toBe(true);
     });
     
     // Capture final screenshot for test report

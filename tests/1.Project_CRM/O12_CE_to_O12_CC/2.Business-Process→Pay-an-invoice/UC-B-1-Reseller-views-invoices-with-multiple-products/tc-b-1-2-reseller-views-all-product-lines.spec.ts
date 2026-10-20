@@ -112,16 +112,21 @@ test.describe('TC.-B.1.2 - Reseller views all product lines of a multi-product i
     });
 
     await test.step('Steps to reproduce - Step 4: Review the product list on the invoice detail page', async () => {
-      const found: string[] = [];
-      for (const pr of invoice.products) {
-        const line = await resellerPortalPage.getDetailProductLine(pr.code);
-        console.log(`  - ${pr.code}: ${line ? `qty="${line.quantity}" amount="${line.amount}"` : 'NOT FOUND'}`);
-        expect(line, `Product ${pr.code} should be listed on the invoice`).not.toBeNull();
-        found.push(pr.code);
+      let __verifyPassed = false;
+      try {
+        const found: string[] = [];
+        for (const pr of invoice.products) {
+          const line = await resellerPortalPage.getDetailProductLine(pr.code);
+          console.log(`  - ${pr.code}: ${line ? `qty="${line.quantity}" amount="${line.amount}"` : 'NOT FOUND'}`);
+          expect(line, `Product ${pr.code} should be listed on the invoice`).not.toBeNull();
+          found.push(pr.code);
+        }
+        expect(found.length, 'All 4 products should be listed on the invoice detail').toBe(invoice.products.length);
+        console.log('✅ All 4 product lines are listed on the portal invoice');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.1.2 - Reseller portal multi-product invoice (all lines)', passed: __verifyPassed }).catch(() => {});
       }
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.1.2 - Reseller portal multi-product invoice (all lines)');
-      expect(found.length, 'All 4 products should be listed on the invoice detail').toBe(invoice.products.length);
-      console.log('✅ All 4 product lines are listed on the portal invoice');
     });
   });
 });

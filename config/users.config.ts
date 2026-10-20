@@ -53,42 +53,6 @@ const pw = (key: string): string => {
 };
 
 export const users = {
-  reseller_basic: {
-    username: 'Test-Reseller@Reseller-company-automation-basic.com',
-    password: pw('reseller_basic'),
-    displayName: 'TEST-Reseller#1_Automation_Basic',
-    level: 'Basic',
-  },
-  reseller_bronze: {
-    username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
-    password: pw('reseller_bronze'),
-    displayName: 'TEST-Reseller#1_Automation_Test',
-    level: 'Bronze',
-  },
-  reseller_silver: {
-    username: 'Test-Reseller@Reseller-company-automation-silver.com',
-    password: pw('reseller_silver'),
-    displayName: 'TEST-Reseller#1_Automation_Silver',
-    level: 'Silver',
-  },
-  reseller_gold: {
-    username: 'Test-Reseller@Reseller-company-automation-gold.com',
-    password: pw('reseller_gold'),
-    displayName: 'TEST-Reseller#1_Automation_Gold',
-    level: 'Gold',
-  },
-  distributor_partner: {
-    username: 'Test-Distributor@Distributor-company.com',
-    password: pw('distributor_partner'),
-    displayName: 'TEST-Distributor#1_Automation',
-    level: 'Distributor',
-  },
-  msp_partner: {
-    username: 'Test-MSP@MSP-company.com',
-    password: pw('msp_partner'),
-    displayName: 'TEST-MSP#1_Automation',
-    level: 'MSP',
-  },
   accountance_ic_faye: {
     username: 'faye.nguyen@nakivo.com',
     password: pw('accountance_ic_faye'),
@@ -226,6 +190,66 @@ export const users = {
     password: pw('mailpit_crm_mig'),
     displayName: 'Mailpit tester',
   },
+  // ---- Discount Service (baseUrl_discount_mig below), admin account handed over 2026-10-20. NOT an
+  // Odoo login - the service has its own sign-in form (POST /login, JSON {username,password} ->
+  // cookie disc_session), never loginPage. Verified 2026-10-20: {"ok":true}, /session/verify ->
+  // login anh.ho@nakivo.com. Same login as admin_crm_mig, different password.
+  admin_discount_mig: {
+    username: 'anh.ho@nakivo.com',
+    password: pw('admin_discount_mig'),
+    displayName: 'anh.ho@nakivo.com',
+  },
+  // ---- Quoc Anh comment: Oct 14, 2026 [COMMON ACCOUNT] Pre-production serrver, CRM-Mig serrver, Pre-sales, Subscriptions service
+  // These accounts need to be re-created if the servers above clone database from Production.
+  // CRM-12144 Discounts - the test customer of the dev's QA Instructions (p.11) and the second
+  // customer of TC-14 step 5. COMPANIES, not logins: no username / password. Company type = Company,
+  // Customer, no Reseller / Distributor, "Public Pricelist_USD", United States / Connecticut.
+  // Created 2026-10-19 through the Odoo MCP on both servers: pre-prod res.partner 716109 / 716110,
+  // crm-mig 100001641 / 100001642 (ids for cleanup only - specs find them by name, QI p.10).
+  // Kept until the CRM-12144 execution ends: the 16:00 crm-mig leftover check will list them, and a
+  // CRM-12144 spec sweep must never match the bare "AUTO-CRM-12144-" prefix or it deletes these.
+  end_customer_1: {
+    displayName: 'AUTO-CRM-12144-EndCustomer-1',
+  },
+  end_customer_2: {
+    displayName: 'AUTO-CRM-12144-EndCustomer-2',
+  },
+  reseller_basic: {
+    username: 'Test-Reseller@Reseller-company-automation-basic.com',
+    password: pw('reseller_basic'),
+    displayName: 'TEST-Reseller#1_Automation_Basic',
+    level: 'Basic',
+  },
+  reseller_bronze: {
+    username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
+    password: pw('reseller_bronze'),
+    displayName: 'TEST-Reseller#1_Automation_Test',
+    level: 'Bronze',
+  },
+  reseller_silver: {
+    username: 'Test-Reseller@Reseller-company-automation-silver.com',
+    password: pw('reseller_silver'),
+    displayName: 'TEST-Reseller#1_Automation_Silver',
+    level: 'Silver',
+  },
+  reseller_gold: {
+    username: 'Test-Reseller@Reseller-company-automation-gold.com',
+    password: pw('reseller_gold'),
+    displayName: 'TEST-Reseller#1_Automation_Gold',
+    level: 'Gold',
+  },
+  distributor_partner: {
+    username: 'Test-Distributor@Distributor-company.com',
+    password: pw('distributor_partner'),
+    displayName: 'TEST-Distributor#1_Automation',
+    level: 'Distributor',
+  },
+  msp_partner: {
+    username: 'Test-MSP@MSP-company.com',
+    password: pw('msp_partner'),
+    displayName: 'TEST-MSP#1_Automation',
+    level: 'MSP',
+  },
 } as const;
 
 // Eager validation, reported in one shot. Every pw() above has run by now, so `missingKeys` holds
@@ -257,6 +281,12 @@ export const baseUrl_mig = 'https://crm-mig.nakivo.site/';
 // httpCredentials, there is no login form. REST API under <this URL>api/v1/. Verified 2026-10-20:
 // Mailpit v1.31.6, GET api/v1/info -> 200. The host's cert chain is self-signed (curl needs -k).
 export const baseUrl_mailpit_mig = 'https://crm-mig.nakivo.site/mailpit/';
+
+// Discount Service (nakivo-discount-facade) - NOT Odoo: a FastAPI app holding the promotion rules as
+// a versioned GoRules decision table; crm-mig posts each quotation to its /api/evaluate. Sign in
+// with users.admin_discount_mig on its own /login form. Unauthenticated pages 302 to /login, /api/*
+// answers 401. The cert chain is self-signed (curl needs -k, Playwright ignoreHTTPSErrors).
+export const baseUrl_discount_mig = 'https://discount-crm-mig.nakivo.site/';
 
 // Pre-Sales Application (CRM-12135) - the NEW helpdesk the pre-sale requests are worked on, a
 // SEPARATE Odoo 19 instance from the CRM above. A pre-sale spec drives BOTH hosts in one run:

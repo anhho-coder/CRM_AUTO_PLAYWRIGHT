@@ -87,14 +87,19 @@ test.describe('TC.-B.4.10 - End User invoice: Salesperson cannot Register Paymen
 
     let salespersonHasRegisterPayment = true;
     await test.step('Step 1: As Thomas (Salesperson), open Invoice#1 and check for a "Register Payment" action', async () => {
-      await page.goto(inv.invoiceUrl, { waitUntil: 'domcontentloaded' });
-      await invoicePage.dismissErrorDialogWithRetry();
-      await invoicePage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
-      const opened = await invoicePage.getInvoiceNumber();
-      expect(opened, 'Thomas should open Invoice#1').toBe(inv.invoiceNumber);
-      salespersonHasRegisterPayment = await invoicePage.hasRegisterPaymentButton();
-      console.log(`  - Salesperson (Thomas) has Register Payment: ${salespersonHasRegisterPayment}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.4.10 - Thomas (Salesperson) on Invoice#1');
+      let __verifyPassed = false;
+      try {
+        await page.goto(inv.invoiceUrl, { waitUntil: 'domcontentloaded' });
+        await invoicePage.dismissErrorDialogWithRetry();
+        await invoicePage.waitForPageLoad(CommonUtils.waitTimes.pageLoad);
+        const opened = await invoicePage.getInvoiceNumber();
+        expect(opened, 'Thomas should open Invoice#1').toBe(inv.invoiceNumber);
+        salespersonHasRegisterPayment = await invoicePage.hasRegisterPaymentButton();
+        console.log(`  - Salesperson (Thomas) has Register Payment: ${salespersonHasRegisterPayment}`);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.4.10 - Thomas (Salesperson) on Invoice#1', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     let accountantHasRegisterPayment = false;
@@ -123,13 +128,18 @@ test.describe('TC.-B.4.10 - End User invoice: Salesperson cannot Register Paymen
     });
 
     await test.step('Verification Point 2: The Accountant (Faye) HAS "Register Payment", and the full payment makes Invoice#1 "Paid" (Amount Due $0)', async () => {
-      expect(accountantHasRegisterPayment, 'An Accountant SHOULD be able to Register Payment').toBeTruthy();
-      const status = await invoicePage.getInvoiceStatus();
-      const due = await invoicePage.getAmountDue();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.4.10 - Paid by the Accountant (Faye)');
-      console.log(`  - state="${status}" | Amount Due="${due}"`);
-      expect(status, 'Invoice#1 should be Paid after the Accountant pays').toMatch(/Paid/i);
-      expect(money(due), 'Amount Due should be 0').toBe(0);
+      let __verifyPassed = false;
+      try {
+        expect(accountantHasRegisterPayment, 'An Accountant SHOULD be able to Register Payment').toBeTruthy();
+        const status = await invoicePage.getInvoiceStatus();
+        const due = await invoicePage.getAmountDue();
+        console.log(`  - state="${status}" | Amount Due="${due}"`);
+        expect(status, 'Invoice#1 should be Paid after the Accountant pays').toMatch(/Paid/i);
+        expect(money(due), 'Amount Due should be 0').toBe(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.4.10 - Paid by the Accountant (Faye)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Verification Point 3: Invoice#1 Payer = EndUser#1', async () => {

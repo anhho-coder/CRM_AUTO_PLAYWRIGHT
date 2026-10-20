@@ -101,7 +101,7 @@ test.describe('CRM-12325 Part 2-A.2 - Job Queue opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.jobQueue);
+      ms = await platform.openAppAndMeasureMs('jobQueue');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Job Queue opened - errorDialog=${hasError}, response time=${ms} ms`);
 

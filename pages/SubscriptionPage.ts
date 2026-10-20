@@ -330,17 +330,27 @@ export class SubscriptionPage extends BasePage {
   /** Open the Subscriptions list (action 430 / menu 274) and clear the default "My Subscriptions" facet. */
   async openSubscriptionsList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(origin + '/web#action=430&model=sale.subscription&view_type=list&menu_id=274', { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('sale_subscription.sale_subscription_action')}&model=sale.subscription&view_type=list&menu_id=${await this.xmlId('sale_subscription.menu_sale_subscription_action')}`, { waitUntil: 'domcontentloaded' });
     await this.waitForLoadingSpinnerToHide(timeout).catch(() => {});
+    // The spinner can be gone while the view container is still being built: a probe on
+    // 2026-10-19 read 0 group headers, 0 data rows, no facets and no no-content box right after
+    // this call - the DOM simply had neither .o_list_view nor .o_kanban_view yet. Callers then
+    // reported "no such row" for a subscription that does exist. Wait for the view itself.
+    await this.page
+      .locator('.o_list_view, .o_kanban_view')
+      .first()
+      .waitFor({ state: 'visible', timeout })
+      .catch(() => console.log('  ⚠ Subscriptions view did not render within the timeout'));
     await this.wait(CommonUtils.waitTimes.long);
     await this.clearSearchFacets();
-    console.log('  - Subscriptions list opened (all records)');
+    const rendered = await this.page.locator('.o_list_view, .o_kanban_view').first().isVisible().catch(() => false);
+    console.log('  - Subscriptions list opened (all records), view rendered: ' + rendered);
   }
 
   /** Open the Subscription Templates list (action 433 / menu 279). */
   async openSubscriptionTemplatesList(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(origin + '/web#action=433&model=sale.subscription.template&view_type=list&menu_id=279', { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('sale_subscription.sale_subscription_template_action')}&model=sale.subscription.template&view_type=list&menu_id=${await this.xmlId('sale_subscription.menu_template_of_subscription')}`, { waitUntil: 'domcontentloaded' });
     await this.waitForLoadingSpinnerToHide(timeout).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
     console.log('  - Subscription Templates list opened');
@@ -359,16 +369,267 @@ export class SubscriptionPage extends BasePage {
     }
   }
 
-  /** Type a term into the list search box and press Enter. Returns the resulting row count. */
+  /**
+   * Type a term into the list search box and press Enter. Returns the number of MATCHING RECORDS.
+   *
+   * FIXED 2026-10-08 - it used to return 0 unconditionally, which quietly made every assertion built
+   * on it meaningless. Two separate causes, both proven by a UI probe against pre-production:
+   *
+   *  1. The Subscriptions list ships GROUPED BY STAGE. The screen holds only group headers
+   *     ("Draft (0)", "In Progress (3)", "To Upsell (0)", "Closed (2)") and NO expanded
+   *     `tr.o_data_row`, so counting data rows returned 0 whatever was searched. Specs expecting a
+   *     hit failed; specs expecting zero PASSED VACUOUSLY.
+   *  2. `fill()` on `.o_searchview_input` did not stick - the term never reached the box, so Enter
+   *     just re-applied the default "My Subscriptions" facet. Typing via the keyboard does work.
+   *
+   * It now types the term properly and, when the list is grouped, sums the per-group counts instead
+   * of counting rendered rows.
+   */
   async searchInList(term: string): Promise<number> {
     await this.searchInput().click().catch(() => {});
-    await this.searchInput().fill(term).catch(() => {});
-    await this.page.keyboard.press('Enter');
+    if (term) {
+      await this.page.keyboard.type(term, { delay: 20 });
+      await this.wait(CommonUtils.waitTimes.short);
+      await this.page.keyboard.press('Enter');
+    }
+    return this.countListRecords(`Search "${term}"`);
+  }
+
+  /**
+   * Search the Subscriptions list on a NAMED field instead of the default one.
+   *
+   * Pressing Enter in the search box takes the FIRST dropdown option, which on this list is
+   * "Search Subscription for: ..." - NOT Customer. Probed on pre-production 2026-10-08, the box
+   * offers: Subscription | End Date | Customer | Salesperson | Subscription Template | Reference |
+   * Message Content. So a partner name typed + Enter matches nothing and silently reads as
+   * "0 subscriptions exist for this customer".
+   *
+   * THROWS when the requested field is not on offer - a wrong field name must fail loudly, never
+   * fall back to the default option and return a number that means something else.
+   *
+   * @param term - what to search for
+   * @param fieldLabel - the field as the dropdown spells it, e.g. 'Customer', 'Reference'
+   */
+  async searchInListByField(term: string, fieldLabel: string): Promise<number> {
+    await this.searchInput().click().catch(() => {});
+    await this.page.keyboard.type(term, { delay: 20 });
+    await this.wait(CommonUtils.waitTimes.short);
+
+    const options = this.page.locator('.o_searchview_autocomplete li');
+    await options.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+
+    const n = await options.count().catch(() => 0);
+    const seen: string[] = [];
+    const wanted = new RegExp('^\\s*Search\\s+' + fieldLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s+for\\s*:', 'i');
+    for (let i = 0; i < n; i++) {
+      const text = ((await options.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      seen.push(text);
+      if (wanted.test(text)) {
+        await options.nth(i).click();
+        await this.waitForLoadingSpinnerToHide().catch(() => {});
+        await this.wait(CommonUtils.waitTimes.long);
+        return this.countListRecords(`Search ${fieldLabel} = "${term}"`);
+      }
+    }
+
+    throw new Error(
+      `The Subscriptions search offers no "${fieldLabel}" option for "${term}". It offered ${n}: ` +
+      (seen.join(' | ') || '(none)')
+    );
+  }
+
+  /**
+   * Count the records a Subscriptions list is showing.
+   *
+   * The list ships GROUPED BY STAGE, so the screen holds group headers ("In Progress (3)") and no
+   * expanded `tr.o_data_row` - counting rendered rows returns 0 regardless of the filter. Falls back
+   * to summing the per-group counts.
+   */
+  private async countListRecords(label: string): Promise<number> {
+    const dataRows = await this.listRows().count().catch(() => 0);
+    if (dataRows > 0) {
+      console.log('  - ' + label + ' -> ' + dataRows + ' row(s) [ungrouped list]');
+      return dataRows;
+    }
+
+    const groups = this.page.locator('tr.o_group_header');
+    const groupCount = await groups.count().catch(() => 0);
+    let total = 0;
+    let parsed = 0;
+    for (let i = 0; i < groupCount; i++) {
+      const text = ((await groups.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      const m = text.match(/\((\d+)\)/);
+      if (m) {
+        total += Number(m[1]);
+        parsed++;
+      }
+    }
+    if (parsed > 0) {
+      console.log('  - ' + label + ' -> ' + total + ' record(s) across ' + parsed + ' group(s)');
+      return total;
+    }
+
+    console.log('  - ' + label + ' -> 0 (no data rows and no group headers on screen)');
+    return 0;
+  }
+
+  /**
+   * Expand every collapsed group header on the Subscriptions list.
+   *
+   * The list ships GROUPED BY STAGE, so it renders only `tr.o_group_header` rows and the actual
+   * records stay collapsed inside them. Anything that reads a row - or counts `tr.o_data_row` -
+   * sees nothing until the groups are opened.
+   *
+   * @returns the number of group headers clicked
+   */
+  async expandAllListGroups(): Promise<number> {
+    const headers = this.page.locator('tr.o_group_header');
+    const total = await headers.count().catch(() => 0);
+    let opened = 0;
+    for (let i = 0; i < total; i++) {
+      const header = headers.nth(i);
+      const text = ((await header.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      // "Stage (0)" has nothing to show - clicking it only costs a round-trip.
+      if (/\(0\)/.test(text)) continue;
+      const alreadyOpen = await header.locator('.fa-caret-down, .o_group_open').count().catch(() => 0);
+      if (alreadyOpen) continue;
+      await header.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+      opened++;
+    }
     await this.waitForLoadingSpinnerToHide().catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
-    const count = await this.listRows().count().catch(() => 0);
-    console.log('  - Search "' + term + '" -> ' + count + ' row(s)');
-    return count;
+    console.log(`  - Expanded ${opened} of ${total} list group(s)`);
+    return opened;
+  }
+
+  /**
+   * Read the Subscriptions LIST row whose Reference cell matches `reference`.
+   *
+   * Use this instead of the form readers (getCode / getCustomer / getState ...) when the assertion
+   * is about what the LIST shows - those read `<span name="...">` on a form and return "" on a list,
+   * which reads as "the column is empty" rather than "I looked in the wrong place".
+   *
+   * THROWS when the row is not on screen, so a missing row can never be mistaken for empty columns.
+   *
+   * @returns the row's visible cell texts, in column order
+   */
+  async getListRowCells(reference: string): Promise<string[]> {
+    await this.expandAllListGroups();
+    const row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    const found = await row.count().catch(() => 0);
+    if (!found) {
+      const visible = await this.page.locator('tr.o_data_row').count().catch(() => 0);
+      throw new Error(
+        `No list row matching "${reference}" (${visible} data row(s) on screen after expanding groups).`
+      );
+    }
+    const cells = row.locator('td.o_data_cell');
+    const n = await cells.count().catch(() => 0);
+    const values: string[] = [];
+    for (let i = 0; i < n; i++) {
+      values.push(((await cells.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim());
+    }
+    console.log(`  - List row "${reference}": [${values.join(' | ')}]`);
+    return values;
+  }
+
+  /**
+   * The Subscriptions list row for `reference`, as a header -> cell-text map.
+   *
+   * Prefer this over getListRowCells(): the column SET depends on who is logged in. Probed on
+   * pre-production the same list renders 7 columns for a salesperson and 10 for the administrator
+   * (it gains Company and two timestamps), so reading cells by POSITION picks a different field per
+   * user - `cells[last]` returned the Stage for one and a timestamp for the other.
+   *
+   * THROWS when the row is not on screen.
+   */
+  async getListRowByHeaders(reference: string): Promise<Record<string, string>> {
+    const cells = await this.getListRowCells(reference);
+
+    const headerCells = this.page.locator('.o_list_view thead th');
+    const hn = await headerCells.count().catch(() => 0);
+    const headers: string[] = [];
+    for (let i = 0; i < hn; i++) {
+      const raw = (await headerCells.nth(i).innerText().catch(() => '')) || '';
+      // Odoo's leading selector column renders a ZERO-WIDTH SPACE (U+200B), not an empty string, so
+      // a plain `!== ''` filter keeps it and shifts every header one column to the right - which
+      // silently mapped Reference onto the Customer value here. Strip invisible characters first.
+      headers.push(raw.replace(/[​-‍﻿]/g, '').replace(/\s+/g, ' ').trim());
+    }
+    const named = headers.filter((h) => h.length > 0);
+
+    const map: Record<string, string> = {};
+    for (let i = 0; i < cells.length; i++) {
+      map[named[i] ?? `col${i}`] = cells[i];
+    }
+    console.log(`  - List row "${reference}" headers: ${named.join(' | ')}`);
+    return map;
+  }
+
+  /** Open the subscription whose list row carries `reference`, and wait for its form. */
+  async openRowByReference(reference: string): Promise<void> {
+    // Scanning the rendered list is not enough: the list is grouped by Stage and paginated, so a
+    // brand-new subscription is often on no visible page even once every group is expanded
+    // (measured 2026-10-19 - SUB1804 was missing after "Expanded 4 of 4 list group(s)").
+    // Narrow by Reference FIRST, then expand whatever groups the result leaves.
+    const hits = await this.searchInListByField(reference, 'Reference').catch(() => -1);
+    console.log(`  - searched the list for Reference "${reference}" -> ${hits} row(s)`);
+    await this.expandAllListGroups();
+    let row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    if (!(await row.count().catch(() => 0))) {
+      // Fall back to the unfiltered list in case the search box behaved differently.
+      await this.clearSearchFacets().catch(() => {});
+      await this.expandAllListGroups();
+      row = this.page.locator('tr.o_data_row').filter({ hasText: reference }).first();
+    }
+    if (!(await row.count().catch(() => 0))) {
+      throw new Error(`Cannot open "${reference}" - no such row on the Subscriptions list.`);
+    }
+    await row.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Opened subscription "${reference}" from the list`);
+  }
+
+  /**
+   * Switch the Subscriptions view between list and kanban using the control-panel switcher.
+   * THROWS when the switcher button is not on screen - a silent no-op would leave the next
+   * assertion describing the wrong view.
+   */
+  async switchListViewMode(mode: 'list' | 'kanban'): Promise<void> {
+    const button = this.page
+      .locator(`.o_cp_switch_buttons button[data-view-type="${mode}"]`)
+      .or(this.page.locator(`button[data-view-type="${mode}"]`))
+      .or(this.page.locator(`.o_cp_switch_${mode}`))
+      .first();
+    const present = await button.count().catch(() => 0);
+    if (!present) {
+      throw new Error(`No "${mode}" view-switcher button on the control panel.`);
+    }
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Switched to the ${mode} view`);
+  }
+
+  /**
+   * Titles of the kanban stage columns, in screen order.
+   * THROWS when no column renders - an empty array would read as "the kanban has no stages".
+   */
+  async getKanbanColumnTitles(): Promise<string[]> {
+    const columns = this.page.locator('.o_kanban_group .o_column_title, .o_kanban_header_title .o_column_title');
+    await columns.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const n = await columns.count().catch(() => 0);
+    if (!n) {
+      throw new Error('No kanban stage columns on screen - is the view actually in kanban mode?');
+    }
+    const titles: string[] = [];
+    for (let i = 0; i < n; i++) {
+      titles.push(((await columns.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim());
+    }
+    console.log(`  - Kanban columns (${n}): ${titles.join(' | ')}`);
+    return titles;
   }
 
   /** Click CREATE on a list view. */
@@ -446,6 +707,84 @@ export class SubscriptionPage extends BasePage {
     await this.wait(CommonUtils.waitTimes.long);
     const finalValue = ((await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
     console.log(`  - ${fieldName} set to "${finalValue}" (requested "${value}")`);
+  }
+
+  /**
+   * Set a many2one by typing `searchText` and clicking the option whose label is EXACTLY
+   * `exactLabel`. THROWS when that option is not on offer, or when the field does not end up
+   * holding it.
+   *
+   * Why this exists (proven on pre-production 2026-10-08): Odoo renders a pricelist as
+   * "<name> (<currency>)". Two pricelists collide here -
+   *    name "Public Pricelist_EUR"        currency EUR -> shows "Public Pricelist_EUR (EUR)"
+   *    name "Public Pricelist_EUR (EUR)"  currency USD -> shows "Public Pricelist_EUR (EUR) (USD)"
+   * Typing the full label "Public Pricelist_EUR (EUR)" makes name_search FILTER OUT the first one
+   * (its name does not contain that string), leaving only the USD-currency trap. fillMany2One then
+   * found no exact match, pressed Enter, took the highlighted suggestion and merely LOGGED
+   * `set to "...(USD)" (requested "...(EUR)")` - so subscription-3.6 silently billed in USD and
+   * failed on a currency assertion that was never the real defect.
+   *
+   * @param fieldName  the many2one technical name, e.g. 'pricelist_id'
+   * @param searchText what to TYPE (usually the bare name, without the currency parenthetical)
+   * @param exactLabel the option label that must be clicked, matched exactly after whitespace trim
+   */
+  async selectMany2OneByExactLabel(fieldName: string, searchText: string, exactLabel: string): Promise<void> {
+    await this.waitForConnectionRestored();
+    const input = this.m2oInput(fieldName);
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('');
+    await this.wait(CommonUtils.waitTimes.standard);
+    await input.fill(searchText);
+    await this.wait(CommonUtils.waitTimes.long);
+
+    const items = this.autocompleteItems();
+    await items.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+
+    const n = await items.count().catch(() => 0);
+    const seen: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const text = ((await items.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      seen.push(text);
+      if (text === exactLabel) {
+        await items.nth(i).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+        await this.wait(CommonUtils.waitTimes.long);
+        const finalValue = ((await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+        if (finalValue !== exactLabel) {
+          throw new Error(
+            `${fieldName}: clicked "${exactLabel}" but the field now holds "${finalValue}".`
+          );
+        }
+        console.log(`  - ${fieldName} set to "${finalValue}" (exact match on "${exactLabel}")`);
+        return;
+      }
+    }
+
+    throw new Error(
+      `${fieldName}: typing "${searchText}" offered no option labelled exactly "${exactLabel}". ` +
+      `It offered ${n}: ${seen.join(' | ') || '(none)'}`
+    );
+  }
+
+  /**
+   * Set the Pricelist to the record the picker LABELS exactly `exactLabel`.
+   *
+   * Always use this instead of fillMany2One('pricelist_id', ...). Odoo labels a pricelist
+   * "<name> (<currency>)" and this database holds pairs whose names differ only by that suffix:
+   *     name "Public Pricelist_USD"        -> label "Public Pricelist_USD (USD)"
+   *     name "Public Pricelist_USD (USD)"  -> label "Public Pricelist_USD (USD) (USD)"
+   *     name "Public Pricelist_EUR"        -> label "Public Pricelist_EUR (EUR)"      [EUR money]
+   *     name "Public Pricelist_EUR (EUR)"  -> label "Public Pricelist_EUR (EUR) (USD)" [USD money!]
+   * Typing a full label makes name_search drop the shorter-named record, leaving only the trap,
+   * and fillMany2One would then press Enter and take it while only LOGGING the mismatch.
+   *
+   * This types the bare name (the label minus its trailing currency parenthetical) and requires an
+   * exact-label match, throwing otherwise.
+   */
+  async setPricelist(exactLabel: string): Promise<void> {
+    const searchText = exactLabel.replace(/\s*\([^()]*\)\s*$/, '').trim();
+    await this.selectMany2OneByExactLabel('pricelist_id', searchText, exactLabel);
   }
 
   /** Set a date field (format MM/DD/YYYY) and close the date picker. */
@@ -598,6 +937,20 @@ export class SubscriptionPage extends BasePage {
     const value = m ? parseInt(m[0], 10) : 0;
     console.log('  - "Sales" smart button: ' + value);
     return value;
+  }
+
+  /**
+   * Open the sales order(s) behind the "Sales" smart button.
+   *
+   * "Sales" is a STAT button, not a header button - `clickHeaderButton('Sales')` never matches it,
+   * and a spec that fell back to `openInvoices()` landed on the invoice screen instead, where the
+   * order number reads empty.
+   */
+  async openSales(): Promise<void> {
+    await this.salesStatButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log('  - "Sales" smart button opened');
   }
 
   /** Open the invoices behind the "Invoices" smart button. */
@@ -888,22 +1241,42 @@ export class SubscriptionPage extends BasePage {
   async closeSubscription(): Promise<string> {
     await this.clickHeaderButton('Close');
 
-    const modal = this.page.locator('xpath=//div[contains(@class,"modal") and contains(@class,"show")]')
-      .or(this.page.locator('.modal.show')).first();
-    await modal.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    // This block mirrors a UI probe that was run against pre-production and DID work. Two earlier
+    // attempts to fix it failed because both diagnoses were wrong: the reasons are not missing (the
+    // probe saw NINE) and the list is not merely counted too early. What actually broke it:
+    //   - the modal and the input were located through `A.or(B).first()` chains, where .first()
+    //     takes the first DOM match of EITHER selector and could land on the wrong element;
+    //   - every interaction was wrapped in `.catch(() => {})`, so a click that never landed was
+    //     swallowed and the method simply reported "(none offered)" - a silent failure reported as
+    //     a finding about the product.
+    // So: plain locators, and the click is NOT swallowed.
+    const modal = this.page.locator('.modal.show').first();
+    await modal.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
 
-    // Close Reason is a many2one inside the wizard - pick the first suggestion offered.
-    const reasonInput = modal.locator('xpath=.//div[@name="close_reason_id"]//input')
-      .or(modal.locator('div[name="close_reason_id"] input')).first();
+    const reasonInput = modal.locator('div[name="close_reason_id"] input').first();
     let reason = '';
     if (await reasonInput.count().catch(() => 0)) {
-      await reasonInput.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await reasonInput.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await reasonInput.click({ timeout: CommonUtils.waitTimes.abnormalWait });
       await this.wait(CommonUtils.waitTimes.long);
-      const option = this.page.locator('ul.ui-autocomplete li.ui-menu-item').first();
-      if (await option.count().catch(() => 0)) {
-        reason = ((await option.innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
-        await option.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+
+      // Scope to the VISIBLE list - Odoo 12 keeps one hidden <ul> per many2one in the DOM.
+      const options = this.page.locator('.ui-autocomplete:visible li.ui-menu-item');
+      await options.first()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .catch(() => {});
+
+      const n = await options.count().catch(() => 0);
+      console.log(`  - Close Reason picker offers ${n} entr${n === 1 ? 'y' : 'ies'}`);
+      for (let i = 0; i < n; i++) {
+        const text = ((await options.nth(i).innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+        // "Search More..." and "Create ..." are not close reasons.
+        if (!text || /^search more/i.test(text) || /^create\b/i.test(text)) continue;
+        reason = text;
+        await options.nth(i).click({ timeout: CommonUtils.waitTimes.abnormalWait });
         await this.wait(CommonUtils.waitTimes.long);
+        break;
       }
     }
 

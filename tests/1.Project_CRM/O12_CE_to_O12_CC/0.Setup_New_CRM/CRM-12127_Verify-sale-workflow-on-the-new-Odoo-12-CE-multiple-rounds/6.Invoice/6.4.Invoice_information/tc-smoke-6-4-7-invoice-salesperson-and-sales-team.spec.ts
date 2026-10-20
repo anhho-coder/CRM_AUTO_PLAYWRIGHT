@@ -23,13 +23,17 @@ import {
  * Test Case ID: CRM-12370_6.4.7
  * Automation-Type: refactored
  * Automation-Date: 2026-09-22
+ * Expectation-Updated: 2026-10-01 (Sales Team: empty -> BDEU - see "O12 CE deviations" below)
  *
- * Objective: Verify Salesperson equals the logged-in user; Sales Team is empty.
+ * Objective: Verify Salesperson equals the logged-in user; Sales Team is the salesperson's
+ * default Sales Team (BDEU).
  *
  * BASELINE RULE (tester's standing requirement): the assertions below are the PRE-PRODUCTION TC's
  * assertions, copied unchanged. Only the login account, the navigation path, the run marker and the
  * wait/timeout durations are adapted. Where O12 CE behaves differently this TC FAILS - that failure
  * IS the migration finding and must never be softened into a pass.
+ * ONE EXCEPTION, decided by the tester on 2026-10-01: the Sales Team expectation (see the
+ * "NON-MECHANICAL deviation" block below). Every other assertion here is still the baseline's.
  *
  * Source manual TC (pre-production): TC.Performance.6.4.7
  * (tests/1.Project_CRM/1.SalesReport_Performance/6.Invoice/6.4.Invoice_information). Section II ports
@@ -39,6 +43,18 @@ import {
  *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`).
  *   - The run marker is "TEST ..." instead of the pre-prod format.
  *   - Test timeout raised to config.timeouts.test (15 min).
+ *
+ * NON-MECHANICAL deviation - Sales Team (tester's decision, 2026-10-01):
+ *   The pre-production baseline asserts `Sales Team = (empty)`, because the Opportunity is created
+ *   with its Sales Team cleared. On O12 CE the chain does NOT carry that empty value through: the
+ *   Quotation created by "NEW QUOTATION" takes the Sales Team from the LOGGED-IN USER's default
+ *   team, and the Sales Order passes it on to the Invoice. For `users.sale_ic_thomas_crm_mig` that
+ *   is "BDEU" (verified on crm-mig: `res.users.sale_team_id` = crm.team id 40 "BDEU").
+ *   The tester reviewed the O12 CE result on 2026-10-01 and confirmed `Salesperson = Thomas
+ *   Semerich` + `Sales Team = BDEU` is the CORRECT expected result on the migration base, so this
+ *   TC asserts BDEU rather than the baseline's empty. The expected team is READ from the users
+ *   config (`users.sale_ic_thomas_crm_mig.salesTeam`), not hardcoded.
+ *   This is the only assertion in this file that departs from the pre-production baseline.
  *
  * Pre-conditions:
  *   The O12 CE Migration server is reachable and the sales IC account Thomas Semerich can log in.
@@ -56,7 +72,8 @@ import {
  * Verification Points:
  *   1. Salesperson is filled.
  *   2. Salesperson = the user who created the chain (Thomas Semerich).
- *   3. Sales Team is empty.
+ *   3. Sales Team is filled.
+ *   4. Sales Team = the salesperson's default Sales Team (BDEU).
  *
  * Command to run:
  *   npx playwright test --grep "CRM-12370_6\.4\.7:" --project=chromium
@@ -161,17 +178,22 @@ test.describe('CRM-12370_6.4.7 - Salesperson and Sales Team', () => {
       // the Mig account carries the same fact in `displayName`, so the expectation is read, not
       // hardcoded - the assertion itself is the pre-production one, unchanged.
       const expectedSalesperson = users.sale_ic_thomas_crm_mig.displayName;
+      // Sales Team: the O12 CE expectation confirmed by the tester on 2026-10-01 (see the
+      // "NON-MECHANICAL deviation" note in the header). Read from the users config, not hardcoded.
+      const expectedSalesTeam = users.sale_ic_thomas_crm_mig.salesTeam;
 
       record('Salesperson is filled', 'not empty', salesperson || '(empty)', salesperson !== '');
       record('Salesperson is the user that created the chain', expectedSalesperson, salesperson);
-      record('Sales Team is empty', '(empty)', salesTeam || '(empty)');
+      record('Sales Team is filled', 'not empty', salesTeam || '(empty)', salesTeam !== '');
+      record("Sales Team is the salesperson's default Sales Team", expectedSalesTeam, salesTeam);
       printVerify();
 
       let __verifyPassed = false;
       try {
         expect(salesperson, 'the Invoice Salesperson must be filled').not.toBe('');
         expect(salesperson, 'the Invoice Salesperson must be the user who created the chain').toBe(expectedSalesperson);
-        expect(salesTeam, 'the Invoice Sales Team must be empty').toBe('');
+        expect(salesTeam, 'the Invoice Sales Team must be filled').not.toBe('');
+        expect(salesTeam, "the Invoice Sales Team must be the salesperson's default Sales Team").toBe(expectedSalesTeam);
         __verifyPassed = true;
       } finally {
         await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC_ID} - Invoice Salesperson and Sales Team verification`, passed: __verifyPassed }).catch(() => {});

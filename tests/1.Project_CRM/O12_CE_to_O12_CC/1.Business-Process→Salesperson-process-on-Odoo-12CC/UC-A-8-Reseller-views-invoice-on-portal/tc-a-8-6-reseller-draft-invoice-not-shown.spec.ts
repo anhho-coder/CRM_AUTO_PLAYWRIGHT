@@ -118,15 +118,20 @@ test.describe('TC.-A.8.6 - Reseller does not see a draft (un-validated) invoice'
 
     await test.step('Verification #1: The DRAFT invoice (backend id) is NOT listed on the Reseller portal', async () => {
       console.log(`  - Draft invoice backend id: "${invoice.invoiceBackendId}" | validated: ${invoice.validated}`);
-      expect(invoice.invoiceBackendId, 'The draft invoice backend id should have been captured').toBeTruthy();
-      expect(invoice.validated, 'The invoice must be left as Draft (not validated) for this test').toBeFalsy();
+      let __verifyPassed = false;
+      try {
+        expect(invoice.invoiceBackendId, 'The draft invoice backend id should have been captured').toBeTruthy();
+        expect(invoice.validated, 'The invoice must be left as Draft (not validated) for this test').toBeFalsy();
 
-      const idListed = await resellerPortalPage.isInvoiceIdListed(invoice.invoiceBackendId);
-      console.log(`  - Draft invoice id "${invoice.invoiceBackendId}" listed for Reseller_1: ${idListed}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-A.8.6 - Reseller My invoices (draft invoice absent)');
+        const idListed = await resellerPortalPage.isInvoiceIdListed(invoice.invoiceBackendId);
+        console.log(`  - Draft invoice id "${invoice.invoiceBackendId}" listed for Reseller_1: ${idListed}`);
 
-      expect(idListed, `The DRAFT invoice (id ${invoice.invoiceBackendId}) must NOT appear on Reseller_1's My invoices`).toBeFalsy();
-      console.log('✅ The portal lists posted invoices only - the draft invoice is not shown');
+        expect(idListed, `The DRAFT invoice (id ${invoice.invoiceBackendId}) must NOT appear on Reseller_1's My invoices`).toBeFalsy();
+        console.log('✅ The portal lists posted invoices only - the draft invoice is not shown');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-A.8.6 - Reseller My invoices (draft invoice absent)', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

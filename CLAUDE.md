@@ -122,6 +122,29 @@ tests/
 - `test.afterEach` typically inspects `testInfo.status` and waits for Odoo loading spinners (`.o_loading, .oe_loading, [class*="loading"]`) to hide before Playwright's auto-screenshot fires.
 - **`test.step` labels must be plain ASCII.** Use `-` instead of en-dash `–` or em-dash `—`, and never `\u20XX` escapes. Example: `'Step 3-5: ...'`, not `'Step 3–5: ...'`. This is easy to break when editing on Windows — when using PowerShell `Get-Content`/`Set-Content` on test files, pass `-Encoding UTF8` to avoid Unicode corruption.
 
+### A JSON-RPC step still owes screenshots of the screens it passes through
+
+A step may read its data over the authenticated JSON-RPC (`callKw` / `page.evaluate()` + `fetch`)
+instead of driving the UI — e.g. `BackOfficeHealthPage.getMailQueueCounts()` reading `mail.mail`
+rather than walking `Settings > Technical > Email > Emails`. That is allowed, and the step is
+marked `[INTERNAL check, Call API]` after its step number.
+
+**Taking the RPC route does NOT remove the evidence duty.** Whenever the spec passes through a
+screen on its way — the record it created, the list it opened, the form whose state the RPC is
+about — it captures that screen with `CommonUtils.captureAndAttachScreenshot(...)`, exactly as a
+UI-driven spec would. A reviewer must be able to see **where the test actually was** when it read
+its numbers; a report whose only artifact is stdout cannot be checked against the product.
+
+- Capture at the end of every `Pre-condition #N` and every `Steps to reproduce #N` that touched a
+  screen, plus the `afterEach` start/end pair.
+- Only a step that genuinely opens nothing (a pure registry read, a parity count) is screenshot-free;
+  there its `console.log` is the artifact — inputs one per line, the counts, the outcome in words.
+- Never let the RPC shortcut turn a UI journey into a numbers-only report: the RPC replaces the
+  *reading*, not the *walking*.
+
+Stated by the tester on 2026-10-16, when `subscription-8.1` was routed through JSON-RPC rather
+than the manual TC's `Settings > Technical > Email > Emails` path.
+
 ### Required file-header `Command to run:` block
 
 Every spec must include a header comment with the rerun command(s):

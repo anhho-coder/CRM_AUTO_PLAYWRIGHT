@@ -125,7 +125,7 @@ test.describe('CRM-12326 Part 2 - browser pass (C9, D5, E10, E11)', () => {
 
     await test.step('D5 step: look for any leftover visual-editor (Studio) entry point', async () => {
       console.log('\n--- D5: leftover Studio entry point ---');
-      await platform.openAppAndMeasureMs(MigPlatformPage.HASH.crm);
+      await platform.openAppAndMeasureMs('crm');
       const candidates: Array<[string, string]> = [
         ['navbar studio button', '.o_web_studio_navbar_item'],
         ['studio systray',       '[data-menu="studio"]'],

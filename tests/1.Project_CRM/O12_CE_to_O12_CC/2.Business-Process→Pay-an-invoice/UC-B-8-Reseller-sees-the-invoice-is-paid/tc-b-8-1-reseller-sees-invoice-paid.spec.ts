@@ -183,8 +183,13 @@ test.describe('TC.-B.8.1 - Reseller sees that the invoice is paid', () => {
       await resellerPortalPage.waitForDetailLineTable();
       const opened = await resellerPortalPage.getDetailInvoiceNumber();
       console.log(`  - Opened invoice detail: "${opened}"`);
-      expect(opened, 'The opened invoice detail should be Invoice#1').toContain(invoiceNumber);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Invoice#1 detail opened').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(opened, 'The opened invoice detail should be Invoice#1').toContain(invoiceNumber);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Invoice#1 detail opened', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Verification Point: "Pay Now" not displayed; "This invoice is paid" shown (left column); Amount Due = $0 (right-side detail)', async () => {

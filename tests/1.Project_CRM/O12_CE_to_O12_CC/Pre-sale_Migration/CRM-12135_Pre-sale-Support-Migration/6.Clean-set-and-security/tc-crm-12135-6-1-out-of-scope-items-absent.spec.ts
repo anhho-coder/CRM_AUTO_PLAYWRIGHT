@@ -27,6 +27,8 @@ import { CommonUtils } from '@helpers/common.utils';
  *                  manager - not as the default QA account, which sees less.
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12941 (Xray Manual Steps, 3 steps)
+ * Source version : updated 2026-10-07T07:13:46.580+0300 - re-check before trusting this spec
  * Evidence       : stdout only - this case drives no screen, so its logs ARE the artifact.
  *
  * Summary

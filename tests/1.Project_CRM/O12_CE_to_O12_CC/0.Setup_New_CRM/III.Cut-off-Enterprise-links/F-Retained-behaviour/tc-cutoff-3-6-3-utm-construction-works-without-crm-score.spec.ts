@@ -156,10 +156,10 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
 
-      // Open the UTM Links screen: menu_id=1356, action_id=1821
-      const hash = '#menu_id=1356&action_id=1821';
+      // Open the UTM Links screen, resolved live from the menu tree. The raw hash this used to
+      // carry (menu 1356 / action 1821) was measured on the pre-rebuild crm-mig build.
       try {
-        await platform.openAppAndAssertRendered(hash);
+        await platform.openAppAndAssertRendered('utmLinks');
         screenRendered = true;
         console.log('  OK - UTM Links screen opened and rendered');
       } catch (err) {
@@ -241,8 +241,7 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
 
       try {
         // Open the form via the app to simulate UI interaction and verify it renders
-        const hash = `#menu_id=1356&action_id=1821&id=${createdRecordId}`;
-        await platform.openAppAndAssertRendered(hash);
+        await platform.openAppAndAssertRendered('utmLinks', `id=${createdRecordId}`);
         console.log(`  OK - opened form for record ${createdRecordId}`);
 
         // Read back the record to confirm persistence

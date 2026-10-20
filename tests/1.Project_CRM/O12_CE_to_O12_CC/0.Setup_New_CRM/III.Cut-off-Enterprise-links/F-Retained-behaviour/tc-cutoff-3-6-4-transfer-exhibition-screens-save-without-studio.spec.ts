@@ -160,14 +160,15 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
 
-      // The screen is the CRM Lead/Opportunity form where exhibitor_id is inherited
-      // Navigate to Leads list first: hash #menu_id=229&action_id=345
-      const leadsListUrl = MigPlatformPage.appUrl('#menu_id=229&action_id=345');
+      // The screen is the CRM Lead/Opportunity form where exhibitor_id is inherited.
+      // Navigate to the Leads list first, resolved live from the menu tree - the raw hash this used
+      // to carry (menu 229 / action 345) was measured on the pre-rebuild crm-mig build.
+      const leadsListUrl = await platform.appUrlFor('leads');
       console.log(`  Opening Leads list at: ${leadsListUrl}`);
       // Go through the page object, NOT a raw page.goto: openAppAndAssertRendered also waits for the
       // action to actually appear in the URL. A bare goto returns while the previous screen is still
       // rendered, and the CREATE click then inspects the wrong screen.
-      await platform.openAppAndAssertRendered('#menu_id=229&action_id=345');
+      await platform.openAppAndAssertRendered('leads');
 
       // Verify the list renders without error dialog
       screenRendered = !(await platform.isErrorDialogVisible());
@@ -253,6 +254,7 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
 
       // Re-open the record by direct URL navigation
       console.log(`  Re-opening record ID ${createdRecordId}...`);
+      // No menu or action id in this hash, so it survives a rebuild as it stands.
       const leadFormUrl = MigPlatformPage.appUrl(`#model=crm.lead&id=${createdRecordId}&view_type=form`);
       await page.goto(leadFormUrl);
 

@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - Settings opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.settings);
+      ms = await platform.openAppAndMeasureMs('settings');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Settings opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

@@ -25,6 +25,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Salesperson, admin
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12920 (Xray Manual Steps, 2 steps)
+ * Source version : updated 2026-10-07T07:13:11.547+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary

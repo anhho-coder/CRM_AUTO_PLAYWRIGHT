@@ -115,13 +115,13 @@ test.describe('CRM-12325 Part 2-D - Light smoke', () => {
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
       const apps: Array<[string, string]> = [
-        ['Contacts', MigPlatformPage.HASH.contacts],
-        ['CRM', MigPlatformPage.HASH.crm],
-        ['Sales', MigPlatformPage.HASH.sales],
-        ['Settings', MigPlatformPage.HASH.settings],
+        ['Contacts', 'contacts'],
+        ['CRM', 'crm'],
+        ['Sales', 'sales'],
+        ['Settings', 'settings'],
       ];
-      for (const [name, hash] of apps) {
-        await platform.openAppAndAssertRendered(hash);
+      for (const [name, key] of apps) {
+        await platform.openAppAndAssertRendered(key);
         const hasError = await platform.isErrorDialogVisible();
         appRenderResults.push({ name, hasError });
         console.log(`  ${name}: rendered, errorDialog=${hasError} -> ${hasError ? 'FAIL' : 'PASS'}`);

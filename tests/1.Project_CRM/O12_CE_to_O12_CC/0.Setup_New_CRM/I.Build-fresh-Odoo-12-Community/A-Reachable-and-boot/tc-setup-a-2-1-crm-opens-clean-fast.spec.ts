@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - CRM opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.crm);
+      ms = await platform.openAppAndMeasureMs('crm');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  CRM opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

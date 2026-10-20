@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - Invoicing opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.invoicing);
+      ms = await platform.openAppAndMeasureMs('invoicing');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Invoicing opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

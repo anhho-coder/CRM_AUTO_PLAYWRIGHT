@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - Calendar opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.calendar);
+      ms = await platform.openAppAndMeasureMs('calendar');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Calendar opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

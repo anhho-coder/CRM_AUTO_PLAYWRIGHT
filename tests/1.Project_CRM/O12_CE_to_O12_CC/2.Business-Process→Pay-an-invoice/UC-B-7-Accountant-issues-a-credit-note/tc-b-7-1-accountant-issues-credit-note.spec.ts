@@ -148,10 +148,15 @@ test.describe('TC.-B.7.1 - Accountant issues a credit note', () => {
       setup = await createPaidInvoiceAsThomasAndFaye(page, { oppName, contactName: leadName, companyEmail, internalNote });
       createdOppUrl = setup.oppUrl;
       console.log(`  - Invoice#1 = "${setup.invoiceNumber}" | InvoiceTotal#1 = ${setup.invoiceTotal} | state = "${setup.paidStatus}"`);
-      expect(setup.invoiceNumber, 'Invoice#1 should be assigned').toBeTruthy();
-      expect(setup.invoiceTotal, 'InvoiceTotal#1 should be a positive number').toBeGreaterThan(0);
-      expect(setup.paidStatus, 'Invoice#1 should be Paid before issuing the credit note').toMatch(/Paid/i);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 Paid');
+      let __verifyPassed = false;
+      try {
+        expect(setup.invoiceNumber, 'Invoice#1 should be assigned').toBeTruthy();
+        expect(setup.invoiceTotal, 'InvoiceTotal#1 should be a positive number').toBeGreaterThan(0);
+        expect(setup.paidStatus, 'Invoice#1 should be Paid before issuing the credit note').toMatch(/Paid/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 Paid', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: On the Invoice#1 screen (now Paid), click the "Add Credit Note" button (as Yulia Malihonova, who can see it)', async () => {
@@ -172,7 +177,13 @@ test.describe('TC.-B.7.1 - Accountant issues a credit note', () => {
 
     await test.step('Step 2: In the Credit Note popup, set Credit Method = "Create a draft credit note", Reason = Refund, Accounting Date = today', async () => {
       const methodSet = await invoicePage.selectCreditMethod('Create a draft credit note');
-      expect(methodSet, 'Credit Method should be "Create a draft credit note"').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        expect(methodSet, 'Credit Method should be "Create a draft credit note"').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Credit Note wizard filled - verify', passed: __verifyPassed }).catch(() => {});
+      }
       await invoicePage.fillCreditNoteReason('Refund');
       await invoicePage.setCreditNoteAccountingDate(accountingDate);
       console.log(`✓ Credit note wizard filled (Reason = Refund, Accounting Date = ${accountingDate})`);
@@ -189,9 +200,14 @@ test.describe('TC.-B.7.1 - Accountant issues a credit note', () => {
       const cnStatus = await invoicePage.getInvoiceStatus().catch(() => '');
       creditNoteTotal = money(await invoicePage.getInvoiceTotal().catch(() => '0'));
       console.log(`  - CreditNote#1 | state = "${cnStatus}" | total = ${creditNoteTotal} (InvoiceTotal#1 = ${setup.invoiceTotal}) | URL: ${creditNoteUrl}`);
-      expect(creditNoteUrl, 'CreditNote#1 URL should be captured').toContain('model=account.invoice');
-      expect(creditNoteTotal, 'CreditNote#1 total should mirror InvoiceTotal#1').toBeCloseTo(setup.invoiceTotal, 2);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - CreditNote#1 opened (draft)');
+      let __verifyPassed = false;
+      try {
+        expect(creditNoteUrl, 'CreditNote#1 URL should be captured').toContain('model=account.invoice');
+        expect(creditNoteTotal, 'CreditNote#1 total should mirror InvoiceTotal#1').toBeCloseTo(setup.invoiceTotal, 2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - CreditNote#1 opened (draft)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 5: On the CreditNote#1 detail screen, click the "Validate" button', async () => {
@@ -199,8 +215,13 @@ test.describe('TC.-B.7.1 - Accountant issues a credit note', () => {
       await invoicePage.dismissErrorDialogWithRetry();
       const status = await invoicePage.waitForInvoiceStatus('Open');
       console.log(`  - CreditNote#1 status after VALIDATE: "${status}"`);
-      expect(status, 'CreditNote#1 should be posted (Open) after VALIDATE').toMatch(/Open|Posted|Paid/i);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - CreditNote#1 validated (Open)');
+      let __verifyPassed = false;
+      try {
+        expect(status, 'CreditNote#1 should be posted (Open) after VALIDATE').toMatch(/Open|Posted|Paid/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - CreditNote#1 validated (Open)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 6: Click the "Register Payment" button', async () => {
@@ -214,8 +235,13 @@ test.describe('TC.-B.7.1 - Accountant issues a credit note', () => {
       await invoicePage.fillActuallyReceived(full);
       const methodTypeSet = await invoicePage.selectPaymentMethodType('Manual');
       console.log(`  - Payment Amount/Actually Received = ${full} | Payment Method Type "Manual": ${methodTypeSet}`);
-      expect(methodTypeSet, 'Payment Method Type should be "Manual"').toBeTruthy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Register Payment (Manual, full refund)');
+      let __verifyPassed = false;
+      try {
+        expect(methodTypeSet, 'Payment Method Type should be "Manual"').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Register Payment (Manual, full refund)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 8: Click the "Validate" button', async () => {

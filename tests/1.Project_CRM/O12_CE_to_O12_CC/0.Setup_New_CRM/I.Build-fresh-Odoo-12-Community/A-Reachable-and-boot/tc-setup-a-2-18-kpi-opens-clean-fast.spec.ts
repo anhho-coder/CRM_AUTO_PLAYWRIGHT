@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - KPI opens cleanly and fast', () => {
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.kpi);
+      ms = await platform.openAppAndMeasureMs('kpi');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  KPI opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

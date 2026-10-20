@@ -101,9 +101,14 @@ test.describe('TC.-B.6.8 - Over-payment credit fully pays the invoice; leftover 
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber; invoiceTotal1 = setup.invoiceTotal;
       over = round2(invoiceTotal1 + round2(invoiceTotal1 * 0.3));
       console.log(`  - Invoice#1="${invoiceNumber1}" Total=${invoiceTotal1} over-payment=${over}`);
-      expect(invoiceTotal1).toBeGreaterThan(0);
-      expect(over).toBeGreaterThan(invoiceTotal1);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1).toBeGreaterThan(0);
+        expect(over).toBeGreaterThan(invoiceTotal1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3: As Faye, pre-create an OVER-payment standalone Payment#1 (> InvoiceTotal#1) and read JournalItem#1', async () => {
@@ -120,12 +125,17 @@ test.describe('TC.-B.6.8 - Over-payment credit fully pays the invoice; leftover 
     });
 
     await test.step('Steps to reproduce - Step 2: The "Outstanding credits" section shows JournalItem#1 (amount = the full over-payment) with "Add"', async () => {
-      const present = await invoicePage.isOutstandingCreditPresent(journalItem1);
-      expect(present, `Outstanding credits should list JournalItem#1 ("${journalItem1}")`).toBeTruthy();
-      creditOffered = money(await invoicePage.getOutstandingCreditAmount(journalItem1));
-      console.log(`  - offered credit amount = ${creditOffered} (over-payment = ${over})`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Outstanding credit (over-payment)');
-      expect(creditOffered, 'The offered credit should be the full over-payment').toBeCloseTo(over, 2);
+      let __verifyPassed = false;
+      try {
+        const present = await invoicePage.isOutstandingCreditPresent(journalItem1);
+        expect(present, `Outstanding credits should list JournalItem#1 ("${journalItem1}")`).toBeTruthy();
+        creditOffered = money(await invoicePage.getOutstandingCreditAmount(journalItem1));
+        console.log(`  - offered credit amount = ${creditOffered} (over-payment = ${over})`);
+        expect(creditOffered, 'The offered credit should be the full over-payment').toBeCloseTo(over, 2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Outstanding credit (over-payment)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Steps to reproduce - Step 3: Click the "Add" button of JournalItem#1', async () => {

@@ -107,15 +107,20 @@ test.describe('TC.-B.1.11 - Reseller searches a multi-product invoice by number'
     await test.step('Steps to reproduce - Step 4: Open the matching result', async () => {
       await resellerPortalPage.openInvoiceByNumber(invoice.invoiceNumber);
       await resellerPortalPage.waitForDetailLineTable();
-      const topNumber = await resellerPortalPage.getDetailInvoiceNumber();
-      expect(topNumber, `The invoice title should show Invoice #1 ("${invoice.invoiceNumber}")`).toContain(invoice.invoiceNumber);
-      for (const pr of invoice.products) {
-        const line = await resellerPortalPage.getDetailProductLine(pr.code);
-        console.log(`  - ${pr.code}: ${line ? `qty="${line.quantity}" amount="${line.amount}"` : 'NOT FOUND'}`);
-        expect(line, `Product ${pr.code} should be listed on the opened invoice`).not.toBeNull();
+      let __verifyPassed = false;
+      try {
+        const topNumber = await resellerPortalPage.getDetailInvoiceNumber();
+        expect(topNumber, `The invoice title should show Invoice #1 ("${invoice.invoiceNumber}")`).toContain(invoice.invoiceNumber);
+        for (const pr of invoice.products) {
+          const line = await resellerPortalPage.getDetailProductLine(pr.code);
+          console.log(`  - ${pr.code}: ${line ? `qty="${line.quantity}" amount="${line.amount}"` : 'NOT FOUND'}`);
+          expect(line, `Product ${pr.code} should be listed on the opened invoice`).not.toBeNull();
+        }
+        console.log('✅ Search returns Invoice #1 and the opened invoice lists all 4 products');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.1.11 - Reseller opened invoice (all products)', passed: __verifyPassed }).catch(() => {});
       }
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.1.11 - Reseller opened invoice (all products)');
-      console.log('✅ Search returns Invoice #1 and the opened invoice lists all 4 products');
     });
   });
 });

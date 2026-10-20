@@ -142,7 +142,7 @@ test.describe('CRM-12326 Part 2-3.3 - Cut modules still load and render', () => 
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      const ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.subscriptions);
+      const ms = await platform.openAppAndMeasureMs('subscriptions');
       console.log(`  App        : Subscriptions`);
       console.log(`  Load time  : ${ms}ms`);
       // Error dialogs may render asynchronously, so poll for it with a bounded timeout instead of

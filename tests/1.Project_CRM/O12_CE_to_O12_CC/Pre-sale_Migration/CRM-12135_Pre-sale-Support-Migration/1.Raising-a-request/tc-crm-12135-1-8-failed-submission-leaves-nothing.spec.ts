@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Salesperson
  * Automation-Type: new
  * Automation-Date: 2026-09-24
+ * Source TC      : CRM-12923 (Xray Manual Steps, 5 steps)
+ * Source version : updated 2026-10-07T12:22:27.987+0300 - re-check before trusting this spec
  * Evidence       : screenshots of error dialog, chatter verification, email list verification
  *
  * Summary

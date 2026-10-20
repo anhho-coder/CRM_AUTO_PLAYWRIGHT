@@ -364,7 +364,9 @@ export class MigPlatformPage extends BasePage {
     salesOrders: { path: 'Sales/Orders/Orders' },
     utmLinks: { path: 'CRM/Configuration/Pipeline/UTM Links' },
     opportunitiesList: { path: 'CRM/Sales/All Pipeline', model: 'crm.lead', viewType: 'list' },
-    contactsList: { path: 'Contacts', model: 'res.partner', viewType: 'list' },
+    // 'Contacts/Contacts', not 'Contacts': the root menu has NO action on crm-mig (2026-10-20), and the
+    // fallback below sorts the whole subtree by sequence, which picks Configuration/Contact Tags (seq 1).
+    contactsList: { path: 'Contacts/Contacts', model: 'res.partner', viewType: 'list' },
   };
 
   static readonly APP_MENU_NAME: Record<string, string> = {

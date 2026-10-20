@@ -94,12 +94,12 @@ test.describe('CRM-12366 4.3.2 - No console errors on major app screens', () => 
       const errors: ConsoleError[] = [];
       const loadTimes = new Map<string, number>();
       const screensToCheck = [
-        { name: 'Contacts', hash: MigPlatformPage.HASH.contacts },
-        { name: 'Leads', hash: MigPlatformPage.HASH.leads },
-        { name: 'Opportunities', hash: MigPlatformPage.HASH.opportunitiesList },
-        { name: 'Sales', hash: MigPlatformPage.HASH.sales },
-        { name: 'Invoicing', hash: MigPlatformPage.HASH.invoicing },
-        { name: 'Sales Report', hash: MigPlatformPage.HASH.salesReport },
+        { name: 'Contacts', key: 'contacts' },
+        { name: 'Leads', key: 'leads' },
+        { name: 'Opportunities', key: 'opportunitiesList' },
+        { name: 'Sales', key: 'sales' },
+        { name: 'Invoicing', key: 'invoicing' },
+        { name: 'Sales Report', key: 'salesReport' },
       ];
 
       // ONE console listener for the whole walk, registered before any navigation.
@@ -126,7 +126,7 @@ test.describe('CRM-12366 4.3.2 - No console errors on major app screens', () => 
         // burns the whole page-load budget on every screen. openAppAndMeasureMs navigates and
         // waits for the ACTION to finish rendering, which is the real readiness signal, and
         // returns the elapsed ms this block already wants.
-        const loadTime = await platformPage.openAppAndMeasureMs(screen.hash);
+        const loadTime = await platformPage.openAppAndMeasureMs(screen.key);
         loadTimes.set(screen.name, loadTime);
 
         // let any late console output land before moving to the next screen

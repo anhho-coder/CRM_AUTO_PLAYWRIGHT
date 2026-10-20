@@ -116,6 +116,52 @@ export class MigDataParityPage extends BasePage {
    * @returns the matching records as objects with the requested fields
    * @throws if domain is empty, or if kwargs.limit is missing / out of range
    */
+  /** Resolved XML id -> database id, per page object. Cleared with the object. */
+  private parityXmlIdCache = new Map<string, number>();
+
+  /**
+   * The database id behind an XML id, e.g. `nakivo_presale_bridge.new_ticket_wizard_form_action`.
+   *
+   * USE THIS INSTEAD OF WRITING A NUMBER. A numeric id is issued by whichever database happens to
+   * be running; the XML id is declared by the module and survives a rebuild. crm-mig was rebuilt on
+   * 2026-10-13 and every sequence was re-issued - and the damage was not that the old numbers
+   * stopped working, it was that they kept working and pointed somewhere else:
+   *
+   *     action 347 was CRM            -> now "Invoices Analysis"
+   *     action 149 was Contacts       -> now "Product Variants"
+   *     action 345 was Leads          -> now "Quotations Analysis"
+   *     action 124 was Discuss        -> now "Chart of Analytic Accounts"
+   *
+   * A spec that navigates by number therefore lands on a real, fully-rendered, WRONG screen, and
+   * every assertion after that is answering a question nobody asked.
+   *
+   * Throws rather than returning a fallback: a missing XML id means the module is not installed or
+   * the name is wrong, and both are worth stopping for.
+   */
+  async resolveXmlId(xmlId: string): Promise<number> {
+    const cached = this.parityXmlIdCache.get(xmlId);
+    if (cached) return cached;
+
+    const dot = xmlId.indexOf('.');
+    if (dot <= 0 || dot === xmlId.length - 1) {
+      throw new Error(`resolveXmlId: "${xmlId}" is not a <module>.<name> XML id.`);
+    }
+    const rows = await this.searchRead<{ res_id: number }>(
+      'ir.model.data',
+      [['module', '=', xmlId.slice(0, dot)], ['name', '=', xmlId.slice(dot + 1)]],
+      ['res_id'],
+      { limit: 1 },
+    );
+    if (!rows.length) {
+      throw new Error(
+        `resolveXmlId: "${xmlId}" does not exist on this database. The module may not be `
+        + 'installed, or the XML id may have been renamed.',
+      );
+    }
+    this.parityXmlIdCache.set(xmlId, rows[0].res_id);
+    return rows[0].res_id;
+  }
+
   async searchRead<T>(
     model: string,
     domain: any[],

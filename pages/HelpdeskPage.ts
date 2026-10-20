@@ -11,9 +11,11 @@ import { CommonUtils } from '@helpers/common.utils';
  * Every locator uses the two-layer strategy: XPath primary, CSS fallback.
  */
 export class HelpdeskPage extends BasePage {
-  // Helpdesk app link on the apps home (menu_id=289).
+  // Helpdesk app link on the apps home - addressed by XML id, which the DOM itself carries
+  // (data-menu-xmlid=helpdesk.menu_helpdesk_root). The old href filter hard-coded menu_id=289,
+  // which is Contract Tag on crm-mig after the 2026-10-13 rebuild.
   private readonly helpdeskAppLinkXPath = () =>
-    this.page.locator("xpath=//a[contains(@href,'menu_id=289')] | //a[contains(@data-menu-xmlid,'helpdesk')]").first();
+    this.page.locator("xpath=//a[contains(@data-menu-xmlid,'helpdesk')]").first();
   private readonly helpdeskAppLinkRole = () => this.page.getByRole('link', { name: /^\s*Helpdesk\s*$/i }).first();
 
   // The "Sales Engineers" team card on the Helpdesk Overview kanban, and its primary "Tickets" action
@@ -129,7 +131,7 @@ export class HelpdeskPage extends BasePage {
     const link = this.helpdeskAppLinkXPath().or(this.helpdeskAppLinkRole()).first();
     await link.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
     await link.click();
-    await this.waitForURL('**/web?*menu_id=289*', CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.waitForURL(`**/web?*menu_id=${await this.xmlId('helpdesk.menu_helpdesk_root')}*`, CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.dismissErrorDialog();
     console.log('  - Helpdesk module opened');
@@ -446,7 +448,7 @@ export class HelpdeskPage extends BasePage {
    */
   async openSalesEngineersTicketsListDirect(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    const url = `${origin}/web?#action=465&active_id=5&model=helpdesk.ticket&view_type=list&menu_id=289`;
+    const url = `${origin}/web?#action=${await this.xmlId('helpdesk.helpdesk_ticket_action_team')}&active_id=5&model=helpdesk.ticket&view_type=list&menu_id=${await this.xmlId('helpdesk.menu_helpdesk_root')}`;
     await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     // Wait for the list view itself to render (waitForPageReady alone can resolve before the list is up).
     await this.page.waitForSelector('.o_list_view, .o_content', { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
@@ -461,7 +463,7 @@ export class HelpdeskPage extends BasePage {
    * suite is guaranteed to appear in regardless of which team it landed on.
    */
   async openAllTicketsListDirect(baseUrl: string): Promise<void> {
-    const url = `${baseUrl.replace(/\/$/, '')}/web#action=455&model=helpdesk.ticket&view_type=list`;
+    const url = `${baseUrl.replace(/\/$/, '')}/web#action=${await this.xmlId('helpdesk.helpdesk_ticket_action_main_tree')}&model=helpdesk.ticket&view_type=list`;
     await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await this.page
@@ -619,7 +621,7 @@ export class HelpdeskPage extends BasePage {
    * THROWS when the ticket cannot be created - a setup step must never fail silently.
    */
   async createTicket(baseUrl: string, subject: string): Promise<string> {
-    const listUrl = `${baseUrl.replace(/\/$/, '')}/web#action=455&model=helpdesk.ticket&view_type=list`;
+    const listUrl = `${baseUrl.replace(/\/$/, '')}/web#action=${await this.xmlId('helpdesk.helpdesk_ticket_action_main_tree')}&model=helpdesk.ticket&view_type=list`;
     await this.page.goto(listUrl, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});

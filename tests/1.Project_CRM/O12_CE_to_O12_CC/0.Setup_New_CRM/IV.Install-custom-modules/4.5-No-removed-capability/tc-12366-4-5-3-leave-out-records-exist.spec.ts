@@ -12,6 +12,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Target          : crm-mig.nakivo.site (O12 Migration server, db nakivoCE) - READ-ONLY
  * Automation-Type : rewritten
  * Automation-Date : 2026-09-17
+ * STATUS          : SKIPPED since 2026-10-13 - BLOCKED by CRM-13504. See the skip block inside the
+ *                   test for the four modules involved.
  *
  * Summary:
  *   Verify the six modules Dev classified as DELIBERATELY uninstalled are present on the base
@@ -113,6 +115,33 @@ test.describe('CRM-12366_4.5.3 - Leave-out records for the deliberately uninstal
   } as const;
 
   test('CRM-12366_4.5.3: Verify the deliberately uninstalled modules are uninstalled and report their leave-out records', async ({ page }, testInfo) => {
+    // ---------------------------------------------------------------------------------------------
+    // SKIPPED 2026-10-13, by the tester's decision. BLOCKED by CRM-13504.
+    //
+    // Verify #3 ("none of the six is installed") fails because FOUR of the six modules Dev
+    // classified as deliberately uninstalled are installed on crm-mig:
+    //
+    //   nakivo_country_tools             id 773  12.0.1.0.2
+    //   nakivo_sales_payroll_automation  id 220  12.0.1.1
+    //   nakivo_sales_payroll_logging     id 547  12.0.1.0
+    //   nakivo_sales_payroll_v2          id 304  12.0.1.1
+    //
+    // All four carry a write_date inside the 2026-10-12 10:09:53-10:12:40 UTC deploy that rewrote
+    // 94 installed module rows. That does NOT establish when they were installed - create_date is
+    // not populated on these rows, and the same check already failed on the 2026-10-07 run.
+    //
+    // This case was NOT touched by CRM-13430. That ticket's "seven cases, one cause" line does not
+    // hold here: nakivo_feature_request is not one of this TC's six modules and never was.
+    //
+    // Undo: when CRM-13504 is answered - either the four are uninstalled on the base, or
+    // CRM-12126 comment 687015 item 8's list of six is revised - remove this skip and update
+    // DELIBERATELY_UNINSTALLED to match the answer.
+    // ---------------------------------------------------------------------------------------------
+    test.skip(true, 'BLOCKED by CRM-13504 - 4 of the 6 modules CRM-12126 comment 687015 item 8 records as '
+      + 'deliberately uninstalled are installed on crm-mig (nakivo_country_tools, '
+      + 'nakivo_sales_payroll_automation, nakivo_sales_payroll_logging, nakivo_sales_payroll_v2). '
+      + 'Re-enable once the base or the agreed list is corrected.');
+
     test.setTimeout(15 * 60 * 1000);
     await page.setViewportSize({ width: 1600, height: 900 });
 

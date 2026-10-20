@@ -291,6 +291,10 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
+      // CRM module specs. The Subscriptions suite (33 specs, TC ids CRM-11806_1.x, master-file tab
+      // "Migration - Subscription") moved here into 9.CRM_Module/8.Subscriptions out of
+      // O12_CE_to_O12_CC on 2026-10-06, the way Pre-sales did - so it collects under this project
+      // instead of `O12`. They run on PRE-PRODUCTION, not crm-mig.
       name: 'CRM_Module',
       testDir: './tests/1.Project_CRM/9.CRM_Module',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
