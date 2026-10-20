@@ -217,7 +217,15 @@ export const users = {
     password: pw('admin_subscription_mig'),
     displayName: 'Ho Quoc Anh',
     createdByName: 'Ho Quoc Anh',
-  }
+  },
+  // ---- Mailpit test mailbox of crm-mig (baseUrl_mailpit_mig below), handed over by the dev on
+  // 2026-10-20: "Because email can be sent out, this can be used to test sending email". NOT an
+  // Odoo login - it signs in to the Mailpit web UI / API, never to loginPage.
+  mailpit_crm_mig: {
+    username: 'tester',
+    password: pw('mailpit_crm_mig'),
+    displayName: 'Mailpit tester',
+  },
 } as const;
 
 // Eager validation, reported in one shot. Every pw() above has run by now, so `missingKeys` holds
@@ -243,6 +251,12 @@ export const baseUrl = 'http://pre-production.nakivo.site/';
 // screens re-created under new naming). Pass this explicitly to loginPage.navigateTo(...) in Mig
 // specs; the default baseUrl (pre-prod) above is unchanged, so existing specs are unaffected.
 export const baseUrl_mig = 'https://crm-mig.nakivo.site/';
+
+// Mailpit test mailbox of crm-mig - catches the email the CRM sends out, so a spec can assert on
+// it. HTTP Basic auth with users.mailpit_crm_mig (401 without it) - pass it as the context's
+// httpCredentials, there is no login form. REST API under <this URL>api/v1/. Verified 2026-10-20:
+// Mailpit v1.31.6, GET api/v1/info -> 200. The host's cert chain is self-signed (curl needs -k).
+export const baseUrl_mailpit_mig = 'https://crm-mig.nakivo.site/mailpit/';
 
 // Pre-Sales Application (CRM-12135) - the NEW helpdesk the pre-sale requests are worked on, a
 // SEPARATE Odoo 19 instance from the CRM above. A pre-sale spec drives BOTH hosts in one run:
