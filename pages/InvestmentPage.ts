@@ -52,6 +52,7 @@ export class InvestmentPage extends BasePage {
   private readonly expensesPlannedField = () => this.page.locator('xpath=//span[contains(@name, "expenses_planned") or (contains(@name, "expenses") and contains(@name, "planned"))] | //input[contains(@name, "expenses_planned") or (contains(@name, "expenses") and contains(@name, "planned"))] | //div[contains(@name, "expenses_planned") or (contains(@name, "expenses") and contains(@name, "planned"))]').first();
   private readonly roiPlannedField = () => this.page.locator('xpath=//span[contains(@name, "planned_roi")]/following-sibling::span').first();
   private readonly newCompanyContactsPlannedField = () => this.page.locator('xpath=//input[contains(@name, "planned_new_company_contacts")]').first();
+  private readonly newQualifiedLeadsPlannedField = () => this.page.locator('xpath=//input[contains(@name, "planned_new_qualified_leads")]').or(this.page.locator('input[name="planned_new_qualified_leads"]')).first();
   private readonly euQuotationsPlannedField = () => this.page.locator('xpath=//input[contains(@name, "planned_eu_quotations")]').first();
   private readonly revenueActualField = () => this.page.locator('xpath=//span[contains(@name, "actual_revenue")]').first();
   private readonly revenueActual6MField = () => this.page.locator('xpath=//span[contains(@name, "actual_6m_revenue")]').first();
@@ -415,15 +416,30 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
 
   /**
    * Navigate to Investments
+   *
+   * The Investments app lands on the Investment Dashboard, whose report RPC can keep Odoo's blockUI
+   * overlay up for many minutes on pre-prod. An unbounded click() on the menu then retries behind the
+   * overlay until the 15-min test timeout (seen 2026-10-19 on CRM-2482_2.2.4.1.7 and _2.2.1.1.4).
+   * So: wait for the overlay with a bound, click with a bound, and if the overlay still blocks, open
+   * the menu's own href (read from the DOM, no hardcoded id) as a fresh page load - that skips the
+   * Dashboard instead of waiting for it.
    */
   async navigateToInvestment() {
-    
-
     // Click Investment menu item
     await this.investmentMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.investmentMenu().click();
-    await this.wait(3000);
-    
+    await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait);
+    try {
+      await this.investmentMenu().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    } catch (error) {
+      const href = await this.investmentMenu().getAttribute('href', { timeout: CommonUtils.waitTimes.abnormalWait });
+      if (!href) throw error;
+      const target = new URL(`/web?${href}`, this.page.url()).toString();
+      console.log(`  ⚠️ Investment menu blocked by the loading overlay - opening ${target} directly`);
+      await this.page.goto(target, { waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.pageLoad });
+      await this.waitForPageReady(CommonUtils.waitTimes.pageLoad);
+      await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait);
+    }
+    await this.wait(CommonUtils.waitTimes.extraLong);
   }
 
   /**
@@ -906,8 +922,9 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   /**
    * Create an Import Audience XLS file (XLS-Audience-copy1.xls) from the template.
    * Mirrors createImportAudienceFile() but produces an XLS binary.
+   * `investmentId` fills the "Investment ID" column; omitted, the cell stays blank (previous behaviour).
    */
-  async createImportAudienceXLSFile(): Promise<{
+  async createImportAudienceXLSFile(options?: { investmentId?: string }): Promise<{
     contactName: string;
     emailContact1: string;
     companyName: string;
@@ -985,6 +1002,7 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
       'Sales Team'   : salesTeam,
       'Salesperson'  : salesperson,
       'Tags'         : tags,
+      ...(options?.investmentId !== undefined ? { 'Investment ID': options.investmentId } : {}),
     };
     for (const [key, value] of Object.entries(dataMap)) {
       const colIdx = headerColIndex[key];
@@ -1749,6 +1767,39 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
       return true;
     } catch (error) {
       console.log(`  ⚠️ Error verifying New company contacts-Planned field: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Verify New qualified leads-Planned field exists and is a text input
+   * (ROI tab, Planned row - field planned_new_qualified_leads, confirmed on pre-prod 2026-10-19)
+   * @returns true if field exists and is a text input, false otherwise
+   */
+  async verifyNewQualifiedLeadsPlannedField(): Promise<boolean> {
+    try {
+      const field = this.newQualifiedLeadsPlannedField();
+
+      // Wait for field to be visible
+      await field.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+
+      // Verify it's an input element
+      const tagName = await field.evaluate(el => el.tagName.toLowerCase());
+      if (tagName !== 'input') {
+        console.log(`  ⚠️ New qualified leads-Planned field is not an input element, got: ${tagName}`);
+        return false;
+      }
+
+      // Verify it's a text type input
+      const inputType = await field.getAttribute('type');
+      if (inputType && inputType !== 'text') {
+        console.log(`  ⚠️ New qualified leads-Planned input type is not text, got: ${inputType}`);
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.log(`  ⚠️ Error verifying New qualified leads-Planned field: ${error}`);
       return false;
     }
   }

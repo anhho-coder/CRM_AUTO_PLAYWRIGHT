@@ -7,8 +7,13 @@ import { CommonUtils } from '@helpers/common.utils';
 /**
  * Investments - ROI Tab Column Verification Test
  * Test Case ID: CRM-2482_2.2.1.1.5
+ * Automation-Type: refactored
+ * Automation-Date: 2026-10-19
+ * Jira: CRM-9541 (automation TC, corrected to "New qualified leads", updated 2026-10-19T11:01+0300 - re-check before trusting this spec)
+ *       / CRM-5680 (original manual TC) - column = "New qualified leads",
+ *       as in CRM-5680 and the master row; field planned_new_qualified_leads confirmed on pre-prod 2026-10-19
  *
- * Summary: Verify the ROI blocks of a Investment record includes "New company contacts" column
+ * Summary: Verify the ROI blocks of a Investment record includes "New qualified leads" column
  *
  * Command to run:
  * npx playwright test --grep "CRM-2482_2.2.1.1.5" --project=chromium
@@ -20,10 +25,10 @@ import { CommonUtils } from '@helpers/common.utils';
  * Steps to reproduce:
  * 1. Press "CREATE" button and wait
  * 2. Click at "ROI" tab
- * 3. Verify "New company contacts-Planned" field is a text field
+ * 3. Verify "New qualified leads-Planned" field is a text field
  */
 
-test.describe('CRM-2482_2.2.1.1.5 - Verify ROI Tab includes New company contacts column', () => {
+test.describe('CRM-2482_2.2.1.1.5 - Verify ROI Tab includes New qualified leads column', () => {
 
   test.beforeEach(async ({ page, context }) => {
     // Clear cookies to ensure fresh state
@@ -61,7 +66,7 @@ test.describe('CRM-2482_2.2.1.1.5 - Verify ROI Tab includes New company contacts
     }
   });
 
-  test('CRM-2482_2.2.1.1.5: Verify the ROI blocks of a Investment record includes "New company contacts" column', async ({ page }, testInfo) => {
+  test('CRM-2482_2.2.1.1.5: Verify the ROI blocks of a Investment record includes "New qualified leads" column', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Maximize browser window
@@ -116,16 +121,16 @@ test.describe('CRM-2482_2.2.1.1.5 - Verify ROI Tab includes New company contacts
       console.log('✓ ROI tab clicked and content loaded');
     });
 
-    // Step 3: Verify "New company contacts-Planned" field is a text field
-    await test.step('Step 3: Verify "New company contacts-Planned" field is a text field', async () => {
-      console.log('=== STEP 3: VERIFY "New company contacts-Planned" FIELD ===');
+    // Step 3: Verify "New qualified leads-Planned" field is a text field
+    await test.step('Step 3: Verify "New qualified leads-Planned" field is a text field', async () => {
+      console.log('=== STEP 3: VERIFY "New qualified leads-Planned" FIELD ===');
 
-      const isTextFieldValid = await investmentPage.verifyNewCompanyContactsPlannedField();
+      const isTextFieldValid = await investmentPage.verifyNewQualifiedLeadsPlannedField();
       expect(isTextFieldValid).toBeTruthy();
 
-      console.log('  ✓ "New company contacts-Planned" field exists');
-      console.log('  ✓ "New company contacts-Planned" field is a text input');
-      console.log('✓ New company contacts-Planned field verified successfully');
+      console.log('  ✓ "New qualified leads-Planned" field exists');
+      console.log('  ✓ "New qualified leads-Planned" field is a text input');
+      console.log('✓ New qualified leads-Planned field verified successfully');
     });
 
     console.log('\n✅ TEST COMPLETED SUCCESSFULLY');
