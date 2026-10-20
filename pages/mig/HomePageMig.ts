@@ -16,7 +16,6 @@ import { CommonUtils } from '@helpers/common.utils';
  * render. Used by the section-II "main business work on O12 CE" smoke suite.
  */
 export class HomePageMig extends HomePage {
-  private static readonly CRM_KANBAN_URL_RE = /\/web[?#].*view_type=kanban/;
 
   // Locators - XPath primary, CSS fallback. A records view = list OR kanban: Odoo 12 honours
   // `view_type` only on the `action=<id>&model=<model>` hash form, so an action opened by
@@ -26,9 +25,16 @@ export class HomePageMig extends HomePage {
       .or(this.page.locator('.o_list_view, table.o_list_table, .o_kanban_view'))
       .first();
 
+  /**
+   * Readiness = the CRM records view has RENDERED, not a URL pattern. `appUrlFor('crm')` resolves to
+   * `#menu_id=<m>&action=<a>` (the live-menu form since the 2026-10-13 rebuild) and the client keeps
+   * that hash as is - no `view_type=kanban` is ever added (probe 2026-10-20: kanban on screen at 8 s,
+   * URL unchanged at 15 s), so the old `view_type=kanban` URL wait burned its 240 s on a rendered pipeline.
+   */
   async navigateToCRM() {
     await this.goto(await new MigPlatformPage(this.page).appUrlFor('crm'));
-    await this.waitForURL(HomePageMig.CRM_KANBAN_URL_RE, CommonUtils.waitTimes.pageLoad);
+    await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad);
+    await this.recordsViewRoot().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
     await this.dismissErrorDialog();
   }
 

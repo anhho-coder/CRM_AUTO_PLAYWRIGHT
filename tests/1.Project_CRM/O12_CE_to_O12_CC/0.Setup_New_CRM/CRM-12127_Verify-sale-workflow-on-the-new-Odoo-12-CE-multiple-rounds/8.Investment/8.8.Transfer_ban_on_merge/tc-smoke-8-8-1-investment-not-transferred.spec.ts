@@ -58,7 +58,7 @@ import {
  *  O12 CE deviations (mechanical only - BASELINE RULE: the assertions are copied unchanged)
  * --------------------------------------------------------------------------------------------
  *  - Login users.admin_crm_mig on baseUrl_mig; Investments navigation by XML-id URL hash
- *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on model=crm.lead).
+ *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on the "Pipeline" breadcrumb).
  *  - Investment names carry the run marker "TEST CRM-12370_8.8.1 ..." for the afterAll sweep.
  *  - Test data substituted (same intent, existing record on crm-mig):
  *      Completion Events : Attended webinar    -> Atttended webinar     (crm-mig event-type name, sic)

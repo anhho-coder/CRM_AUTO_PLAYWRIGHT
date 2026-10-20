@@ -178,26 +178,31 @@ export class InvestmentPageMig extends InvestmentPage {
   }
 
   /**
-   * CRM app (its default pipeline action) by URL hash, VERIFIED to be the crm.lead screen.
+   * CRM app (its default pipeline action) by URL hash, VERIFIED to be the Pipeline screen.
    *
    * `HomePageMig.navigateToCRM()` returns as soon as ANY records view is visible. Called right after
    * `returnToHome()` - the Apps screen, itself a kanban - that is already true before the CRM action
    * has loaded, so it returned while Apps was still on screen; `switchToListView()` then switched the
    * APPS list and `searchByEmail()` typed into the Apps search (CRM-12370_8.8.2 on 2026-10-20: facet
-   * "Module Test@company...", then a 30 s timeout on the Opp row). This waits until the client has
-   * rewritten the hash to `model=crm.lead`, re-applies the hash with a reload once if it never does,
-   * and fails naming the screen it is on.
+   * "Module Test@company...", then a 30 s timeout on the Opp row). This waits until the CRM SCREEN
+   * is on: the active breadcrumb reads "Pipeline" (Apps reads otherwise), re-applies the hash with a
+   * reload once if it never does, and fails naming the screen it is on.
+   *
+   * NOT the URL: the client keeps `#menu_id=<m>&action=<a>` as typed and never adds `model=crm.lead`
+   * (probe 2026-10-20: Pipeline kanban on screen at 8 s, hash unchanged at 15 s) - waiting for the
+   * hash failed 3/3 runs with the Pipeline already on screen.
    */
   async openCrmPipeline(): Promise<void> {
     const url = await new MigPlatformPage(this.page).appUrlFor('crm');
+    const pipelineCrumb = this.activeBreadcrumb().filter({ hasText: /^\s*Pipeline\s*$/ });
     for (let attempt = 1; attempt <= 2; attempt++) {
       await this.goto(url);
       if (attempt === 2) {
         console.log('  - CRM did not load on the first hash change; re-applying the hash and reloading once');
         await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
       }
-      const onCrm = await this.page.waitForFunction(() => window.location.hash.includes('model=crm.lead'), null,
-        { timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+      const onCrm = await pipelineCrumb.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true).catch(() => false);
       if (onCrm) {
         await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
         await this.dismissErrorDialog();
@@ -210,7 +215,7 @@ export class InvestmentPageMig extends InvestmentPage {
     }
     const heading = (await this.activeBreadcrumb().textContent({ timeout: CommonUtils.waitTimes.long })
       .catch(() => '') || '').trim();
-    throw new Error(`CRM never loaded (the hash never reached model=crm.lead), twice. URL = ${this.page.url()}; ` +
+    throw new Error(`CRM never loaded (no "Pipeline" screen), twice. URL = ${this.page.url()}; ` +
       `the screen reads "${heading || '(no heading)'}".`);
   }
 

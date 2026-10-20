@@ -69,7 +69,7 @@ import {
  *    pre-production source leaves that column empty and crm-mig refuses it with
  *    'Lines [2] "Investment ID" is empty' (seen 2026-10-20 on CRM-12370_8.5.1).
  *  - Login users.admin_crm_mig on baseUrl_mig; Investments navigation by XML-id URL hash
- *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on model=crm.lead).
+ *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on the "Pipeline" breadcrumb).
  *  - Investment names carry the run marker "TEST CRM-12370_8.8.2 ..." for the afterAll sweep.
  *  - Test data substituted (same intent, existing record on crm-mig):
  *      Completion Events : Attended webinar    -> Atttended webinar     (crm-mig event-type name, sic)

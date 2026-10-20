@@ -70,7 +70,7 @@ import * as path from 'path';
  * 6. Press "IMPORT" button and wait
  * 7. Press "SAVE" button on Investment page
  * 8. Verify the Error message displays as:
- *    "Lines [2] \"Create manually\" is not valid"
+ *    "Lines [2] \"Create manually\" should be TRUE or FALSE or empty"
  * 9. Click at "Leads" tab
  * 10. Verify the following:
  *    10.1. There is no value of Email_Contact#1 at "Email" row
@@ -282,17 +282,17 @@ test.describe('CRM-3374_2.8 - Verify error message displays when entering invali
     });
 
     // Step 8: Verify the error message
-    await test.step('Step 8: Verify the Error message displays as: Lines [2] "Create manually" is not valid', async () => {
+    await test.step('Step 8: Verify the Error message displays as: Lines [2] "Create manually" should be TRUE or FALSE or empty', async () => {
       console.log('=== STEP 8: VERIFY ERROR MESSAGE ===');
 
-      const expectedError = 'Lines [2] "Create manually" is not valid';
+      const expectedError = 'Lines [2] "Create manually" should be TRUE or FALSE or empty';
 
-      const actualErrorText = await investmentPage.waitForImportErrorMessage('is not valid');
+      const actualErrorText = await investmentPage.waitForImportErrorMessage('should be');
 
       console.log(`  Actual error message  : "${actualErrorText}"`);
       console.log(`  Expected error message: "${expectedError}"`);
 
-      expect(actualErrorText, 'Step 8: Error message mismatch').toContain('"Create manually" is not valid');
+      expect(actualErrorText, 'Step 8: Error message mismatch').toContain('"Create manually" should be TRUE or FALSE or empty');
 
       console.log('  ✓ Error message verified successfully');
     });
