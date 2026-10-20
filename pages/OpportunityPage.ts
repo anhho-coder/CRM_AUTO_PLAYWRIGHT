@@ -307,7 +307,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * Switch from kanban to list view
    */
   async switchToListView() {
-    await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForViewReady('kanban');
     await this.viewListButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     // A loading mask / "Odoo Client Error" modal can sit over the toolbar and intercept the
     // click (observed: 900s timeout - blockUI then o_technical_modal intercepting pointer
@@ -315,8 +315,26 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await this.dismissErrorDialog();
     await this.waitForLoadingOverlayHidden();
     await this.viewListButton().click();
-    await this.waitForURL('**/web?*view_type=list*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForViewReady('list');
     await this.page.locator('.o_list_view, table.o_list_table').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /**
+   * The CRM view is ready when its URL says so OR when the view has rendered - whichever comes first.
+   * Pre-production rewrites the hash to `view_type=<v>`, so the URL wins there exactly as before.
+   * crm-mig opens CRM by `#menu_id=<m>&action=<a>` and its client does not always write `view_type`
+   * into the hash (2026-10-20: kanban on screen, URL unchanged), so the rendered view wins there.
+   */
+  private async waitForViewReady(viewType: 'kanban' | 'list') {
+    const view = viewType === 'kanban'
+      ? this.page.locator('xpath=//div[contains(@class,"o_kanban_view")]').or(this.page.locator('.o_kanban_view'))
+      : this.page.locator('xpath=//div[contains(@class,"o_list_view")] | //table[contains(@class,"o_list_view") or contains(@class,"o_list_table")]')
+        .or(this.page.locator('.o_list_view, table.o_list_table'));
+    const byUrl = this.waitForURL(`**/web?*view_type=${viewType}*`, CommonUtils.waitTimes.pageLoad).then(() => true, () => false);
+    const byView = view.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).then(() => true, () => false);
+    if (!(await Promise.race([byUrl, byView])) && !(await byUrl) && !(await byView)) {
+      throw new Error(`CRM ${viewType} view not ready: neither the URL (view_type=${viewType}) nor the rendered view appeared`);
+    }
   }
 
   /**
@@ -1044,14 +1062,41 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await this.saveButton().scrollIntoViewIfNeeded();
     await this.saveButton().click();
     
-    // Wait for save to complete - URL will change to include the ID
-    await this.waitForURL('**/web?*id=*&*', CommonUtils.waitTimes.pageLoad);
-    
-    // Wait for Save button to disappear or become disabled
-    await this.saveButton().waitFor({ state: 'hidden' }).catch(async () => {
-      await this.page.waitForSelector('button.o_form_button_save:disabled', { timeout: 10000 }).catch(() => {});
-    });
-    
+    // The saved record must get a NUMERIC id. This used to wait on the glob '**/web?*id=*&*', which an
+    // UNSAVED create form satisfies too: its URL is '/web?#id=&action=1705&model=crm.lead&...', so the
+    // EMPTY id is still followed by '&action=' and the glob matches. A save that never happened sailed
+    // straight past this line (CRM-13277). waitForIdInUrlAndExtract polls for /[?&#]id=(\d+)/, so only a
+    // real id gets through.
+    try {
+      await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.pageLoad);
+    } catch {
+      throw new Error(
+        'SAVE was pressed but no record id ever appeared in the URL - the form did not save. ' +
+        'Usual causes: a required field is empty, or the browser lost its session to the server.'
+      );
+    }
+
+    // Explicit timeout for the same reason as the visibility wait above: the Playwright config sets no
+    // actionTimeout, so an unbounded waitFor inherits the 15-minute TEST timeout - a stuck form then
+    // reports "Test timeout exceeded" 15 minutes later instead of naming the problem (CRM-13277).
+    // Odoo may hide the SAVE button or merely disable it, so either one counts as "left edit mode";
+    // only neither is a failure.
+    const leftEditMode = await this.saveButton()
+      .waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.savingPage })
+      .then(() => true)
+      .catch(async () =>
+        await this.page
+          .waitForSelector('button.o_form_button_save:disabled', { timeout: 10000 })
+          .then(() => true)
+          .catch(() => false)
+      );
+    if (!leftEditMode) {
+      throw new Error(
+        'SAVE was pressed and the record has an id, but the form never left edit mode - the SAVE button ' +
+        'is still visible and enabled, so the save is incomplete.'
+      );
+    }
+
     // Wait for page to stabilize
     await this.waitForFormSaved();
   }
@@ -1149,6 +1194,29 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       const exists = await companyField.count() > 0;
       if (!exists) return '';
       const href = await companyField.getAttribute('href').catch(() => '');
+      if (!href) return '';
+      if (href.startsWith('http')) return href;
+      const origin = new URL(this.page.url()).origin;
+      return origin + (href.startsWith('/') ? href : '/' + href);
+    } catch (error) {
+      return '';
+    }
+  }
+
+  /**
+   * Get the URL (href) of the Contact field hyperlink (contact_partner_id).
+   * Sibling of getCompanyFieldUrl, same defensive contract: never throws, '' when the link is not on
+   * the form. Both partners are created asynchronously by Odoo after the Opportunity is saved, and
+   * crm-mig teardown needs their ids to delete them - the Company is named `company<timestamp>.com`
+   * and carries no TC marker, so the name-marker sweep can never find it (CRM-13277).
+   * @returns Promise<string> - The full URL of the Contact hyperlink, or empty string if not found
+   */
+  async getContactFieldUrl(): Promise<string> {
+    try {
+      const contactField = this.contactFieldXPath();
+      const exists = await contactField.count() > 0;
+      if (!exists) return '';
+      const href = await contactField.getAttribute('href').catch(() => '');
       if (!href) return '';
       if (href.startsWith('http')) return href;
       const origin = new URL(this.page.url()).origin;
@@ -1868,9 +1936,10 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   } else {
     // Fallback: the search already filtered by email so click the first result row
     console.log(`  ⚠ Email not visible as a column — clicking first search result row`);
+    // The Odoo 12 list table carries `o_list_view` (crm-mig: no `o_list_table` at all) - accept both.
     const firstRow = this.page.locator(
-      `xpath=//table[contains(@class,'o_list_table')]//tr[contains(@class,'o_data_row')]`
-    ).first();
+      `xpath=//table[contains(@class,'o_list_table') or contains(@class,'o_list_view')]//tr[contains(@class,'o_data_row')]`
+    ).or(this.page.locator('table.o_list_table tr.o_data_row, table.o_list_view tr.o_data_row')).first();
     await firstRow.waitFor({ state: 'visible', timeout });
     await firstRow.click();
     console.log(`  ✓ Clicked first Opp row (filtered by email search)`);
@@ -1898,9 +1967,10 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   } else {
     // Fallback: the search already filtered by opportunity name so click the first result row
     console.log(`  ⚠ Opportunity name not visible as a column — clicking first search result row`);
+    // The Odoo 12 list table carries `o_list_view` (crm-mig: no `o_list_table` at all) - accept both.
     const firstRow = this.page.locator(
-      `xpath=//table[contains(@class,'o_list_table')]//tr[contains(@class,'o_data_row')]`
-    ).first();
+      `xpath=//table[contains(@class,'o_list_table') or contains(@class,'o_list_view')]//tr[contains(@class,'o_data_row')]`
+    ).or(this.page.locator('table.o_list_table tr.o_data_row, table.o_list_view tr.o_data_row')).first();
     await firstRow.waitFor({ state: 'visible', timeout });
     await firstRow.click();
     console.log(`  ✓ Clicked first Opp row (filtered by opportunity name search)`);
@@ -3444,7 +3514,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    */
   async openNewOpportunityFormHashSafe(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#action=152&model=crm.lead&view_type=form&menu_id=111`, { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('crm.crm_lead_opportunities_tree_view')}&model=crm.lead&view_type=form&menu_id=${await this.xmlId('crm.crm_menu_root')}`, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialog().catch(() => {});
     await this.opportunityNameInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });

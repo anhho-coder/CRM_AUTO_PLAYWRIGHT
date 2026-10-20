@@ -922,8 +922,9 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
   /**
    * Create an Import Audience XLS file (XLS-Audience-copy1.xls) from the template.
    * Mirrors createImportAudienceFile() but produces an XLS binary.
+   * `investmentId` fills the "Investment ID" column; omitted, the cell stays blank (previous behaviour).
    */
-  async createImportAudienceXLSFile(): Promise<{
+  async createImportAudienceXLSFile(options?: { investmentId?: string }): Promise<{
     contactName: string;
     emailContact1: string;
     companyName: string;
@@ -1001,6 +1002,7 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
       'Sales Team'   : salesTeam,
       'Salesperson'  : salesperson,
       'Tags'         : tags,
+      ...(options?.investmentId !== undefined ? { 'Investment ID': options.investmentId } : {}),
     };
     for (const [key, value] of Object.entries(dataMap)) {
       const colIdx = headerColIndex[key];
