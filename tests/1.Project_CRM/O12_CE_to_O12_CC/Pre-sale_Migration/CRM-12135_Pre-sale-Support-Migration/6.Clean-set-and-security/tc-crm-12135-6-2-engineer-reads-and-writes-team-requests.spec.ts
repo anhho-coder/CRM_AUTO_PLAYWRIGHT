@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer (pre_sales_engineer_crm_mig account)
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12942 (Xray Manual Steps, 4 steps)
+ * Source version : updated 2026-10-06T12:37:23.660+0300 - re-check before trusting this spec
  * Evidence       : stdout only - this case drives no screen, so its logs ARE the artifact.
  *
  * Summary
@@ -248,6 +250,7 @@ const marker = MigPreSalePage.marker('TC-36', runId);
         console.log(`  Requests for opportunity ${leadId}: ${requests.length}`);
         expect(requests.length, 'the raise should have created exactly one request').toBe(1);
         requestId = requests[0].id;
+        console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
         console.log(`  Request ID: ${requestId}`);
       });
 

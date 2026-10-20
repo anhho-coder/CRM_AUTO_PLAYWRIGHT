@@ -56,50 +56,50 @@ export class MigPlatformPage extends BasePage {
    */
   static readonly HASH = {
     // CRM: root menu 216 has its own server action ("Crm: My Pipeline").
-    crm:                '#menu_id=216&action_id=347',
-    contacts:           '#menu_id=111&action_id=149',
+    crm: 'UNRESOLVED:crm',
+    contacts: 'UNRESOLVED:contacts',
     // Business screens used by the section-II main-business smoke (re-measured 2026-09-15):
     // CRM > Leads > Leads = menu 229 / act_window 345 (crm.lead, domain type=lead, tree first);
     // CRM > Sales > All Pipeline = menu 1308 / act_window 1705 (domain type=opportunity), opened
     // straight into its LIST view = the pre-prod "click at view list" step, without depending on
     // the theme's view-switcher buttons.
-    leads:              '#menu_id=229&action_id=345',
-    opportunitiesList:  '#action=1705&model=crm.lead&view_type=list&menu_id=1308',
-    contactsList:       '#action=149&model=res.partner&view_type=list&menu_id=111',
-    sales:              '#menu_id=253&action_id=385',
-    settings:           '#menu_id=62&action_id=77',
-    apps:               '#menu_id=45&action_id=32',
+    leads: 'UNRESOLVED:leads',
+    opportunitiesList: 'UNRESOLVED:opportunitiesList',
+    contactsList: 'UNRESOLVED:contactsList',
+    sales: 'UNRESOLVED:sales',
+    settings: 'UNRESOLVED:settings',
+    apps: 'UNRESOLVED:apps',
     // Other sidebar apps - CRM-12325 Part 2-A "main apps open cleanly"
-    discuss:            '#menu_id=98&action_id=124',
-    investments:        '#menu_id=1369&action_id=1861',
-    calendar:           '#menu_id=106&action_id=147',
-    website:            '#menu_id=332&action_id=536',
-    jobQueue:           '#menu_id=136&action_id=186',
-    activecampaign:     '#menu_id=150&action_id=215',
-    approval:           '#menu_id=347&action_id=546',
-    myDashboard:        '#menu_id=447&action_id=738',
+    discuss: 'UNRESOLVED:discuss',
+    investments: 'UNRESOLVED:investments',
+    calendar: 'UNRESOLVED:calendar',
+    website: 'UNRESOLVED:website',
+    jobQueue: 'UNRESOLVED:jobQueue',
+    activecampaign: 'UNRESOLVED:activecampaign',
+    approval: 'UNRESOLVED:approval',
+    myDashboard: 'UNRESOLVED:myDashboard',
     // Portal is an ir.actions.act_url - it navigates OUT of the web client, so a caller must not
     // wait for an Odoo action view to render.
-    portal:             '#menu_id=395&action_id=642',
-    licenseManagement:  '#menu_id=462&action_id=763',
-    reports:            '#menu_id=1323&action_id=1784',
-    salesReport:        '#menu_id=1357&action_id=1839',
-    kpi:                '#menu_id=1382&action_id=2011',
-    invoicing:          '#menu_id=214&action_id=323',
-    contractors:        '#menu_id=128&action_id=156',
-    customerActivities: '#menu_id=1342&action_id=1810',
-    nakivoApi:          '#menu_id=1353&action_id=1817',
+    portal: 'UNRESOLVED:portal',
+    licenseManagement: 'UNRESOLVED:licenseManagement',
+    reports: 'UNRESOLVED:reports',
+    salesReport: 'UNRESOLVED:salesReport',
+    kpi: 'UNRESOLVED:kpi',
+    invoicing: 'UNRESOLVED:invoicing',
+    contractors: 'UNRESOLVED:contractors',
+    customerActivities: 'UNRESOLVED:customerActivities',
+    nakivoApi: 'UNRESOLVED:nakivoApi',
     // Server Capacity is NO LONGER A TOP-LEVEL APP on this base - it now sits at
     // Contacts > NAKIVO BaaS > Server Capacity (menu 1410 / act_window 2057). The screen still
     // opens; its demotion out of the app list is an app-parity fact for CRM-12326_3.7.1.
-    serverCapacity:     '#menu_id=1410&action_id=2057',
-    subscriptions:      '#menu_id=1437&action_id=2106',
+    serverCapacity: 'UNRESOLVED:serverCapacity',
+    subscriptions: 'UNRESOLVED:subscriptions',
     // New root menu on this base, absent from the old map: Global Search (sync_global_search).
-    globalSearch:       '#menu_id=1439&action_id=2108',
+    globalSearch: 'UNRESOLVED:globalSearch',
     // KEPT ONLY SO EXISTING SPECS STILL COMPILE - see ABSENT_ON_MIG below. There is no live menu or
     // action for it, so opening this hash WILL raise an Odoo error dialog. That is the truth about
     // the instance, not a bug in the spec that opens it.
-    reTimeTracking:     '#menu_id=2279&action_id=4594',
+    reTimeTracking: 'UNRESOLVED:reTimeTracking',
   };
 
   /**
@@ -125,7 +125,7 @@ export class MigPlatformPage extends BasePage {
    * then reports a broken screen as clean, so the text filter below is deliberately as broad as the
    * one BasePage already uses.
    */
-  private readonly errorDialog = () =>
+  private readonly errorDialogMig = () =>
     this.page.locator('.o_error_dialog')
       .or(this.page.locator('.modal-dialog:has-text("Traceback")'))
       .or(this.page.locator('.modal, .o_dialog').filter({
@@ -337,14 +337,193 @@ export class MigPlatformPage extends BasePage {
    * wait work unchanged on the Migration server. See CRM-12370_1.x (section II) for the failure this
    * fixes: "CREATE" navigated to `/web#...view_type=form` and the wait timed out anyway.
    */
+  /**
+   * The root menu NAME behind each app key - the registry that survives a rebuild.
+   *
+   * Names, not numbers. On 2026-10-13 crm-mig was rebuilt and every menu and action id was
+   * re-issued. All 58 numbers in the old HASH map became wrong at once, and only 33 of them became
+   * *obviously* wrong by disappearing: the other 25 still resolved, to a different screen each.
+   * `#menu_id=216&action_id=347` had meant CRM; it now opens "Invoices Analysis". A spec navigating
+   * by number lands on a real, fully rendered, wrong screen and asserts against it.
+   *
+   * A menu's NAME is what the manual test case names too ("open the CRM app"), so this registry
+   * reads the same as the thing it automates.
+   */
+  /**
+   * Screens that are NOT the app root: a menu PATH, and the view the old hash forced.
+   *
+   * `leads` and `opportunitiesList` are sub-menus, not apps - "CRM > Leads > Leads" and
+   * "CRM > Sales > All Pipeline". Resolving them by app name alone returns the CRM root, which
+   * opens My Pipeline: a real screen, the wrong one, and no assertion would notice.
+   */
+  static readonly APP_MENU_PATH: Record<string, { path: string; model?: string; viewType?: string }> = {
+    leads: { path: 'CRM/Leads/Leads' },
+    // Added 2026-10-14 for specs that had been carrying raw crm-mig hashes. Each path is the one
+    // the spec names in its own step text, verified against the live menu tree on crm-mig.
+    quotations: { path: 'Sales/Orders/Quotations' },
+    salesOrders: { path: 'Sales/Orders/Orders' },
+    utmLinks: { path: 'CRM/Configuration/Pipeline/UTM Links' },
+    opportunitiesList: { path: 'CRM/Sales/All Pipeline', model: 'crm.lead', viewType: 'list' },
+    // 'Contacts/Contacts', not 'Contacts': the root menu has NO action on crm-mig (2026-10-20), and the
+    // fallback below sorts the whole subtree by sequence, which picks Configuration/Contact Tags (seq 1).
+    contactsList: { path: 'Contacts/Contacts', model: 'res.partner', viewType: 'list' },
+  };
+
+  static readonly APP_MENU_NAME: Record<string, string> = {
+    crm: 'CRM', contacts: 'Contacts', leads: 'CRM', opportunitiesList: 'CRM',
+    contactsList: 'Contacts', sales: 'Sales', settings: 'Settings', apps: 'Apps',
+    discuss: 'Discuss', investments: 'Investments', calendar: 'Calendar', website: 'Website',
+    jobQueue: 'Job Queue', activecampaign: 'Activecampaign', approval: 'Approval',
+    myDashboard: 'My Dashboard', portal: 'Portal', licenseManagement: 'License Management',
+    reports: 'Reports', salesReport: 'Sales Report', kpi: 'KPI', invoicing: 'Invoicing',
+    contractors: 'Contractors', customerActivities: 'Customer activities',
+    nakivoApi: 'Nakivo API', serverCapacity: 'Server Capacity', subscriptions: 'Subscriptions',
+    globalSearch: 'Global Search', reTimeTracking: 'R&E Time Tracking',
+  };
+
+  private static readonly hashCache = new Map<string, string>();
+
+  /**
+   * `#menu_id=<m>&action_id=<a>` for an app key, resolved from the LIVE menu tree.
+   *
+   * Re-derives what the old static map recorded by hand: take the root menu of that name, use its
+   * own action, and when it has none walk down to the first descendant that carries one - that is
+   * the screen a user lands on when they click the app.
+   */
+  async hashFor(key: string): Promise<string> {
+    const cached = MigPlatformPage.hashCache.get(key);
+    if (cached) return cached;
+
+    const sub = MigPlatformPage.APP_MENU_PATH[key];
+    const name = sub ? sub.path.split('/')[0] : MigPlatformPage.APP_MENU_NAME[key];
+    if (!name) throw new Error(`MigPlatformPage.hashFor: no app registered under "${key}".`);
+
+    const roots = await this.callKw<Array<{ id: number; action: string | false }>>(
+      'ir.ui.menu', 'search_read',
+      [[['parent_id', '=', false], ['name', '=', name]], ['id', 'action']], { limit: 1 },
+    );
+    if (!roots.length) {
+      throw new Error(
+        `MigPlatformPage.hashFor("${key}"): no root menu named "${name}" on this instance. `
+        + 'The app is absent here - which is a fact about the base, not a selector to fix.',
+      );
+    }
+
+    let menuId = roots[0].id;
+    let actionId = MigPlatformPage.actionIdOf(roots[0].action);
+
+    // Walk the rest of the path, one named child at a time.
+    for (const segment of (sub ? sub.path.split('/').slice(1) : [])) {
+      const hit = await this.callKw<Array<{ id: number; action: string | false }>>(
+        'ir.ui.menu', 'search_read',
+        [[['parent_id', '=', menuId], ['name', '=', segment]], ['id', 'action']], { limit: 1 },
+      );
+      if (!hit.length) {
+        throw new Error(
+          `MigPlatformPage.hashFor("${key}"): "${segment}" is not a child of menu ${menuId} on `
+          + `this instance (path "${sub!.path}").`,
+        );
+      }
+      menuId = hit[0].id;
+      actionId = MigPlatformPage.actionIdOf(hit[0].action);
+    }
+    if (!actionId) {
+      const kids = await this.callKw<Array<{ id: number; action: string | false }>>(
+        'ir.ui.menu', 'search_read',
+        [[['parent_id', 'child_of', menuId], ['action', '!=', false]], ['id', 'action']],
+        { limit: 20, order: 'sequence,id' },
+      );
+      for (const k of kids) {
+        actionId = MigPlatformPage.actionIdOf(k.action);
+        if (actionId) break;
+      }
+    }
+    if (!actionId) {
+      throw new Error(
+        `MigPlatformPage.hashFor("${key}"): menu "${name}" (${menuId}) carries no action, and no `
+        + 'descendant of it does either.',
+      );
+    }
+
+    // `action=`, NOT `action_id=`. Measured on crm-mig 2026-10-15 against act_window 864
+    // (CRM/Sales/All Pipeline), with the SAME menu and action id in both forms:
+    //     #menu_id=482&action_id=864&model=crm.lead&view_type=list -> nothing renders, breadcrumb empty
+    //     #menu_id=482&action=864&model=crm.lead&view_type=list    -> the list renders, 1-80 / 135061
+    // With `action_id=` the web client silently drops the request and, on the next reload, falls
+    // back to the default landing app (Discuss/Inbox) - which reads as "the page is slow" and cost
+    // four specs a 240 s timeout each. The menu and action ids were correct the whole time; only
+    // the key was wrong. Odoo rewrites the live hash to `action=` itself, which is why a session
+    // that navigated by clicking never showed the problem.
+    let hash = `#menu_id=${menuId}&action=${actionId}`;
+    if (sub?.model) hash += `&model=${sub.model}`;
+    if (sub?.viewType) hash += `&view_type=${sub.viewType}`;
+    MigPlatformPage.hashCache.set(key, hash);
+    console.log(`  app "${key}" resolved to ${hash} (root menu "${name}")`);
+    return hash;
+  }
+
+  /** `"ir.actions.act_window,347"` -> 347. Returns 0 for false/empty/unparseable. */
+  private static actionIdOf(action: string | false): number {
+    const m = typeof action === 'string' ? action.match(/,(\d+)$/) : null;
+    return m ? Number(m[1]) : 0;
+  }
+
+  /** The full URL for an app key, resolved live. */
+  async appUrlFor(key: string): Promise<string> {
+    return `${baseUrl_mig}web?${await this.hashFor(key)}`;
+  }
+
   static appUrl(hash: string): string {
+    if (hash.startsWith('UNRESOLVED:')) {
+      const key = hash.slice('UNRESOLVED:'.length);
+      throw new Error(
+        `MigPlatformPage.HASH.${key} is no longer a usable hash. Menu and action ids are re-issued `
+        + 'by every rebuild - the 2026-10-13 one made all 58 of them wrong, 25 of those by quietly '
+        + `pointing at a different screen. Use \`await platform.appUrlFor('${key}')\` or `
+        + `\`await platform.hashFor('${key}')\`, which resolve from the live menu tree.`,
+      );
+    }
     return `${baseUrl_mig}web?${hash}`;
   }
 
-  async openAppAndAssertRendered(hash: string) {
+  /**
+   * Open an app by KEY and wait until its action is actually on screen.
+   *
+   * Takes a key, not a hash: the hash is resolved from the live menu tree by `hashFor()`, so it is
+   * correct on whichever build is in front of us. `extraHash` is appended for the cases that need
+   * to land on one record (`id=42`).
+   */
+  async openAppAndAssertRendered(key: string, extraHash?: string) {
+    MigPlatformPage.assertIsKey(key, 'openAppAndAssertRendered');
+    const hash = (await this.hashFor(key)) + (extraHash ? `&${extraHash}` : '');
+    await this.goto(`${baseUrl_mig}web?${hash}`);
+    await this.waitForActionLoaded();
+    await this.waitForActionInUrl(hash);
+  }
+
+  /** A pre-built hash that carries NO menu or action id, e.g. `#model=crm.lead&id=42&view_type=form`. */
+  async openHashAndAssertRendered(hash: string) {
     await this.goto(MigPlatformPage.appUrl(hash));
     await this.waitForActionLoaded();
     await this.waitForActionInUrl(hash);
+  }
+
+  /**
+   * Refuse a raw hash where a key is expected.
+   *
+   * Passing `'#menu_id=229&action_id=345'` used to be the normal thing to do here. After the
+   * 2026-10-13 rebuild those numbers open a different screen rather than failing, so a spec that
+   * kept doing it would have gone on asserting against the wrong page in silence.
+   */
+  private static assertIsKey(key: string, where: string): void {
+    if (key.startsWith('#') || /menu_id=|action_id=|action=/.test(key)) {
+      throw new Error(
+        `MigPlatformPage.${where} takes an app KEY (e.g. 'crm', 'quotations'), not the hash `
+        + `"${key}". Menu and action ids are re-issued by every rebuild. Register the screen in `
+        + 'APP_MENU_NAME / APP_MENU_PATH and pass its key, or call openHashAndAssertRendered() if '
+        + 'the hash genuinely carries no ids.',
+      );
+    }
   }
 
   /**
@@ -384,9 +563,10 @@ export class MigPlatformPage extends BasePage {
   /** Open an app by hash, wait until its action finished loading (spinner gone), and return the
    *  elapsed load time (ms). The caller checks isErrorDialogVisible() separately, so this does NOT
    *  dismiss any error dialog. */
-  async openAppAndMeasureMs(hash: string): Promise<number> {
+  async openAppAndMeasureMs(key: string): Promise<number> {
+    MigPlatformPage.assertIsKey(key, 'openAppAndMeasureMs');
     const start = Date.now();
-    await this.goto(MigPlatformPage.appUrl(hash));
+    await this.goto(await this.appUrlFor(key));
     await this.waitForActionLoaded();
     return Date.now() - start;
   }
@@ -431,7 +611,7 @@ export class MigPlatformPage extends BasePage {
    */
   async getErrorDialogText(): Promise<string> {
     if (!(await this.isErrorDialogVisible())) return '';
-    const raw = await this.errorDialog().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '');
+    const raw = await this.errorDialogMig().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '');
     return raw.replace(/\s+/g, ' ').trim();
   }
 
@@ -452,9 +632,9 @@ export class MigPlatformPage extends BasePage {
   async copyFullErrorToClipboard(): Promise<string> {
     if (!(await this.isErrorDialogVisible())) return '';
 
-    const copyButton = this.errorDialog()
+    const copyButton = this.errorDialogMig()
       .locator('xpath=.//button[contains(., "Copy the full error to clipboard")]')
-      .or(this.errorDialog().locator('button:has-text("Copy the full error")'))
+      .or(this.errorDialogMig().locator('button:has-text("Copy the full error")'))
       .first();
 
     let copied = '';
@@ -467,15 +647,15 @@ export class MigPlatformPage extends BasePage {
     }
 
     if (!copied.trim()) {
-      const seeDetails = this.errorDialog()
+      const seeDetails = this.errorDialogMig()
         .locator('xpath=.//*[self::a or self::button or self::span][contains(normalize-space(), "See details")]')
-        .or(this.errorDialog().locator('text=See details'))
+        .or(this.errorDialogMig().locator('text=See details'))
         .first();
       if (await seeDetails.isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false)) {
         await seeDetails.click().catch(() => {});
         await this.page.waitForTimeout(CommonUtils.waitTimes.long);
       }
-      copied = await this.errorDialog().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '');
+      copied = await this.errorDialogMig().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '');
     }
 
     return copied.trim();
@@ -483,7 +663,7 @@ export class MigPlatformPage extends BasePage {
 
   /** True if an Odoo client-error / traceback dialog is currently visible. */
   async isErrorDialogVisible(): Promise<boolean> {
-    return await this.errorDialog().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
+    return await this.errorDialogMig().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
   }
 
   /**
@@ -735,6 +915,45 @@ export class MigPlatformPage extends BasePage {
    * accounts required - a business-form detail beyond a base write-path smoke. The record is disposable
    * (the DB will be replaced).
    */
+  /**
+   * Create a res.partner by name over the session's own JSON-RPC and return its id.
+   *
+   * Why not type the name into the invoice's Customer field and take the dropdown's "Create"
+   * option, as the CRM-11857 section 3/4 cases describe? Because on crm-mig that path does not
+   * work: taking it raises a modal **"Warning! You must first select a partner."**, the field stays
+   * empty, and the dialog then blocks every later click - CRM-11857_3.1 and 3.4 each burned their
+   * full 15-minute budget inside `locator.click` that way on 2026-10-13, while 3.5 and 3.7 reported
+   * only "Customer should be set".
+   *
+   * The partner is a PRE-CONDITION of those cases, not the thing under test (they verify currency
+   * conversion), so it is created the reliable way and then simply selected on the form. The step
+   * label says so, per the rule that an environment trap belongs in the step text with its reason.
+   *
+   * The caller MUST register the returned id for teardown.
+   *
+   * @param name - the partner name (carry the AUTO-CRM-11857-<x.y>-<runId> marker)
+   * @returns the created res.partner id, or 0 when the create failed
+   */
+  async createPartnerByName(name: string): Promise<number> {
+    console.log(`  - Creating res.partner "${name}" over JSON-RPC`);
+    const id = await this.page.evaluate(async (nm) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: { model: 'res.partner', method: 'create', args: [{ name: nm }], kwargs: {} },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return 0;
+      return Number(j.result) || 0;
+    }, name).catch(() => 0);
+    console.log(`  ${id ? '✓' : '!'} res.partner "${name}" ${id ? `created with id ${id}` : 'could NOT be created'}`);
+    return id;
+  }
+
   async writePathAliveViaPartner(name: string): Promise<{ id: number; deleted: boolean; error?: string }> {
     return await this.page.evaluate(async (nm) => {
       async function callKw(model: string, method: string, args: any[]) {

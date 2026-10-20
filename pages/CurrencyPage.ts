@@ -195,7 +195,7 @@ export class CurrencyPage extends BasePage {
     // previous screen on display. The waits below then sit out their full pageLoad budget twice over for a
     // list that is never going to appear - a single call was measured burning minutes this way. The reload
     // turns it into a real document load at that hash, which makes the boot deterministic.
-    await this.page.goto(`${origin}/web?#menu_id=163&action=64`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.page.goto(`${origin}/web?#menu_id=${await this.xmlId('account.menu_action_currency_form')}&action=${await this.xmlId('base.action_currency_form')}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await this.dismissErrorDialogWithRetry().catch(() => {});
     await this.listTable().waitFor({ state: 'visible', timeout }).catch(() => {});
@@ -346,7 +346,7 @@ export class CurrencyPage extends BasePage {
       const origin = new URL(this.page.url()).origin;
       console.log('  - "Rates" button not clickable; navigating to the Currency Rates action hash instead');
       await this.page.goto(
-        `${origin}/web?#action=63&active_id=${currencyId}&model=res.currency.rate&view_type=list`,
+        `${origin}/web?#action=${await this.xmlId('base.act_view_currency_rates')}&active_id=${currencyId}&model=res.currency.rate&view_type=list`,
         { waitUntil: 'domcontentloaded' }
       ).catch(() => {});
       // Same-document hash navigation needs a real load behind it - see openCurrenciesList.

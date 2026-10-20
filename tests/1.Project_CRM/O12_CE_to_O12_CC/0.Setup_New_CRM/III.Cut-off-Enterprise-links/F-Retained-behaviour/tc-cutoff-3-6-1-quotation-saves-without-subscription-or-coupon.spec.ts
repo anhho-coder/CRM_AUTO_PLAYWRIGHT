@@ -203,11 +203,11 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      console.log('  Navigating to Sales > Quotations (menu 266 -> action 389)');
+      console.log('  Navigating to Sales > Quotations');
 
-      // Navigate to Quotations screen
-      const quotationsHash = '#menu_id=266&action_id=389';
-      await platform.openAppAndAssertRendered(quotationsHash);
+      // Resolved live from the menu tree: the raw hash this used to carry (menu 266 / action 389)
+      // was measured on the crm-mig build that the 2026-10-13 rebuild replaced.
+      await platform.openAppAndAssertRendered('quotations');
       quotationsScreenAccessible = true;
       console.log('  OK - Quotations screen loaded');
 
@@ -217,7 +217,7 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
       if (!canCreate) {
         createButtonHidden = true;
         console.log('  RECORDED: CREATE button is hidden (known defect CRM-4383)');
-        console.log('  Will create via Sales > Orders menu instead (menu 262 -> action 386)');
+        console.log('  Will create via the Sales > Orders menu instead');
       } else {
         console.log('  WARNING: CREATE button was accessible (CRM-4383 may be fixed)');
       }
@@ -225,12 +225,11 @@ test.describe('CRM-12326 Part 2-3.6 - Retained behaviour after the cut', () => {
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      console.log('  Creating quotation via Sales > Orders (menu 262 -> action 386)');
+      console.log('  Creating quotation via Sales > Orders');
       console.log('  (Quotations CREATE is hidden due to CRM-4383, so using Orders instead)');
 
       // Navigate to Orders screen where CREATE is available
-      const ordersHash = '#menu_id=262&action_id=386';
-      await platform.openAppAndAssertRendered(ordersHash);
+      await platform.openAppAndAssertRendered('salesOrders');
       console.log('  OK - Orders/Quotations list loaded');
 
       // Click CREATE button

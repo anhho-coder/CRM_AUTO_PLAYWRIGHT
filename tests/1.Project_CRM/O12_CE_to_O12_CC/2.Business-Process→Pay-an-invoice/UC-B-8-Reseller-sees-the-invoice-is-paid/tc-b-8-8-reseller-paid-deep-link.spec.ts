@@ -164,8 +164,13 @@ test.describe('TC.-B.8.8 - Reseller opens the paid invoice via a direct deep-lin
       await resellerPortalPage.waitForDetailLineTable();
       const opened = await resellerPortalPage.getDetailInvoiceNumber();
       console.log(`  - Deep-link opened invoice: "${opened}"`);
-      expect(opened, 'The deep-link should open Invoice#1').toContain(invoiceNumber);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Invoice#1 opened via deep-link').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(opened, 'The deep-link should open Invoice#1').toContain(invoiceNumber);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Invoice#1 opened via deep-link', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Verification Point: "Pay Now" not displayed; "This invoice is paid" shown; Amount Due = $0', async () => {

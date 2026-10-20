@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12926 (Xray Manual Steps, 3 steps)
+ * Source version : updated 2026-10-13T11:38:58.417+0300 - re-check before trusting this spec
  * Evidence       : stdout only - this case drives no screen, so its logs ARE the artifact.
  *
  * Summary
@@ -183,6 +185,7 @@ await preSale.saveRaiseDialog();
 await preSale.waitForRaiseDialogClosed();
 const raised = await preSale.requestsForLead(leadId);
 requestId = raised[0].id;
+console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
 requestNumber = raised[0].number;
 unownedBefore = (await preSale.request(requestId)).assignedUserId === false;
 console.log(`  Request ${requestId} (${requestNumber}) created, unowned: ${unownedBefore}`);

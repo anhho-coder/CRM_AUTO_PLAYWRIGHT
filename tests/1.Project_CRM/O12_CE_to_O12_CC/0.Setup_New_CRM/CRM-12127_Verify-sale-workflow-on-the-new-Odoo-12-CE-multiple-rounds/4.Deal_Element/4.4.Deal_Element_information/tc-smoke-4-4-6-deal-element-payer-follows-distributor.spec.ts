@@ -24,7 +24,8 @@ import {
  *
  * Summary:
  *   Verify that when the Opportunity carries a Distributor, the Deal Element bills the Distributor -
- *   Payer, Invoice Address and Delivery Address switch to it while the End User stays the Company.
+ *   the Payer switches to the Distributor company and the Invoice / Delivery Address switch to that
+ *   Distributor's own invoice / delivery addresses, while the End User stays the Company.
  *
  * Source manual TC (pre-production): TC.Performance.1.1.4.12 "Deal Element Payer follows the Distributor".
  *
@@ -36,11 +37,17 @@ import {
  *     "COMPUTER GROSS S.p.A." (143294, Distributor grade) - a pair already carried together by
  *     migrated lead 879560, so both pass the form's `is_company` domains. The spec only POINTS
  *     at them from a new Opportunity; it never edits a migrated record.
- *   - EXPECTED RED - pre-production puts the Distributor itself in Payer, Invoice Address and
- *     Delivery Address. On O12 CE the two address fields come back as CHILD addresses of it
- *     ("COMPUTER GROSS S.p.A., Invoices" / ", Delivery Licenses" - run 2026-09-18-100823),
- *     which the migrated data shows too (DE044611). The baseline equality is kept, so this
- *     spec is EXPECTED TO FAIL on the two address checks.
+ *   - Invoice Address / Delivery Address resolve to the DISTRIBUTOR'S OWN ADDRESS BOOK, not to the
+ *     distributor company record. COMPUTER GROSS S.p.A. carries dedicated child addresses -
+ *     "Invoices" (Invoice address type) and "Delivery Licenses" (Shipping address type) - on
+ *     Production, pre-production and crm-mig alike, so the saved Deal Element reads back
+ *     "COMPUTER GROSS S.p.A., Invoices" and "COMPUTER GROSS S.p.A., Delivery Licenses"
+ *     (also visible on migrated data - DE044611).
+ *     Confirmed NOT A BUG on CRM-12950 (Khang Nguyen Thai Duy, 2026-10-02): "please update the test
+ *     to expect the distributor's invoice/delivery address when one exists". Expected values for
+ *     checks #2 and #3 updated accordingly on 2026-10-12.
+ *     The pre-production sibling (TC.Performance.4.4.6) keeps the distributor company itself,
+ *     because TEST-Distributor#1_Automation has no invoice or delivery address defined.
  *
  * Pre-conditions:
  *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
@@ -65,12 +72,12 @@ import {
  *
  * Verification Points:
  *   1. Payer = the Distributor of the Opportunity.
- *   2. Invoice Address = the Distributor.
- *   3. Delivery Address = the Distributor.
+ *   2. Invoice Address = the Distributor's invoice address - "COMPUTER GROSS S.p.A., Invoices".
+ *   3. Delivery Address = the Distributor's delivery address - "COMPUTER GROSS S.p.A., Delivery Licenses".
  *   4. End User stays the Company created for the Opportunity.
  *
  * Command to run:
- *   npx playwright test --grep "CRM-12370_1\.4\.12:" --project=MigSmoke
+ *   npx playwright test --grep "CRM-12370_4\.4\.6:" --project=MigSmoke
  */
 
 const TC = 'CRM-12370_4.4.6';
@@ -79,6 +86,10 @@ const TC = 'CRM-12370_4.4.6';
 const PARTNERS = {
   reseller: 'Palomar SRL',
   distributor: 'COMPUTER GROSS S.p.A.',
+  // COMPUTER GROSS S.p.A. has dedicated child addresses in its own address book, so the Deal
+  // Element resolves the two address fields to THEM, not to the company record - CRM-12950.
+  distributorInvoiceAddress: 'COMPUTER GROSS S.p.A., Invoices',
+  distributorDeliveryAddress: 'COMPUTER GROSS S.p.A., Delivery Licenses',
 };
 
 const SKIP_CLEANUP_OPP = process.env.SKIP_CLEANUP_OPP === 'true'; // default false = delete what this test created (house rule: crm-mig test data must be cleaned up).
@@ -180,16 +191,30 @@ test.describe(`${TC} - Payer follows the Distributor`, () => {
       const endUser = await dealElementPage.getFieldPartnerName('partner_end_user_id');
 
       record('Payer = Opportunity Distributor', PARTNERS.distributor, payer);
-      record('Invoice Address = Opportunity Distributor', PARTNERS.distributor, invoiceAddress);
-      record('Delivery Address = Opportunity Distributor', PARTNERS.distributor, deliveryAddress);
+      record(
+        "Invoice Address = the Distributor's invoice address",
+        PARTNERS.distributorInvoiceAddress,
+        invoiceAddress
+      );
+      record(
+        "Delivery Address = the Distributor's delivery address",
+        PARTNERS.distributorDeliveryAddress,
+        deliveryAddress
+      );
       record('End User = Opportunity Company', oppCompany, endUser);
       printVerify();
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Payer / addresses read back`);
 
       expect(payer, 'the Distributor pays, so the Payer is the Distributor').toBe(PARTNERS.distributor);
-      expect(invoiceAddress, 'the invoice goes to the Distributor').toBe(PARTNERS.distributor);
-      expect(deliveryAddress, 'the delivery goes to the Distributor').toBe(PARTNERS.distributor);
+      expect(
+        invoiceAddress,
+        "the invoice goes to the Distributor's invoice address"
+      ).toBe(PARTNERS.distributorInvoiceAddress);
+      expect(
+        deliveryAddress,
+        "the delivery goes to the Distributor's delivery address"
+      ).toBe(PARTNERS.distributorDeliveryAddress);
       expect(endUser, 'the End User stays the Company of the Opportunity').toBe(oppCompany);
     });
   });

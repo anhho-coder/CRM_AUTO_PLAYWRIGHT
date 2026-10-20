@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: new
  * Automation-Date: 2026-09-23
+ * Source TC      : CRM-13079 (Xray Manual Steps, 9 steps)
+ * Source version : updated 2026-10-06T12:36:06.423+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -210,6 +212,7 @@ test.describe('CRM-12135_2.6 - A request carries a Ticket Type with exactly the 
         const raised = await preSale.requestsForLead(leadId);
         expect(raised.length, 'the raise should have created exactly one request').toBeGreaterThanOrEqual(1);
         requestIdA = raised[0].id;
+        console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestIdA)}`);
         console.log(`  Request A id     : ${requestIdA} (${raised[0].number})`);
       });
 
@@ -237,6 +240,7 @@ test.describe('CRM-12135_2.6 - A request carries a Ticket Type with exactly the 
         // produced "Online technical assistance should map to Technical assistance (got
         // Deployment / POC session)", A's type, on the 2026-09-24 run.
         requestIdB = raised[0].id;
+        console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestIdB)}`);
         console.log(`  Request B id     : ${requestIdB} (${raised[0].number})`);
       });
 

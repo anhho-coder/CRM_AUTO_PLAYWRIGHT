@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Both
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12918 (Xray Manual Steps, 5 steps)
+ * Source version : updated 2026-10-06T12:35:09.020+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -223,6 +225,7 @@ await test.step(STEP.s3, async () => {
   const requests = await preSale.requestsForLead(leadId);
   if (requests.length > 0) {
     requestId = requests[0].id;
+    console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
     contextBefore = await preSale.requestDealContext(requestId);
     console.log(`  Request ${requestId} context at raise time (via API):`);
     console.log(`    - crm_lead_ref         : ${contextBefore.crm_lead_ref}`);

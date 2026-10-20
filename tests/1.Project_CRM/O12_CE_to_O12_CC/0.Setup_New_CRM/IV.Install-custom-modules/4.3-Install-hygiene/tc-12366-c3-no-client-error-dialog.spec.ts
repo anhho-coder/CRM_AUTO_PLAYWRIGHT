@@ -91,15 +91,15 @@ test.describe('CRM-12366 4.3.3 - No Odoo Client Error dialogs on screens', () =>
 
       const dialogsFound: DialogEvent[] = [];
       const screensToCheck = [
-        { name: 'Sales Report', hash: MigPlatformPage.HASH.salesReport },
-        { name: 'Contacts', hash: MigPlatformPage.HASH.contacts },
-        { name: 'Opportunities', hash: MigPlatformPage.HASH.opportunitiesList },
-        { name: 'CRM', hash: MigPlatformPage.HASH.crm },
-        { name: 'Invoicing', hash: MigPlatformPage.HASH.invoicing },
+        { name: 'Sales Report', key: 'salesReport' },
+        { name: 'Contacts', key: 'contacts' },
+        { name: 'Opportunities', key: 'opportunitiesList' },
+        { name: 'CRM', key: 'crm' },
+        { name: 'Invoicing', key: 'invoicing' },
       ];
 
       for (const screen of screensToCheck) {
-        const url = `${baseUrl_mig}${screen.hash}`;
+        const url = await platformPage.appUrlFor(screen.key);
         console.log(`  Navigating to ${screen.name}...`);
 
         try {
@@ -107,7 +107,7 @@ test.describe('CRM-12366 4.3.3 - No Odoo Client Error dialogs on screens', () =>
           // every screen burns the full pageLoad budget - 5 screens x 240s is exactly the 20-minute
           // test timeout this spec used to hit AFTER printing its VERIFY block.
           // openAppAndMeasureMs waits for the action to finish rendering, the real readiness signal.
-          const loadMs = await platformPage.openAppAndMeasureMs(screen.hash);
+          const loadMs = await platformPage.openAppAndMeasureMs(screen.key);
           console.log(`    rendered in ${loadMs} ms`);
           await page.waitForTimeout(CommonUtils.waitTimes.standard);
 

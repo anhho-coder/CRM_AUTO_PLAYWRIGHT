@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - Server Capacity opens cleanly and fast', (
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.serverCapacity);
+      ms = await platform.openAppAndMeasureMs('serverCapacity');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Server Capacity opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

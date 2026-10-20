@@ -37,13 +37,20 @@ import {
  * IS the migration finding and must never be softened into a pass.
  *
  * O12 CE deviations vs the pre-production scenario (MECHANICAL only):
- *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`).
+ *   - RE-RUN 2026-10-02 (CRM-13275): the login account is switched from
+ *     `users.sale_ic_thomas_crm_mig` to `users.admin_crm_mig`. The five columns Special Discount
+ *     Amount / Partner Discount / Partner Discount Amount / Subtotal After All Discounts /
+ *     Booked value (company currency) carry groups="nakivo_sale.operations" on BOTH bases;
+ *     thomas.semerich is not in that group on crm-mig, anh.ho is (res.groups 68, read 2026-10-02).
+ *     The pre-production baseline TC.Performance.6.5.x runs as `users.admin_crm` (anh.ho), so this
+ *     restores the baseline account, it does not relax the assertions.
+ *   - Login as the Admin account Anh Ho (`users.admin_crm_mig`).
  *   - The setup chain is driven by helper functions.
  *   - The run marker is "TEST ...".
  *   - Test timeout raised to config.timeouts.test.
  *
  * Pre-conditions:
- *   The O12 CE Migration server is reachable and the sales IC account Thomas Semerich can log in.
+ *   The O12 CE Migration server is reachable and the Admin account Anh Ho can log in.
  *
  * Steps (1-14 = the shared Opportunity + Deal Element chain):
  *   1-14. Login, create Opportunity, Deal Element, Quotation, Sales Order, and Invoice.
@@ -135,7 +142,7 @@ test.describe('CRM-12370_6.5.3 - O12 CE smoke: Invoice line - discount columns d
 
     await test.step(STEP.chain, async () => {
       console.log(`\n--- ${STEP.chain} ---`);
-      await loginToO12CE(page, users.sale_ic_thomas_crm_mig);
+      await loginToO12CE(page, users.admin_crm_mig);
       await openOpportunitiesListOnO12CE(page);
       opp = await createOpportunityOnO12CE(page, TC_ID);
       await addDealElementOnO12CE(page);

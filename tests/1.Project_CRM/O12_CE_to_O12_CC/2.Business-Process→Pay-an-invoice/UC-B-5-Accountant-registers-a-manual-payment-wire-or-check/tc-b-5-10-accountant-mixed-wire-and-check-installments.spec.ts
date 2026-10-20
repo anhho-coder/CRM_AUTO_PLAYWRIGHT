@@ -145,10 +145,15 @@ test.describe('TC.-B.5.10 - Accountant settles an invoice with mixed manual jour
       i1 = round2(setup.invoiceTotal / 2);
       i2 = round2(setup.invoiceTotal - i1);
       console.log(`  - InvoiceTotal#1 = ${setup.invoiceTotal} | i1 = ${i1} (${JOURNAL_WIRE}) | i2 = ${i2} (${JOURNAL_CHECK})`);
-      expect(round2(i1 + i2)).toBeCloseTo(setup.invoiceTotal, 2);
-      expect(i1, 'Installment#1 should be a positive partial (< total)').toBeGreaterThan(0);
-      expect(i1).toBeLessThan(setup.invoiceTotal);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(round2(i1 + i2)).toBeCloseTo(setup.invoiceTotal, 2);
+        expect(i1, 'Installment#1 should be a positive partial (< total)').toBeGreaterThan(0);
+        expect(i1).toBeLessThan(setup.invoiceTotal);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Use the account of Faye (accountant) to login successful, then open Invoice#1 (back-office)', async () => {

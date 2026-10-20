@@ -98,16 +98,26 @@ test.describe('TC.-B.6.9 - Reconciliation evidence + bidirectional payment-invoi
       const setup = await createValidatedInvoiceForPartialPayment(page, { oppName, contactName: leadName, companyEmail, internalNote });
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber; invoiceTotal1 = setup.invoiceTotal;
       console.log(`  - Invoice#1="${invoiceNumber1}" Total=${invoiceTotal1}`);
-      expect(invoiceTotal1).toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1).toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3: As Faye, pre-create a FULL standalone Payment#1 (Bank Transfer); capture Payment#1 URL + JournalItem#1', async () => {
       const res = await createStandalonePaymentAsFaye(page, { amount: invoiceTotal1.toFixed(2) });
       journalItem1 = res.journalItem; paymentUrl = res.paymentUrl;
       console.log(`  - Payment#1 URL=${paymentUrl} JournalItem#1=${journalItem1}`);
-      expect(paymentUrl).toMatch(/[#?&]id=\d+/);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - Payment#1 created');
+      let __verifyPassed = false;
+      try {
+        expect(paymentUrl).toMatch(/[#?&]id=\d+/);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - Payment#1 created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step("Steps to reproduce - Step 1: Still in Faye's session, open Invoice#1", async () => {

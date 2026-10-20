@@ -252,12 +252,18 @@ test.describe('TC.-A.6.3 - Confirm an approved Quotation to a Sales Order', () =
       await managerQuotationPage.dismissErrorDialogWithRetry();
       await managerQuotationPage.waitForFormView(CommonUtils.waitTimes.pageLoad);
 
-      const approval = await managerQuotationPage.verifyApprovalSuccess();
-      expect(
-        approval.approved,
-        'The approval should be successful before confirming: APPROVE gone and a post-approval action available'
-      ).toBeTruthy();
-      console.log('✓ Approval successful - proceeding to CONFIRM');
+      let __verifyPassed = false;
+      try {
+        const approval = await managerQuotationPage.verifyApprovalSuccess();
+        expect(
+          approval.approved,
+          'The approval should be successful before confirming: APPROVE gone and a post-approval action available'
+        ).toBeTruthy();
+        console.log('✓ Approval successful - proceeding to CONFIRM');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(managerPage, testInfo, { name: 'TC.-A.6.3 - Approval success - verify', passed: __verifyPassed }).catch(() => {});
+      }
 
       console.log('Step run 6: Pressing CONFIRM to confirm the Quotation to a Sales Order');
       await managerQuotationPage.clickConfirm();
@@ -269,14 +275,19 @@ test.describe('TC.-A.6.3 - Confirm an approved Quotation to a Sales Order', () =
       await managerQuotationPage.waitForFormView(CommonUtils.waitTimes.pageLoad);
 
       // Verification: the Quotation is confirmed to a Sales Order
-      console.log('Verification: Confirming the Quotation became a Sales Order');
-      const result = await managerQuotationPage.verifyConfirmedToSalesOrder();
-      await CommonUtils.captureAndAttachScreenshot(managerPage, testInfo, 'TC.-A.6.3 - Quotation confirmed to Sales Order');
-      expect(
-        result.confirmed,
-        'The Quotation should be confirmed to a Sales Order (status "Sales Order", or CONFIRM gone and LOCK visible)'
-      ).toBeTruthy();
-      console.log('✅ Quotation confirmed to a Sales Order successfully');
+      let __verifyPassed2 = false;
+      try {
+        console.log('Verification: Confirming the Quotation became a Sales Order');
+        const result = await managerQuotationPage.verifyConfirmedToSalesOrder();
+        expect(
+          result.confirmed,
+          'The Quotation should be confirmed to a Sales Order (status "Sales Order", or CONFIRM gone and LOCK visible)'
+        ).toBeTruthy();
+        console.log('✅ Quotation confirmed to a Sales Order successfully');
+        __verifyPassed2 = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(managerPage, testInfo, { name: 'TC.-A.6.3 - Quotation confirmed to Sales Order', passed: __verifyPassed2 }).catch(() => {});
+      }
     });
   });
 });

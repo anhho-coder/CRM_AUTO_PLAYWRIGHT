@@ -1375,4 +1375,54 @@ export class ResellerPortalPage extends BasePage {
     }
     return false;
   }
+
+  // ─── pre-sale-7.14.1.1: a portal user must not reach internal SE Support requests ───
+  // Any link / button on the portal page that would expose an SE request (Tickets, SE support, Request).
+  private readonly seRequestElements = () =>
+    this.page.locator("xpath=//main//*[self::a or self::button][contains(translate(normalize-space(.),'TICKETSUPPORQ','ticketsupporq'),'ticket') or contains(translate(normalize-space(.),'SESUPPORT','sesupport'),'se support') or contains(translate(normalize-space(.),'REQUEST','request'),'request se')]")
+      .or(this.page.locator('main a:has-text("Ticket"), main button:has-text("Ticket"), main a:has-text("SE support"), main button:has-text("SE support")'));
+
+  /** Labels of any SE-request / Tickets element on the current portal page ([] when none). */
+  async getSERequestElementLabels(): Promise<string[]> {
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    const raw = await this.seRequestElements().allTextContents().catch(() => [] as string[]);
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /**
+   * From the portal session, try to open an internal backend record URL directly and report what the
+   * portal user got: the final URL, an excerpt of the page text, and whether `probeText` (e.g. the
+   * request Subject) is visible anywhere on it.
+   */
+  async tryOpenBackendRecord(url: string, probeText: string): Promise<{ finalUrl: string; excerpt: string; probeVisible: boolean }> {
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const body = ((await this.page.locator('body').innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    return { finalUrl: this.page.url(), excerpt: body.slice(0, 200), probeVisible: body.includes(probeText) };
+  }
+
+  /**
+   * Is the signed-in account a PORTAL-ONLY user? Opens the backend root `<origin>/web`: a portal user is
+   * sent back to the portal (/my) or the login page; an internal user gets the backend web client.
+   * Returns the landing URL and, for a backend user, the name in the top bar.
+   */
+  async probeBackendAccess(): Promise<{ portalOnly: boolean; landedOn: string; topbarUser: string }> {
+    const origin = new URL(this.page.url()).origin;
+    await this.page.goto(`${origin}/web`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const landedOn = this.page.url();
+    const topbar = this.page.locator("xpath=//*[contains(@class,'oe_topbar_name')]").or(this.page.locator('.oe_topbar_name')).first();
+    const topbarUser = ((await topbar.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    const portalOnly = /\/my(\/|\?|#|$)|\/web\/login/.test(landedOn) || topbarUser === '';
+    console.log(`  - Backend probe: landed on ${landedOn} | top-bar user: ${topbarUser || '(none - not a backend session)'}`);
+    return { portalOnly, landedOn, topbarUser };
+  }
+
+  /** Go (back) to the portal home /my and wait for it to be ready. */
+  async gotoPortalHome(): Promise<void> {
+    const origin = new URL(this.page.url()).origin;
+    await this.page.goto(`${origin}/my`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await this.waitForPortalReady();
+  }
 }

@@ -9,8 +9,11 @@ import { CommonUtils } from '@helpers/common.utils';
  * Automation-Type: new
  * Automation-Date: 2026-09-17
  *
+ * Manual TC cross-reference: TC.Performance.1.1.5.21 - the id this case carried before the
+ * section renumber.
+ *
  * Command to run:
- * npx playwright test --grep "TC\\.Performance\\.1\\.1\\.5\\.21:" --project=SalesReport_Performance
+ * npx playwright test --grep "TC\\.Performance\\.5\\.4\\.5:" --project=SalesReport_Performance
  *
  * Objective: Verify that an Opportunity carrying a Reseller and a Distributor produces a Quotation whose Reseller and Distributor are those same two partners, and whose contact fields stay empty because neither partner record carries a contact.
  *
@@ -25,7 +28,7 @@ import { CommonUtils } from '@helpers/common.utils';
  *    - Salesperson    = cleared
  *    - Created manually = FALSE
  *    - Reseller       = TEST-Reseller#1_Automation_Basic
- *    - Distributor    = TEST-Distributor#1_Automation
+ *    - Distributor    = COMPUTER GROSS S.p.A.
  *    - Lead form      = License (CRM Developer tab)
  * 3. Press SAVE and wait until Odoo has created the Company/Contact from the e-mail domain
  * 4. Press "DEAL ELEMENT", select Pricelist = Public Pricelist_USD (USD) and Payment Term =
@@ -104,7 +107,10 @@ test.describe(`${TC} - The Reseller and the Distributor on the Quotation match t
       paymentTerm: 'Immediate Payment',
       product: 'NAKIVO Backup',
       reseller: 'TEST-Reseller#1_Automation_Basic',
-      distributor: 'TEST-Distributor#1_Automation',
+      // Aligned with TC.Performance.4.4.6 / 5.4.14 so the whole distributor family reads against
+      // the same partner - see CRM-12950. The two contact checks below are UNCHANGED: a Distributor
+      // CONTACT is carried only when the Opportunity set one, and this case sets none.
+      distributor: 'COMPUTER GROSS S.p.A.',
     };
 
     // The Company Odoo creates for the Opportunity out of the e-mail domain; every

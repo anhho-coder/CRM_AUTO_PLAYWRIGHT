@@ -125,9 +125,14 @@ test.describe('TC.-B.5.6 - Accountant registers a partial manual payment (Bank C
       partialAmount = round2(setup.invoiceTotal / 2);
       remaining = round2(setup.invoiceTotal - partialAmount);
       console.log(`  - InvoiceTotal#1 = ${setup.invoiceTotal} | PartialAmount = ${partialAmount} | remaining = ${remaining}`);
-      expect(partialAmount, 'PartialAmount should be a positive partial (< total)').toBeGreaterThan(0);
-      expect(partialAmount, 'PartialAmount should be less than the full total').toBeLessThan(setup.invoiceTotal);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(partialAmount, 'PartialAmount should be a positive partial (< total)').toBeGreaterThan(0);
+        expect(partialAmount, 'PartialAmount should be less than the full total').toBeLessThan(setup.invoiceTotal);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Use the account of Faye (accountant) to login successful, then open Invoice#1 (back-office)', async () => {

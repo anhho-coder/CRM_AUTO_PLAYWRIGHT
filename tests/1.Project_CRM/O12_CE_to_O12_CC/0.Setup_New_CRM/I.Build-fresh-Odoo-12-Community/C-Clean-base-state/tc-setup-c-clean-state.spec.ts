@@ -112,8 +112,8 @@ test.describe('CRM-12325 Part 2-C - Clean base state', () => {
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      for (const [name, hash] of [['CRM', MigPlatformPage.HASH.crm], ['Settings', MigPlatformPage.HASH.settings]] as Array<[string, string]>) {
-        await platform.openAppAndAssertRendered(hash);
+      for (const [name, key] of [['CRM', 'crm'], ['Settings', 'settings']] as Array<[string, string]>) {
+        await platform.openAppAndAssertRendered(key);
         screenResults[name] = await platform.isErrorDialogVisible();
         console.log(`Step 3: ${name} errorDialog=${screenResults[name]}`);
       }

@@ -26,8 +26,15 @@ import { baseUrl } from '@config/users.config';
  */
 export class PaymentPage extends BasePage {
   // Invoicing module action deep-links (same targets as the Invoicing menu items).
-  private static readonly INVOICING_DASHBOARD_HASH = 'web#menu_id=148&action=305';      // Invoicing > Overview
-  private static readonly CUSTOMER_PAYMENTS_HASH = 'web#menu_id=164&action=224';         // Customers > Payments
+  // Were static constants holding raw ids (menu 148 / action 305, menu 164 / action 224). Those
+  // numbers open Payments / Tags / Invoices on crm-mig after the 2026-10-13 rebuild, so the hash is
+  // now built from XML ids resolved on whichever instance the test is driving.
+  private async invoicingDashboardHash(): Promise<string> {
+    return `web#menu_id=${await this.xmlId('account.menu_finance')}&action=${await this.xmlId('account.open_account_journal_dashboard_kanban')}`;  // Invoicing > Overview
+  }
+  private async customerPaymentsHash(): Promise<string> {
+    return `web#menu_id=${await this.xmlId('account.menu_action_account_payments_receivable')}&action=${await this.xmlId('account.action_account_payments')}`;  // Customers > Payments
+  }
 
   // ─── Locators (XPath primary, CSS / role fallback) ─────────────────────────
   private readonly createButton          = () => this.page.locator("xpath=//button[contains(@class,'o_list_button_add')]").or(this.page.getByRole('button', { name: /^Create$/i })).first();
@@ -104,7 +111,7 @@ export class PaymentPage extends BasePage {
    * app menu opens (menu_id=148, action=305). Mirrors the manual "Open the Invoicing module" step.
    */
   async openInvoicingModule(): Promise<void> {
-    await this.page.goto(`${baseUrl}${PaymentPage.INVOICING_DASHBOARD_HASH}`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${baseUrl}${await this.invoicingDashboardHash()}`, { waitUntil: 'domcontentloaded' });
     await this.dismissDiscardChangesDialog().catch(() => {}); // a prior readonly form should not block, but be safe
     await this.wait(CommonUtils.waitTimes.extraLong);
     await this.dismissErrorDialogWithRetry();
@@ -117,7 +124,7 @@ export class PaymentPage extends BasePage {
    * Mirrors the manual "Navigate to Customers > Payments" step.
    */
   async openCustomerPaymentsList(): Promise<void> {
-    await this.page.goto(`${baseUrl}${PaymentPage.CUSTOMER_PAYMENTS_HASH}`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${baseUrl}${await this.customerPaymentsHash()}`, { waitUntil: 'domcontentloaded' });
     await this.dismissDiscardChangesDialog().catch(() => {});
     await this.wait(CommonUtils.waitTimes.extraLong);
     await this.dismissErrorDialogWithRetry();
@@ -136,7 +143,7 @@ export class PaymentPage extends BasePage {
   async openCustomerPaymentsListFresh(timeout: number = CommonUtils.waitTimes.pageLoad): Promise<void> {
     console.log('  - Opening Invoicing > Customers > Payments (fresh)');
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${baseUrl}${PaymentPage.CUSTOMER_PAYMENTS_HASH}`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${baseUrl}${await this.customerPaymentsHash()}`, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await this.dismissErrorDialogWithRetry().catch(() => {});
     await this.waitForLoadingOverlayHidden(timeout).catch(() => {});

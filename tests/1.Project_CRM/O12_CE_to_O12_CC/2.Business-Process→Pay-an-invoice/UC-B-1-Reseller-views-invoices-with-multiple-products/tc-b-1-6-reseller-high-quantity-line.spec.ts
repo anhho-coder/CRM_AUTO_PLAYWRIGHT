@@ -99,18 +99,22 @@ test.describe('TC.-B.1.6 - Reseller views the high-quantity product line', () =>
     });
 
     await test.step('Steps to reproduce - Step 3: Locate the Product#1 line (the high-quantity line)', async () => {
-      const line = await resellerPortalPage.getDetailProductLine(product1.code);
-      expect(line, `Product#1 (${product1.code}) should be listed`).not.toBeNull();
-      const portalQty = qtyNum(line!.quantity);
-      const portalAmount = money(line!.amount);
-      const expectedAmount = product1.unitPrice * invoice.qty1;
-      console.log(`  - Product#1 ${product1.code}: Qty#1=${invoice.qty1} | portal qty=${portalQty} amount=${portalAmount} | expected=${expectedAmount.toFixed(2)}`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.1.6 - Reseller portal high-quantity line');
-
-      expect(invoice.qty1, 'Qty#1 should be a large quantity (> 1)').toBeGreaterThan(1);
-      expect(portalQty, 'Product#1 Quantity on the portal should equal Qty#1').toBe(invoice.qty1);
-      expect(portalAmount, 'Product#1 Amount should equal Qty#1 x Unit Price#1').toBeCloseTo(expectedAmount, 2);
-      console.log('✅ The high-quantity Product#1 line shows the correct quantity and amount');
+      let __verifyPassed = false;
+      try {
+        const line = await resellerPortalPage.getDetailProductLine(product1.code);
+        expect(line, `Product#1 (${product1.code}) should be listed`).not.toBeNull();
+        const portalQty = qtyNum(line!.quantity);
+        const portalAmount = money(line!.amount);
+        const expectedAmount = product1.unitPrice * invoice.qty1;
+        console.log(`  - Product#1 ${product1.code}: Qty#1=${invoice.qty1} | portal qty=${portalQty} amount=${portalAmount} | expected=${expectedAmount.toFixed(2)}`);
+        expect(invoice.qty1, 'Qty#1 should be a large quantity (> 1)').toBeGreaterThan(1);
+        expect(portalQty, 'Product#1 Quantity on the portal should equal Qty#1').toBe(invoice.qty1);
+        expect(portalAmount, 'Product#1 Amount should equal Qty#1 x Unit Price#1').toBeCloseTo(expectedAmount, 2);
+        console.log('✅ The high-quantity Product#1 line shows the correct quantity and amount');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.1.6 - Reseller portal high-quantity line', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

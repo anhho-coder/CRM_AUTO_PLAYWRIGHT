@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 import { recordAssignmentForDeferredVerify, recordAssignmentNonEmptyForDeferredVerify } from '@helpers/deferred-verify.helper';
@@ -974,8 +974,36 @@ export class LeadPage extends BasePage {
     // (root cause of CRM-2178_1.1.2.1 / CRM-671_2.1.4 hanging ~900s on an intercepted click).
     await this.dismissErrorDialog();
     await this.waitForLoadingOverlayHidden();
-    await this.crmDeveloperTab_targetLead().click();
+    // The waitFor above is bounded but the click was NOT, and with no `actionTimeout` in
+    // playwright.config.ts an unactionable tab makes `click()` wait forever - the hang the comment
+    // above says was already fixed, still live one line down. CRM-11806_1.3 died exactly here on
+    // 2026-10-16 ("Step 5: Click at CRM Developer tab", Test timeout 900000ms).
+    await this.clickTabBounded(this.crmDeveloperTab_targetLead(), 'CRM Developer (target lead)');
     await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Click a notebook tab under a hard budget, with one settle-and-retry and a forced last attempt.
+   *
+   * Shared by the "CRM Developer" tab clicks so neither can hang the run: an Odoo 12 notebook tab
+   * stays `visible` while the form re-renders underneath it, and a bare `click()` then blocks on
+   * actionability until the TEST timeout rather than failing.
+   */
+  private async clickTabBounded(tab: Locator, label: string): Promise<void> {
+    await tab.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async (first: Error) => {
+      console.log(`  ⚠ "${label}" was visible but not actionable; settling once and retrying`);
+      await this.wait(CommonUtils.waitTimes.standard * 3);
+      await this.dismissErrorDialog().catch(() => {});
+      await this.waitForLoadingOverlayHidden().catch(() => {});
+      await tab.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
+        await tab.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {
+          throw new Error(
+            `The "${label}" tab is on the form but cannot be clicked, even forced. ` +
+            `First attempt said: ${first.message.split('\n')[0]}`,
+          );
+        });
+      });
+    });
   }
 /**
    * Click CRM Developer tab
@@ -999,7 +1027,7 @@ export class LeadPage extends BasePage {
     // (root cause of CRM-2178_1.1.2.1 / CRM-671_2.1.4 hanging ~900s on an intercepted click).
     await this.dismissErrorDialog();
     await this.waitForLoadingOverlayHidden();
-    await this.crmDeveloperTab().first().click();
+    await this.clickTabBounded(this.crmDeveloperTab().first(), 'CRM Developer');
     await this.wait(300);
   }
 
@@ -2709,8 +2737,11 @@ export class LeadPage extends BasePage {
    */
   async navigateToMergedLeadWithAction682(leadUrl: string, leadId: string, loadingSpinnerTimeout: number = 30000): Promise<string> {
     // Replace action=149 with action=682 in leadUrl
-    const modifiedUrl = leadUrl.replace('action=149', 'action=682');
-    console.log(`Modified Lead URL with action=682: ${modifiedUrl}`);
+    const modifiedUrl = leadUrl.replace(
+      `action=${await this.xmlId('crm.crm_lead_all_leads')}`,
+      `action=${await this.xmlId('filter_mail.crm_lead_all_archive_leads')}`,
+    );
+    console.log(`Modified Lead URL (filter_mail.crm_lead_all_archive_leads): ${modifiedUrl}`);
     
     try {
       // Use location.replace for hash-based navigation in Odoo
@@ -2733,7 +2764,7 @@ export class LeadPage extends BasePage {
       await this.formView().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
       
       console.log(`Current URL after navigation: ${this.page.url()}`);
-      console.log('✓ Lead opened successfully with action=682\n');
+      console.log('✓ Lead opened successfully via filter_mail.crm_lead_all_archive_leads\n');
       
       // Bring browser window to front
       await this.page.bringToFront();

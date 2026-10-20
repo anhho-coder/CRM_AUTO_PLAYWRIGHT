@@ -114,10 +114,15 @@ test.describe('TC.-B.6.2 - Partial outstanding credit leaves the invoice Open', 
       partial = round2(invoiceTotal1 * 0.4);
       remainder = round2(invoiceTotal1 - partial);
       console.log(`  - Invoice#1="${invoiceNumber1}" InvoiceTotal#1=${invoiceTotal1} | partial=${partial} remainder=${remainder}`);
-      expect(invoiceTotal1, 'InvoiceTotal#1 should be > 0').toBeGreaterThan(0);
-      expect(partial, 'partial should be > 0 and < InvoiceTotal#1').toBeGreaterThan(0);
-      expect(partial).toBeLessThan(invoiceTotal1);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1, 'InvoiceTotal#1 should be > 0').toBeGreaterThan(0);
+        expect(partial, 'partial should be > 0 and < InvoiceTotal#1').toBeGreaterThan(0);
+        expect(partial).toBeLessThan(invoiceTotal1);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3: As Faye, pre-create a PARTIAL standalone payment Payment#1 and read JournalItem#1', async () => {

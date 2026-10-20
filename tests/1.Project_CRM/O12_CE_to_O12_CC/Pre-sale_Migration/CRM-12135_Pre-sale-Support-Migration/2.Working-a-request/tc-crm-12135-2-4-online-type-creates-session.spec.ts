@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Salesperson
  * Automation-Type: automation sync from manual
  * Automation-Date: 2026-09-24
+ * Source TC      : CRM-12928 (Xray Manual Steps, 7 steps)
+ * Source version : updated 2026-10-06T12:35:56.563+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -220,6 +222,7 @@ const marker = MigPreSalePage.marker('TC-14', runId);
           const allRequests = await preSale.requestsForLead(leadId);
           onlineRequest = allRequests[0];
           onlineRequestId = onlineRequest.id;
+          console.log(`  Request URL: ${MigPreSalePage.requestUrl(onlineRequestId)}`);
           console.log(`  [WORKAROUND] Retrieved online request via API: id=${onlineRequestId}, meetingUrl=${onlineRequest.meetingUrl || '(none)'}`);
         });
 
@@ -274,6 +277,7 @@ const marker = MigPreSalePage.marker('TC-14', runId);
           offlineRequest = allRequests.find((r) => r.id !== onlineRequestId);
           if (offlineRequest) {
             offlineRequestId = offlineRequest.id;
+            console.log(`  Request URL: ${MigPreSalePage.requestUrl(offlineRequestId)}`);
           }
           console.log(`  [WORKAROUND] Retrieved ${allRequests.length} request(s) for Opportunity via API.`);
           console.log(`  Offline request ${offlineRequestId}: meeting URL = ${offlineRequest?.meetingUrl || '(none)'}`);

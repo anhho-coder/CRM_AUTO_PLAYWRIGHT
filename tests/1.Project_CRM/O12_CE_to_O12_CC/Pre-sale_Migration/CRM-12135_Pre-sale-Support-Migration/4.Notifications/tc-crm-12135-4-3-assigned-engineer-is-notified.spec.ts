@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12934 (Xray Manual Steps, 5 steps)
+ * Source version : updated 2026-10-06T12:36:45.933+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -157,6 +159,7 @@ test.describe('CRM-12135_4.3 - The assigned engineer is notified', () => {
       const requestId = raised[0].id;
       const ticketNumber = raised[0].number;
       console.log(`  Setup: Opportunity ${leadId} raised request ${requestId} (${ticketNumber}) - unassigned`);
+      console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
 
       // ========== Step 1: Open the request and note its Ticket number ==========
       let assignedEngineerName = '';

@@ -316,8 +316,13 @@ test.describe('TC.-B.6.1 - Accountant reconciles bank statement', () => {
       await paymentPage.setActuallyReceived(amountStr);
       console.log(`  - Payment inputs set: partner="${reseller}", amount=${amountStr}, journal="${journal}", actually received=${amountStr}`);
       const partnerVal = await paymentPage.getPartnerValue();
-      expect(partnerVal, 'Payment Partner should be the Reseller').toContain('TEST-Reseller');
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - Payment form filled').catch(() => {});
+      let __verifyPassed = false;
+      try {
+        expect(partnerVal, 'Payment Partner should be the Reseller').toContain('TEST-Reseller');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - Payment form filled', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3 - Step 6: Click "Save"', async () => {

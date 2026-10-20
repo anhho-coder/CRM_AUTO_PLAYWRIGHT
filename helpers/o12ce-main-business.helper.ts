@@ -1127,7 +1127,26 @@ export async function sweepMigLeftoversAfterAll(browser: Browser, tcId: string):
   }
 }
 
-export async function teardownMigRecords(page: Page, skip: boolean): Promise<void> {
+export async function teardownMigRecords(
+  page: Page,
+  skip: boolean,
+  /**
+   * `asAdmin: true` re-signs in as `users.admin_crm_mig` BEFORE the RPC unlink.
+   *
+   * WHY IT IS NEEDED. The cleanup below already deletes over JSON-RPC
+   * (`MigPlatformPage.callKw(model, 'unlink', ...)`) - it is not a UI delete. But `callKw` runs in
+   * the browser session of whoever the spec logged in as, so a spec running as a Salesperson gets
+   *     "Sorry, you are not allowed to delete this document. Only users with the following access
+   *      level are currently allowed to do that"
+   * and the record survives. Observed on 2026-10-16 for CRM-11806_1.1, which runs as
+   * users.sale_ic_thomas_crm_mig.
+   *
+   * DEFAULT IS UNCHANGED (`false`), because this helper is shared with other O12 suites - only the
+   * CRM-11806 Subscriptions suite opts in. The re-login is skipped entirely when `skip` is true or
+   * when there is nothing queued, so a clean run pays nothing for it.
+   */
+  opts: { asAdmin?: boolean } = {},
+): Promise<void> {
   if (skip) {
     const kept = listMigCreatedRecords();
     console.log(
@@ -1137,6 +1156,22 @@ export async function teardownMigRecords(page: Page, skip: boolean): Promise<voi
     );
     resetMigCreatedRecords();
     return;
+  }
+  if (opts.asAdmin && listMigCreatedRecords().length > 0) {
+    try {
+      const login = new LoginPageMig(page);
+      await page.context().clearCookies();
+      await login.navigateTo(baseUrl_mig);
+      await login.login(users.admin_crm_mig.username, users.admin_crm_mig.password, CommonUtils.waitTimes.login);
+      console.log(`[mig-cleanup] re-signed in as ${users.admin_crm_mig.username} for the RPC unlink`);
+    } catch (e: any) {
+      // Say it, do not swallow it: without the admin session the unlink below will be refused and
+      // the records stay on the base.
+      console.log(
+        `[mig-cleanup] COULD NOT re-sign in as admin (${String(e?.message ?? e).slice(0, 180)}). ` +
+        'The unlink will run as the current user and may be refused - expect leftovers.',
+      );
+    }
   }
   await cleanupMigRecordsOnO12CE(page);
 }

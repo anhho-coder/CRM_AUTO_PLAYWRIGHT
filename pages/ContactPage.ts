@@ -11,6 +11,8 @@ export class ContactPage extends BasePage {
   private readonly createButton = () => this.page.getByRole('button', { name: /CREATE/i });
   
   // Form view locators (using XPath for new locators as per instructions)
+  private readonly individualTypeLabel = () => this.page.locator('//div[@name="company_type"]//label[normalize-space()="Individual"]').or(this.page.locator('div[name="company_type"] label:has-text("Individual")')).first();
+  private readonly individualTypeRadio = () => this.page.locator('//div[@name="company_type"]//input[@type="radio"][@data-value="person"]').or(this.page.locator('div[name="company_type"] input[type="radio"][data-value="person"]')).first();
   private readonly companyTypeRadio = () => this.page.locator('//label[contains(text(), "Company")]//input[@type="radio"]').or(this.page.locator('//input[@type="radio"][@name="company_type"][@value="company"]')).or(this.page.locator('//label[@class=\'custom-control-label o_form_label\'][normalize-space()=\'Company\']')).first();
   private readonly companyCheckbox = () => this.page.locator('//input[@type="checkbox" and contains(@name, "is_company")]').first();
   private readonly contactNameInput = () => this.page.getByRole('textbox', { name: 'Name' }).or(this.page.locator('input[name="name"]')).first();
@@ -239,6 +241,20 @@ export class ContactPage extends BasePage {
       return true;
     }
     return false;
+  }
+
+  /**
+   * Select Company Type = Individual (Odoo 12 radio widget: the label is clickable, the input
+   * carries data-value="person"). Clicks only when not already selected; returns the final state.
+   */
+  async selectIndividualType(): Promise<boolean> {
+    const label = this.individualTypeLabel();
+    await label.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    if (!(await this.individualTypeRadio().isChecked().catch(() => false))) {
+      await label.click({ force: true });
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return await this.individualTypeRadio().isChecked().catch(() => false);
   }
 
   /**

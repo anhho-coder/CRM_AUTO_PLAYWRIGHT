@@ -138,9 +138,14 @@ test.describe('TC.-B.5.3 - Accountant registers a manual payment (Cash)', () => 
       setup = await createValidatedInvoiceForPartialPayment(page, { oppName, contactName: leadName, companyEmail, internalNote });
       createdOppUrl = setup.oppUrl;
       console.log(`  - Invoice#1 = "${setup.invoiceNumber}" | InvoiceTotal#1 = ${setup.invoiceTotal} | URL: ${setup.invoiceUrl}`);
-      expect(setup.invoiceNumber, 'Invoice#1 should be assigned after VALIDATE').toBeTruthy();
-      expect(setup.invoiceTotal, 'InvoiceTotal#1 should be a positive number').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(setup.invoiceNumber, 'Invoice#1 should be assigned after VALIDATE').toBeTruthy();
+        expect(setup.invoiceTotal, 'InvoiceTotal#1 should be a positive number').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Use the account of Faye (accountant) to login successful, then open Invoice#1 (back-office)', async () => {
@@ -188,8 +193,13 @@ test.describe('TC.-B.5.3 - Accountant registers a manual payment (Cash)', () => 
     await test.step('Step 6: (No "Payment Difference" appears, because the full amount is paid in one go)', async () => {
       const diffVisible = await invoicePage.isPaymentDifferenceVisible();
       console.log(`  - Payment Difference field visible: ${diffVisible} (expected false for a full payment)`);
-      expect(diffVisible, 'Step 6: No "Payment Difference" should appear when the full amount is paid in one go').toBeFalsy();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `TC.-B.5.3 - Register Payment (${JOURNAL}, full amount, no Payment Difference)`);
+      let __verifyPassed = false;
+      try {
+        expect(diffVisible, 'Step 6: No "Payment Difference" should appear when the full amount is paid in one go').toBeFalsy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `TC.-B.5.3 - Register Payment (${JOURNAL}, full amount, no Payment Difference)`, passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 7: Click "Validate" -> the full payment is recorded', async () => {

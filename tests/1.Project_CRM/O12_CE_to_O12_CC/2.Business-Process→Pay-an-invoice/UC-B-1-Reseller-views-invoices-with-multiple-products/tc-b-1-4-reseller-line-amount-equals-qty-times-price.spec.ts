@@ -98,17 +98,22 @@ test.describe('TC.-B.1.4 - Each product line Amount equals Quantity x Unit Price
     });
 
     await test.step('Steps to reproduce - Step 3: For each product line, read Quantity, Unit Price and Amount', async () => {
-      for (const pr of invoice.products) {
-        const line = await resellerPortalPage.getDetailProductLine(pr.code);
-        expect(line, `Product ${pr.code} should be listed`).not.toBeNull();
-        const qty = qtyNum(line!.quantity);
-        const amount = money(line!.amount);
-        const expected = pr.unitPrice * qty;
-        console.log(`  - ${pr.code}: qty=${qty} unitPrice=${pr.unitPrice} amount=${amount} | expected qty*price=${expected.toFixed(2)}`);
-        expect(amount, `Amount for ${pr.code} should equal Quantity x Unit Price`).toBeCloseTo(expected, 2);
+      let __verifyPassed = false;
+      try {
+        for (const pr of invoice.products) {
+          const line = await resellerPortalPage.getDetailProductLine(pr.code);
+          expect(line, `Product ${pr.code} should be listed`).not.toBeNull();
+          const qty = qtyNum(line!.quantity);
+          const amount = money(line!.amount);
+          const expected = pr.unitPrice * qty;
+          console.log(`  - ${pr.code}: qty=${qty} unitPrice=${pr.unitPrice} amount=${amount} | expected qty*price=${expected.toFixed(2)}`);
+          expect(amount, `Amount for ${pr.code} should equal Quantity x Unit Price`).toBeCloseTo(expected, 2);
+        }
+        console.log('✅ Every product line Amount = Quantity x Unit Price');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-B.1.4 - Reseller portal invoice line amounts', passed: __verifyPassed }).catch(() => {});
       }
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-B.1.4 - Reseller portal invoice line amounts');
-      console.log('✅ Every product line Amount = Quantity x Unit Price');
     });
   });
 });

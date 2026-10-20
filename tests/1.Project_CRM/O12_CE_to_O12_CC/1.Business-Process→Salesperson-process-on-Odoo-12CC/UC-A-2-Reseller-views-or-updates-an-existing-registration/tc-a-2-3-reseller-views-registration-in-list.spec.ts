@@ -108,19 +108,23 @@ test.describe('TC.-A.2.3 - Reseller views an existing registration in the My Opp
     });
 
     await test.step('Verification #1: The Opp Name #1 row shows Name, Contact and Stage = New', async () => {
-      const listed = await resellerPortalPage.isOpportunityListed(oppName);
-      expect(listed, `Opp Name #1 "${oppName}" should be listed on My Opportunities`).toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        const listed = await resellerPortalPage.isOpportunityListed(oppName);
+        expect(listed, `Opp Name #1 "${oppName}" should be listed on My Opportunities`).toBeTruthy();
 
-      const row = await resellerPortalPage.getOpportunityRowData(oppName);
-      console.log(`  - Row data: ${JSON.stringify(row)}`);
+        const row = await resellerPortalPage.getOpportunityRowData(oppName);
+        console.log(`  - Row data: ${JSON.stringify(row)}`);
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'TC.-A.2.3 - Reseller views registration in My Opportunities list');
-
-      expect(row, 'The row for Opp Name #1 should be found').not.toBeNull();
-      expect(row!.name, 'Row Name column should show Opp Name #1').toContain(oppName);
-      expect(row!.contact, 'Row Contact column should show the contact name').toContain(leadName);
-      expect(row!.stage, 'Row Stage column should be New').toContain('New');
-      console.log('✅ Reseller can see the existing registration row with the expected columns');
+        expect(row, 'The row for Opp Name #1 should be found').not.toBeNull();
+        expect(row!.name, 'Row Name column should show Opp Name #1').toContain(oppName);
+        expect(row!.contact, 'Row Contact column should show the contact name').toContain(leadName);
+        expect(row!.stage, 'Row Stage column should be New').toContain('New');
+        console.log('✅ Reseller can see the existing registration row with the expected columns');
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'TC.-A.2.3 - Reseller views registration in My Opportunities list', passed: __verifyPassed }).catch(() => {});
+      }
     });
   });
 });

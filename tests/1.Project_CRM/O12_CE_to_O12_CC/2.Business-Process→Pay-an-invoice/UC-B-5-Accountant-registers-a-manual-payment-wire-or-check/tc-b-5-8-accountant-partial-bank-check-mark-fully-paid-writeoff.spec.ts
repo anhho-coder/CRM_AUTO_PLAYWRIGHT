@@ -123,9 +123,14 @@ test.describe('TC.-B.5.8 - Accountant registers a partial check payment then Mar
       createdOppUrl = setup.oppUrl;
       partialAmount = round2(setup.invoiceTotal / 2);
       console.log(`  - InvoiceTotal#1 = ${setup.invoiceTotal} | PartialAmount = ${partialAmount} | write-off = ${round2(setup.invoiceTotal - partialAmount)}`);
-      expect(partialAmount).toBeGreaterThan(0);
-      expect(partialAmount).toBeLessThan(setup.invoiceTotal);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(partialAmount).toBeGreaterThan(0);
+        expect(partialAmount).toBeLessThan(setup.invoiceTotal);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Step 1: Use the account of Faye (accountant) to login successful, then open Invoice#1 (back-office)', async () => {

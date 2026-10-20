@@ -95,8 +95,13 @@ test.describe('TC.-B.6.5 - Unreconcile reverts the invoice to Open', () => {
       const setup = await createValidatedInvoiceForPartialPayment(page, { oppName, contactName: leadName, companyEmail, internalNote });
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber; invoiceTotal1 = setup.invoiceTotal;
       console.log(`  - Invoice#1="${invoiceNumber1}" Total=${invoiceTotal1}`);
-      expect(invoiceTotal1).toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1).toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3: As Faye, pre-create a FULL standalone Payment#1 and read JournalItem#1', async () => {
@@ -113,19 +118,30 @@ test.describe('TC.-B.6.5 - Unreconcile reverts the invoice to Open', () => {
     });
 
     await test.step('Steps to reproduce - Step 2: Click "Add" on JournalItem#1 (the invoice becomes Paid)', async () => {
-      const present = await invoicePage.isOutstandingCreditPresent(journalItem1);
-      expect(present, `Outstanding credits should list JournalItem#1 ("${journalItem1}")`).toBeTruthy();
-      const added = await invoicePage.addOutstandingCredit(journalItem1);
-      expect(added, 'Add JournalItem#1 should be clicked').toBeTruthy();
-      const status = await invoicePage.waitForInvoiceStatus('Paid');
-      console.log(`  - Invoice#1 after Add: "${status}"`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Invoice reconciled (Paid)');
-      expect(status, 'Invoice#1 should be Paid after the Add').toMatch(/Paid/i);
+      let __verifyPassed = false;
+      try {
+        const present = await invoicePage.isOutstandingCreditPresent(journalItem1);
+        expect(present, `Outstanding credits should list JournalItem#1 ("${journalItem1}")`).toBeTruthy();
+        const added = await invoicePage.addOutstandingCredit(journalItem1);
+        expect(added, 'Add JournalItem#1 should be clicked').toBeTruthy();
+        const status = await invoicePage.waitForInvoiceStatus('Paid');
+        console.log(`  - Invoice#1 after Add: "${status}"`);
+        expect(status, 'Invoice#1 should be Paid after the Add').toMatch(/Paid/i);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Invoice reconciled (Paid)', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Steps to reproduce - Step 3: Open the reconciled payment info popover and click "Unreconcile"', async () => {
       const done = await invoicePage.unreconcilePayment(journalItem1);
-      expect(done, 'Unreconcile should be clicked').toBeTruthy();
+      let __verifyPassed = false;
+      try {
+        expect(done, 'Unreconcile should be clicked').toBeTruthy();
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Steps to reproduce - Unreconcile button click - verify', passed: __verifyPassed }).catch(() => {});
+      }
       // Re-open the invoice so the reverted state renders in a clean DOM.
       await page.goto(invoiceUrl, { waitUntil: 'domcontentloaded' });
       await invoicePage.dismissErrorDialogWithRetry();

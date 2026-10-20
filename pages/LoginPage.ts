@@ -132,4 +132,14 @@ export class LoginPage extends BasePage {
       await this.wait(200);
     }
   }
+
+  /**
+   * Whether a sign-in form is on screen right now (the Email + Password textboxes of /web/login).
+   * Used to prove a navigation did NOT ask for a separate sign-in (pre-sale-7.11.1.1).
+   */
+  async isLoginFormVisible(): Promise<boolean> {
+    const email = await this.emailInput().isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false);
+    const pwd = await this.passwordInput().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false);
+    return email && pwd;
+  }
 }

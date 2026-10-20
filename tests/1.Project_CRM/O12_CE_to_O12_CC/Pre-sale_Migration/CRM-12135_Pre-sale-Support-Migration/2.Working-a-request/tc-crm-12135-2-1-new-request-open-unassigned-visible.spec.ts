@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: new
  * Automation-Date: 2026-09-21; Resync-Date: 2026-09-24
+ * Source TC      : CRM-12925 (Xray Manual Steps, 4 steps)
+ * Source version : updated 2026-10-06T12:35:42.800+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -192,6 +194,7 @@ await test.step(STEP.pre2, async () => {
     throw new Error(`Expected exactly 1 request, found ${raised.length}`);
   }
   requestId = raised[0].id;
+  console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
   console.log(`  Request ${requestId} created (number: ${raised[0].number})`);
 });
 await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'After request created');

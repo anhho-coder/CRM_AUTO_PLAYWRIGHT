@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer (pre_sales_engineer_crm_mig), then Manager (qa_se_manager account - deliberately not an administrator)
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12943 (Xray Manual Steps, 4 steps)
+ * Source version : updated 2026-10-06T12:37:28.183+0300 - re-check before trusting this spec
  * Evidence       : stdout only - this case drives no screen, so its logs ARE the artifact.
  *
  * Summary

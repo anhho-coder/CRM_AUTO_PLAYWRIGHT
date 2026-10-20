@@ -565,6 +565,10 @@ export class CommonUtils {
     elementVisibility: 30000,
     /** Element appear wait - 3 minutes (for complex operations) */
     elementAppear: 180000,
+    /** Email arrival in the crm-mig Mailpit sink - 3 minutes total poll budget (a real one lands in ~6 s) */
+    emailArrivalWait: 180000,
+    /** Mailpit poll interval - 5 seconds between two inbox searches */
+    emailPollInterval: 5000,
     /** Import Audience wait - 2 minutes */
     importAudience: 120000,
     /** Select Product Line wait - 4 seconds (for complex operations) */

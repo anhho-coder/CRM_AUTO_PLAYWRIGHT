@@ -8,6 +8,8 @@ import * as fs from 'fs';
 /**
  * Investments - Verify value of "Investment" field from a Source Lead to Target Lead
  * Test Case ID: CRM-3902_1.1.1
+ * Automation-Type: refactored
+ * Automation-Date: 2026-10-19
  *
  * Summary: Verify the value of "Investment" field from a Source Lead NOT to Target Lead
  *          after importing new audience using csv file
@@ -763,9 +765,9 @@ test.describe('CRM-3902_1.1.1 - Verify value of Investment field from Source Lea
     // ============================================================
 
     await test.step('Tear down Step 1: Launch URL_Investment#1 and delete Investment#1', async () => {
-      await page.goto(urlInvestment1);
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
-      await investmentPage.deleteCurrentRecord();
+      // Delete in a fresh tab: a same-tab goto() that differs only by #hash may leave the PREVIOUS record
+      // on screen, and deleteCurrentRecord() would then delete someone else's record (seen 2026-10-19).
+      await CommonUtils.deleteRecordByUrl(page, urlInvestment1, testInfo);
       console.log(`✓ Investment#1 deleted: ${investmentName1}`);
     });
 
@@ -774,9 +776,9 @@ test.describe('CRM-3902_1.1.1 - Verify value of Investment field from Source Lea
     });
 
     await test.step('Tear down Step 3: Launch URL_Investment#2 and delete Investment#2', async () => {
-      await page.goto(urlInvestment2);
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
-      await investmentPage.deleteCurrentRecord();
+      // Delete in a fresh tab: a same-tab goto() that differs only by #hash may leave the PREVIOUS record
+      // on screen, and deleteCurrentRecord() would then delete someone else's record (seen 2026-10-19).
+      await CommonUtils.deleteRecordByUrl(page, urlInvestment2, testInfo);
       console.log(`✓ Investment#2 deleted: ${investmentName2}`);
     });
 

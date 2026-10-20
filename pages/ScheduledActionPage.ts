@@ -4,7 +4,9 @@ import { CommonUtils } from '@/helpers/common.utils';
 
 /** The fields of a scheduled action that the exchange-rate cases read or restore. */
 export interface ScheduledActionState {
-  /** "Next Execution Date" exactly as rendered, e.g. "08/19/2026 05:15:16". */
+  /** "Action Name" exactly as rendered, e.g. "Currency Rates Update (OCA) daily". */
+  name: string;
+  /** "Next Execution Date" exactly as rendered, e.g. "08/19/2026 05:15:16" (alias: nextCall). */
   nextExecution: string;
   /** "Execute Every" interval number, e.g. "1". */
   intervalNumber: string;
@@ -12,6 +14,12 @@ export interface ScheduledActionState {
   intervalUnit: string;
   /** Whether "Repeat Missed" is ticked. */
   repeatMissed: boolean;
+  /** Optional: frequency as a combined string, e.g. "1 Days" (computed from intervalNumber + intervalUnit). */
+  frequency?: string;
+  /** Optional: alias for nextExecution, e.g. "08/19/2026 05:15:16". */
+  nextCall?: string;
+  /** Optional: whether the cron is active, read from the form's active toggle. */
+  isActive?: boolean;
 }
 
 /**
@@ -73,7 +81,7 @@ export class ScheduledActionPage extends BasePage {
     await this.discardFormIfInEditMode().catch(() => {});
     await this.dismissDiscardChangesDialog().catch(() => {});
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${origin}/web?#action=11&model=ir.cron&view_type=list&menu_id=4`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${origin}/web?#action=${await this.xmlId('base.ir_cron_act')}&model=ir.cron&view_type=list&menu_id=${await this.xmlId('base.menu_administration')}`, { waitUntil: 'domcontentloaded' });
     // A hash change alone is a same-document navigation, so the client can keep the previous screen on
     // display. The reload makes the boot into this action deterministic.
     await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -127,6 +135,7 @@ export class ScheduledActionPage extends BasePage {
       return ((await span.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
     };
 
+    const name = await this.getActionName();
     const nextExecution = await readField('nextcall');
     const intervalNumber = await readField('interval_number');
     let intervalUnit = '';
@@ -139,8 +148,26 @@ export class ScheduledActionPage extends BasePage {
     const box = this.checkboxInput('doall');
     const repeatMissed = await box.isChecked({ timeout: CommonUtils.waitTimes.long }).catch(() => false);
 
-    const state: ScheduledActionState = { nextExecution, intervalNumber, intervalUnit, repeatMissed };
-    console.log(`  ✓ Scheduled action state: Next Execution="${nextExecution}", Execute Every="${intervalNumber} ${intervalUnit}", Repeat Missed=${repeatMissed}`);
+    // Read the active status from the toggle button
+    const isActive = await this.page.evaluate(() => {
+      const toggle = document.querySelector('button[name="toggle_active"]');
+      if (!toggle) return false;
+      const statusSpan = toggle.querySelector('.o_stat_text.o_not_hover');
+      if (!statusSpan) return false;
+      return statusSpan.textContent?.toLowerCase().includes('on') || statusSpan.textContent?.toLowerCase().includes('active') || false;
+    }).catch(() => false);
+
+    const state: ScheduledActionState = {
+      name,
+      nextExecution,
+      intervalNumber,
+      intervalUnit,
+      repeatMissed,
+      frequency: intervalNumber && intervalUnit ? `${intervalNumber} ${intervalUnit}` : undefined,
+      nextCall: nextExecution,
+      isActive,
+    };
+    console.log(`  ✓ Scheduled action state: Name="${name}", Next Execution="${nextExecution}", Execute Every="${intervalNumber} ${intervalUnit}", Repeat Missed=${repeatMissed}, Active=${isActive}`);
     return state;
   }
 
@@ -199,7 +226,7 @@ export class ScheduledActionPage extends BasePage {
     await this.discardFormIfInEditMode().catch(() => {});
     await this.dismissDiscardChangesDialog().catch(() => {});
     await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
-    await this.page.goto(`${origin}/web?debug=1#id=${cronId}&action=11&model=ir.cron&view_type=form&menu_id=4`, { waitUntil: 'domcontentloaded' });
+    await this.page.goto(`${origin}/web?debug=1#id=${cronId}&action=${await this.xmlId('base.ir_cron_act')}&model=ir.cron&view_type=form&menu_id=${await this.xmlId('base.menu_administration')}`, { waitUntil: 'domcontentloaded' });
     // A hash route is a same-document navigation - reload so the client really loads this record.
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     const onForm = await this.formView().waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);

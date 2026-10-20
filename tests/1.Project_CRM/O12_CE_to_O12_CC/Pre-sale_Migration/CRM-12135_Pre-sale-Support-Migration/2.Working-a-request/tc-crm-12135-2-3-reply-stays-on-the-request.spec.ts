@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Engineer
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12927 (Xray Manual Steps, 3 steps)
+ * Source version : updated 2026-10-06T12:35:51.933+0300 - re-check before trusting this spec
  * Evidence       : stdout only - this case drives no screen, so its logs ARE the artifact.
  *
  * Summary
@@ -183,6 +185,7 @@ test.describe('CRM-12135_2.3 - A reply stays on the request', () => {
         const raised = await preSale.requestsForLead(leadId);
         expect(raised.length, 'the raise should have created exactly one request').toBe(1);
         requestId = raised[0].id;
+        console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
         engineerId = await preSale.presalesUserIdByLogin(MigPreSalePage.SE_TEAM_LOGINS[0]);
         await preSale.assignRequest(requestId, engineerId);
         console.log(`  Request id         : ${requestId} (${raised[0].number})`);

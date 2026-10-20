@@ -101,9 +101,14 @@ test.describe('TC.-B.6.10 - Reconcile a multi-product invoice via Outstanding cr
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber;
       invoiceTotal1 = money(setup.invoiceTotal);
       console.log(`  - Invoice#1="${invoiceNumber1}" InvoiceTotal#1="${setup.invoiceTotal}" (${invoiceTotal1})`);
-      expect(invoiceNumber1, 'Invoice#1 should be assigned').toBeTruthy();
-      expect(invoiceTotal1, 'InvoiceTotal#1 should be > 0').toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Multi-product Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceNumber1, 'Invoice#1 should be assigned').toBeTruthy();
+        expect(invoiceTotal1, 'InvoiceTotal#1 should be > 0').toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Multi-product Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3: As Faye, pre-create a FULL standalone Payment#1 = InvoiceTotal#1 (Bank Transfer); read JournalItem#1', async () => {

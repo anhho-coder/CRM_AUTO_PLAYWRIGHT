@@ -106,8 +106,13 @@ test.describe('TC.-B.6.3 - Two outstanding credits reconciled to fully pay', () 
       createdOppUrl = setup.oppUrl; invoiceUrl = setup.invoiceUrl; invoiceNumber1 = setup.invoiceNumber; invoiceTotal1 = setup.invoiceTotal;
       half = round2(invoiceTotal1 / 2); rest = round2(invoiceTotal1 - half);
       console.log(`  - Invoice#1="${invoiceNumber1}" Total=${invoiceTotal1} | half=${half} rest=${rest}`);
-      expect(invoiceTotal1).toBeGreaterThan(0);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition II - Invoice#1 validated');
+      let __verifyPassed = false;
+      try {
+        expect(invoiceTotal1).toBeGreaterThan(0);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition II - Invoice#1 validated', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step('Pre-condition #3 (create Payment#1): As Faye, pre-create standalone Payment#1 = half and read JournalItem#1', async () => {
@@ -119,8 +124,13 @@ test.describe('TC.-B.6.3 - Two outstanding credits reconciled to fully pay', () 
       const r2 = await createStandalonePaymentAsFaye(page, { amount: rest.toFixed(2), loginFirst: false, stepPrefix: 'Pre-condition #3 (create Payment#2)', paymentLabel: 'Payment#2' });
       journalItem2 = r2.journalItem;
       console.log(`  - JournalItem#1="${journalItem1}" JournalItem#2="${journalItem2}"`);
-      expect(journalItem1).not.toBe(journalItem2);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition III - Payment#1 + Payment#2 created');
+      let __verifyPassed = false;
+      try {
+        expect(journalItem1).not.toBe(journalItem2);
+        __verifyPassed = true;
+      } finally {
+        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: 'Pre-condition III - Payment#1 + Payment#2 created', passed: __verifyPassed }).catch(() => {});
+      }
     });
 
     await test.step("Steps to reproduce - Step 1: Still in Faye's session, open Invoice#1", async () => {

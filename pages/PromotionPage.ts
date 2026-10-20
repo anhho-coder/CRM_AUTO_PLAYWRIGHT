@@ -117,7 +117,7 @@ export class PromotionPage extends BasePage {
 
   /** Open the Sales module (Quotations list) directly via its menu action. */
   async openSalesModule(): Promise<void> {
-    await this.goto(`${this.origin()}/web#menu_id=202&action_id=344`);
+    await this.goto(`${this.origin()}/web#menu_id=${await this.xmlId('sale.sale_menu_root')}&action_id=${await this.xmlId('sale.action_quotations_with_onboarding')}`);
     await this.createButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
     console.log('  ✓ Sales module opened');
@@ -373,7 +373,7 @@ export class PromotionPage extends BasePage {
    */
   async archivePromotionByName(name: string): Promise<boolean> {
     // Back to the Promotion Program list view.
-    await this.goto(`${this.origin()}/web#action=800&model=sale.coupon.program&view_type=list&menu_id=202`);
+    await this.goto(`${this.origin()}/web#action=${await this.xmlId('sale_coupon.sale_coupon_program_action_promo_program')}&model=sale.coupon.program&view_type=list&menu_id=${await this.xmlId('sale.sale_menu_root')}`);
     await this.listView().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
 

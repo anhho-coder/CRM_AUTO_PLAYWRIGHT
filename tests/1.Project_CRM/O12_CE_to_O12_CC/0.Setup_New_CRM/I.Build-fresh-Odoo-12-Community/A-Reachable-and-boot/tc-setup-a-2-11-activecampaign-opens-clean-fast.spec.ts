@@ -87,7 +87,7 @@ test.describe('CRM-12325 Part 2-A.2 - Activecampaign opens cleanly and fast', ()
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      ms = await platform.openAppAndMeasureMs(MigPlatformPage.HASH.activecampaign);
+      ms = await platform.openAppAndMeasureMs('activecampaign');
       hasError = await platform.isErrorDialogVisible();
       console.log(`  Activecampaign opened - errorDialog=${hasError}, response time=${ms} ms`);
     });

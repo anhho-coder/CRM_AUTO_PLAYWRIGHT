@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Both
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12935 (Xray Manual Steps, 4 steps)
+ * Source version : updated 2026-10-06T12:36:50.500+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -183,6 +185,7 @@ const marker = MigPreSalePage.marker('TC-21', runId);
       const raised = await preSale.requestsForLead(leadId);
       expect(raised.length, 'exactly one request should be raised').toBe(1);
       requestId = raised[0].id;
+      console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
       console.log(`  Request raised: ${requestId} (${raised[0].number})`);
     });
 

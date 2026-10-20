@@ -14,6 +14,8 @@ import { CommonUtils } from '@helpers/common.utils';
  * Run as         : Salesperson
  * Automation-Type: new
  * Automation-Date: 2026-09-21
+ * Source TC      : CRM-12936 (Xray Manual Steps, 7 steps)
+ * Source version : updated 2026-10-06T12:36:55.360+0300 - re-check before trusting this spec
  * Evidence       : screenshot at the end of each UI sub-section, plus afterEach start/end.
  *
  * Summary
@@ -189,7 +191,9 @@ await test.step(STEP.pre4, async () => {
   const raised = await preSale.requestsForLead(leadId);
   expect(raised.length, 'the raise should have created exactly one request').toBe(1);
   requestId = raised[0].id;
+  console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
   console.log(`  Opportunity ${leadId} raised request ${requestId} (${raised[0].number})`);
+  console.log(`  Request URL: ${MigPreSalePage.requestUrl(requestId)}`);
 });
 
 await test.step(STEP.s1, async () => {
