@@ -2349,4 +2349,110 @@ export class QuotationPage extends BasePage {
     console.log(`  - Quantity reads back as "${readBack}"`);
     return parseFloat(readBack) === quantity;
   }
+
+  // ---------------- Discount baseline ----------------
+
+  /** Every Order Lines row as header -> cell text, top to bottom. */
+  async getAllOrderLineRows(): Promise<Array<Record<string, string>>> {
+    const n = await this.getOrderLineRowCount();
+    const rows: Array<Record<string, string>> = [];
+    for (let i = 0; i < n; i++) rows.push(await this.getOrderLineRowCells(i));
+    return rows;
+  }
+
+  /**
+   * The entries of a control-panel dropdown ("Action" / "Print") of the open quotation, in order.
+   * keepOpen leaves the menu on screen for the verify-point shot; close it with closeControlPanelMenu().
+   */
+  async getControlPanelMenuItems(toggleLabel: string, opts: { keepOpen?: boolean } = {}): Promise<string[]> {
+    const toggle = this.page
+      .locator('.o_control_panel button')
+      .filter({ hasText: new RegExp('^\\s*' + toggleLabel + '\\s*$', 'i') })
+      .first();
+    if (!(await toggle.count().catch(() => 0))) return [];
+    await toggle.click().catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const items = await this.page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('.dropdown-menu.show a, .dropdown-menu.show button'))
+          .map((a) => ((a as HTMLElement).innerText || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+    if (!opts.keepOpen) await this.closeControlPanelMenu();
+    return items;
+  }
+
+  async closeControlPanelMenu(): Promise<void> {
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Whether a field of the open form can be changed by the user: the form is put in edit mode (Edit),
+   * and the field counts as editable only when it renders an input/select that is not read-only.
+   * Leaves the form in edit mode - the caller discards.
+   */
+  async isFieldEditableInEditMode(fieldName: string): Promise<boolean> {
+    if (await this.isEditButtonVisible().catch(() => false)) await this.clickEdit();
+    await this.wait(CommonUtils.waitTimes.long);
+    const field = this.page.locator(`.o_form_sheet [name="${fieldName}"]:not(.o_invisible_modifier)`).first();
+    if (!(await field.count().catch(() => 0))) return false;
+    return await field
+      .evaluate((el: HTMLElement) => {
+        if (el.classList.contains('o_readonly_modifier')) return false;
+        const input = el.matches('input, select') ? el : el.querySelector('input:not([type="hidden"]), select');
+        return !!input && !(input as HTMLInputElement).readOnly && !(input as HTMLInputElement).disabled;
+      })
+      .catch(() => false);
+  }
+
+  /**
+   * Open an order line (click its row on the read-mode quotation) and read the line form that opens in a dialog,
+   * as label -> value. The list hides some cells of a reward line (Ordered Qty / Unit Price read blank there,
+   * pre-prod 2026-10-20), so a check on what the LINE holds has to read the line itself.
+   * Leaves the dialog open for the verify-point shot - close it with closeOrderLineDialog().
+   */
+  async openOrderLineDialog(rowText: string): Promise<Record<string, string>> {
+    const row = this.qOrderLinesContainer().locator('tr.o_data_row').filter({ hasText: rowText }).first();
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await row.getByText(rowText, { exact: false }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialog = this.page.locator('.modal-dialog .o_form_view').first();
+    await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const fields = await dialog.evaluate((root: HTMLElement) => {
+      const out: Record<string, string> = {};
+      const clean = (s: string) => s.replace(/ /g, ' ').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+      root.querySelectorAll('td.o_td_label').forEach((td) => {
+        const label = clean((td as HTMLElement).innerText || '');
+        const cell = td.nextElementSibling as HTMLElement | null;
+        if (!label || !cell) return;
+        const input = cell.querySelector('input:not([type="hidden"]), textarea') as HTMLInputElement | null;
+        out[label] = clean(input && input.type !== 'checkbox' ? input.value : cell.innerText || '');
+      });
+      return out;
+    });
+    console.log(`  - order line "${rowText}" opened: ${JSON.stringify(fields)}`);
+    return fields;
+  }
+
+  /** Close the order-line dialog opened by openOrderLineDialog(). */
+  async closeOrderLineDialog(): Promise<void> {
+    const close = this.page.locator('.modal-dialog .modal-footer .btn-secondary, .modal-dialog .modal-header .close').first();
+    if (await close.isVisible().catch(() => false)) await close.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    else await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /** Discard pending edits of the open form (control-panel Discard), if it is in edit mode. */
+  async discardChanges(): Promise<void> {
+    const discard = this.page.locator('.o_control_panel .o_form_button_cancel').first();
+    if (await discard.isVisible().catch(() => false)) {
+      await discard.click();
+      await this.wait(CommonUtils.waitTimes.long);
+      const ok = this.page.locator('.modal-dialog .modal-footer .btn-primary').first();
+      if (await ok.isVisible().catch(() => false)) await ok.click();
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+  }
 }

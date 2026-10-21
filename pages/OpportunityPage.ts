@@ -3163,6 +3163,26 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Open an Opportunity by URL when ANOTHER Odoo screen is already loaded (another opportunity, a quotation, a
+   * list). A goto that only changes the #hash is a same-document navigation: the previous form stays on screen
+   * and openByUrl() returns at once on ITS .o_form_view (Discount_1.12, 2026-10-20: the next click landed on the
+   * wrong record). The reload makes it a real load at that hash; the wait then checks the URL carries the id.
+   */
+  async openByUrlReloaded(url: string): Promise<void> {
+    const id = /[#&]id=(\d+)/.exec(url)?.[1] ?? '';
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    if (id) {
+      await this.page.waitForFunction((want) => new RegExp('[#&]id=' + want + '(&|$)').test(window.location.hash), id, {
+        timeout: CommonUtils.waitTimes.pageLoad,
+      });
+    }
+    await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
    * Read the customer "Phone" (crm.lead.phone) value on the Opportunity form.
    * Handles edit mode (<input name="phone">) and readonly mode (Odoo phone widget
    * <a name="phone" href="tel:<value>">value</a>). An empty phone renders as "false" - normalized to "".
@@ -4135,6 +4155,28 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const map = await this.getFieldLabelMap();
     const hit = map.find((entry) => entry.label === label);
     return hit ? hit.value : '';
+  }
+
+  // --- Discount baseline (Discount_x.y): the Opportunity's own totals footer ---
+  // Same footer as the Deal Element: discount = "Partner Discount(%)", discount_money = "Partner Discount",
+  // amount_total = "Total" (grounded on pre-prod 2026-10-20).
+  private readonly oppSubtotalFooterFieldXPath = (fieldName: string) =>
+    this.page.locator(`xpath=//table[contains(@class,'oe_subtotal_footer')]//*[@name='${fieldName}']`).first();
+  private readonly oppSubtotalFooterFieldCss = (fieldName: string) =>
+    this.page.locator(`.oe_subtotal_footer [name="${fieldName}"]`).first();
+
+  /**
+   * A field of the Opportunity's totals footer as the screen shows it.
+   * @param fieldName - discount | discount_money | amount_total
+   */
+  async getSubtotalFooterValue(fieldName: string): Promise<string> {
+    let field = this.oppSubtotalFooterFieldXPath(fieldName);
+    await field.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await field.count()) === 0) field = this.oppSubtotalFooterFieldCss(fieldName);
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => (el.innerText || el.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim())
+      .catch(() => '');
   }
 
   /** The tags (tag_ids) the Opportunity carries, in screen order. */

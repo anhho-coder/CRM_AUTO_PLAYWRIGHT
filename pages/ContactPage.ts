@@ -1304,7 +1304,7 @@ export class ContactPage extends BasePage {
    * Select a Pricelist from the many2one dropdown on the Sales & Purchases tab
    * @param pricelist - Pricelist name to select (e.g., "Public Pricelist_EUR (EUR)")
    */
-  async selectPricelist(pricelist: string): Promise<void> {
+  async selectPricelist(pricelist: string, opts: { exact?: boolean } = {}): Promise<void> {
     const input = this.pricelistInput();
     await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     // Clear existing value: triple-click to select all → Backspace → Escape to close any open dropdown
@@ -1317,11 +1317,25 @@ export class ContactPage extends BasePage {
     await input.click();
     await input.fill(pricelist);
     await this.wait(800);
-    const option = this.dropdownOption(pricelist);
-    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
-    await option.click().catch(async () => {
-      await this.page.keyboard.press('Enter');
-    });
+    // exact: pre-prod holds "Public Pricelist_EUR" (an EUR list, shown "Public Pricelist_EUR (EUR)") AND a USD
+    // list NAMED "Public Pricelist_EUR (EUR)" (shown "Public Pricelist_EUR (EUR) (USD)") - a substring match can
+    // pick the wrong one. Exact = the name followed by ONE "(CUR)" suffix, the way Odoo 12 displays a pricelist.
+    const option = opts.exact
+      ? this.page
+          .locator('.ui-menu-item, .o_m2o_dropdown_option')
+          .filter({ hasText: new RegExp('^\\s*' + pricelist.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s+\\([A-Z]{3}\\))?\\s*$') })
+          .first()
+      : this.dropdownOption(pricelist);
+    if (opts.exact) {
+      // no Enter fallback here: Enter takes the FIRST result, which is exactly the wrong-list risk
+      await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await option.click();
+    } else {
+      await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await option.click().catch(async () => {
+        await this.page.keyboard.press('Enter');
+      });
+    }
     await this.wait(500);
   }
 

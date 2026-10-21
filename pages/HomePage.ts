@@ -196,6 +196,31 @@ export class HomePage extends BasePage {
   }
 
   /**
+   * Every entry of the open app's top menu, dropdown items included (read from the DOM, so a closed dropdown's
+   * items are listed too), in order, trimmed, without empties.
+   */
+  async getCurrentAppMenuEntries(): Promise<string[]> {
+    return await this.page
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('.o_menu_sections a'))
+          .map((a) => ((a as HTMLElement).textContent || '').replace(/\s+/g, ' ').trim())
+          .filter((t) => t.length > 0)
+      )
+      .catch(() => [] as string[]);
+  }
+
+  /**
+   * Make sure the apps home (the app tiles) is on screen, from wherever the test is. Right after login the tiles
+   * are already there and the Applications toggle is NOT - returnToHome() would wait on it forever
+   * (Discount_1.8, 2026-10-21) - so open the menu only when the tiles are not visible, with a bounded click.
+   */
+  async ensureAppsHome(): Promise<void> {
+    if (await this.contactsLink().isVisible().catch(() => false)) return;
+    await this.applicationMenuLink().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
    * Quoc Anh: Assume that we are already in CRM module
    * Navigate to CRM > Leads
    */

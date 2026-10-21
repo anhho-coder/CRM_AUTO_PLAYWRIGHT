@@ -651,7 +651,9 @@ export class DealElementPage extends BasePage {
     const productCell = this.page.locator(
       `xpath=//span[@name="product_id" and contains(text(),'${productName}')]`
     ).first();
-    await productCell.click({ force: true });
+    // bounded: the cell is a <span> only once the row has committed - on a row still in edit mode it is an
+    // input and this locator matches nothing (an unbounded click then waits out the test timeout)
+    await productCell.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(500);
     console.log(`  - Clicked product cell "${productName}"`);
 
@@ -659,7 +661,7 @@ export class DealElementPage extends BasePage {
     const priceInput = this.page.locator(
       `xpath=//input[@name="price_unit"]`
     ).first();
-    await priceInput.click();
+    await priceInput.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(500);
     console.log(`  - Clicked Unit Price cell`);
 
@@ -896,7 +898,7 @@ export class DealElementPage extends BasePage {
     const productCell = this.page.locator(
       `xpath=//span[@name="product_id" and contains(text(),'${productName}')]`
     ).first();
-    await productCell.click({ force: true });
+    await productCell.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(500);
     console.log(`  - Clicked product cell "${productName}"`);
 
@@ -904,7 +906,7 @@ export class DealElementPage extends BasePage {
     const discountInput = this.page.locator(
       `xpath=(//input[@name="discount"])[1]`
     ).first();
-    await discountInput.click();
+    await discountInput.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(500);
     console.log(`  - Clicked Discount % cell`);
 
@@ -1041,8 +1043,16 @@ export class DealElementPage extends BasePage {
       const v = await input.inputValue().catch(() => '');
       if (v && v.trim()) { console.log(`  - promotion_id (input): "${v.trim()}"`); return v.trim(); }
     }
-    const field = this.promotionIdField();
-    const t = ((await field.innerText().catch(() => '')) || '').trim();
+    // READ mode renders the field as <a>/<span name="promotion_id"> (an empty one as span.o_field_empty), not as
+    // the edit-mode <div> - so address it by name whatever the tag, and bound the read: an unbounded innerText()
+    // on a locator that matches nothing waits out the whole test timeout (Discount_1.11, 2026-10-20).
+    let field = this.promotionIdField();
+    if (!(await field.count().catch(() => 0))) field = this.page.locator('.o_form_sheet [name="promotion_id"]').first();
+    if (!(await field.count().catch(() => 0))) {
+      console.log('  - promotion_id: field not on the form');
+      return '';
+    }
+    const t = ((await field.innerText({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
     console.log(`  - promotion_id (text): "${t}"`);
     return t;
   }
@@ -1962,7 +1972,7 @@ export class DealElementPage extends BasePage {
           if (h.length > 0) out[h] = cells[i] !== undefined ? cells[i] : '';
         });
         return out;
-      }, rowIndex)
+      }, rowIndex, { timeout: CommonUtils.waitTimes.elementVisibility })
       .catch(() => ({} as Record<string, string>));
   }
 
@@ -2019,8 +2029,296 @@ export class DealElementPage extends BasePage {
     const table = this.page.locator('.o_notebook .tab-pane.active table.o_list_view').first();
     await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
     return await table
-      .evaluate((el: HTMLElement) => el.querySelectorAll('tbody tr.o_data_row').length)
+      .evaluate((el: HTMLElement) => el.querySelectorAll('tbody tr.o_data_row').length, undefined, { timeout: CommonUtils.waitTimes.elementVisibility })
       .catch(() => 0);
+  }
+
+  // --- Discount baseline (Discount_x.y): totals footer + settled order-line reads ---
+  // The totals block under Order Lines (oe_subtotal_footer) carries discount = "Partner Discount(%)",
+  // discount_money = "Partner Discount" and amount_total = "Total" (grounded on pre-prod 2026-10-20).
+  private readonly subtotalFooterFieldXPath = (fieldName: string) =>
+    this.page.locator(`xpath=//table[contains(@class,'oe_subtotal_footer')]//*[@name='${fieldName}']`).first();
+  private readonly subtotalFooterFieldCss = (fieldName: string) =>
+    this.page.locator(`.oe_subtotal_footer [name="${fieldName}"]`).first();
+
+  /**
+   * A field of the totals footer as the screen shows it (read mode: text; edit mode: the input's value).
+   * @param fieldName - discount | discount_money | amount_total
+   */
+  async getSubtotalFooterValue(fieldName: string): Promise<string> {
+    let field = this.subtotalFooterFieldXPath(fieldName);
+    if ((await field.count()) === 0) field = this.subtotalFooterFieldCss(fieldName);
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => {
+        const input = el.matches('input') ? (el as HTMLInputElement) : (el.querySelector('input') as HTMLInputElement | null);
+        const raw = input ? input.value : el.innerText || el.textContent || '';
+        return raw.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+      })
+      .catch(() => '');
+  }
+
+  /**
+   * Poll an order-line cell until it contains `expected` - the line's onchange settles only after the row
+   * commits, so a read straight after typing the quantity still shows the qty-1 amount.
+   * @returns the last value read (the caller asserts on it)
+   */
+  async waitForOrderLineCell(
+    rowIndex: number,
+    column: string,
+    expected: string,
+    timeout: number = CommonUtils.waitTimes.abnormalWait
+  ): Promise<string> {
+    const deadline = Date.now() + timeout;
+    let last = '';
+    while (Date.now() < deadline) {
+      last = ((await this.getOrderLineRowCells(rowIndex))[column] ?? '').replace(/ /g, ' ');
+      if (last.includes(expected)) return last;
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return last;
+  }
+
+  /** Poll until the Order Lines list renders `expected` rows. @returns the last count read. */
+  async waitForOrderLineRowCount(expected: number, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    const deadline = Date.now() + timeout;
+    let last = -1;
+    while (Date.now() < deadline) {
+      last = await this.getOrderLineRowCount();
+      if (last === expected) return last;
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return last;
+  }
+
+  /** Every Order Lines row as header -> cell text, top to bottom. */
+  async getAllOrderLineRows(): Promise<Array<Record<string, string>>> {
+    const n = await this.getOrderLineRowCount();
+    const rows: Array<Record<string, string>> = [];
+    for (let i = 0; i < n; i++) rows.push(await this.getOrderLineRowCells(i));
+    return rows;
+  }
+
+  // ---------------- Discount baseline (Promotion list, partners, order date) ----------------
+
+  private readonly promotionDropdownItemsCss = () => this.page.locator('ul.ui-autocomplete:visible li');
+  private readonly formTitleXPath = () => this.page.locator('xpath=//div[contains(@class,"o_form_sheet")]//div[contains(@class,"oe_title")]').first();
+  private readonly formTitleCss = () => this.page.locator('.o_form_sheet h1, .o_form_sheet .oe_title').first();
+
+  /**
+   * Open the Promotion list (promotion_id, edit mode, NO program picked yet - typing into a picked
+   * field replaces its value) and read the programs it offers, in order.
+   * The list holds only the programs the order is eligible for: on pre-production (2026-10-20) an
+   * order with no eligible program shows the single placeholder "No results to show..." whatever is
+   * typed - that placeholder (and "Search More...") is NOT a program and is not returned.
+   * @param term - text typed into the field before reading ('' = the full eligible list)
+   * @param opts.keepOpen - leave the list on screen for the verify-point shot; close it with closePromotionList()
+   */
+  async getPromotionOptions(term: string = '', opts: { keepOpen?: boolean } = {}): Promise<string[]> {
+    const input = this.promotionIdInput();
+    if ((await input.count().catch(() => 0)) === 0) throw new Error('Promotion field has no input - the form is not in edit mode');
+    await input.scrollIntoViewIfNeeded().catch(() => {});
+    await input.click();
+    await input.fill(term);
+    await this.wait(CommonUtils.waitTimes.long * 2); // name_search round-trip
+    const raw = (await this.promotionDropdownItemsCss().allTextContents().catch(() => [] as string[])).map((s) =>
+      s.replace(/\s+/g, ' ').trim()
+    );
+    const options = raw.filter((s) => s && !/^No results to show/i.test(s) && !/^Search More/i.test(s) && !/^Create/i.test(s));
+    console.log(`  - Promotion list (term "${term}") shows: ${JSON.stringify(raw)}`);
+    if (!opts.keepOpen) await this.closePromotionList();
+    return options;
+  }
+
+  /**
+   * Every entry the Promotion dropdown shows, UNFILTERED - programs AND the widget's own entries ("No results to
+   * show...", "Search More...", "Create ...", "Create and Edit..."). Leaves the list open; close with closePromotionList().
+   */
+  async getPromotionDropdownEntries(term: string = ''): Promise<string[]> {
+    const input = this.promotionIdInput();
+    if ((await input.count().catch(() => 0)) === 0) throw new Error('Promotion field has no input - the form is not in edit mode');
+    await input.click();
+    await input.fill(term);
+    await this.wait(CommonUtils.waitTimes.long * 2);
+    const raw = (await this.promotionDropdownItemsCss().allTextContents().catch(() => [] as string[])).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    console.log(`  - Promotion dropdown entries (term "${term}"): ${JSON.stringify(raw)}`);
+    return raw;
+  }
+
+  /** Whether the Promotion field offers the "external link" button that opens the program's own form. */
+  async hasPromotionExternalLink(): Promise<boolean> {
+    return (await this.page.locator("xpath=//div[@name='promotion_id']//button[contains(@class,'o_external_button')]").count().catch(() => 0)) > 0;
+  }
+
+  /** Close the Promotion list opened by getPromotionOptions(.., { keepOpen: true }) without picking anything. */
+  async closePromotionList(): Promise<void> {
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    // Escape leaves a typed term in the input; nothing was picked, so empty it again before leaving
+    // the field (a leftover term would open the "create a Promotion?" dialog on focus-out)
+    const input = this.promotionIdInput();
+    if ((await input.count().catch(() => 0)) && (await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')) !== '') {
+      await input.fill('', { timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    }
+    await this.blurForm();
+  }
+
+  /** Click the record title so the cell being edited commits and the onchange runs. */
+  async blurForm(): Promise<void> {
+    let title = this.formTitleXPath();
+    if (!(await title.count().catch(() => 0))) title = this.formTitleCss();
+    await title.click({ position: { x: 5, y: 5 }, timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Add ONE order line for exactly this product and set its Ordered Qty - or throw. The SKU is typed first so the
+   * dropdown is filtered to it, the option carrying the SKU is clicked, and the committed row is read back.
+   * No Enter fallback: on 2026-10-20 addProductLine('[A2160B]', 10) found no option, pressed Enter and the row
+   * became A2144B (Subtotal 3,290.00) - Discount_2.5 then "saw" Deal registration offered for an order it never had.
+   * @param productName - the SKU as the product label starts, e.g. "[A2160B]"
+   */
+  async addOrderLineStrict(productName: string, quantity: number = 1): Promise<void> {
+    let clicked = await this.addProductButton().click({ timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (!clicked) clicked = await this.addProductLink().click({ timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (!clicked) throw new Error('"Add a product" could not be clicked');
+    const input = this.orderLineRows().last().locator('[name="product_id"] input');
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    const sku = productName.replace(/^\[|\]$/g, '');
+    await input.fill(sku);
+    const escaped = productName.replace(/[[\]\\^$.|?*+(){}]/g, '\\$&');
+    const option = this.dropdownOption().filter({ hasText: new RegExp('^\\s*' + escaped) }).first();
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.setLastRowQty(quantity);
+    await this.blurForm();
+    const rows = await this.getAllOrderLineRows();
+    const landed = rows.some((r) => (r['Product'] ?? '').startsWith(productName));
+    if (!landed) throw new Error(`No order line carries ${productName} after adding it - lines: ${rows.map((r) => (r['Product'] ?? '').slice(0, 20)).join(' | ')}`);
+    console.log(`  ✓ Order line: ${productName} x ${quantity}`);
+  }
+
+  /**
+   * Set the Unit Price of an order line (edit mode). The line just added is still being edited - its product
+   * cell is an input, not the <span> changeUnitPriceInRow() clicks - so commit it first, and commit again after
+   * so the totals recompute.
+   */
+  async setLineUnitPrice(productName: string, price: number): Promise<void> {
+    await this.blurForm();
+    await this.changeUnitPriceInRow(productName, price);
+    await this.blurForm();
+  }
+
+  /** Set the Discount (%) of an order line (edit mode) - same commit-before / commit-after as setLineUnitPrice. */
+  async setLineDiscount(productName: string, discount: number): Promise<void> {
+    await this.blurForm();
+    await this.changeDiscountInRow(productName, discount);
+    await this.blurForm();
+  }
+
+  /** Empty the Promotion field (edit mode) and let the onchange remove the reward line. */
+  async clearPromotion(): Promise<void> {
+    const input = this.promotionIdInput();
+    if ((await input.count().catch(() => 0)) === 0) throw new Error('Promotion field has no input - the form is not in edit mode');
+    await input.click();
+    await input.fill('');
+    await this.blurForm();
+    console.log('  ✓ Promotion cleared');
+  }
+
+  /** Set a many2one partner field of the Deal Element (reseller_id / distributor_id) by picking it from its list. */
+  private async setPartnerMany2one(field: 'reseller_id' | 'distributor_id', name: string): Promise<void> {
+    const input = field === 'reseller_id' ? this.resellerInput() : this.distributorInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.scrollIntoViewIfNeeded().catch(() => {});
+    await input.click();
+    await input.fill(name);
+    // EXACT name: a substring match picks the first of several same-named partners (pre-prod has 4 "Data Sciences
+    // Corporation" records, only one of them the Gold reseller) - the caller must pass a name that is unique
+    const exact = new RegExp('^\\s*' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*$');
+    const option = this.dropdownOption().filter({ hasText: exact }).first();
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click();
+    await this.wait(CommonUtils.waitTimes.long); // partner onchange fills the partner discount %
+    const readBack = (await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')).trim();
+    if (!readBack.includes(name)) throw new Error(`${field} reads "${readBack}" after picking "${name}"`);
+    console.log(`  ✓ ${field} = ${readBack}`);
+  }
+
+  async setReseller(name: string): Promise<void> {
+    await this.setPartnerMany2one('reseller_id', name);
+  }
+
+  async setDistributor(name: string): Promise<void> {
+    await this.setPartnerMany2one('distributor_id', name);
+  }
+
+  /**
+   * The value of a field as the user sees it, from its VISIBLE widget only. Some Deal Element fields
+   * (reseller_discount, distributor_discount) are rendered twice, one copy hidden by o_invisible_modifier,
+   * so a plain first() can read the hidden copy.
+   */
+  async getVisibleFieldValue(fieldName: string): Promise<string> {
+    const fields = this.page.locator(`.o_form_sheet [name="${fieldName}"]:not(.o_invisible_modifier)`);
+    const n = await fields.count();
+    for (let i = 0; i < n; i++) {
+      const f = fields.nth(i);
+      if (!(await f.isVisible().catch(() => false))) continue;
+      return await f
+        .evaluate((el: HTMLElement) => {
+          const input = el.matches('input') ? (el as HTMLInputElement) : (el.querySelector('input') as HTMLInputElement | null);
+          return ((input ? input.value : el.innerText || el.textContent) || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        })
+        .catch(() => '');
+    }
+    return '';
+  }
+
+  private readonly orderDateInputXPath = () => this.page.locator('xpath=//input[@name="date_order"]').first();
+
+  /** Order Date as the form shows it (edit mode: the input value). */
+  async getOrderDate(): Promise<string> {
+    await this.clickNotebookTab('Other Information');
+    const input = this.orderDateInputXPath();
+    const v = (await input.count().catch(() => 0)) ? await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '') : '';
+    const value = v.trim() || (await this.getVisibleFieldValue('date_order'));
+    // back to Order Lines: every order-line read works on the ACTIVE tab (1.8 hung after Save on 2026-10-21)
+    await this.clickOrderLinesTab();
+    return value;
+  }
+
+  /**
+   * Set the Deal Element's Order Date (edit mode).
+   * @param dateText - exactly as the form renders it on this build, e.g. "10/20/2025 10:00:00"
+   * @returns true when the input reads back the typed value
+   */
+  async setOrderDate(dateText: string): Promise<boolean> {
+    const input = this.orderDateInputXPath();
+    // the Deal Element keeps Order Date on its "Other Information" tab (pre-prod 2026-10-20), not on the sheet
+    await this.clickNotebookTab('Other Information');
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await this.page.keyboard.press('Control+A');
+    await this.page.keyboard.press('Backspace');
+    await input.fill(dateText);
+    await this.page.keyboard.press('Escape'); // closes the picker, keeps the typed value
+    await this.blurForm();
+    const readBack = (await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')).trim();
+    console.log(`  - Order Date set to "${dateText}", reads back "${readBack}"`);
+    await this.clickOrderLinesTab();
+    return readBack === dateText.trim();
+  }
+
+  /** Open a notebook tab of the form by its exact caption (no-op when it is absent). */
+  async clickNotebookTab(caption: string): Promise<void> {
+    const escaped = caption.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tab = this.page.locator('.o_notebook .nav-link').filter({ hasText: new RegExp('^\\s*' + escaped + '\\s*$') }).first();
+    if (await tab.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false)) {
+      await tab.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
   }
 
   /**
