@@ -51,6 +51,14 @@ import { assertOnMigHost } from '@helpers/crm-11806-mig-subscription.helper';
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+
+ *  WHY IT IS STILL SKIPPED (@blocked-account)
+ *  Measured 2026-10-20: signing in as users.sale_ic_thomas_crm_mig on crm-mig never reaches
+ *  the CRM menu - LoginPage.waitForLoginSuccess timed out after 300 s on crmMenuLink(). The
+ *  account authenticates; what it does not get is the CRM menu. NOT VERIFIED why: the
+ *  working hypothesis is rights (on crm-mig "User: Own Documents Only" implies only group 1,
+ *  so 7 of the 9 users.config.ts accounts sit in no subscription group), but nobody has
+ *  confirmed that is what hides the menu. Check the account before blaming the spec.
  *  Jira:            CRM-11806 (feature) / CRM-12188 (FRD review)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -254,7 +262,7 @@ test.describe(`${TC_ID} - A reseller deal-registration order creates a matching 
    * Do not un-skip this again until the deal-registration helper is pointed at crm-mig AND a peer
    * teardown is added for the subscription it causes to be created.
    */
-  test.skip(`${TC_ID}: A reseller deal-registration order creates a subscription that matches the confirmed quotation @blocked-mail`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: A reseller deal-registration order creates a subscription that matches the confirmed quotation @blocked-account`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

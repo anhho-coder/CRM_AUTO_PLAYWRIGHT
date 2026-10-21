@@ -14,6 +14,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+ *  MAIL IS NO LONGER A BLOCKER (measured 2026-10-20). The @blocked-mail tag was removed:
+ *  crm-mig now has a mail server - ir.mail_server "Mailpit crm-mig (QA sink, D2A 19/10)" - and
+ *  mail.mail has actually been reaching state 'sent' since 2026-10-19. What still blocks this
+ *  case is @blocked-devrun alone: the subscription crons on the subscription service have not
+ *  run since 2026-09-18, so no billing / reminder / close cycle can be triggered for it.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -102,7 +107,7 @@ const TC_ID = 'CRM-11806_4.4';
 
 test.describe(`${TC_ID} - Portal card payment saves the card for next cycles`, () => {
   // Declaration-level skip so the browser fixture never starts - see the [Manual] note above.
-  test.skip(`${TC_ID}: Paying an invoice by card in the portal marks it paid and stores the card on the subscription @blocked-devrun @blocked-mail`, async ({ page }) => {
+  test.skip(`${TC_ID}: Paying an invoice by card in the portal marks it paid and stores the card on the subscription @blocked-devrun`, async ({ page }) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
     await page.waitForTimeout(CommonUtils.waitTimes.short);

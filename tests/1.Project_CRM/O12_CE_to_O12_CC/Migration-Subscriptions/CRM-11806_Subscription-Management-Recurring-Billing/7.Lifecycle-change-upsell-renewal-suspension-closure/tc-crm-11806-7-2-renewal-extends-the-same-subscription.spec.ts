@@ -28,6 +28,11 @@ import { createSubscriptionMig as createSubscription, loginAsCrmAdminMig as logi
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+
+ *  WHY IT IS STILL SKIPPED (@blocked-embed-port)
+ *  Measured 2026-10-20: clickNewInEmbed() timed out after 30 s - the embed's "New" button never
+ *  became visible in the peer frame. The adapter reaches the screen but cannot start a new
+ *  record from it. Not mail, not the product flag.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -117,7 +122,7 @@ test.describe(`${TC_ID} - A renewal extends the same subscription`, () => {
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test.skip(`${TC_ID}: Confirming a renewal quotation extends the original subscription instead of creating a second one`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: Confirming a renewal quotation extends the original subscription instead of creating a second one @blocked-embed-port`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -31,6 +31,18 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *                   FUNC-0140 / 0141 / 0142, UI-0010, SUPP-0006
  *                   supersedes the FRD: [FRD] Subscription Management (Recurring Billing)
+
+ *  WHY IT IS STILL SKIPPED (@blocked-native-screen)
+ *  Measured 2026-10-20: BasePage.xmlId("sale_subscription.sale_subscription_template_action")
+ *  does not exist on crm-mig - the sale_subscription module is not installed there, so the
+ *  NATIVE Subscription Templates screen this case opens has no counterpart. The templates
+ *  live on the subscription service and are reached through the embed. This case needs to be
+ *  rewritten against the embed; the Subscriptionable fix (CRM-13645) does not touch it.
+ *  MAIL IS NO LONGER A BLOCKER (measured 2026-10-20). The @blocked-mail tag this case used to
+ *  carry was removed: crm-mig now has a mail server - ir.mail_server "Mailpit crm-mig (QA sink,
+ *  D2A 19/10)" - and mail.mail has actually been reaching state 'sent' since 2026-10-19. That was
+ *  never what blocked this case anyway; see WHY IT IS STILL SKIPPED above - the native Subscription
+ *  Templates screen does not exist on crm-mig.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature) / CRM-12140 (implementation)
  *  Automation-Type: new
  *  Automation-Type: ported
@@ -144,8 +156,9 @@ test.describe('CRM-11806_2.1 - The four delivered subscription templates carry t
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
   /**
-   * RE-SKIPPED 2026-10-16 after a trial run. It FAILED, and the failure is a real finding that the
-   * @blocked-mail tag does NOT describe:
+   * RE-SKIPPED 2026-10-16 after a trial run, and AGAIN on 2026-10-20 after a second one. Both runs
+   * failed the same way, so this is a settled finding, not a flake. The tag it then carried
+   * (@blocked-mail) did NOT describe it; the tag is now @blocked-native-screen. The failure:
    *     BasePage.xmlId: "sale_subscription.sale_subscription_template_action" does not exist on
    *     crm-mig.nakivo.site. The module is not installed there.
    * The template screens are the PEER's, reached through the embed - this spec still addresses the
@@ -153,7 +166,7 @@ test.describe('CRM-11806_2.1 - The four delivered subscription templates carry t
    * `templates`) before un-skipping again; the mail queue is not what blocks it.
    */
 
-  test.skip('CRM-11806_2.1: Exactly the four delivered subscription templates are active, each with its exact billing settings @blocked-mail', async ({ page }, testInfo) => {
+  test.skip('CRM-11806_2.1: Exactly the four delivered subscription templates are active, each with its exact billing settings @blocked-native-screen', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

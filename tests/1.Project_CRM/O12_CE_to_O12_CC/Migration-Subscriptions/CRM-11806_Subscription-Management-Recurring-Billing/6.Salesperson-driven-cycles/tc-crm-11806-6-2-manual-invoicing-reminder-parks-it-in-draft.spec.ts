@@ -26,6 +26,11 @@ import {
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+ *  MAIL IS NO LONGER A BLOCKER (measured 2026-10-20). The @blocked-mail tag was removed:
+ *  crm-mig now has a mail server - ir.mail_server "Mailpit crm-mig (QA sink, D2A 19/10)" - and
+ *  mail.mail has actually been reaching state 'sent' since 2026-10-19. What still blocks this
+ *  case is @blocked-devrun alone: the subscription crons on the subscription service have not
+ *  run since 2026-09-18, so no billing / reminder / close cycle can be triggered for it.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -157,7 +162,7 @@ test.describe(`${TC_ID} - Manual invoicing reminder parks it in Draft`, () => {
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test.skip(`${TC_ID}: Manual invoicing reminder parks the subscription in Draft and blocks the billing day @blocked-devrun @blocked-mail`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: Manual invoicing reminder parks the subscription in Draft and blocks the billing day @blocked-devrun`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -23,6 +23,11 @@ import { loginAsCrmAdminMig as loginAsCrmAdmin } from '@helpers/crm-11806-mig-su
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+
+ *  WHY IT IS STILL SKIPPED (@blocked-native-screen)
+ *  Measured 2026-10-20: same as CRM-11806_2.1 -
+ *  BasePage.xmlId("sale_subscription.sale_subscription_template_action") does not exist on
+ *  crm-mig. The native Subscription Templates screen is not there; rewrite against the embed.
  *  Jira:            CRM-12188 (FRD review) / CRM-11806 (feature)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -128,7 +133,7 @@ test.describe('CRM-11806_2.2 - An archived subscription template cannot be selec
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test.skip('CRM-11806_2.2: A subscription template that has been switched off cannot be picked on a new subscription @blocked-mail', async ({ page }, testInfo) => {
+  test.skip('CRM-11806_2.2: A subscription template that has been switched off cannot be picked on a new subscription @blocked-native-screen', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -20,6 +20,11 @@ import { CommonUtils } from '@helpers/common.utils';
  *  Spec:            [Migration] Subscription Management (Recurring Billing) - the AUTHORITY
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v4, 2026-09-07)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
+
+ *  WHY IT IS STILL SKIPPED (@blocked-embed-port)
+ *  Measured 2026-10-20: a button read inside the embed never became visible (waitFor timed out
+ *  after 180 s at SubscriptionPageMig line 733). The adapter is incomplete for this case.
+ *  Not mail, not the product flag.
  *  Jira:            CRM-12188 (subscription management)
  *  Automation-Type: ported
  *  Automation-Date: 2026-10-08
@@ -123,7 +128,7 @@ test.describe('CRM-11806_10.3 - Order Subscription smart button matches linked s
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test.skip(`${TC_ID}: An order with a subscriptionable product links its subscription; an order without does not`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: An order with a subscriptionable product links its subscription; an order without does not @blocked-embed-port`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
