@@ -43,6 +43,11 @@ pipeline {
             defaultValue: '15',
             description: 'Retry budget in minutes when ROUTE_GATE=retry (or auto -> retry). Re-probes every 60s up to this many minutes, then aborts with "ABORTED: pre-prod VPN route down".'
         )
+        choice(
+            name: 'VPN_WATCHDOG',
+            choices: ['on', 'off'],
+            description: 'Mid-run pre-prod VPN watchdog. on = abort the run (NOT_BUILT) as soon as userContent/vpn-down.flag is raised, so specs that need pre-prod are never marked failed on ERR_CONNECTION. off = ignore the flag for the whole build - ONLY for runs that never touch pre-prod (the crm-mig jobs: crm-mig 10.30.21.10 is not behind the pre-prod VPN route 10.220.222.100). ROUTE_GATE=off does NOT switch the watchdog off.'
+        )
         string(
             name: 'TIMEOUT_MIN',
             defaultValue: '90',
@@ -391,6 +396,12 @@ echo ffmpeg OK
                     // A watchdog polls it alongside the run; if it goes up we abort so the
                     // not-yet-run specs are NEVER executed (hence never marked failed on
                     // ERR_CONNECTION). Build ends NOT_BUILT, distinct from a real FAILURE.
+                    // VPN_WATCHDOG=off (crm-mig-only runs) ignores the flag in BOTH places: no
+                    // mid-run abort, and a failed run is never re-labelled NOT_BUILT.
+                    def watchdogOn = ((params.VPN_WATCHDOG ?: 'on').trim() != 'off')
+                    if (!watchdogOn) {
+                        echo 'VPN_WATCHDOG=off -> the pre-prod vpn-down.flag is ignored for this build (crm-mig-only run).'
+                    }
                     bat 'if exist .pw_done del /q .pw_done'
                     env.VPN_ABORT = 'false'
                     try {
@@ -410,7 +421,7 @@ echo ffmpeg OK
                                     } finally { bat 'echo done> .pw_done' }
                                 },
                                 'vpn-watchdog': {
-                                    while (!fileExists('.pw_done')) {
+                                    while (watchdogOn && !fileExists('.pw_done')) {
                                         sleep(time: 60, unit: 'SECONDS')
                                         if (fileExists('.pw_done')) { break }
                                         // curl -f: exit 0 iff the flag exists (HTTP 200); non-zero on 404.
@@ -425,8 +436,8 @@ echo ffmpeg OK
                             )
                         }
                     } catch (err) {
-                        def flagUp = (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
-                        if (env.VPN_ABORT == 'true' || flagUp) {
+                        def flagUp = watchdogOn && (bat(returnStatus: true, script: 'curl -s -f -o NUL "http://10.8.81.44:8080/userContent/vpn-down.flag"') == 0)
+                        if (watchdogOn && (env.VPN_ABORT == 'true' || flagUp)) {
                             currentBuild.result = 'NOT_BUILT'
                             echo 'Run stopped: pre-prod VPN dropped mid-run. Remaining test cases were NOT executed (not failed). Re-run once the VPN route is back.'
                         } else {
