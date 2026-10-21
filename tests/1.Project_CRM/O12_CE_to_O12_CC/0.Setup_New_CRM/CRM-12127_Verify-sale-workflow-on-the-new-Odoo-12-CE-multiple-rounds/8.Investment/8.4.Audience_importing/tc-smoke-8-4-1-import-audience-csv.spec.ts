@@ -11,6 +11,16 @@ import {
   teardownMigRecords,
   listMigCreatedRecords,
 } from '@helpers/o12ce-main-business.helper';
+import {
+  searchOpportunitiesByEmail,
+  readOpportunity,
+  logOpportunity,
+  readImportedContacts,
+  logContact,
+  importedOpportunityChecks,
+  importedContactsChecks,
+  printVerify,
+} from '@helpers/investment-import-verify.helper';
 
 /**
  * ============================================================================================
@@ -22,11 +32,14 @@ import {
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *
- *  Source TC (pre-production) : CRM-2482_3.1.1.1.1
+ *  Jira (this TC)             : CRM-13682 (Xray Manual Steps, 7 steps; the Expected Result sits on step 7,
+ *                               written 2026-10-21 - a step edit does not move `updated`, so diff the step text)
+ *  Source TC (pre-production) : CRM-2482_3.1.1.1.1 (Jira CRM-9795, updated 2026-10-21T10:28+0300 - re-check before trusting this spec)
  *  Source spec                : tests/1.Project_CRM/4.Investments/CRM-2482_Investments_module-General_fields/
  *                               3.Audience_importing/3.1.Import_from_file/3.1.1.Import_a_new_audience/
  *                               tc-crm-2482-3-1-1-1-1-Verify-import-audiences-csv-file.spec.ts
- *  Source version             : commit 74dc5b6 (2026-05-18), working tree clean - re-check before trusting this spec
+ *  Expected Result            : pre-production baseline measured 2026-10-21 (Opportunity #1101504, Contacts #716465/#716466),
+ *                               master 'Migration - Setup New CRM' J384
  *
  * --------------------------------------------------------------------------------------------
  *  KNOWN BLOCKER (2026-10-19)
@@ -41,9 +54,9 @@ import {
  * --------------------------------------------------------------------------------------------
  *  Summary
  * --------------------------------------------------------------------------------------------
- *  Creates its own Investment, generates a CSV audience file, uploads it on the Audience tab and
- *  imports it, then saves the Investment. Pre-production's file checks are kept unchanged. The source
- *  has no verification step for the new Contact / Opportunity, so none is added here.
+ *  Creates its own Investment, imports a generated CSV audience file and saves the Investment, then
+ *  verifies on screen the ONE new Opportunity (sheet + CRM Developer tab) and the TWO new Contacts
+ *  (company + individual) the import produced, against the pre-production baseline.
  *
  * --------------------------------------------------------------------------------------------
  *  Command to run
@@ -109,7 +122,36 @@ import {
  *    5. Select CSV-Audience-copy1 file and wait
  *    6. Press "IMPORT" button and wait
  *    7. Press "SAVE" button on Investment page
- *  Verification: none in the source TC (no Expected Result is written for these steps - report to author).
+ *  Expected Result (step 7):
+ *    After Step 7, within 15 s (the import runs through the queue):
+ *    1. CRM > list view, remove "My Pipeline", search Email_Contact#1 -> exactly 1 Opportunity:
+ *       1.1. Opportunity  = Name_Contact#1
+ *            Stage        = New
+ *       1.2. Company Name = Company_Contact#1
+ *            Contact Name = Name_Contact#1
+ *       1.3. Company      = Company_Contact#1
+ *            Contact      = "Company_Contact#1, Name_Contact#1"
+ *       1.4. Email        = Email_Contact#1
+ *            Phone        = 1234125125
+ *            Country      = China
+ *       1.5. Sales Team   = CMR
+ *            Salesperson  = Sergey Karachin
+ *       1.6. Tags contains exactly 1 value: "test"
+ *       1.7. Investment   = "<Investment ID> - <Investment Name>" of this Investment
+ *       1.8. CRM Developer tab: Lead form = "Investment: ID-<n>" (<n> = id in the URL of this Investment)
+ *                               Active    = TRUE
+ *    2. Contacts, search Email_Contact#1 -> exactly 2 new contacts:
+ *       2.1. Company_Contact#1: Is a Company = TRUE (the "Companies" filter keeps exactly this row)
+ *                               Email        = Email_Contact#1
+ *                               Phone        = 1234125125
+ *                               Country      = China
+ *                               Sales Team   = CMR
+ *                               Salesperson  = Sergey Karachin
+ *                               Tags         = "test"
+ *       2.2. Name_Contact#1:    Related Company = Company_Contact#1
+ *                               Email, Phone, Country, Sales Team, Salesperson as 2.1
+ *  Verification 1 and 2 below read these on screen. Email_Contact#1 is unique to the run (timestamped),
+ *  so the "exactly 1 / exactly 2" counts start from a baseline of 0 by construction.
  * ============================================================================================
  */
 
@@ -139,6 +181,8 @@ const STEP = {
   s3: 'Step 3-5: On "Audience" section, click "UPLOAD YOUR FILE", navigate to folder and select CSV-Audience-copy1',
   s4: 'Step 6: Press "IMPORT" button and wait',
   s5: 'Step 7: Press "SAVE" button on Investment page',
+  v1: 'Verification 1: CRM > list view, remove "My Pipeline", search Email_Contact#1 -> exactly 1 Opportunity; open it and read the sheet and the CRM Developer tab',
+  v2: 'Verification 2: Contacts, search Email_Contact#1 -> exactly 2 new contacts; "Companies" filter -> Company_Contact#1; open each contact',
 } as const;
 
 /** Per-test state the afterEach needs. */
@@ -317,6 +361,44 @@ test.describe(`${TC} - Import a new audience from CSV`, () => {
       console.log(`\n--- ${STEP.s5} ---`);
       await investmentPage.clickSaveButton();
       console.log('  OK - Investment record saved');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Investment saved after IMPORT');
+    });
+
+    await test.step(STEP.v1, async () => {
+      console.log(`\n--- ${STEP.v1} ---`);
+      // The import commits through the queue a few seconds after SAVE - poll the list up to ~30 s.
+      await investmentPage.openCrmPipeline();
+      let rows = await searchOpportunitiesByEmail(page, audienceEmail);
+      for (let attempt = 1; rows === 0 && attempt <= 3; attempt++) {
+        await page.waitForTimeout(CommonUtils.waitTimes.long);
+        await investmentPage.openCrmPipeline();
+        rows = await searchOpportunitiesByEmail(page, audienceEmail);
+      }
+      const opp = await readOpportunity(page, { email: audienceEmail, readInvestmentOnForm: true });
+      logOpportunity('Opportunity read on screen:', opp);
+      const checks = importedOpportunityChecks(rows, opp, {
+        contactName: audienceData.contactName,
+        companyName: audienceCompany,
+        email: audienceEmail,
+        investmentDbId: investmentId,
+        investmentOnForm: `${investmentID} - ${investmentName}`,
+      });
+      const { allPass, lines } = printVerify(checks, 'the import created exactly 1 Opportunity carrying the file data and this Investment');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Opportunity`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
+    });
+
+    await test.step(STEP.v2, async () => {
+      console.log(`\n--- ${STEP.v2} ---`);
+      const r = await readImportedContacts(page, audienceEmail, audienceData.contactName);
+      console.log(`  Contacts rows for Email_Contact#1 : ${JSON.stringify(r.rowNames)}`);
+      console.log(`  Rows left by "Companies"         : ${JSON.stringify(r.companyRowNames)}`);
+      logContact('Company_Contact#1 read on screen:', r.company);
+      logContact('Name_Contact#1 read on screen:', r.person);
+      const checks = importedContactsChecks(r, { contactName: audienceData.contactName, companyName: audienceCompany, email: audienceEmail });
+      const { allPass, lines } = printVerify(checks, 'the import created exactly 2 Contacts: the company and the individual under it');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contacts`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
     });
   });
 });
