@@ -5,10 +5,29 @@ import { LoginPage, HomePage, InvestmentPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 import * as fs from 'fs';
 import * as path from 'path';
+import {
+  searchOpportunitiesByEmail,
+  readOpportunity,
+  logOpportunity,
+  readInvestmentLeadsTab,
+  deleteInvestmentByUrl,
+  readImportedContacts,
+  logContact,
+  importedOpportunityChecks,
+  importedContactsChecks,
+  printVerify,
+} from '@helpers/investment-import-verify.helper';
+
+/** Labels of the verification steps - one source of truth for the test.step() label AND the stdout banner. */
+const VERIFY_STEP = {
+  v1: 'Verification 1: CRM > list view, remove "My Pipeline", search Email_Contact#1 -> exactly 1 Opportunity; open it, read the sheet and the CRM Developer tab, then the Investment > Leads tab',
+  v2: 'Verification 2: Contacts, search Email_Contact#1 -> exactly 2 new contacts; "Companies" filter -> Company_Contact#1; open each contact',
+} as const;
 
 /**
  * Investments - Audience Importing Verification Test
  * Test Case ID: CRM-2482_3.1.1.1.3
+ * Jira: CRM-9797 (Expected Result + "Investment ID" pre-condition added 2026-10-21, updated 2026-10-21T12:58+0300 - re-check before trusting this spec)
  *
  * Summary: Verify the new contact/ new Opp are created after importing new audience using XLSX file
  *
@@ -44,6 +63,7 @@ import * as path from 'path';
  *         - Sales Team    = CMR
  *         - Salesperson   = Sergey Karachin
  *         - Tags          = test
+ *         - Investment ID = <Investment ID of this Investment>
  *    5.2. Use template XLSX file: XLSX-AudienceTemplate-1.xlsx
  *    5.3. Create XLSX-Audience-copy1.xlsx and fill test data into respective columns
  *    5.4. Save the file to test-data/investment-module/XLSX-Audience-copy1.xlsx
@@ -56,6 +76,27 @@ import * as path from 'path';
  * 5. Select XLSX-Audience-copy1 file and wait
  * 6. Press "IMPORT" button and wait
  * 7. Press "SAVE" button on Investment page
+ *
+ * Expected result (pre-production, measured 2026-10-21 with the automated spec - Opportunity #1101507, Contacts #716472/#716473; the file's "Investment ID" column was filled with the Investment ID of this Investment):
+ * Name_Contact#1 = "Contact Name" of XLSX-Audience-copy1; Company_Contact#1 = "Company" of XLSX-Audience-copy1.
+ * After Step 7, within 15 s (the import runs through the queue):
+ * 1. CRM > list view, remove "My Pipeline", search Email_Contact#1 -> exactly 1 Opportunity:
+ *    1.1. Opportunity = Name_Contact#1; Stage = New
+ *    1.2. Company Name = Company_Contact#1; Contact Name = Name_Contact#1
+ *    1.3. Company = Company_Contact#1; Contact = "Company_Contact#1, Name_Contact#1"
+ *    1.4. Email = Email_Contact#1; Phone = 1234125125; Country = China
+ *    1.5. Sales Team = CMR; Salesperson = Sergey Karachin
+ *    1.6. Tags contains exactly 1 value: "test"
+ *    1.7. Investment = "<Investment ID> - <Investment Name>" of this Investment (pre-production shows it on the Investment > Leads tab, not on the Opportunity form)
+ *    1.8. CRM Developer tab: Lead form = "Investment: ID-<n>" (<n> = id in the URL of this Investment); Active = TRUE
+ * 2. Contacts, search Email_Contact#1 -> exactly 2 new contacts:
+ *    2.1. Company_Contact#1: Is a Company = TRUE; Email = Email_Contact#1; Phone = 1234125125; Country = China;
+ *         Sales Team = CMR; Salesperson = Sergey Karachin; Tags = "test"
+ *    2.2. Name_Contact#1: Related Company = Company_Contact#1; Email, Phone, Country, Sales Team, Salesperson as 2.1
+ * Verification 1 and 2 below read these on screen (Email_Contact#1 is unique to the run, so the counts start
+ * from 0). The Opportunity form of pre-production does not carry the Investment field: 1.7 is read on the
+ * Investment > Leads tab. The "Investment ID" column is filled since 2026-10-21: left EMPTY, pre-production
+ * imports nothing (0 Leads, measured) - this spec passed for months without the import creating a single Lead.
  *
  * Tear down (Clean up test data):
  * 1. Delete the Investment record:
@@ -104,7 +145,9 @@ test.describe('CRM-2482_3.1.1.1.3 - Verify new contact/Opp created after importi
   });
 
   test('CRM-2482_3.1.1.1.3: Verify new contact/Opp created after importing new audience using XLSX file', async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test);
+    // The two verification steps (CRM list + Opportunity form + Investment Leads tab + Contacts) add ~7 min to a
+    // ~6-min flow; 15 min ran out in the teardown on 2026-10-21 - give the test two standard budgets.
+    test.setTimeout(config.timeouts.test * 2);
 
     // Maximize browser window
     await page.setViewportSize({ width: 1920, height: 1080 });
@@ -130,6 +173,7 @@ test.describe('CRM-2482_3.1.1.1.3 - Verify new contact/Opp created after importi
     const loginPage = new LoginPage(page);
     const homePage = new HomePage(page);
     const investmentPage = new InvestmentPage(page);
+    let urlInvestment = '';
 
     // Pre-condition Step 1: Login and navigate to Investments module
     await test.step('Pre-condition Step 1: Login and navigate to Investments module', async () => {
@@ -200,7 +244,7 @@ test.describe('CRM-2482_3.1.1.1.3 - Verify new contact/Opp created after importi
     await test.step('Step 5: Create an Import Audience XLSX file (XLSX-Audience-copy1.xlsx)', async () => {
       console.log('=== STEP 5: CREATE IMPORT AUDIENCE XLSX FILE ===');
 
-      audienceData = await investmentPage.createImportAudienceXLSXFile();
+      audienceData = await investmentPage.createImportAudienceXLSXFile({ investmentId: investmentID });
 
       expect(fs.existsSync(audienceData.outputPath), `Output XLSX was not created at: ${audienceData.outputPath}`).toBeTruthy();
 
@@ -258,6 +302,54 @@ test.describe('CRM-2482_3.1.1.1.3 - Verify new contact/Opp created after importi
       await investmentPage.clickSaveButton();
 
       console.log('✓ Investment record saved');
+      urlInvestment = page.url();
+      console.log(`  URL of this Investment : ${urlInvestment}`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Investment saved after IMPORT');
+    });
+
+    await test.step(VERIFY_STEP.v1, async () => {
+      console.log(`\n--- ${VERIFY_STEP.v1} ---`);
+      const investmentDbId = Number((urlInvestment.match(/[#&?]id=(\d+)/) || [])[1] || 0);
+      // The import commits through the queue a few seconds after SAVE - poll the list up to ~30 s.
+      await homePage.clickApplicationMenu();
+      await homePage.navigateToCRM();
+      let rows = await searchOpportunitiesByEmail(page, audienceData.emailContact1);
+      for (let attempt = 1; rows === 0 && attempt <= 3; attempt++) {
+        await page.waitForTimeout(CommonUtils.waitTimes.long);
+        await homePage.clickApplicationMenu();
+        await homePage.navigateToCRM();
+        rows = await searchOpportunitiesByEmail(page, audienceData.emailContact1);
+      }
+      const opp = await readOpportunity(page, { email: audienceData.emailContact1, readInvestmentOnForm: false });
+      logOpportunity('Opportunity read on screen:', opp);
+      const leadsTab = await readInvestmentLeadsTab(page, urlInvestment);
+      console.log(`  Investment > Leads tab : Opportunity = ${leadsTab.opportunity} | Email = ${leadsTab.email}`);
+      const checks = importedOpportunityChecks(rows, opp, {
+        contactName: audienceData.contactName,
+        companyName: audienceData.companyName,
+        email: audienceData.emailContact1,
+        investmentDbId,
+      });
+      checks.push(
+        { label: '1.7 Investment > Leads tab - Opportunity', expected: audienceData.contactName, actual: leadsTab.opportunity },
+        { label: '1.7 Investment > Leads tab - Email', expected: audienceData.emailContact1, actual: leadsTab.email },
+      );
+      const { allPass, lines } = printVerify(checks, 'the import created exactly 1 Opportunity carrying the file data and this Investment');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `CRM-2482_3.1.1.1.3 - Opportunity`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
+    });
+
+    await test.step(VERIFY_STEP.v2, async () => {
+      console.log(`\n--- ${VERIFY_STEP.v2} ---`);
+      const r = await readImportedContacts(page, audienceData.emailContact1, audienceData.contactName);
+      console.log(`  Contacts rows for Email_Contact#1 : ${JSON.stringify(r.rowNames)}`);
+      console.log(`  Rows left by "Companies"         : ${JSON.stringify(r.companyRowNames)}`);
+      logContact('Company_Contact#1 read on screen:', r.company);
+      logContact('Name_Contact#1 read on screen:', r.person);
+      const checks = importedContactsChecks(r, { contactName: audienceData.contactName, companyName: audienceData.companyName, email: audienceData.emailContact1 });
+      const { allPass, lines } = printVerify(checks, 'the import created exactly 2 Contacts: the company and the individual under it');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `CRM-2482_3.1.1.1.3 - Contacts`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
     });
 
     console.log('\n✅ STEPS TO REPRODUCE COMPLETED SUCCESSFULLY');
@@ -267,7 +359,10 @@ test.describe('CRM-2482_3.1.1.1.3 - Verify new contact/Opp created after importi
       console.log('\n=== TEAR DOWN ===');
       console.log('Tear down Step 1: Deleting Investment record');
 
-      await investmentPage.deleteCurrentRecord();
+      // Back on THIS run's Investment first - Verification 2 leaves the page on a Contact form: full reload at its
+      // URL (id checked), then delete the record on screen, the source's own mechanism - retried while the Action
+      // menu does not offer "Delete" yet (right after an XLSX import it did not, 2026-10-21).
+      await deleteInvestmentByUrl(page, urlInvestment);
 
       console.log('✓ Investment record deleted successfully');
       console.log(`✓ Deleted: ${investmentName}`);

@@ -11,6 +11,14 @@ export class OpportunityPage extends BasePage {
   private readonly viewListButton = () => this.page.getByRole('button', { name: 'View list' });
   private readonly myPipelineFilterDeleteXPath = () =>
     this.page.locator("xpath=//div[contains(@title,'Remove')]");
+  // The remove control of EVERY facet in the search bar (filters, favorites, search terms). XPath primary, CSS fallback.
+  private readonly searchFacetRemoveButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')]//*[contains(@class,'o_facet_remove')]")
+      .or(this.page.locator('.o_searchview_facet .o_facet_remove'));
+  // Only the FAVORITE facets (label icon fa-star). XPath primary, CSS fallback.
+  private readonly favoriteFacetRemoveButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')][.//*[contains(@class,'fa-star')]]//*[contains(@class,'o_facet_remove')]")
+      .or(this.page.locator('.o_searchview_facet:has(.fa-star) .o_facet_remove'));
   private readonly searchViewInputXPath = () =>
     this.page.locator("xpath=//div[contains(@class,'o_searchview')]//input[contains(@class,'o_searchview_input')]");
   private readonly createButton = () => this.page.getByRole('button', { name: /CREATE/i });
@@ -1896,6 +1904,30 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     }
     //Quoc Anh's comment: Added wait for the delete button to be hidden after clicking, to ensure the filter is fully removed before proceeding
     await deleteBtn.waitFor({ state: 'hidden', timeout });
+  }
+
+  /**
+   * Remove EVERY facet from the search bar (favorites included), so the next search starts clean.
+   * Why: on pre-production the CRM "Archive > All" (All Leads) action opens with a user's DEFAULT favorite
+   * applied ("Unassigned leads - last 30d - ..."), which silently ANDs with the email search and returns 0 rows
+   * (CRM-3902_1.2.1, 2026-10-21). Re-queries after each click, because the search bar re-renders.
+   * `favoritesOnly` removes just the favorite facets and keeps any filter the action itself put there.
+   * @returns how many facets were removed
+   */
+  async clearSearchFacets(opts: { favoritesOnly?: boolean } = {}, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    let removed = 0;
+    for (let guard = 0; guard < 10; guard++) {
+      const controls = opts.favoritesOnly ? this.favoriteFacetRemoveButtons() : this.searchFacetRemoveButtons();
+      if ((await controls.count().catch(() => 0)) === 0) break;
+      const first = controls.first();
+      if (!(await first.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false))) break;
+      await first.click({ timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      removed++;
+    }
+    if (removed) await this.waitForLoadingOverlayHidden().catch(() => {});
+    console.log(`  ✓ ${opts.favoritesOnly ? 'Favorite' : 'Search'} facets cleared (${removed} removed)`);
+    return removed;
   }
 
   /**

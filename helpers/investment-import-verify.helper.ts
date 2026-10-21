@@ -104,6 +104,98 @@ export async function readOpportunity(
   return view;
 }
 
+/**
+ * Lean reader for the merge outcome (CRM-12370_8.8.2 / CRM-3902_1.2.1): ONLY the fields the checks use -
+ * Opportunity name, Tags, Investment (where the form shows it), then CRM Developer tab Active + Lost Reason.
+ * The full readOpportunity() on a MERGED (archived) Opportunity opened from Archive > All hung ~19 min on
+ * 2026-10-21 (several getters wait their full default timeout for widgets that form does not render), which
+ * blew the 67-min test budget. Every field the checks do not need is left at its empty default.
+ */
+export async function readMergeOutcome(
+  page: Page,
+  opts: { readInvestmentOnForm: boolean },
+): Promise<OpportunityView> {
+  // The caller has opened the Opportunity (openFromAllLeadsByName).
+  const opp = new OpportunityPage(page);
+  const t0 = Date.now();
+  // Each read is capped: a widget the archived form does not render yields '(timeout)' - a visible FAIL in the
+  // VERIFY block - instead of an unbounded wait (this repo sets no actionTimeout).
+  const capped = async <T>(label: string, read: () => Promise<T>, fallback: T): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const limit = new Promise<T>((resolve) => {
+      timer = setTimeout(() => { console.log(`    ! ${label}: no value within ${CommonUtils.waitTimes.abnormalWait / 1000} s`); resolve(fallback); },
+        CommonUtils.waitTimes.abnormalWait);
+    });
+    const pending = read();
+    pending.catch(() => {}); // a read abandoned on timeout must not surface later as an unhandled rejection
+    try { return await Promise.race([pending, limit]); } finally { if (timer) clearTimeout(timer); }
+  };
+  const view: OpportunityView = {
+    url: page.url(), stage: '', companyName: '', contactName: '', company: '', contact: '', email: '', phone: '',
+    country: '', salesTeam: '', salesperson: '', createManually: null, leadForm: '',
+    opportunity: clean(await capped('Opportunity name', () => opp.getOpportunityNameValue(), '(timeout)')),
+    tags: (await capped('Tags', () => opp.getTagList(), ['(timeout)'])).map(clean),
+    investment: opts.readInvestmentOnForm ? clean(await capped('Investment', () => opp.getFieldPartnerName('activity_id'), '(timeout)')) : '',
+    active: null,
+    lostReason: '',
+  };
+  await capped('CRM Developer tab', () => opp.clickCRMDeveloperTab(), undefined);
+  view.active = await capped('Active', () => opp.isActiveChecked(), null);
+  view.lostReason = clean(await capped('Lost Reason', () => opp.getLostReasonValueViaTextContent(), '(timeout)'));
+  console.log(`    (read in ${Math.round((Date.now() - t0) / 1000)} s)`);
+  return view;
+}
+
+/**
+ * CRM > Archive > All, drop the favorites, search the Opportunity NAME alone (unique per run), return the row
+ * count and open the first row. The name must be searched WITHOUT the email: both land in the same
+ * "Opportunity" facet, which Odoo ORs - on 2026-10-21 an email+name search opened the same (merged) record for
+ * both Opportunities. The caller opened the CRM app (the navigation differs per host).
+ */
+export async function openFromAllLeadsByName(page: Page, oppName: string): Promise<number> {
+  const opp = new OpportunityPage(page);
+  await opp.navigateToAllLeads();
+  await page.waitForTimeout(CommonUtils.waitTimes.standard);
+  await opp.clearSearchFacets({ favoritesOnly: true });
+  await opp.searchByName(oppName);
+  const rows = await opp.countListRows();
+  console.log(`  - Archive > All rows for "${oppName}" : ${rows}`);
+  if (rows > 0) await opp.openFirstListRecord();
+  return rows;
+}
+
+/**
+ * Teardown: delete THIS Investment in place (openInvestmentForm, then deleteCurrentRecord), retrying when the
+ * Action menu does not offer "Delete" yet - right after an XLSX import it did not, twice on 2026-10-21, while the
+ * same record offered it a few minutes later.
+ */
+export async function deleteInvestmentByUrl(page: Page, investmentUrl: string, attempts = 3): Promise<void> {
+  const inv = new InvestmentPage(page);
+  for (let attempt = 1; ; attempt++) {
+    await openInvestmentForm(page, investmentUrl);
+    try {
+      await inv.deleteCurrentRecord();
+      return;
+    } catch (e) {
+      if (attempt >= attempts) throw e;
+      console.log(`  ! "Delete" not offered (attempt ${attempt}/${attempts}) - retrying after ${CommonUtils.waitTimes.mergeReverifyBudget / 1000} s`);
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.waitForTimeout(CommonUtils.waitTimes.mergeReverifyBudget);
+    }
+  }
+}
+
+/** Prints what readMergeOutcome() read, one field per line. */
+export function logMergeOutcome(title: string, v: OpportunityView): void {
+  console.log(`  ${title}`);
+  console.log(`    - URL         : ${v.url}`);
+  console.log(`    - Opportunity : ${v.opportunity}`);
+  console.log(`    - Tags        : ${JSON.stringify(v.tags)}`);
+  console.log(`    - Investment  : ${v.investment || '(not on this form)'}`);
+  console.log(`    - Active      : ${v.active}`);
+  console.log(`    - Lost Reason : ${v.lostReason || '(blank)'}`);
+}
+
 /** Prints an Opportunity view one field per line (the step's evidence). */
 export function logOpportunity(title: string, v: OpportunityView): void {
   console.log(`  ${title}`);
@@ -127,13 +219,26 @@ export function logOpportunity(title: string, v: OpportunityView): void {
   console.log(`    - Lost Reason     : ${v.lostReason || '(blank)'}`);
 }
 
-/** Investment > Leads tab: the Opportunity / Email of its first lead row (pre-production shows the link here). */
-export async function readInvestmentLeadsTab(page: Page, investmentUrl: string): Promise<{ opportunity: string; email: string }> {
+/**
+ * Opens THIS Investment's form in the current tab with a full reload (a hash-only goto can leave the previous
+ * record on screen) and checks the URL carries its id - so a following deleteCurrentRecord() hits this record.
+ */
+export async function openInvestmentForm(page: Page, investmentUrl: string): Promise<void> {
   const inv = new InvestmentPage(page);
+  const id = /[#&?]id=(\d+)/.exec(investmentUrl)?.[1] ?? '';
   await inv.goto(investmentUrl, { waitUntil: 'domcontentloaded' });
   await page.reload({ waitUntil: 'domcontentloaded' });
   await inv.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
   await page.waitForTimeout(CommonUtils.waitTimes.long);
+  if (id && !new RegExp(`[#&?]id=${id}(&|$)`).test(page.url())) {
+    throw new Error(`openInvestmentForm: expected Investment #${id} on screen, the URL is ${page.url()}`);
+  }
+}
+
+/** Investment > Leads tab: the Opportunity / Email of its first lead row (pre-production shows the link here). */
+export async function readInvestmentLeadsTab(page: Page, investmentUrl: string): Promise<{ opportunity: string; email: string }> {
+  const inv = new InvestmentPage(page);
+  await openInvestmentForm(page, investmentUrl);
   await inv.clickLeadsTab();
   await inv.waitForLeadsRowToAppear();
   return {
@@ -270,53 +375,81 @@ export function importedContactsChecks(
 }
 
 /**
- * CRM-12370_8.8.2 / CRM-3902_1.2.1 - II. Verify point, Target Opp (from CSV-Audience-copy2): the
- * pre-production baseline is NO merge, the Target keeps its own Investment#2.
+ * CRM-12370_8.8.2 / CRM-3902_1.2.1 - the two same-email Opportunities are merged LATE, by the
+ * "NAKIVO: Re-scan same-email duplicate leads (CRM-12621)" cron (every 20 min; measured 18-27 min after the
+ * import on 2026-10-21). Polls the default CRM list (active records only) for the email until `target` rows
+ * remain. `openCrm` opens the CRM app on the host the spec drives (the navigation differs per host).
  */
-export function noMergeTargetChecks(
-  rowCount: number,
-  v: OpportunityView,
-  hasMergedIntoThisLeadLog: boolean,
-  exp: { investmentDbId: number; investmentOnForm?: string },
-): VerifyCheck[] {
-  const checks: VerifyCheck[] = [
-    { label: 'Opportunities found for Email_Contact#1 (2 = not merged)', expected: 2, actual: rowCount },
-    { label: 'Target Opp - Active', expected: true, actual: v.active },
-    { label: 'Target Opp - Stage = New (status bar, upper-cased by the theme)', expected: 'NEW', actual: v.stage.toUpperCase() },
-    { label: 'Target Opp - Lost Reason', expected: '', actual: v.lostReason },
-    { label: 'Target Opp - Create manually', expected: true, actual: v.createManually },
-  ];
-  if (exp.investmentOnForm !== undefined) {
-    checks.push({ label: 'Target Opp - Investment = Name_Investment#2', expected: exp.investmentOnForm, actual: v.investment });
+export async function waitForActiveOpportunityCount(
+  page: Page,
+  email: string,
+  target: number,
+  polls: number,
+  openCrm: () => Promise<void>,
+): Promise<{ rows: number; pollsUsed: number; waitedMin: number }> {
+  const t0 = Date.now();
+  const minutes = () => Math.round((Date.now() - t0) / 6000) / 10;
+  let rows = -1;
+  let pollsUsed = 0;
+  while (pollsUsed < polls) {
+    pollsUsed++;
+    await openCrm();
+    rows = await searchOpportunitiesByEmail(page, email);
+    console.log(`    poll ${pollsUsed}/${polls} at +${minutes()} min : ${rows} active Opportunities for ${email}`);
+    if (rows === target) break;
+    if (pollsUsed < polls) await page.waitForTimeout(CommonUtils.waitTimes.mergeReverifyBudget);
   }
-  checks.push(
-    { label: 'Target Opp - CRM Developer tab - Lead form', expected: `Investment: ID-${exp.investmentDbId}`, actual: v.leadForm },
-    { label: 'Target Opp - Tags (exactly 1 value)', expected: ['Can_Merge'], actual: v.tags },
-    { label: 'Target Opp - Log carries "<Source>, has been merged into this lead"', expected: false, actual: hasMergedIntoThisLeadLog },
-  );
-  return checks;
+  return { rows, pollsUsed, waitedMin: minutes() };
 }
 
-/** CRM-12370_8.8.2 / CRM-3902_1.2.1 - Source Opp (Name_Contact#1, edited in step I): unchanged, not merged. */
-export function noMergeSourceChecks(
-  v: OpportunityView,
-  hasMergedIntoTargetLog: boolean,
-  exp: { investmentOnForm?: string },
-): VerifyCheck[] {
+/** CRM > Archive > All (active AND archived records), search the email, return the row count. The caller opened CRM. */
+export async function searchAllOpportunitiesByEmail(page: Page, email: string): Promise<number> {
+  const opp = new OpportunityPage(page);
+  await opp.navigateToAllLeads();
+  await page.waitForTimeout(CommonUtils.waitTimes.standard);
+  // Pre-production opens "All Leads" with a user's DEFAULT favorite applied, which ANDs with the email search
+  // and returns 0 rows - drop favorites only, keep whatever filter the action itself sets.
+  await opp.clearSearchFacets({ favoritesOnly: true });
+  await opp.searchByEmail(email);
+  await page.waitForTimeout(CommonUtils.waitTimes.standard);
+  return await opp.countListRows();
+}
+
+/**
+ * Expected Result 2-3 of CRM-12370_8.8.2 / CRM-3902_1.2.1 after the re-scan merge: exactly 1 of the 2
+ * Opportunities stays Active, the other is merged (Active FALSE, Lost Reason Duplicate), and no Investment moves.
+ * Which one survives is NOT fixed (both directions were measured), so no check assumes it. `investment1OnForm` /
+ * `investment2OnForm` = the Investment each Opp must keep, where the form shows the field (crm-mig); on
+ * pre-production the spec adds a Leads-tab check instead.
+ */
+export function rescanMergeChecks(
+  allRows: number,
+  copy1: OpportunityView,
+  copy2: OpportunityView,
+  exp: { investment1OnForm?: string; investment2OnForm?: string },
+): { checks: VerifyCheck[]; survivor: OpportunityView; merged: OpportunityView } {
+  const activeCount = [copy1.active, copy2.active].filter((a) => a === true).length;
+  const survivor = copy2.active === true && copy1.active !== true ? copy2 : copy1;
+  const merged = survivor === copy1 ? copy2 : copy1;
   const checks: VerifyCheck[] = [
-    { label: 'Source Opp - Active', expected: true, actual: v.active },
-    { label: 'Source Opp - Stage = New (status bar, upper-cased by the theme)', expected: 'NEW', actual: v.stage.toUpperCase() },
-    { label: 'Source Opp - Lost Reason', expected: '', actual: v.lostReason },
+    { label: 'Opportunities for Email_Contact#1 incl. archived (Archive > All)', expected: 2, actual: allRows },
+    { label: 'Exactly 1 of the 2 Opportunities is Active', expected: 1, actual: activeCount },
+    { label: 'Surviving Opp - Lost Reason', expected: '', actual: survivor.lostReason },
+    {
+      label: 'Surviving Opp - Tags include "Can_Merge" and "test"',
+      expected: ['Can_Merge', 'test'],
+      actual: survivor.tags.filter((t) => t === 'Can_Merge' || t === 'test').sort(),
+    },
+    { label: 'Merged Opp - Active', expected: false, actual: merged.active },
+    { label: 'Merged Opp - Lost Reason', expected: 'Duplicate', actual: merged.lostReason },
   ];
-  if (exp.investmentOnForm !== undefined) {
-    checks.push({ label: 'Source Opp - Investment = Name_Investment#1 (unchanged)', expected: exp.investmentOnForm, actual: v.investment });
+  if (exp.investment1OnForm !== undefined) {
+    checks.push({ label: 'Opp of CSV-Audience-copy1 keeps Name_Investment#1 (not transferred)', expected: exp.investment1OnForm, actual: copy1.investment });
   }
-  checks.push(
-    { label: 'Source Opp - CRM Developer tab - Lead form', expected: 'License', actual: v.leadForm },
-    { label: 'Source Opp - Tags (any order)', expected: ['Product Registration', 'test'], actual: [...v.tags].sort() },
-    { label: 'Source Opp - Log carries "This lead has been merged into <Target>"', expected: false, actual: hasMergedIntoTargetLog },
-  );
-  return checks;
+  if (exp.investment2OnForm !== undefined) {
+    checks.push({ label: 'Opp of CSV-Audience-copy2 keeps Name_Investment#2 (not transferred)', expected: exp.investment2OnForm, actual: copy2.investment });
+  }
+  return { checks, survivor, merged };
 }
 
 /** Prints a contact form one field per line. */
