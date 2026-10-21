@@ -4,7 +4,7 @@ import { config } from '@config/test.config';
 import { users, baseUrl_mig } from '@config/users.config';
 import { LoginPageMig, HomePageMig } from '@pages/mig';
 import { InvestmentPageMig } from '@pages/mig/InvestmentPageMig';
-import { OpportunityPage } from '@pages';
+import { LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   resetMigCreatedRecords,
@@ -12,6 +12,16 @@ import {
   teardownMigRecords,
   listMigCreatedRecords,
 } from '@helpers/o12ce-main-business.helper';
+import {
+  searchOpportunitiesByEmail,
+  readMergeOutcome,
+  logMergeOutcome,
+  waitForActiveOpportunityCount,
+  searchAllOpportunitiesByEmail,
+  rescanMergeChecks,
+  openFromAllLeadsByName,
+  printVerify,
+} from '@helpers/investment-import-verify.helper';
 
 /**
  * ============================================================================================
@@ -24,7 +34,11 @@ import {
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *
- *  Source TC (pre-production) : CRM-3902_1.2 (Jira CRM-9963, updated 2026-04-03T05:53+0300 - re-check before trusting this spec)
+ *  Jira (this TC)             : CRM-13705 (Xray Manual Steps, 21 steps; the Expected Result sits on step 21,
+ *                               written 2026-10-21 - a step edit does not move `updated`, so diff the step text)
+ *  Source TC (pre-production) : CRM-3902_1.2.1 (Jira CRM-9963, updated 2026-10-21T10:28+0300 - re-check before trusting this spec)
+ *  Expected Result            : pre-production baseline measured 2026-10-21 (Opportunities #1101509/#1101510),
+ *                               master 'Migration - Setup New CRM' J411
  *  Source spec                : tests/1.Project_CRM/4.Investments/CRM-3902_Investment_transfer_ban_on_merge/
  *                               1.Target_Lead/1.2.Source_no_link/tc-crm-3902-1-2-investment-not-transferred.spec.ts
  *  Source version             : UNTRACKED in git (no commit yet) + uncommitted working-tree edits, read 2026-10-19
@@ -43,19 +57,20 @@ import {
  * --------------------------------------------------------------------------------------------
  *  SOURCE STATUS - read before trusting this spec
  * --------------------------------------------------------------------------------------------
- *  CRM-9963 section 'II. Verify point - Target Opp' repeats the steps of 'I. Edit Opportunity' and
- *  states NO expected result. The pre-production source was briefly `test.fixme` for that reason
- *  earlier on 2026-10-19; the working-tree version read at 15:29 runs it active again, and this port
- *  follows it. Consequence: the port asserts NOTHING about the Investment field - once the import is
- *  fixed it can pass without verifying the TC's subject. Gap to be raised with the CRM-9963 author.
+ *  CRM-9963 carried no expected result until 2026-10-21. It was then written from the pre-production
+ *  baseline (2 runs of CRM-3902_1.2.1, crm-mig behaving the same): the import does NOT merge the two
+ *  Opportunities; the "NAKIVO: Re-scan same-email duplicate leads (CRM-12621)" cron (every 20 min) merges
+ *  them 18-27 min later, and no Investment is transferred. WHICH Opportunity survives is not fixed - both
+ *  directions were measured - so no check assumes it. (A first version, "never merged", rested on a
+ *  9-minute look and was wrong; replaced the same day with the tester's approval.)
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
  * --------------------------------------------------------------------------------------------
  *  Creates two Investments. Investment#1 imports a SOURCE contact and the Opportunity it creates is
  *  edited (CRM Developer tab, Lead form = License, SAVE). Investment#2 imports a TARGET contact with
- *  the same email. No pre-production assertion exists to copy; the only checks are the file
- *  existence checks in the pre-conditions, kept unchanged.
+ *  the same email, then verifies on screen: 2 active Opportunities right after the import, then - once the
+ *  re-scan cron has merged them (polled up to 45 min) - exactly 1 active + 1 merged, each keeping its Investment.
  *
  * --------------------------------------------------------------------------------------------
  *  Command to run
@@ -131,11 +146,26 @@ import {
  *    3-5. Upload CSV-Audience-copy2 file
  *    6. Press "IMPORT" button and wait
  *    7. Press "SAVE" button on Investment page
- *  Verification: none. The source's "II. Verify point - Target Opp" has no expected result (CRM-9963).
+ *  Expected Result (step 21, pre-production baseline measured 2026-10-21 on 2 runs; crm-mig the same):
+ *    1. Right after Steps to reproduce #2 the import does NOT merge: CRM > list view, remove "My Pipeline",
+ *       search Email_Contact#1 -> exactly 2 Opportunities, both Active = TRUE.
+ *    2. The "NAKIVO: Re-scan same-email duplicate leads (CRM-12621)" job (every 20 min) then merges them -
+ *       observed 18-27 min after the import. After it, search Email_Contact#1 including archived records
+ *       -> still exactly 2 Opportunities:
+ *       - exactly 1 Active = TRUE, Lost Reason = blank; its Tags include "Can_Merge" and "test"
+ *       - exactly 1 Active = FALSE, Lost Reason = Duplicate
+ *    3. No Investment is transferred: whichever Opp survives (both directions were observed), the Opp of
+ *       CSV-Audience-copy1 keeps Name_Investment#1 and the Opp of CSV-Audience-copy2 keeps Name_Investment#2.
+ *  Verification 1 waits the team's 90 s no-merge window first. Verification 2 polls the default list every
+ *  CommonUtils.waitTimes.mergeReverifyBudget (2.5 min), up to 15 polls (~45 min incl. navigation), so this
+ *  test runs with a 75-min budget. Email_Contact#1 is unique to the run: the counts start from 0.
  * ============================================================================================
  */
 
 const TC = 'CRM-12370_8.8.2';
+
+/** Polls of the CRM list while waiting for the re-scan cron (every 20 min) to merge the two Opportunities. */
+const MERGE_POLLS = 15;
 
 /** Investment master data - crm-mig substitutions are documented in the header. */
 const INVESTMENT_DATA = {
@@ -182,6 +212,9 @@ const STEP = {
   t3: 'Steps #2 - Step 3-5: Click "UPLOAD YOUR FILE", navigate to folder and select CSV-Audience-copy2',
   t4: 'Steps #2 - Step 6: Press "IMPORT" button and wait',
   t5: 'Steps #2 - Step 7: Press "SAVE" button on Investment page',
+  v1: 'Verification 1: Right after the import - wait the 90 s no-merge window; CRM > list view, remove "My Pipeline", search Email_Contact#1 -> exactly 2 Opportunities, both Active',
+  v2: 'Verification 2: Wait for the "NAKIVO: Re-scan same-email duplicate leads (CRM-12621)" job (every 20 min) - poll the CRM list for Email_Contact#1 until exactly 1 active Opportunity remains (up to ~45 min)',
+  v3: 'Verification 3: CRM > Archive > All, search Email_Contact#1 -> exactly 2 Opportunities; open each - 1 Active (Lost Reason blank, Tags include "Can_Merge" and "test"), 1 merged (Active = FALSE, Lost Reason = Duplicate), each keeps its own Investment',
 } as const;
 
 /** Per-test state the afterEach needs. */
@@ -251,7 +284,8 @@ test.describe(`${TC} - Investment is not transferred on merge (Source has no lin
   });
 
   test(`${TC}: Verify the value of "Investment" field from a Source Lead to Target Lead after importing new audience using csv file`, async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test);
+    // Setup (~15 min budget) + the re-scan wait (MERGE_POLLS x mergeReverifyBudget) + the final reads (~15 min).
+    test.setTimeout(config.timeouts.test * 2 + MERGE_POLLS * CommonUtils.waitTimes.mergeReverifyBudget);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const now = new Date();
@@ -541,6 +575,55 @@ test.describe(`${TC} - Investment is not transferred on merge (Source has no lin
       console.log(`\n--- ${STEP.t5} ---`);
       await investmentPage.clickSaveButton();
       console.log('  OK - Save triggered');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce #2 - Investment#2 saved after IMPORT');
+    });
+
+    await test.step(STEP.v1, async () => {
+      console.log(`\n--- ${STEP.v1} ---`);
+      await new LeadPage(page).waitForNoMergeConfirmation();
+      await investmentPage.openCrmPipeline();
+      const rows = await searchOpportunitiesByEmail(page, csvData1.emailContact1);
+      const checks = [{ label: 'Opportunities for Email_Contact#1 in the default list (active only) - both Active', expected: 2, actual: rows }];
+      const { allPass, lines } = printVerify(checks, 'the import did not merge the two Opportunities');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - right after the import`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
+    });
+
+    await test.step(STEP.v2, async () => {
+      console.log(`\n--- ${STEP.v2} ---`);
+      const r = await waitForActiveOpportunityCount(page, csvData1.emailContact1, 1, MERGE_POLLS, () => investmentPage.openCrmPipeline());
+      const checks = [{ label: `Active Opportunities for Email_Contact#1 after the re-scan (waited ${r.waitedMin} min, ${r.pollsUsed} polls)`, expected: 1, actual: r.rows }];
+      const { allPass, lines } = printVerify(checks, 'the re-scan cron merged the two Opportunities');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - after the re-scan`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
+    });
+
+    await test.step(STEP.v3, async () => {
+      console.log(`\n--- ${STEP.v3} ---`);
+      await investmentPage.openCrmPipeline();
+      const allRows = await searchAllOpportunitiesByEmail(page, csvData1.emailContact1);
+      await investmentPage.openCrmPipeline();
+      const rows1 = await openFromAllLeadsByName(page, csvData1.contactName);
+      const opp1 = await readMergeOutcome(page, { readInvestmentOnForm: true });
+      logMergeOutcome('Opp of CSV-Audience-copy1 read on screen:', opp1);
+      await investmentPage.openCrmPipeline();
+      const rows2 = await openFromAllLeadsByName(page, csvData2.contactName);
+      const opp2 = await readMergeOutcome(page, { readInvestmentOnForm: true });
+      logMergeOutcome('Opp of CSV-Audience-copy2 read on screen:', opp2);
+      // Each Opportunity is opened by its own name (unique per run) - never by the first row of an email search.
+      const { checks: mergeChecks, survivor } = rescanMergeChecks(allRows, opp1, opp2, {
+        investment1OnForm: `${investmentID1} - ${investmentName1}`,
+        investment2OnForm: `${investmentID2} - ${investmentName2}`,
+      });
+      const checks = [
+        { label: 'Opp of CSV-Audience-copy1 found by its name in Archive > All', expected: 1, actual: rows1 },
+        { label: 'Opp of CSV-Audience-copy2 found by its name in Archive > All', expected: 1, actual: rows2 },
+        ...mergeChecks,
+      ];
+      console.log(`  Observation (not scored) - surviving Opp : ${survivor.opportunity} (${survivor === opp1 ? 'CSV-Audience-copy1' : 'CSV-Audience-copy2'})`);
+      const { allPass, lines } = printVerify(checks, 'merged by the re-scan, exactly 1 survivor, no Investment transferred');
+      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - merge outcome`, passed: allPass, lines }).catch(() => {});
+      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
     });
   });
 });
