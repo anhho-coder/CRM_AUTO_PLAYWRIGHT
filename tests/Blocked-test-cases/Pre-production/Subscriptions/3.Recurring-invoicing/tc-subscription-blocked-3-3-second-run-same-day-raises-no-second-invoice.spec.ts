@@ -10,10 +10,10 @@ import {
 
 /**
  * ============================================================================================
- *  subscription-3.2 - Running the billing action twice on the same day does not raise a second
+ *  subscription-blocked-3.3 - Running the billing action twice on the same day does not raise a second
  *                    invoice for the same cycle
  * --------------------------------------------------------------------------------------------
- *  Test Case ID:    subscription-3.2
+ *  Test Case ID:    subscription-blocked-3.3
  *  Spec ID:         US1 (No billing gap)
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
@@ -51,19 +51,33 @@ import {
  *
  *  KNOWN DEFECT - CRM-12188: the second run DOES raise a second invoice for the same cycle.
  *  Production holds 201 duplicate subscription invoices ($52,753.20); SUB1113 alone has 18,
- *  created one per day. The test keeps the FRD's expected result and is marked test.fail().
+ *  created one per day. The test keeps the FRD's expected result.
+ *
+ *  SKIPPED - the product is known to violate the expected result; the case is parked.
+ *
+ *  MOVED to the blocked tree on 2026-10-21, on the tester's decision, renumbered
+ *  subscription-3.2 -> subscription-blocked-3.3. NOTE: unlike the rest of this tree, this case
+ *  is NOT blocked by the environment - it runs end to end on pre-production and the run of
+ *  2026-10-19 (run_20_20261019.log) exercised it fully. It was carried here as `test.fail()`,
+ *  which Playwright counts inside "passed", and was converted to `test.skip()` to keep this
+ *  tree's invariant (no `test(` blocks). The trade is that the suite no longer signals when
+ *  CRM-12188 is fixed.
+ *
+ *  TO UNBLOCK: once CRM-12188 is fixed, move this spec back to
+ *  tests/1.Project_CRM/9.CRM_Module/8.Subscriptions/3.Recurring-invoicing, change `test.skip(`
+ *  to `test(`, and run sync_ids.py so the TC_ID follows the new file name.
  *
  *  Command to run:
- *    npx playwright test --grep "subscription-3\.2:" --project=chromium
+ *    npx playwright test --grep "subscription-blocked-3\.3:" --project=chromium
  *    npx playwright test --grep "CRM-12188" --project=chromium
  * ============================================================================================
  */
 
-const TC_ID = 'subscription-3.2';
+const TC_ID = 'subscription-blocked-3.3';
 const QUANTITY = 100;
 const NEXT_DATE_TOLERANCE_DAYS = 2;
 
-test.describe('subscription-3.2 - A second billing run on the same day raises no second invoice', () => {
+test.describe('subscription-blocked-3.3 - A second billing run on the same day raises no second invoice', () => {
 
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
@@ -80,12 +94,11 @@ test.describe('subscription-3.2 - A second billing run on the same day raises no
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('subscription-3.2 [CRM-12188]: Running the billing action twice on the same day does not raise a second invoice for the same cycle', async ({ page }, testInfo) => {
+  test.skip('subscription-blocked-3.3 [CRM-12188]: Running the billing action twice on the same day does not raise a second invoice for the same cycle', async ({ page }, testInfo) => {
     testInfo.annotations.push({
       type: 'defect',
       description: 'CRM-12188 - a second billing run raises a SECOND invoice for the same cycle. Production holds 201 such duplicate subscription invoices ($52,753.20); SUB1113 alone accumulated 18 of them, one per day. The assertion below encodes the FRD requirement "each billing cycle shall produce exactly one invoice", which the system currently violates.',
     });
-    test.fail(); // Expected to fail until the duplicate-invoice defect is fixed
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -10,10 +10,10 @@ import {
 
 /**
  * ============================================================================================
- *  subscription-3.3 - A monthly subscription invoices for the correct period and moves its next
+ *  subscription-3.2 - A monthly subscription invoices for the correct period and moves its next
  *                    date forward by one month
  * --------------------------------------------------------------------------------------------
- *  Test Case ID:    subscription-3.3
+ *  Test Case ID:    subscription-3.2
  *  Spec ID:         US4 (Recurring invoicing)
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
@@ -51,11 +51,11 @@ import {
  *   3. The invoice total equals the Recurring Price on the subscription
  *
  *  Command to run:
- *    npx playwright test --grep "subscription-3\.3:" --project=chromium
+ *    npx playwright test --grep "subscription-3\.2:" --project=chromium
  * ============================================================================================
  */
 
-const TC_ID = 'subscription-3.3';
+const TC_ID = 'subscription-3.2';
 const QUANTITY = 50;
 const DATE_TOLERANCE_DAYS = 2;
 
@@ -64,7 +64,7 @@ function parseAmount(raw: string): number {
   return parseFloat((raw || '').replace(/ /g, ' ').replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
 }
 
-test.describe('subscription-3.3 - A monthly subscription advances its next invoice date by one month', () => {
+test.describe('subscription-3.2 - A monthly subscription advances its next invoice date by one month', () => {
 
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
@@ -81,7 +81,7 @@ test.describe('subscription-3.3 - A monthly subscription advances its next invoi
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('subscription-3.3: A monthly subscription invoices for the correct period and moves its next date forward by one month', async ({ page }, testInfo) => {
+  test('subscription-3.2: A monthly subscription invoices for the correct period and moves its next date forward by one month', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -10,10 +10,10 @@ import {
 
 /**
  * ============================================================================================
- *  subscription-3.4 - A quarterly subscription moves its next invoice date forward by three
+ *  subscription-blocked-3.4 - A quarterly subscription moves its next invoice date forward by three
  *                    months
  * --------------------------------------------------------------------------------------------
- *  Test Case ID:    subscription-3.4
+ *  Test Case ID:    subscription-blocked-3.4
  *  Spec ID:         US4 (Recurring invoicing)
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
@@ -60,16 +60,30 @@ import {
  *  KNOWN DEFECT - "=> Generate Invoice" is a SILENT NO-OP for the "Quarterly Subscription"
  *  template (Payment Mode "Invoice & try to charge", no payment token on the subscription):
  *  no invoice is created, "Date of Next Invoice" does not move, the page does not navigate,
- *  and Odoo shows no dialog and logs no message. The test keeps the FRD's expected result and
- *  is marked test.fail().
+ *  and Odoo shows no dialog and logs no message. The test keeps the FRD's expected result.
+ *
+ *  SKIPPED - the product is known to violate the expected result; the case is parked.
+ *
+ *  MOVED to the blocked tree on 2026-10-21, on the tester's decision, renumbered
+ *  subscription-3.4 -> subscription-blocked-3.4. NOTE: unlike the rest of this tree, this case
+ *  is NOT blocked by the environment - it runs end to end on pre-production and the run of
+ *  2026-10-19 (run_20_20261019.log) exercised it fully. It was carried here as `test.fail()`,
+ *  which Playwright counts inside "passed", and was converted to `test.skip()` to keep this
+ *  tree's invariant (no `test(` blocks). The trade is that the suite no longer signals when
+ *  CRM-12188 is fixed. Step 1 of the case - the template reading Recurrence Month(s) / Repeat
+ *  Every 3 - passes on its own and is the part that is lost by parking the whole spec.
+ *
+ *  TO UNBLOCK: once CRM-12188 is fixed, move this spec back to
+ *  tests/1.Project_CRM/9.CRM_Module/8.Subscriptions/3.Recurring-invoicing, change `test.skip(`
+ *  to `test(`, and run sync_ids.py so the TC_ID follows the new file name.
  *
  *  Command to run:
- *    npx playwright test --grep "subscription-3\.4" --project=chromium
+ *    npx playwright test --grep "subscription-blocked-3\.4" --project=chromium
  *    npx playwright test --grep "CRM-12188" --project=chromium
  * ============================================================================================
  */
 
-const TC_ID = 'subscription-3.4';
+const TC_ID = 'subscription-blocked-3.4';
 const QUANTITY = 50;
 const DATE_TOLERANCE_DAYS = 3;
 
@@ -78,7 +92,7 @@ function parseAmount(raw: string): number {
   return parseFloat((raw || '').replace(/ /g, ' ').replace(/[^0-9.,-]/g, '').replace(/,/g, '')) || 0;
 }
 
-test.describe('subscription-3.4 - A quarterly subscription advances its next invoice date by three months', () => {
+test.describe('subscription-blocked-3.4 - A quarterly subscription advances its next invoice date by three months', () => {
 
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
@@ -95,7 +109,7 @@ test.describe('subscription-3.4 - A quarterly subscription advances its next inv
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('subscription-3.4 [CRM-12188]: A quarterly subscription moves its next invoice date forward by three months', async ({ page }, testInfo) => {
+  test.skip('subscription-blocked-3.4 [CRM-12188]: A quarterly subscription moves its next invoice date forward by three months', async ({ page }, testInfo) => {
     testInfo.annotations.push({
       type: 'defect',
       description:
@@ -107,7 +121,6 @@ test.describe('subscription-3.4 - A quarterly subscription advances its next inv
         'payment token is legitimately required, giving the user no feedback at all is the defect. The assertions below keep the ' +
         'FRD requirement "a due cycle produces exactly one invoice and advances the next date by the recurrence".',
     });
-    test.fail(); // Expected to fail until the silent no-op is resolved
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

@@ -10,10 +10,10 @@ import {
 
 /**
  * ============================================================================================
- *  subscription-3.5 - A yearly subscription produces a draft invoice only and moves its next
+ *  subscription-3.3 - A yearly subscription produces a draft invoice only and moves its next
  *                    date forward by one year
  * --------------------------------------------------------------------------------------------
- *  Test Case ID:    subscription-3.5
+ *  Test Case ID:    subscription-3.3
  *  Spec ID:         US4 (Recurring invoicing)
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
@@ -55,15 +55,15 @@ import {
  *   3. Exactly one invoice exists, count = 1
  *
  *  Command to run:
- *    npx playwright test --grep "subscription-3\.5:" --project=chromium
+ *    npx playwright test --grep "subscription-3\.3:" --project=chromium
  * ============================================================================================
  */
 
-const TC_ID = 'subscription-3.5';
+const TC_ID = 'subscription-3.3';
 const QUANTITY = 50;
 const DATE_TOLERANCE_DAYS = 2;
 
-test.describe('subscription-3.5 - A yearly subscription produces a draft invoice only', () => {
+test.describe('subscription-3.3 - A yearly subscription produces a draft invoice only', () => {
 
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
@@ -81,7 +81,7 @@ test.describe('subscription-3.5 - A yearly subscription produces a draft invoice
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  test('subscription-3.5: A yearly subscription produces a draft invoice only and moves its next date forward by one year', async ({ page }, testInfo) => {
+  test('subscription-3.3: A yearly subscription produces a draft invoice only and moves its next date forward by one year', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 

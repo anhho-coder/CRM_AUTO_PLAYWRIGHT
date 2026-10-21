@@ -14,9 +14,9 @@ import {
 
 /**
  * ============================================================================================
- *  subscription-3.6 - A EUR subscription invoices in EUR, not the company default USD
+ *  subscription-3.4 - A EUR subscription invoices in EUR, not the company default USD
  * --------------------------------------------------------------------------------------------
- *  Test Case ID:    subscription-3.6
+ *  Test Case ID:    subscription-3.4
  *  Spec ID:         US5 (Currency)
  *  Spec:            [FRD] Subscription Management (Recurring Billing)
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222528736
@@ -54,11 +54,11 @@ import {
  *        Recurring Price read in step 1, and the amount is not converted
  *
  *  Command to run:
- *    npx playwright test --grep "subscription-3\.6:" --project=chromium
+ *    npx playwright test --grep "subscription-3\.4:" --project=chromium
  * ============================================================================================
  */
 
-const TC_ID = 'subscription-3.6';
+const TC_ID = 'subscription-3.4';
 
 test.describe(`${TC_ID} - A EUR subscription invoices in EUR`, () => {
   test.beforeEach(async ({ context, page }) => {
