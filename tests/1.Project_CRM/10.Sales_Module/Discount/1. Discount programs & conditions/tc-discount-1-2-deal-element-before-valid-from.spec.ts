@@ -41,6 +41,12 @@ import {
  * -------
  * A 5 % order program with Valid from = tomorrow is not offered in the Promotion list of a Deal Element dated today.
  *
+ * Known defect (tester decision 2026-10-22)
+ * -----------------------------------------
+ * CRM-13753 (Bug [Maintenance], P1): the reference system offers the program before its Valid from date, so
+ * Step 3 fails. The expected result is kept unchanged and the test is marked test.fail(): it reports
+ * "expected to fail" while the bug is open, and turns RED once the bug is fixed - then remove the marking.
+ *
  * Command to run
  * --------------
  *   npx playwright test --grep "Discount_1\.2:" --project=chromium
@@ -112,6 +118,8 @@ test.describe(`${TC} - Open a Deal Element dated before the program's Valid from
 
   test(`${TC}: Open a Deal Element dated before the program's Valid from date`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
+    testInfo.annotations.push({ type: 'issue', description: 'http://jira.nakivo.com/browse/CRM-13753' });
+    test.fail(true, 'Known defect CRM-13753 - a program is offered before its Valid from date'); // Expected to fail until CRM-13753 is fixed
     await page.setViewportSize({ width: 1920, height: 1080 });
     const dealElementPage = new DealElementPage(page);
     const checks: Check[] = [];
