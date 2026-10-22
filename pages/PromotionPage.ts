@@ -420,4 +420,27 @@ export class PromotionPage extends BasePage {
     const t = now.toISOString().split('T')[1].replace(/[:.]/g, '').substring(0, 6);
     return `${prefix}${d}${t}`;
   }
+
+  // ---------------- Discount baseline (reading the Promotion Programs list) ----------------
+
+  private readonly programRowByName = (name: string) => this.page.locator('tr.o_data_row').filter({ hasText: name }).first();
+
+  /** The column captions of the open Promotion Programs list, in order. */
+  async getProgramListColumns(): Promise<string[]> {
+    return (await this.page.locator('table.o_list_table thead th, table.o_list_view thead th').allTextContents().catch(() => [] as string[]))
+      .map((t) => t.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+  }
+
+  /** How many rows of the open Promotion Programs list carry this program name. */
+  async countProgramRows(name: string): Promise<number> {
+    return await this.page.locator('tr.o_data_row').filter({ hasText: name }).count().catch(() => 0);
+  }
+
+  /** Open a program's form from the Promotion Programs list by its name. */
+  async openProgramByName(name: string): Promise<void> {
+    await this.programRowByName(name).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.standard);
+  }
 }

@@ -127,6 +127,29 @@ export class HomePageMig extends HomePage {
     );
   }
 
+  /**
+   * The Sales app, opened by its root-menu action - the Mig equivalent of clicking the Sales tile, which the
+   * sidebar theme hides (CRM-12144_1.15, 2026-10-21: the pre-production click never resolved). Ready = the app's
+   * own menu bar (.o_menu_sections) is rendered, whatever view the root action opens.
+   */
+  async navigateToSales(): Promise<boolean> {
+    // a user without a "Sales" ROOT menu (Thomas Semerich on crm-mig, 2026-10-21) reaches the sales menus through
+    // the CRM app's "Sales" section instead - say so (false) rather than fail on a menu the user cannot have
+    const url = await new MigPlatformPage(this.page).appUrlFor('sales').catch((e: Error) => {
+      if (/no root menu named "Sales"/.test(e.message)) return '';
+      throw e;
+    });
+    if (!url) return false;
+    await this.goto(url);
+    await this.waitForURL(/\/web[?#]/, CommonUtils.waitTimes.pageLoad);
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.page.locator('xpath=//*[contains(@class,"o_menu_sections")]//a').or(this.page.locator('.o_menu_sections a'))
+      .first().waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.dismissErrorDialog();
+    await this.wait(CommonUtils.waitTimes.long);
+    return true;
+  }
+
   /** CRM > Leads (list view) - replaces the navbar/dropdown click of the base object. */
   async navigateToLeads() {
     await this.openListByHash('leads');

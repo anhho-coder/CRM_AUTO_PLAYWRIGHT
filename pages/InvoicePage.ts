@@ -2873,6 +2873,142 @@ export class InvoicePage extends BasePage {
    * A field's value as the screen shows it, in READ mode as well as in EDIT mode
    * (read mode renders text, edit mode renders an input).
    */
+  /**
+   * Filters > Add Custom Filter > ID = <id> > Apply. addInvoiceListCustomFilter() is not used for this: on an
+   * integer field it waits for an autocomplete that never comes and then presses Enter, which already applies the
+   * filter and closes the menu - its own Apply wait then times out (Discount_2.4, 2026-10-21).
+   */
+  async addInvoiceListIdFilter(invoiceId: number | string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log(`  - Add Custom Filter: ID = ${invoiceId}`);
+    await this.openFiltersMenu(timeout);
+    await this.addCustomFilterBtn().click({ timeout });
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.cfFieldSelect().selectOption({ label: 'ID' }, { timeout });
+    await this.wait(CommonUtils.waitTimes.standard);
+    const input = this.cfValueInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.fill(String(invoiceId), { timeout });
+    await this.page.keyboard.press('Tab');
+    await this.cfApplyButton().click({ timeout });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog().catch(() => {});
+    const facets = ((await this.page.locator('.o_searchview .o_searchview_facet').allInnerTexts().catch(() => [] as string[])) || []).map((t) => t.replace(/\s+/g, ' ').trim());
+    console.log(`    - search facets now: ${JSON.stringify(facets)}`);
+  }
+
+  /**
+   * "Total in Company Currency" of ONE invoice, read the way the tester reads it (2026-10-21): the invoice FORM does
+   * not show it, the Invoices LIST does. Invoicing > Customers > Invoices (list) -> filter "ID = <id>" so the list
+   * holds that one invoice only (a draft has no Number to search by) -> make sure the "Total in Company Currency"
+   * column is on (switch it on in the column toggler when the list hides it) -> read that row's cell.
+   * Leaves the filtered list on screen for the verify-point shot.
+   * @returns the cell text ('' when the column or the row is absent) and how many rows the filter left
+   */
+  async getTotalInCompanyCurrencyForInvoiceId(invoiceId: number | string): Promise<{ value: string; rows: number; columnSwitchedOn: boolean }> {
+    await this.openCustomerInvoicesList();
+    await this.clearListSearchFacets().catch(() => 0);
+    await this.addInvoiceListIdFilter(invoiceId);
+    await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const header = this.page.locator('xpath=//table[contains(@class,"o_list_view")]//th[starts-with(normalize-space(),"Total in Company Currency")]').first();
+    let columnSwitchedOn = false;
+    if (!(await header.isVisible().catch(() => false))) {
+      // the list hides the column: switch it on in the column toggler (crm-mig layout, tester's screenshot)
+      const toggler = this.page.locator('.o_control_panel .o_optional_columns_dropdown_toggle, .o_list_view .o_optional_columns_dropdown_toggle, .o_control_panel button[title*="olumn"]').first();
+      if (await toggler.isVisible().catch(() => false)) {
+        await toggler.click({ timeout: CommonUtils.waitTimes.elementVisibility });
+        const item = this.page.locator('.dropdown-menu.show').getByText('Total in Company Currency', { exact: true }).first();
+        await item.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.wait(CommonUtils.waitTimes.long);
+        columnSwitchedOn = true;
+      }
+    }
+    const read = await this.page
+      .evaluate(() => {
+        const table = document.querySelector('table.o_list_view') || document.querySelector('.o_list_view table');
+        if (!table) return { value: '', rows: 0 };
+        const headers = Array.from(table.querySelectorAll('thead th'));
+        const colIdx = headers.findIndex((h) => (h.textContent || '').replace(/\s+/g, ' ').trim().startsWith('Total in Company Currency'));
+        const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+        if (colIdx === -1 || rows.length === 0) return { value: '', rows: rows.length };
+        const cell = rows[0].querySelectorAll('td')[colIdx] as HTMLElement | undefined;
+        return { value: cell ? (cell.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim() : '', rows: rows.length };
+      })
+      .catch(() => ({ value: '', rows: 0 }));
+    console.log(`  - Invoices list filtered on ID = ${invoiceId}: ${read.rows} row(s); Total in Company Currency = "${read.value}"${columnSwitchedOn ? ' (column switched on)' : ''}`);
+    return { ...read, columnSwitchedOn };
+  }
+
+  /**
+   * Open an invoice line (click its row on the read-mode invoice) and read the line form that opens in a dialog,
+   * as label -> value. The Invoice Lines list leaves a reward line's Quantity / Price blank (pre-prod 2026-10-20),
+   * so a check on what the LINE holds reads the line itself. Leaves the dialog open - closeLineDialog().
+   */
+  async openInvoiceLineDialog(rowText: string): Promise<Record<string, string>> {
+    const row = this.page.locator('div[name="invoice_line_ids"] table tbody tr.o_data_row').filter({ hasText: rowText }).first();
+    await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await row.getByText(rowText, { exact: false }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialog = this.page.locator('.modal-dialog .o_form_view').first();
+    await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const fields = await dialog.evaluate((root: HTMLElement) => {
+      const out: Record<string, string> = {};
+      const clean = (s: string) => s.replace(/ /g, ' ').replace(/​/g, '').replace(/\s+/g, ' ').trim();
+      root.querySelectorAll('td.o_td_label').forEach((td) => {
+        const label = clean((td as HTMLElement).innerText || '');
+        const cell = td.nextElementSibling as HTMLElement | null;
+        if (!label || !cell) return;
+        const input = cell.querySelector('input:not([type="hidden"]), textarea') as HTMLInputElement | null;
+        out[label] = clean(input && input.type !== 'checkbox' ? input.value : cell.innerText || '');
+      });
+      return out;
+    });
+    console.log(`  - invoice line "${rowText}" opened: ${JSON.stringify(fields)}`);
+    return fields;
+  }
+
+  /** Close the line dialog opened by openInvoiceLineDialog(). */
+  async closeLineDialog(): Promise<void> {
+    const close = this.page.locator('.modal-dialog .modal-footer .btn-secondary, .modal-dialog .modal-header .close').first();
+    if (await close.isVisible().catch(() => false)) await close.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+    else await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * The value a VISIBLE label of the invoice form shows (sheet fields and the totals footer), e.g.
+   * "Total in Company Currency". When the label is not on screen, the given notebook tabs are opened in turn.
+   * Hidden fields are never read - a value the user cannot see is not what the TC checks.
+   * @returns the value and where it was found ('' / 'not shown' when no visible label matches)
+   */
+  async getVisibleLabelledValue(label: string, tabs: string[] = []): Promise<{ value: string; where: string }> {
+    const read = () =>
+      this.page.evaluate((want: string) => {
+        const clean = (s: string) => s.replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        const labels = Array.from(document.querySelectorAll('.o_form_sheet td.o_td_label, .o_form_sheet .oe_subtotal_footer td label, .o_form_sheet .oe_subtotal_footer_separator'));
+        for (const l of labels) {
+          const el = l as HTMLElement;
+          if (!el.offsetParent || !clean(el.innerText || '').replace(/:$/, '').startsWith(want)) continue;
+          const td = el.closest('td') as HTMLElement | null;
+          const cell = (td?.nextElementSibling as HTMLElement | null) ?? null;
+          if (cell && cell.offsetParent) return clean(cell.innerText || '');
+        }
+        return null;
+      }, label);
+    let v = await read().catch(() => null);
+    if (v !== null) return { value: v, where: 'form' };
+    for (const tab of tabs) {
+      const t = this.page.locator('.o_notebook .nav-link').filter({ hasText: new RegExp('^\\s*' + tab + '\\s*$') }).first();
+      if (!(await t.isVisible().catch(() => false))) continue;
+      await t.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+      v = await read().catch(() => null);
+      if (v !== null) return { value: v, where: `tab "${tab}"` };
+    }
+    return { value: '', where: 'not shown' };
+  }
+
   async getFieldDisplayValue(fieldName: string): Promise<string> {
     const field = this.page.locator('.o_form_sheet [name="' + fieldName + '"]').first();
     if ((await field.count()) === 0) return '';
