@@ -31,7 +31,7 @@ import {
  * Automation-Date  : 2026-10-21
  * Mirrors          : CRM-12144_7.1 (crm-mig manual TC, master "Migration - Discount") - same steps, same expected
  *                    results; this run is the reference-system half of the parity comparison
- * Jira             : N/A - manual TC provided inline (baseline rows go to master + Xray once green)
+ * Jira             : CRM-13804
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591
  * Source version   : master row CRM-12144_7.1 as read 2026-10-21 - re-check before trusting this spec
  * Host             : pre-production (http://pre-production.nakivo.site, Odoo 12 EE = the reference system)

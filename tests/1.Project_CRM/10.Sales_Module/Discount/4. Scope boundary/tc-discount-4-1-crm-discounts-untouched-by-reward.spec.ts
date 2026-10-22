@@ -31,7 +31,7 @@ import {
  * Automation-Date  : 2026-10-20
  * Mirrors          : CRM-12144_4.1 (crm-mig manual TC, master "Migration - Discount" row 48) - same steps,
  *                    same expected results, run on the reference system so crm-mig can be ported 1:1
- * Jira             : N/A - manual TC provided inline (baseline rows go to master + Xray once green)
+ * Jira             : CRM-13791
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0084
  * Source version   : master row CRM-12144_4.1 as read 2026-10-20 - re-check before trusting this spec
  * Host             : pre-production (http://pre-production.nakivo.site, Odoo 12 EE = the reference system)

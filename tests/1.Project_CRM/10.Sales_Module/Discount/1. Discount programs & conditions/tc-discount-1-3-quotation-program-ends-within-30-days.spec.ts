@@ -30,7 +30,7 @@ import {
  * Automation-Date  : 2026-10-21
  * Mirrors          : CRM-12144_1.3 (crm-mig manual TC, master "Migration - Discount") - same steps, same expected
  *                    results, run on the reference system so crm-mig can be ported 1:1
- * Jira             : N/A - manual TC provided inline (baseline rows go to master + Xray once green)
+ * Jira             : CRM-13766
  * Host             : pre-production (http://pre-production.nakivo.site, Odoo 12 EE = the reference system)
  * Run as           : Program editor = CRM administrator (users.admin_crm) over JSON-RPC (ProgramOwner);
  *                    Salesperson = Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas)
