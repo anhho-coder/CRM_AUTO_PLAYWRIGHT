@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { stampReportFolder } = require('./stamp-report-folder');
+const { colorizeReportFolder } = require('./colorize-verify-stdout');
 
 /**
  * Custom reporter to track test failures and rename report folder
@@ -122,6 +123,12 @@ class CustomReporter {
       console.log(`[Custom Reporter] Report folder name stamped into index.html (${result})`);
     } catch (error) {
       console.error(`[Custom Reporter] Could not stamp report folder name:`, error.message);
+    }
+    try {
+      const result = colorizeReportFolder(finalFolder);
+      console.log(`[Custom Reporter] VERIFY stdout colouring added to index.html (${result})`);
+    } catch (error) {
+      console.error(`[Custom Reporter] Could not add VERIFY stdout colouring:`, error.message);
     }
   }
 
