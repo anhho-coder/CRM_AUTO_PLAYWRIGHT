@@ -2189,7 +2189,7 @@ export class DealElementPage extends BasePage {
     await input.fill(sku);
     const escaped = productName.replace(/[[\]\\^$.|?*+(){}]/g, '\\$&');
     const option = this.dropdownOption().filter({ hasText: new RegExp('^\\s*' + escaped) }).first();
-    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForProductOption(input, sku, option);
     await option.click();
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
     await this.setLastRowQty(quantity);
@@ -2198,6 +2198,11 @@ export class DealElementPage extends BasePage {
     const landed = rows.some((r) => (r['Product'] ?? '').startsWith(productName));
     if (!landed) throw new Error(`No order line carries ${productName} after adding it - lines: ${rows.map((r) => (r['Product'] ?? '').slice(0, 20)).join(' | ')}`);
     console.log(`  ✓ Order line: ${productName} x ${quantity}`);
+  }
+
+  /** Wait for the dropdown option of the SKU just typed in the Product cell (DealElementPageMig adds one re-type). */
+  protected async waitForProductOption(_input: Locator, _sku: string, option: Locator): Promise<void> {
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
   }
 
   /**

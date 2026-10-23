@@ -1,4 +1,4 @@
-import { Browser, BrowserContext, Page, TestInfo, expect } from '@playwright/test';
+import { Browser, BrowserContext, Page, TestInfo, expect, test } from '@playwright/test';
 import { users, baseUrl_mig } from '@config/users.config';
 import { OpportunityPage } from '@pages';
 import { LoginPageMig, HomePageMig, ContactPageMig, DiscountProgramEditorPageMig } from '@pages/mig';
@@ -62,8 +62,7 @@ export const DISCOUNT_MIG = { ...DISCOUNT_BASELINE } as const;
  */
 export const MIG_ACTION_TIMEOUT = CommonUtils.waitTimes.abnormalWait * 3;
 
-/** Program editor guard (tester decision 2026-10-21) - see DiscountProgramEditorPageMig. */
-export const PROGRAM_EDITOR_WRITES_CONFIRMED = DiscountProgramEditorPageMig.PROGRAM_EDITOR_WRITES_CONFIRMED;
+/** Skip reason of the specs that need a Program-editor write ("chỉ run manual") - see DiscountProgramEditorPageMig. */
 export const PROGRAM_EDITOR_MANUAL_REASON = DiscountProgramEditorPageMig.MANUAL_REASON;
 
 /** The VERIFY block on stdout (printed BEFORE asserting, so it shows on a failure too), then one expect per check. */
@@ -161,6 +160,20 @@ export async function createEndCustomerCompanyMig(
  * CRM > Pipeline (LIST view) > Create on crm-mig: a new opportunity whose Company is the run's company (linked by
  * the background job through the e-mail). Same fields as the pre-production baseline.
  */
+/**
+ * crm-mig: a notebook-tab click on an unsaved form can change the URL hash, and the web client then asks "The record
+ * has been modified, your changes will be discarded. Do you want to proceed?" (CRM-12144_2.7, 2026-10-22: it covered
+ * SAVE on the new opportunity). OK would throw the record away - answer CANCEL and stay on the form.
+ */
+async function keepUnsavedFormMig(page: Page): Promise<void> {
+  const dialog = page.locator('.modal.show').filter({ hasText: /changes will be discarded/i }).first();
+  const shown = await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.standard }).then(() => true).catch(() => false);
+  if (!shown) return;
+  console.log('    ⚠ "The record has been modified, your changes will be discarded" - CANCEL (keep the unsaved form)');
+  await dialog.getByRole('button', { name: /^\s*cancel\s*$/i }).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+  await dialog.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+}
+
 export async function createOpportunityForCompanyMig(
   page: Page,
   run: DiscountRun,
@@ -193,8 +206,10 @@ export async function createOpportunityForCompanyMig(
   await opportunityPage.selectSalesperson(salesperson.displayName);
   await opportunityPage.uncheckCreatedManually().catch(() => {});
   await opportunityPage.clickCRMDeveloperTab().catch(() => {});
+  await keepUnsavedFormMig(page);
   await opportunityPage.fillLeadForm('Download Free Trial').catch(() => {});
   await opportunityPage.selectStage('New');
+  await keepUnsavedFormMig(page);
   await opportunityPage.clickSave();
   await opportunityPage.waitForSaveComplete();
   await opportunityPage.waitForIdInUrlAndExtract();
@@ -251,7 +266,13 @@ export async function rpcMig(page: Page, model: string, method: string, args: un
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method, args, kwargs } }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      let json: any;
+      // a proxy error (502 / 504) answers with an HTML page - name it, so "no answer from Odoo" is not read as an Odoo error
+      try { json = JSON.parse(text); } catch (_e) {
+        const title = (text.match(/<title>([^<]*)<\/title>/i)?.[1] || text.slice(0, 80)).replace(/\s+/g, ' ').trim();
+        throw new Error(`HTTP ${res.status} - no JSON-RPC answer ("${title}")`);
+      }
       if (json.error) throw new Error(json.error.data?.message || json.error.message || 'RPC error');
       return json.result;
     },
@@ -268,6 +289,41 @@ export async function rpcMig(page: Page, model: string, method: string, args: un
 
 /** Runs whose records are confirmed gone - the afterAll sweep skips them. */
 const CLEANED = new Set<string>();
+
+/** rpcMig errors that mean crm-mig never answered (proxy page or guard timeout), as opposed to an Odoo error. */
+const NO_ANSWER = /HTTP \d{3} - no JSON-RPC answer|did not answer within/;
+
+/**
+ * Unlink ONE record of the run, then count it again. A partner delete on crm-mig can outlast the proxy: the gateway
+ * answers with an HTML page while Odoo goes on and commits the delete (CRM-12144_2.1, 2026-10-22: company 100002339
+ * got "<html>" back, the count right after got no answer either, and the company was gone afterwards). So a delete
+ * that got no answer is RE-READ until crm-mig answers - never re-sent blindly - and sent ONCE more only when the
+ * re-read still finds the record. An Odoo error (access, constraint) is not retried.
+ * @returns 0 = gone, >0 = still there, -1 = crm-mig never answered the count (unverified - NOT clean)
+ */
+async function unlinkAndConfirmMig(page: Page, model: string, id: number): Promise<number> {
+  const recount = async (): Promise<number> => {
+    const count = (): Promise<number> => rpcMig(page, model, 'search_count', [[['id', '=', id], ['active', 'in', [true, false]]]], {}, CommonUtils.waitTimes.abnormalWait).catch(() => -1);
+    const deadline = Date.now() + CommonUtils.waitTimes.migUnlinkRecheck;
+    let left = await count();
+    while (left < 0 && Date.now() < deadline) {
+      await page.waitForTimeout(CommonUtils.waitTimes.migUnlinkRecheckInterval);
+      left = await count();
+    }
+    return left;
+  };
+  const failure = await rpcMig(page, model, 'unlink', [[id]]).then(() => '', (e: Error) => e.message.split('\n')[0]);
+  if (failure) console.log(`  ⚠ ${model} ${id}: ${failure}`);
+  if (!NO_ANSWER.test(failure)) return recount();
+  console.log(`    crm-mig did not answer the delete - re-reading ${model} ${id} before any retry`);
+  let left = await recount();
+  if (left > 0) {
+    console.log(`    ${model} ${id} is still there - one more delete`);
+    await rpcMig(page, model, 'unlink', [[id]]).catch((e: Error) => console.log(`  ⚠ ${model} ${id} (retry): ${e.message.split('\n')[0]}`));
+    left = await recount();
+  }
+  return left;
+}
 
 /**
  * Delete exactly the run's records on crm-mig, children first, then count them again. The page must be signed in
@@ -327,10 +383,10 @@ async function deleteRunRecordsMig(page: Page, run: DiscountRun): Promise<string
   ];
   for (const [model, id] of targets) {
     if (!id) continue;
-    await rpcMig(page, model, 'unlink', [[id]]).catch((e: Error) => console.log(`  ⚠ ${model} ${id}: ${e.message}`));
-    const left = await rpcMig(page, model, 'search_count', [[['id', '=', id], ['active', 'in', [true, false]]]]).catch(() => -1);
-    console.log(`  - ${model} ${id} remaining = ${left}`);
-    if (left) survivors.push(`${model} ${id}`);
+    const left = await unlinkAndConfirmMig(page, model, id);
+    console.log(`  - ${model} ${id} remaining = ${left < 0 ? 'unknown (crm-mig did not answer)' : left}`);
+    if (left > 0) survivors.push(`${model} ${id}`);
+    else if (left < 0) survivors.push(`${model} ${id} (unverified - crm-mig did not answer the re-read)`);
   }
   return survivors;
 }
@@ -356,6 +412,9 @@ export async function teardownDiscountRunMig(page: Page, run: DiscountRun, _test
 export async function sweepDiscountRunsMig(browser: Browser, runs: DiscountRun[]): Promise<void> {
   const pending = runs.filter((r) => r && !CLEANED.has(r.ts));
   if (!pending.length) return;
+  // the hook has the config's 30 s, less than a crm-mig sign-in alone: CRM-12144_2.1 (2026-10-22) - the sweep was
+  // cut at 30 s ("afterAll" hook timeout) before it deleted anything. A sweep with work gets the script budget.
+  test.setTimeout(CommonUtils.waitTimes.runningTestScript);
   const context = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   const page = await context.newPage();
   try {

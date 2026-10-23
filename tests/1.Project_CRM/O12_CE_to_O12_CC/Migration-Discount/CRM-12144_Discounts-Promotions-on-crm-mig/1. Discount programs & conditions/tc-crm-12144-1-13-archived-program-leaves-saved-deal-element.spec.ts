@@ -21,7 +21,6 @@ import {
   teardownDiscountRunMig,
   sweepDiscountRunsMig,
   MIG_ACTION_TIMEOUT,
-  PROGRAM_EDITOR_WRITES_CONFIRMED,
   PROGRAM_EDITOR_MANUAL_REASON,
   baselineDetails,
 } from '@helpers/discount-mig.helper';
@@ -42,15 +41,17 @@ import {
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
  *
- * BLOCKED - Program-editor writes not authorised yet (QI p.3; tester 2026-10-21: "mark manual, I will confirm with Dev later")
- *   The whole describe block is skipped by test.skip(!PROGRAM_EDITOR_WRITES_CONFIRMED, PROGRAM_EDITOR_MANUAL_REASON) at
+ * MANUAL ONLY - chỉ run manual (tester, 2026-10-22). Program-table edits belong to the development team: QI p.3 + p.28
+ *   (TC-14 to TC-18 at QA's request); Nathan, CRM-12467 2026-10-20: QA runs only TC-13 and TC-19.
+ *   The whole describe block is skipped by test.skip(true, PROGRAM_EDITOR_MANUAL_REASON) at
  *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
- *   It runs only after Dev confirms and PROGRAM_EDITOR_WRITES_CONFIRMED is set to true.
+ *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
  *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
  *     - Pre-condition 4 : add the row QA-Disc-<timestamp> (customer = Disc-Cust) and Save as version N
  *     - Step 1          : delete the row QA-Disc-<timestamp> and Save as version N (this is the switch-off)
- *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "MANUAL ONLY - QI p.3: program-table edits in the Program editor are the
- *           development team's (except TC-13); QA writes not confirmed by Dev yet (tester decision 2026-10-21)"
+ *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
+ *           development team's: QI p.3 (except TC-13) and p.28 (TC-14 to TC-18 at QA's request); Nathan,
+ *           CRM-12467 2026-10-20: QA runs only TC-13 and TC-19"
  *
  * Summary
  * -------
@@ -60,7 +61,7 @@ import {
  *
  * Command to run
  * --------------
- *   npx playwright test --grep "CRM-12144_1\.13:" --project=chromium   (skipped until PROGRAM_EDITOR_WRITES_CONFIRMED is true)
+ *   npx playwright test --grep "CRM-12144_1\.13:" --project=chromium   (always skipped - chỉ run manual)
  *
  * ------------------------------------------------------------------------------------------------
  *  Source manual TC (CRM-12144_1.13, master "Migration - Discount" row 30) - verbatim, ASCII
@@ -119,11 +120,11 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)',
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-Cust-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre4: 'Pre-condition 4: [MANUAL ONLY - Program editor write not authorised yet, QI p.3 / tester 2026-10-21] Add a row to the program table with: Promo code = QA-<timestamp>, Name = QA-Disc-<timestamp>, Reward percent = 5.0, Scope = order, Target product codes = (empty), Customer condition (Advanced) = customer name is Disc-Cust-<timestamp>; Click Save as version N and confirm the new version is the active one',
+  pre4: 'Pre-condition 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Add a row to the program table with: Promo code = QA-<timestamp>, Name = QA-Disc-<timestamp>, Reward percent = 5.0, Scope = order, Target product codes = (empty), Customer condition (Advanced) = customer name is Disc-Cust-<timestamp>; Click Save as version N and confirm the new version is the active one',
   pre5: 'Pre-condition 5: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
   pre6: 'Pre-condition 6: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-Opp2-<timestamp>, Customer = Disc-Cust-<timestamp>',
   pre7: 'Pre-condition 7: Open Disc-Opp-<timestamp>, click DEAL ELEMENT, add A2160B with Ordered Qty 1, pick QA-Disc-<timestamp> and click Save (Deal Element #1)',
-  s1: 'Step 1: [MANUAL ONLY - Program editor write not authorised yet, QI p.3 / tester 2026-10-21] In the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N',
+  s1: 'Step 1: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N',
   s2: 'Step 2: Open Disc-Opp2-<timestamp>, click DEAL ELEMENT, add A2160B with Ordered Qty 1 and open the Promotion list',
   s3: 'Step 3: Open Deal Element #1',
   verify: 'Verification',
@@ -153,7 +154,7 @@ async function removeEditorRows(page: Page): Promise<void> {
 }
 
 test.describe(`${TC} - Switch a program off by saving a version without its row (crm-mig)`, () => {
-  test.skip(!PROGRAM_EDITOR_WRITES_CONFIRMED, PROGRAM_EDITOR_MANUAL_REASON);
+  test.skip(true, PROGRAM_EDITOR_MANUAL_REASON); // chỉ run manual
 
   let run: DiscountRun;
 
@@ -229,7 +230,7 @@ test.describe(`${TC} - Switch a program off by saving a version without its row 
 
     await test.step(STEP.pre4, async () => {
       console.log(`\n--- ${STEP.pre4} ---`);
-      // Program-editor write: refused by DiscountProgramEditorPageMig until PROGRAM_EDITOR_WRITES_CONFIRMED is true
+      // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
       await editor.addProgramRowAndSaveVersion({
         'Promo code': promoCode,
         Name: programName,
@@ -279,7 +280,7 @@ test.describe(`${TC} - Switch a program off by saving a version without its row 
     // ================= Steps =================
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      // Program-editor write: refused until PROGRAM_EDITOR_WRITES_CONFIRMED is true
+      // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
       await editor.deleteProgramRowAndSaveVersion(programName);
       forgetEditorRow(programName);
     });

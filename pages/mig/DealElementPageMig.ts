@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { DealElementPage } from '../DealElementPage';
 import { CommonUtils } from '@helpers/common.utils';
 import { readRowByAuthoredCaption } from './MigListCaption';
@@ -28,6 +28,21 @@ export class DealElementPageMig extends DealElementPage {
     await this.waitForURL('**/web?*model=crm.lead*', CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
     console.log(`  ✓ Back on the opportunity through the breadcrumb "${caption}"`);
+  }
+
+  /**
+   * ONE re-type, logged. On crm-mig (CRM-12144_2.3, 2026-10-22 19:03) "A2144B" sat in the Product cell with no
+   * dropdown for 30 s, while the same step passed in 2.1 / 2.2 minutes before and in 2.3's own re-run - the search
+   * never fired or never answered. Typing the SKU again key by key fires a new search. Still strict: no Enter
+   * fallback (it once picked the wrong product), a second miss throws.
+   */
+  protected async waitForProductOption(input: Locator, sku: string, option: Locator): Promise<void> {
+    const shown = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true, () => false);
+    if (shown) return;
+    console.log(`  ⚠ no dropdown option for "${sku}" after ${CommonUtils.waitTimes.abnormalWait / 1000} s - typing it again`);
+    await input.fill('');
+    await input.pressSequentially(sku, { delay: CommonUtils.waitTimes.short });
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
   }
 
   async getOrderLineRowCells(rowIndex: number = 0): Promise<Record<string, string>> {

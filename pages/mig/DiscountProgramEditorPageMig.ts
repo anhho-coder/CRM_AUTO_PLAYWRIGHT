@@ -20,17 +20,16 @@ import { users, baseUrl_discount_mig } from '@config/users.config';
  *                           Inputs | Outputs, header row 2 = the column titles, one CodeMirror cell per column.
  *                           The rows render only in a large viewport (1920x1080) - at 1280x720 the body stayed empty.
  *
- * READ-ONLY. Tester decision 2026-10-21: specs do not write to the program table (Add row / Save as version /
- * Delete) until the development team confirms QA may - QI p.3 gives program-table edits to Dev, except TC-13.
- * The two write methods below therefore refuse to run while PROGRAM_EDITOR_WRITES_CONFIRMED is false.
+ * READ-ONLY. Specs never write to the program table (Add row / Save as version / Delete): QI p.3 + p.28 give those
+ * edits to the development team (TC-14 to TC-18 at QA's request), and Nathan's CRM-12467 comment of 2026-10-20 lets
+ * QA run only TC-13 and TC-19. The specs that need a write are skipped as "chỉ run manual" (tester, 2026-10-22), and
+ * the two write methods below always refuse to run.
  * The site's certificate chain is self-signed: a spec that opens it needs test.use({ ignoreHTTPSErrors: true }).
  */
 export class DiscountProgramEditorPageMig extends BasePage {
-  /** Flip to true only after the development team confirms QA may save versions of the program table. */
-  static readonly PROGRAM_EDITOR_WRITES_CONFIRMED = false;
   static readonly MANUAL_REASON =
-    'MANUAL ONLY - QI p.3: program-table edits in the Program editor are the development team\'s (except TC-13); ' +
-    'QA writes not confirmed by Dev yet (tester decision 2026-10-21)';
+    'chỉ run manual - program-table edits in the Program editor are the development team\'s: QI p.3 (except TC-13) ' +
+    'and p.28 (TC-14 to TC-18 at QA\'s request); Nathan, CRM-12467 2026-10-20: QA runs only TC-13 and TC-19';
 
   constructor(page: Page) {
     super(page);
@@ -191,7 +190,7 @@ export class DiscountProgramEditorPageMig extends BasePage {
 
   /**
    * [NOT AUTHORISED - see MANUAL_REASON] Add a program row to the active version and Save as version N+1.
-   * Refuses to run while PROGRAM_EDITOR_WRITES_CONFIRMED is false, so a spec can never write by accident.
+   * Always refuses to run (chỉ run manual), so a spec can never write by accident.
    */
   async addProgramRowAndSaveVersion(_row: Record<string, string>): Promise<never> {
     throw new Error(DiscountProgramEditorPageMig.MANUAL_REASON);

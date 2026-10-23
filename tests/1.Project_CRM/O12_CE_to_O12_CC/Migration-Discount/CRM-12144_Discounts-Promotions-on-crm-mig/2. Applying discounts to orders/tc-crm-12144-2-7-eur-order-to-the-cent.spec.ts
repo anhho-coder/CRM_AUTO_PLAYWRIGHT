@@ -41,8 +41,11 @@ import {
  * ================================================================================================
  * Test Case ID     : CRM-12144_2.7
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 40, Jira link empty)
- * Automation-Type  : new
- * Automation-Date  : 2026-10-21
+ * Automation-Type  : refactored
+ * Automation-Date  : 2026-10-23
+ * Skipped          : 2026-10-23 by bug CRM-13823 (crm-mig currency rates not updated since 2026-10-13) - Step 4
+ *                    Total in Company Currency cannot match the reference until the rates update again; remove the
+ *                    test.skip below once CRM-13823 is fixed
  * Baseline         : Discount_2.7 (Jira CRM-13784; tests/1.Project_CRM/10.Sales_Module/Discount/2. Applying discounts to orders/
  *                    tc-discount-2-7-eur-order-to-the-cent.spec.ts) - assertions ported unchanged; the baseline's
  *                    run is the reference side of Step 4 here
@@ -217,6 +220,8 @@ async function compareStep(page: Page, testInfo: TestInfo, checks: Check[], crm:
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - EUR order with a line discount and a 35 % partner discount (crm-mig, compared with the reference system)`, () => {
+  test.skip(true, 'CRM-13823 - crm-mig currency rates not updated since 2026-10-13: Total in Company Currency differs from the reference (http://jira.nakivo.com/browse/CRM-13823)');
+
   let created: DiscountRun[] = [];
   let refPage: Page | undefined;
   let refContext: BrowserContext | undefined;

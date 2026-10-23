@@ -309,8 +309,11 @@ export class CommonUtils {
     opts: {
       /** Attachment name WITHOUT the verdict suffix, e.g. "CRM-12370_3.2.5 - Print menu". */
       name: string;
-      /** The verdict this shot proves - drives the outline colour and the name suffix. */
-      passed: boolean;
+      /**
+       * The verdict this shot proves - drives the outline colour and the name suffix. 'read' = a value captured
+       * BEFORE any comparison: blue outline, caption "READ", name suffix " - READ" - the shot claims no verdict.
+       */
+      passed: boolean | 'read';
       /** CSS selector(s) of what the check read (the open dropdown, the row, the field, the dialog). */
       highlight?: string | string[];
       /** The VERIFY lines burned into the image - normally the same strings printed on stdout. */
@@ -320,8 +323,8 @@ export class CommonUtils {
     }
   ): Promise<void> {
     const selectors = typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || []);
-    const verdict = opts.passed ? 'PASS' : 'FAIL';
-    const colour = opts.passed ? '#1a9641' : '#e03131';
+    const verdict = opts.passed === 'read' ? 'READ' : opts.passed ? 'PASS' : 'FAIL';
+    const colour = opts.passed === 'read' ? '#1c7ed6' : opts.passed ? '#1a9641' : '#e03131';
     let decorated = false;
     try {
       const hits = await page.evaluate(
@@ -365,7 +368,7 @@ export class CommonUtils {
               );
               const head = document.createElement('div');
               head.setAttribute('style', 'font-weight:700;margin-bottom:4px;color:' + colour + ';');
-              head.textContent = 'VERIFY - ' + verdict;
+              head.textContent = verdict === 'READ' ? 'READ' : 'VERIFY - ' + verdict;
               const body = document.createElement('div');
               body.textContent = lines.join('\n');
               box.appendChild(head);
@@ -600,6 +603,10 @@ export class CommonUtils {
     hubProcessingWait: 10000,
     /** Integration Hub outbound delivery - 30 seconds (queue entry written -> delivered to the marketing platform) */
     hubDeliveryWait: 30000,
+    /** crm-mig teardown - 2 minutes to re-read a record whose delete got no answer (proxy 502/504) before judging it */
+    migUnlinkRecheck: 120000,
+    /** crm-mig teardown - 10 seconds between those re-reads */
+    migUnlinkRecheckInterval: 10000,
   };
 
   /**

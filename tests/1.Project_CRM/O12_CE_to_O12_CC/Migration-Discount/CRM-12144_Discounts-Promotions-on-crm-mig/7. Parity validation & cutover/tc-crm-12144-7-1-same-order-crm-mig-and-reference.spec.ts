@@ -95,6 +95,8 @@ import {
  *  this same test (second browser context, baseline helpers and account users.sale_ic_thomas, its own run marker); its
  *  Deal Element is opened on the reference opportunity re-opened by id (fresh page, see Step 3 / reference - Step 1).
  *  Step 4 compares every value to the cent with no tolerance.
+ *  Step 4 leaves QA's own test programs on pre-production (names starting KEEP-Discount_, kept by the baseline
+ *  Discount_x.y runs) out of the reference Promotion list - tester 2026-10-22: QA test data, not migration data.
  * ================================================================================================
  */
 
@@ -112,7 +114,7 @@ const STEP = {
   s3: '[REFERENCE SIDE - pre-production, driven in this test] Step 3: Repeat steps 1 and 2 on the reference system on the same day',
   s3s1: 'Step 3 / reference - Step 1: Open the opportunity, DEAL ELEMENT, add A2144B with Ordered Qty 5 and open the Promotion list',
   s3s2: 'Step 3 / reference - Step 2: Pick Deal registration and click Save',
-  s4: 'Step 4: Compare the two (Promotion list, reward percentage and amount, Total, Total in Company Currency - to the cent)',
+  s4: 'Step 4: Compare the two (Promotion list, reward percentage and amount, Total, Total in Company Currency - to the cent; the reference list leaves out QA\'s KEEP-Discount_* test programs - tester 2026-10-22)',
   verify: 'Verification',
 } as const;
 
@@ -131,6 +133,9 @@ const COMPARED: Array<{ key: string; label: string; kind: 'text' | 'amount' }> =
   { key: 'Total', label: 'Total', kind: 'amount' },
   { key: 'Total in Company Currency', label: 'Total in Company Currency', kind: 'amount' },
 ];
+
+/** QA's own test programs on pre-production (baseline Discount_x.y runs): left out of the reference list Step 4 compares. */
+const QA_TEST_PROGRAM = /^KEEP-Discount_/;
 
 /** Two amounts equal to the cent; an empty or unreadable value is never equal. */
 const sameAmount = (crm: string, ref: string): boolean => {
@@ -156,8 +161,10 @@ async function lineStep(de: DealElementPage, tag: string, out: Values): Promise<
 /** Step 1 (list) - the Promotion list at Qty 5, on the given system: the baseline's assertion. */
 async function promotionStep(p: Page, de: DealElementPage, testInfo: TestInfo, checks: Check[], tag: string, out: Values): Promise<void> {
   const options = await de.getPromotionOptions('', { keepOpen: true });
-  out['Promotion list'] = [...options].sort().join(' | ');
+  const leftOut: string[] = tag === 'reference' ? options.filter((o) => QA_TEST_PROGRAM.test(o)) : [];
+  out['Promotion list'] = options.filter((o) => !leftOut.includes(o)).sort().join(' | ');
   console.log(`  - [${tag}] Promotion list : ${options.join(' | ') || '(empty)'}`);
+  if (leftOut.length) console.log(`  - [${tag}] left out of Step 4 (QA test programs on pre-production): ${leftOut.join(' | ')}`);
   await recordChecks(p, testInfo, checks, [
     {
       what: `${tag} - Step 1 - the Promotion list contains Deal registration`,

@@ -1960,6 +1960,20 @@ export class QuotationPage extends BasePage {
   }
 
   /**
+   * Scroll a form field into view for an evidence shot and say whether the form carries it at all - so an
+   * empty value read by getFieldDisplayValue can be told apart from a field the form does not show.
+   * `selector` = the same element getFieldDisplayValue reads, to outline in the shot.
+   */
+  async revealFormField(fieldName: string): Promise<{ present: boolean; visible: boolean; selector: string }> {
+    const selector = '.o_form_sheet [name="' + fieldName + '"]';
+    const field = this.page.locator(selector).first();
+    const present = (await field.count()) > 0;
+    const visible = present && (await field.isVisible().catch(() => false));
+    if (visible) await field.scrollIntoViewIfNeeded().catch(() => {});
+    return { present, visible, selector };
+  }
+
+  /**
    * The NAME a many2one field shows, without the address lines Odoo prints under it.
    * Read mode renders the name as a link followed by the partner's address, so a plain innerText
    * read of "Payer" returns "Anh_Inc_1 Campania Italy"; this returns "Anh_Inc_1". Edit mode

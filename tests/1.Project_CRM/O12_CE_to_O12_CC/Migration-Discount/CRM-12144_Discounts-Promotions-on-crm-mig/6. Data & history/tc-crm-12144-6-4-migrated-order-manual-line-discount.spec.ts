@@ -68,7 +68,7 @@ import { signIn, ProgramOwner } from '@helpers/discount-baseline.helper';
  *
  *  Port notes (mechanical only): reader account users.admin_crm_mig on crm-mig instead of the salesperson, because the
  *  salesperson cannot open others' orders (the baseline's reason). Pre-condition 3 is a bounded search on pre-production
- *  (ProgramOwner, newest first, at most 20 candidates with order_line.discount > 0, created before 2026-09-01); a candidate is used when its NAME
+ *  (ProgramOwner, newest first, at most 20 candidates among the orders of the newest 500 lines with discount > 0, created before 2026-09-01); a candidate is used when its NAME
  *  exists exactly once on crm-mig with the same customer and an invoice matched by NUMBER. The crm-mig order is opened by the id that
  *  exact-name check returned (no sale.order list-search page object exists). The line Discount (%) column is found by
  *  its caption on each system ("Discount (%)" or "Special Discount(%)", as the baseline does). Every line's Discount (%)
@@ -114,6 +114,26 @@ const sameValue = (crm: string, ref: string, amount: boolean): boolean => {
   if (!crm.trim() && !ref.trim()) return true;
   return amount ? sameAmount(crm, ref) : crm !== '' && crm === ref;
 };
+
+/**
+ * The reference orders carrying a manually entered line discount, read from the LINES: newest first, at most 500 lines
+ * created before 2026-09-01. 2026-10-22: the path filter `order_line.discount > 0` on sale.order makes Odoo collect every
+ * discounted line first and timed out on pre-production twice (60 s); a plain filter on the line's own columns does not.
+ */
+async function discountedOrderIds(): Promise<number[]> {
+  const owner = await ProgramOwner.open();
+  try {
+    const lines: Array<{ order_id: [number, string] | false }> = await owner.call(
+      'sale.order.line',
+      'search_read',
+      [[['discount', '>', 0], ['create_date', '<', '2026-09-01 00:00:00']]],
+      { fields: ['order_id'], limit: 500, order: 'id desc' }
+    );
+    return [...new Set(lines.map((l) => (Array.isArray(l.order_id) ? l.order_id[0] : 0)).filter((id) => id > 0))];
+  } finally {
+    await owner.close();
+  }
+}
 
 /** A second browser context for the reference system (pre-production), so its sign-in never clears crm-mig's session. */
 async function openReferenceSide(browser: Browser): Promise<{ context: BrowserContext; page: Page }> {
@@ -277,7 +297,7 @@ test.describe(`${TC} - Migrated order with a manual line discount (crm-mig, read
 
     await test.step(STEP.pre3, async () => {
       console.log(`\n--- ${STEP.pre3} ---`);
-      const candidates = await findCandidates([['order_line.discount', '>', 0]]);
+      const candidates = await findCandidates([['id', 'in', await discountedOrderIds()]]);
       console.log(`  - reference candidates (newest first): ${candidates.map((c) => c.name).join(', ') || '(none)'}`);
       for (const c of candidates) {
         const m = await matchOnCrm(page, c);
