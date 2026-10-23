@@ -40,8 +40,14 @@ import {
  * ================================================================================================
  * Test Case ID     : CRM-12144_7.1
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 63, Jira link empty)
- * Automation-Type  : new
- * Automation-Date  : 2026-10-21
+ * Automation-Type  : refactored
+ * Automation-Date  : 2026-10-23
+ * Skipped          : 2026-10-23 by bugs CRM-13823 + CRM-13830, both red at Step 4:
+ *                    - CRM-13823 (crm-mig currency rates not updated since 2026-10-13): Total in Company Currency
+ *                      crm-mig 1,454.09 vs reference 1,457.21 on 23-10
+ *                    - CRM-13830 (crm-mig offers [PRM-Q319-ASUSTOR] - its Attribution quotes Nathan: "crm-mig offers
+ *                      it on every order"): the Promotion list carries ASUSTOR, the reference does not
+ *                    Remove the test.skip below only once BOTH are fixed
  * Baseline         : Discount_7.1 (Jira CRM-13804; tests/1.Project_CRM/10.Sales_Module/Discount/7. Parity validation & cutover/
  *                    tc-discount-7-1-same-order-crm-mig-and-reference.spec.ts) - its run is the reference side here
  * Spec             : [Migration] Discounts (Promotions) v6 - IS-CRM-FUNC-0092
@@ -178,7 +184,15 @@ async function promotionStep(p: Page, de: DealElementPage, testInfo: TestInfo, c
 
 /** Step 2 - Deal registration, Save, then the reward, the Total and the Total in Company Currency, on the given system. */
 async function rewardStep(p: Page, de: DealElementPage, run: DiscountRun, testInfo: TestInfo, checks: Check[], tag: string, out: Values): Promise<void> {
+  // setPromotion falls back to Enter when the dropdown is slow and still reports success (2026-10-23 on the reference:
+  // the Deal Element saved with an empty Promotion) - read the field back, pick once more if empty, stop if still empty
   await de.setPromotion('Deal registration');
+  if (!/deal registration/i.test(await de.getAppliedPromotionName())) {
+    console.log(`  ⚠ [${tag}] Promotion is still empty after the pick - picking Deal registration once more`);
+    await de.setPromotion('Deal registration');
+    const picked = await de.getAppliedPromotionName();
+    if (!/deal registration/i.test(picked)) throw new Error(`${tag} - Step 2: Deal registration could not be picked in Promotion (field reads "${picked}")`);
+  }
   await saveDealElement(p, run);
   const rewards = rewardRows(await de.getAllOrderLineRows());
   const reward = rewards[0]?.['Unit Price'] ?? '';
@@ -223,6 +237,7 @@ async function compareStep(page: Page, testInfo: TestInfo, checks: Check[], crm:
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - Same order on crm-mig and on the reference system (crm-mig + reference)`, () => {
+  test.skip(true, 'CRM-13823 + CRM-13830 - crm-mig currency rates not updated since 2026-10-13 (Total in Company Currency differs from the reference) and [PRM-Q319-ASUSTOR] offered in the Promotion list (http://jira.nakivo.com/browse/CRM-13823, http://jira.nakivo.com/browse/CRM-13830)');
   let created: DiscountRun[] = [];
   let refPage: Page | undefined;
   let refContext: BrowserContext | undefined;
