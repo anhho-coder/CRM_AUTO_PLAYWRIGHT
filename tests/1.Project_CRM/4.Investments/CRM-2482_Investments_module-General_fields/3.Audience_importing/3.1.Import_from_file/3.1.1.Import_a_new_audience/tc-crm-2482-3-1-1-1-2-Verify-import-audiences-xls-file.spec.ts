@@ -87,15 +87,16 @@ const VERIFY_STEP = {
  *    1.4. Email = Email_Contact#1; Phone = 1234125125; Country = China
  *    1.5. Sales Team = CMR; Salesperson = Sergey Karachin
  *    1.6. Tags contains exactly 1 value: "test"
- *    1.7. Investment = "<Investment ID> - <Investment Name>" of this Investment (pre-production shows it on the Investment > Leads tab, not on the Opportunity form) (the file's "Investment ID" cell = "test"; the Opportunity is still linked to this Investment)
+ *    1.7. Investment = "<Investment ID> - <Investment Name>" of this Investment (shown on the Opportunity form when the field is set; an empty Investment field is hidden - corrected 2026-10-27) (the file's "Investment ID" cell = "test"; the Opportunity is still linked to this Investment)
  *    1.8. CRM Developer tab: Lead form = "Investment: ID-<n>" (<n> = id in the URL of this Investment); Active = TRUE
  * 2. Contacts, search Email_Contact#1 -> exactly 2 new contacts:
  *    2.1. Company_Contact#1: Is a Company = TRUE; Email = Email_Contact#1; Phone = 1234125125; Country = China;
  *         Sales Team = CMR; Salesperson = Sergey Karachin; Tags = "test"
  *    2.2. Name_Contact#1: Related Company = Company_Contact#1; Email, Phone, Country, Sales Team, Salesperson as 2.1
  * Verification 1 and 2 below read these on screen (Email_Contact#1 is unique to the run, so the counts start
- * from 0). The Opportunity form of pre-production does not carry the Investment field: 1.7 is read on the
- * Investment > Leads tab. The "Investment ID" column is filled since 2026-10-21: left EMPTY, pre-production
+ * from 0). 1.7 is read on the Investment > Leads tab. Corrected 2026-10-27 (Jira CRM-9795/96/97 too): the
+ * Opportunity form DOES show the Investment field when it is set - the earlier "not on the Opportunity form"
+ * note came from a survey of records whose Investment had already been deleted (an empty field is hidden). The "Investment ID" column is filled since 2026-10-21: left EMPTY, pre-production
  * imports nothing (0 Leads, measured) - this spec passed for months without the import creating a single Lead.
  *
  * Tear down (Clean up test data):

@@ -364,6 +364,46 @@ private readonly saveButton = () => this.page.locator('xpath=(//button[normalize
     await this.clickConfirmOkButton();
   }
 
+  /** The control panel's "Action" dropdown toggler (XPath primary, CSS fallback); aria-expanded says whether it is open. */
+  private readonly actionMenuToggler = () =>
+    this.page.locator("xpath=//button[contains(concat(' ', normalize-space(@class), ' '), ' o_dropdown_toggler_btn ')][normalize-space(.)='Action']")
+      .or(this.page.locator('button.o_dropdown_toggler_btn.dropdown-toggle').filter({ hasText: /^\s*Action\s*$/ }))
+      .first();
+
+  /**
+   * Open the form's Action menu and make sure it IS open. Right after a reload the toggler is drawn before it
+   * reacts: measured 2026-10-27 (EXPLORE-20261027_22, Investment #597) - aria-expanded stayed "false" 1 s and 4 s
+   * after the first click, the second click opened the menu. deleteCurrentRecord() clicks once and then waits 30 s
+   * for a "Delete" that never shows (CRM-3902_1.2.1 run 2026-10-27 17:30: 63 x "resolved to hidden"). Clicks again
+   * while the menu is closed, bounded by `attempts`.
+   */
+  async openActionMenuConfirmed(attempts: number = 5): Promise<void> {
+    const toggler = this.actionMenuToggler();
+    await toggler.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const expanded = await toggler.getAttribute('aria-expanded', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+      if (expanded !== 'true') await toggler.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      const open = await this.deleteMenuItem().first()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.extraLong })
+        .then(() => true, () => false);
+      if (open) return;
+      console.log(`  ! Action menu not open after click ${attempt}/${attempts} - clicking again`);
+    }
+    throw new Error(`The Action menu did not open after ${attempts} clicks`);
+  }
+
+  /**
+   * Delete the currently open record: Action (confirmed open) > Delete > OK, and wait until the confirmation
+   * dialog is gone. Same steps as deleteCurrentRecord(), without its one-click race on the Action menu.
+   */
+  async deleteCurrentRecordConfirmed(): Promise<void> {
+    await this.openActionMenuConfirmed();
+    await this.deleteMenuItem().first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.confirmOkButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.confirmOkButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.confirmOkButton().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
   /**
    * Click the Action dropdown button
    */

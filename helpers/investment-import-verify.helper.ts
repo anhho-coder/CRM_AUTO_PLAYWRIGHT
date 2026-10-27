@@ -465,3 +465,112 @@ export function logContact(title: string, v: ContactView): void {
   console.log(`    - Salesperson     : ${v.salesperson}`);
   console.log(`    - Tags            : ${JSON.stringify(v.tags)}`);
 }
+
+/**
+ * JSON-RPC `call_kw` in the page's own (logged-in) session, bounded: the request is aborted after `timeoutMs` and
+ * the evaluate is raced against the same bound, so a dead page cannot hang a teardown. Never logs the request.
+ */
+async function rpcBounded<T>(
+  page: Page,
+  model: string,
+  method: string,
+  args: unknown[],
+  kwargs: Record<string, unknown> = {},
+  timeoutMs: number = CommonUtils.waitTimes.abnormalWait,
+): Promise<T> {
+  const call = page.evaluate(async ({ model, method, args, kwargs, timeoutMs }) => {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), timeoutMs);
+    try {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method, args, kwargs } }),
+        signal: ctl.signal,
+      });
+      const j = await r.json();
+      if (j.error) throw new Error(String((j.error.data || {}).message || j.error.message || 'rpc error').slice(0, 300));
+      return j.result;
+    } finally {
+      clearTimeout(timer);
+    }
+  }, { model, method, args, kwargs, timeoutMs });
+  let guard: ReturnType<typeof setTimeout> | undefined;
+  const bound = new Promise<never>((_, reject) => {
+    guard = setTimeout(() => reject(new Error(`RPC ${model}.${method} did not answer within ${timeoutMs} ms`)), timeoutMs + CommonUtils.waitTimes.extraLong);
+  });
+  try {
+    return (await Promise.race([call, bound])) as T;
+  } finally {
+    if (guard) clearTimeout(guard);
+  }
+}
+
+/** The crm.lead / res.partner ids an audience-import run left on the base. */
+export interface ImportRunRecords {
+  leadIds: number[];
+  partnerIds: number[];
+}
+
+/**
+ * Teardown of a pre-production audience-import TC (CRM-3902_1.2.1): deletes the Opportunities and contacts THIS
+ * run's import(s) created, found by the run's own marker only - the run's unique Email_Contact#1
+ * (Test@company<run date+time>.com) and the run's company names (TEST_company_name_<run timestamp>) - archived
+ * rows included (the re-scan merge archives one Opportunity). Deny-list: nothing else is ever selected, and NOTHING
+ * is deleted when a count exceeds what the run can have created (`max`) - that mismatch is returned in `refused`
+ * instead. Leads go first, then the individual contacts, then the companies. Ends with a read-back (`left`).
+ * Added 2026-10-27 - the source TC's own tear-down deletes only the two Investments and the CSV files, so every
+ * earlier run left its 2 Opportunities + 4 contacts behind (e.g. leads #1101919-#1101921 of 2026-10-21).
+ */
+export async function deleteImportRunRecords(
+  page: Page,
+  marker: { email: string; companyNames: string[] },
+  max: { leads: number; partners: number },
+): Promise<{ found: ImportRunRecords; left: ImportRunRecords; refused: string; errors: string[] }> {
+  const errors: string[] = [];
+  const leadDomain = [['email_from', '=ilike', marker.email], '|', ['active', '=', true], ['active', '=', false]];
+  const partnerDomain = ['|', ['email', '=ilike', marker.email], ['name', 'in', marker.companyNames], '|', ['active', '=', true], ['active', '=', false]];
+  const read = async (): Promise<{ leads: Array<{ id: number }>; partners: Array<{ id: number; is_company: boolean }> }> => ({
+    leads: await rpcBounded<Array<{ id: number }>>(page, 'crm.lead', 'search_read', [leadDomain], { fields: ['id'], limit: max.leads + 5 }),
+    partners: await rpcBounded<Array<{ id: number; is_company: boolean }>>(page, 'res.partner', 'search_read', [partnerDomain], { fields: ['id', 'is_company'], limit: max.partners + 5 }),
+  });
+  const before = await read();
+  const found = { leadIds: before.leads.map((r) => r.id), partnerIds: before.partners.map((r) => r.id) };
+  if (found.leadIds.length > max.leads || found.partnerIds.length > max.partners) {
+    return {
+      found,
+      left: found,
+      refused: `found ${found.leadIds.length} leads / ${found.partnerIds.length} contacts for the run marker, more than this run can have created (${max.leads} / ${max.partners}) - nothing deleted`,
+      errors,
+    };
+  }
+  if (found.leadIds.length) {
+    await rpcBounded(page, 'crm.lead', 'unlink', [found.leadIds], {}, CommonUtils.waitTimes.reAssignationWait)
+      .catch((e) => errors.push(`crm.lead ${found.leadIds.join(',')}: ${String(e).split('\n')[0]}`));
+  }
+  const ordered = [...before.partners].sort((a, b) => Number(a.is_company) - Number(b.is_company)); // individuals first
+  for (const p of ordered) {
+    await rpcBounded(page, 'res.partner', 'unlink', [[p.id]], {}, CommonUtils.waitTimes.reAssignationWait)
+      .catch((e) => errors.push(`res.partner ${p.id}: ${String(e).split('\n')[0]}`));
+  }
+  const after = await read();
+  return { found, left: { leadIds: after.leads.map((r) => r.id), partnerIds: after.partners.map((r) => r.id) }, refused: '', errors };
+}
+
+/**
+ * Teardown: delete THIS Investment in place - openInvestmentForm() (reload + id check), then Action (confirmed
+ * open) > Delete > OK. Unlike deleteInvestmentByUrl() it does not depend on the first click opening the Action menu
+ * (measured 2026-10-27: after a reload the first click is lost - see InvestmentPage.openActionMenuConfirmed()).
+ */
+export async function deleteInvestmentInPlace(page: Page, investmentUrl: string): Promise<void> {
+  await openInvestmentForm(page, investmentUrl);
+  await new InvestmentPage(page).deleteCurrentRecordConfirmed();
+}
+
+/** Read-back for a teardown: which of these Investment ids still exist (bounded RPC on the ids only). */
+export async function investmentIdsLeft(page: Page, ids: number[]): Promise<number[]> {
+  if (!ids.length) return [];
+  const rows = await rpcBounded<Array<{ id: number }>>(page, 'nakivo.investment.activity', 'search_read',
+    [[['id', 'in', ids], '|', ['active', '=', true], ['active', '=', false]]], { fields: ['id'], limit: ids.length });
+  return rows.map((r) => r.id);
+}
