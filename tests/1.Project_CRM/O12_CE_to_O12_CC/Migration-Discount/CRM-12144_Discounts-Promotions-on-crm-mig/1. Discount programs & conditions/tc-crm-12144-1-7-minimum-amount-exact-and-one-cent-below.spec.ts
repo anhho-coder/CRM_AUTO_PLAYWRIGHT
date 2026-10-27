@@ -32,8 +32,9 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 24, Jira link empty)
  * Automation-Type  : refactored
  * Automation-Date  : 2026-10-23
- * Skipped          : 2026-10-23 by bug CRM-13829 (Deal Element: Save after clearing Promotion raises Odoo Server Error
- *                    sale.order.line(...).currency_id) - Step 5; remove the test.skip below once CRM-13829 is fixed
+ * Un-skipped       : 2026-10-27 - CRM-13829 Resolved (Nathan 26-10: a deleted order line is no longer recalculated on
+ *                    Save). History - skipped 2026-10-23 -> 2026-10-27 by that bug (Step 5: Save after clearing Promotion
+ *                    raised Odoo Server Error sale.order.line(...).currency_id, intermittent)
  * Baseline         : Discount_1.7 (Jira CRM-13770; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-7-minimum-amount-exact-and-one-cent-below.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-05
@@ -111,8 +112,6 @@ const runs: DiscountRun[] = [];
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - Order exactly at the 1,400.00 USD minimum and one cent below it (crm-mig)`, () => {
-  test.skip(true, 'CRM-13829 - crm-mig Deal Element: Save after clearing Promotion raises Odoo Server Error sale.order.line(...).currency_id (http://jira.nakivo.com/browse/CRM-13829)');
-
   let run: DiscountRun;
 
   test.beforeEach(async ({ context, page }) => {
