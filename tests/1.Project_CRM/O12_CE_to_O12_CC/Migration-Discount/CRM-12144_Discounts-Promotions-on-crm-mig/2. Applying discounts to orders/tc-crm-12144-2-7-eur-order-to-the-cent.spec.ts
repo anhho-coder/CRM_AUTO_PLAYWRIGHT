@@ -34,10 +34,10 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 40, Jira link empty)
  * Automation-Type  : refactored (2026-10-23: every pre-production step removed - see "Removed" below)
  * Automation-Date  : 2026-10-23
- * Skipped          : 2026-10-23 by bug CRM-13823 (crm-mig currency rates not updated since 2026-10-13) - the (now
- *                    removed) Step 4 Total in Company Currency could not match the reference until the rates update.
- *                    Tester 2026-10-23: the skip stays after the pre-production steps were removed, although no check
- *                    left in this spec reads the rate. Remove the test.skip below once CRM-13823 is fixed
+ * Un-skipped       : 2026-10-27 - CRM-13823 Resolved (Khang, 2026-10-23: rates 14-23 Oct back-filled, scheduled action
+ *                    "Currency Rates Update (OCA) daily" active again). History - skipped 2026-10-23 by CRM-13823 (crm-mig
+ *                    currency rates not updated since 2026-10-13): the (now removed) Step 4 Total in Company Currency
+ *                    could not match the reference until the rates update
  * Baseline         : Discount_2.7 (Jira CRM-13784; tests/1.Project_CRM/10.Sales_Module/Discount/2. Applying discounts to orders/
  *                    tc-discount-2-7-eur-order-to-the-cent.spec.ts) - assertions ported unchanged; run it on its own for
  *                    the reference side
@@ -167,8 +167,6 @@ async function rewardStep(p: Page, de: DealElementPage, run: DiscountRun, testIn
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - EUR order with a line discount and a 35 % partner discount (crm-mig only - reference steps removed)`, () => {
-  test.skip(true, 'CRM-13823 - crm-mig currency rates not updated since 2026-10-13: Total in Company Currency differs from the reference (http://jira.nakivo.com/browse/CRM-13823)');
-
   let created: DiscountRun[] = [];
 
   test.beforeEach(async ({ context, page }) => {

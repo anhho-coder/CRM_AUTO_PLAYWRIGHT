@@ -34,7 +34,8 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 63, Jira link empty)
  * Automation-Type  : refactored (2026-10-23: every pre-production step removed - see "Removed" below)
  * Automation-Date  : 2026-10-23
- * Skipped          : 2026-10-23 by bugs CRM-13823 + CRM-13830, both red at the (now removed) Step 4 comparison:
+ * Un-skipped       : 2026-10-27 - CRM-13823 + CRM-13830 both Resolved. History - skipped 2026-10-23 by both bugs,
+ *                    red at the (now removed) Step 4 comparison:
  *                    - CRM-13823 (crm-mig currency rates not updated since 2026-10-13): Total in Company Currency
  *                      crm-mig 1,454.09 vs reference 1,457.21 on 23-10
  *                    - CRM-13830 (crm-mig offers [PRM-Q319-ASUSTOR] - its Attribution quotes Nathan: "crm-mig offers
@@ -180,7 +181,6 @@ async function rewardStep(p: Page, de: DealElementPage, run: DiscountRun, testIn
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - Same order on crm-mig and on the reference system (crm-mig only - reference steps removed)`, () => {
-  test.skip(true, 'CRM-13823 + CRM-13830 - crm-mig currency rates not updated since 2026-10-13 (Total in Company Currency differs from the reference) and [PRM-Q319-ASUSTOR] offered in the Promotion list (http://jira.nakivo.com/browse/CRM-13823, http://jira.nakivo.com/browse/CRM-13830)');
   let created: DiscountRun[] = [];
 
   test.beforeEach(async ({ context, page }) => {
