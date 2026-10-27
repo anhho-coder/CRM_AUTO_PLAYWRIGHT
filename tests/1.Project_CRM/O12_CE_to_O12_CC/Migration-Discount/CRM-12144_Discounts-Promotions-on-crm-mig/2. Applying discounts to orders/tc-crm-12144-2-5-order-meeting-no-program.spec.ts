@@ -31,8 +31,8 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 38, Jira link empty)
  * Automation-Type  : refactored
  * Automation-Date  : 2026-10-23
- * Skipped          : 2026-10-23 by bug CRM-13830 (an order that meets no program is offered [PRM-Q319-ASUSTOR] in the
- *                    Promotion list) - Step 3; remove the test.skip below once CRM-13830 is fixed
+ * Un-skipped       : 2026-10-27 - CRM-13830 Resolved (Nathan 26-10: ASUSTOR deactivated in the Discount Service rule
+ *                    on crm-mig, data only); skipped 2026-10-23 -> 2026-10-27 by that bug (Step 3)
  * Baseline         : Discount_2.5 (Jira CRM-13782; tests/1.Project_CRM/10.Sales_Module/Discount/2. Applying discounts to orders/
  *                    tc-discount-2-5-order-meeting-no-program.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0079
@@ -101,8 +101,6 @@ const runs: DiscountRun[] = [];
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - Order that meets no program (crm-mig)`, () => {
-  test.skip(true, 'CRM-13830 - crm-mig offers [PRM-Q319-ASUSTOR] on an order that meets no program (http://jira.nakivo.com/browse/CRM-13830)');
-
   let run: DiscountRun;
 
   test.beforeEach(async ({ context, page }) => {
