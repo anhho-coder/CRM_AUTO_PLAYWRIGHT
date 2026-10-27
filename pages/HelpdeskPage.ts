@@ -1,4 +1,4 @@
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 
@@ -130,7 +130,7 @@ export class HelpdeskPage extends BasePage {
     // role-link fallback. .or() resolves the instant EITHER link is visible - no wasted sequential wait.
     const link = this.helpdeskAppLinkXPath().or(this.helpdeskAppLinkRole()).first();
     await link.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
-    await link.click();
+    await link.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.waitForURL(`**/web?*menu_id=${await this.xmlId('helpdesk.menu_helpdesk_root')}*`, CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
     await this.dismissErrorDialog();
@@ -940,4 +940,788 @@ export class HelpdeskPage extends BasePage {
     await this.fieldByName('name').waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
   }
+
+  // ─── Read-only access checks (what a non-member user sees in Helpdesk) ─────────────────────────
+
+  // The Helpdesk top-navbar "All Tickets" entry, addressed by the XML id the DOM carries.
+  private readonly allTicketsMenuLink = () =>
+    this.page.locator("xpath=//a[@data-menu-xmlid='helpdesk.helpdesk_ticket_menu_main']")
+      .or(this.page.getByRole('link', { name: /^\s*All Tickets\s*$/i })).first();
+  // Control-panel search facets (e.g. "Open Tickets").
+  private readonly searchFacets = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')]").or(this.page.locator('.o_searchview_facet'));
+  // List pager counter ("1-80 / 2424").
+  private readonly pagerCounter = () =>
+    this.page.locator("xpath=//span[contains(@class,'o_pager_counter')]").or(this.page.locator('.o_pager_counter')).first();
+  // Kanban columns of a grouped kanban, and the ticket cards (the empty ghost cards excluded). Matched on the
+  // exact class TOKEN: a plain contains(@class,'o_kanban_group') also hits the renderer's 'o_kanban_grouped'
+  // (and 'o_kanban_record' hits 'o_kanban_record_title' ...), which counted the first column twice.
+  private readonly kanbanGroups = () =>
+    this.page.locator("xpath=//div[contains(concat(' ',normalize-space(@class),' '),' o_kanban_group ')]").or(this.page.locator('div.o_kanban_group'));
+  private readonly kanbanCards = () =>
+    this.page.locator("xpath=//div[contains(concat(' ',normalize-space(@class),' '),' o_kanban_record ') and not(contains(@class,'o_kanban_ghost'))]")
+      .or(this.page.locator('div.o_kanban_record:not(.o_kanban_ghost)'));
+
+  /** Helpdesk > All Tickets from the app's top menu; waits for the ticket list to render. */
+  async openAllTicketsFromMenu(): Promise<void> {
+    await this.dismissErrorDialog();
+    const link = this.allTicketsMenuLink();
+    await link.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await link.click();
+    await this.listRows().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Opened Helpdesk > All Tickets (navbar)');
+  }
+
+  /** Team names on the Helpdesk Overview cards, in on-screen order (first line of each card). */
+  async getOverviewTeamCardNames(): Promise<string[]> {
+    await this.overviewTeamCards().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    return this.overviewTeamCards().evaluateAll((els) =>
+      els.map((e) => ((e as HTMLElement).innerText || '').trim().split('\n')[0].trim()).filter(Boolean)
+    );
+  }
+
+  /** Labels of the control-panel search facets, e.g. ["Open Tickets"]. */
+  async getSearchFacets(): Promise<string[]> {
+    const raw = await this.searchFacets().allInnerTexts().catch(() => [] as string[]);
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /** The list pager text, e.g. "1-80 / 2424" ('' when the view has no pager). */
+  async getPagerText(): Promise<string> {
+    return ((await this.pagerCounter().textContent().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Columns of the grouped kanban on screen with the record count each header shows. A column whose
+   * header carries no counter (folded) reports count -1, so a caller summing them can tell it apart from 0.
+   */
+  async getKanbanColumnCounts(): Promise<Array<{ column: string; count: number }>> {
+    await this.kanbanGroups().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    return this.kanbanGroups().evaluateAll((els) =>
+      els.map((g) => {
+        const title = (g.querySelector('.o_column_title, .o_kanban_header_title') as HTMLElement | null)?.innerText || '';
+        const counter = (g.querySelector('.o_kanban_counter_side') as HTMLElement | null)?.innerText || '';
+        const n = parseInt(counter.replace(/[^\d]/g, ''), 10);
+        return { column: title.replace(/\s+/g, ' ').trim(), count: Number.isNaN(n) ? -1 : n };
+      })
+    );
+  }
+
+  /** The text of every ticket card in the kanban on screen, one entry per card. */
+  async getKanbanCardTexts(): Promise<string[]> {
+    const raw = await this.kanbanCards().allInnerTexts().catch(() => [] as string[]);
+    return raw.map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+  }
+
+  /**
+   * READ-ONLY lookup run AS THE SIGNED-IN USER, so the server applies that user's record rules: the newest
+   * helpdesk.ticket matching `domain` (search_read, limit 1). Lets a read-only check pick an existing ticket
+   * at run time instead of hard-coding an id. Returns null when the user can read no such ticket; throws on
+   * an RPC error, so a refusal is never mistaken for "no ticket".
+   */
+  async findNewestVisibleTicket(domain: unknown[]): Promise<
+    { id: number; name: string; team: string; opportunityId: number; opportunityName: string } | null
+  > {
+    const row = await this.page.evaluate(async (dom) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'helpdesk.ticket', method: 'search_read',
+            args: [dom, ['id', 'name', 'team_id', 'opportunity_id']],
+            kwargs: { limit: 1, order: 'id desc' },
+          },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return (j.result && j.result[0]) || null;
+    }, domain);
+    if (!row) return null;
+    if ('error' in row) throw new Error(`HelpdeskPage.findNewestVisibleTicket: ${row.error}`);
+    return {
+      id: row.id,
+      name: row.name,
+      team: Array.isArray(row.team_id) ? row.team_id[1] : '',
+      opportunityId: Array.isArray(row.opportunity_id) ? row.opportunity_id[0] : 0,
+      opportunityName: Array.isArray(row.opportunity_id) ? row.opportunity_id[1] : '',
+    };
+  }
+
+  // ─── Stage list and order (Helpdesk A/B TC-FLOW-001) ───────────────────────────────────────────
+
+  // A team card on the Helpdesk Overview, by its exact team name, and that card's primary TICKETS button.
+  private readonly overviewTeamCard = (teamName: string) =>
+    this.page.locator(`xpath=//div[contains(concat(' ',normalize-space(@class),' '),' o_kanban_record ')][.//*[normalize-space()='${teamName}']]`)
+      .or(this.page.locator('div.o_kanban_record').filter({ hasText: teamName })).first();
+  private readonly overviewTeamTicketsButton = (teamName: string) =>
+    this.overviewTeamCard(teamName).locator("xpath=.//button[contains(@class,'oe_kanban_action_button') and normalize-space()='Tickets']")
+      .or(this.overviewTeamCard(teamName).locator('button.oe_kanban_action_button')).first();
+  // Control-panel breadcrumb ("Helpdesk Overview / Tickets", "<ticket> (#id)").
+  private readonly controlPanelBreadcrumb = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_control_panel')]//ol[contains(@class,'breadcrumb')]")
+      .or(this.page.locator('.o_control_panel .breadcrumb')).first();
+  // The kanban icon of the control-panel view switcher.
+  private readonly kanbanViewSwitch = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_cp_switch_buttons')]//button[@data-view-type='kanban']")
+      .or(this.page.locator('.o_cp_switch_buttons button.o_cp_switch_kanban')).first();
+  // The ticket kanban (GROUPED by stage - the Overview dashboard is an ungrouped kanban) or list view a team's
+  // TICKETS action renders.
+  private readonly ticketsViewRoot = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_kanban_view') and contains(@class,'o_kanban_grouped')] | //div[contains(@class,'o_list_view')]")
+      .or(this.page.locator('.o_kanban_view.o_kanban_grouped, .o_list_view')).first();
+  // The ticket list OR the "no content" helper Odoo draws instead of an EMPTY list (e.g. right after archiving the
+  // only row a search matched) - waiting for the list alone would hang on an empty result.
+  private readonly listOrEmptyHelper = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_list_view') or contains(@class,'o_view_nocontent')]")
+      .or(this.page.locator('.o_list_view, .o_view_nocontent')).first();
+  // The breadcrumb crumb with this exact text (e.g. "Tickets" once a team's TICKETS action has opened).
+  private readonly breadcrumbCrumb = (text: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'o_control_panel')]//ol[contains(@class,'breadcrumb')]/li[normalize-space()='${text}']`)
+      .or(this.page.locator('.o_control_panel .breadcrumb li').filter({ hasText: new RegExp(`^\\s*${text}\\s*$`) })).first();
+  // The statusbar widget in the ticket form header.
+  private readonly stageBar = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]").or(this.page.locator('.o_statusbar_status')).first();
+
+  /**
+   * On the Helpdesk Overview, click the TICKETS button of the team card named `teamName` (exact name) and wait
+   * for that team's tickets to render. The team action opens in KANBAN by default on pre-production.
+   */
+  async openTeamTicketsFromOverview(teamName: string): Promise<void> {
+    await this.dismissErrorDialog();
+    await this.overviewTeamCard(teamName).waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    const btn = this.overviewTeamTicketsButton(teamName);
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    // A click that lands while the Overview dashboard is still binding its card handlers is silently dropped
+    // (measured 2026-10-22: the page stayed on "Helpdesk Overview"). So the click counts only once the
+    // breadcrumb shows the "Tickets" crumb; otherwise it is retried, a bounded number of times.
+    await this.wait(CommonUtils.waitTimes.long);
+    let opened = false;
+    for (let attempt = 1; attempt <= 3 && !opened; attempt++) {
+      await btn.scrollIntoViewIfNeeded().catch(() => {});
+      // Bounded: a TICKETS button that cannot take the click (not stable, covered) counts as a failed attempt and is retried
+      // below; an unbounded click hung the TC-FLOW-030_A run for the whole 15-minute test timeout (2026-10-23).
+      await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      opened = await this.breadcrumbCrumb('Tickets')
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+        .then(() => true)
+        .catch(() => false);
+      if (!opened) console.log(`  - TICKETS click #${attempt} on "${teamName}" did not open the team tickets - retrying`);
+    }
+    if (!opened) throw new Error(`openTeamTicketsFromOverview("${teamName}"): the TICKETS button did not open the team tickets after 3 clicks`);
+    await this.ticketsViewRoot().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog();
+    console.log(`  - Opened Helpdesk Overview > ${teamName} > TICKETS`);
+  }
+
+  /** The control-panel breadcrumb as one line, crumbs joined by " / " ('' when none is shown). */
+  async getBreadcrumbText(): Promise<string> {
+    const raw = await this.controlPanelBreadcrumb().innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    return raw.split('\n').map((s) => s.trim()).filter(Boolean).join(' / ');
+  }
+
+  /**
+   * Open a ticket form by its link INSIDE the Helpdesk app (menu_id kept in the hash, so the Helpdesk top
+   * navbar - Overview, Tickets ... - stays on screen for the next step). Reloads so the read never comes off a
+   * previously open record (hash goto is a same-document navigation), then waits for the stage bar.
+   */
+  async openTicketInHelpdeskApp(baseUrl: string, ticketId: number | string): Promise<void> {
+    const menuId = await this.xmlId('helpdesk.menu_helpdesk_root');
+    const url = `${baseUrl.replace(/\/$/, '')}/web#id=${ticketId}&model=helpdesk.ticket&view_type=form&menu_id=${menuId}`;
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad);
+    await this.stageBar().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog();
+    console.log(`  - Opened helpdesk.ticket#${ticketId} (Helpdesk app kept in the navbar)`);
+  }
+
+  /**
+   * The stages of the form's stage bar in the order a person READS them.
+   * Odoo 12 renders the statusbar buttons in REVERSE DOM order (flex row-reverse + wrap-reverse), and a narrow
+   * form wraps the 13 CS stages over 3 rows - so DOM order is the opposite of the screen, and x alone is not
+   * enough. Rows are read top to bottom, each row left to right. Labels come from textContent (the stage name as
+   * stored); the UPPERCASE on screen is CSS only. `folded` = stages Odoo hides under the bar's "More" dropdown
+   * (fold = True), listed in DOM order - they are not part of the visible bar.
+   */
+  async getStageBarInScreenOrder(): Promise<{ shown: string[]; folded: string[] }> {
+    await this.stageBar().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const items = await this.stageButtons().evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return {
+          label: (e.textContent || '').replace(/\s+/g, ' ').trim(),
+          top: r.top,
+          left: r.left,
+          width: r.width,
+          inDropdown: !!e.closest('.dropdown-menu'),
+          isToggle: e.classList.contains('dropdown-toggle'),
+        };
+      })
+    );
+    const shown = items
+      .filter((i) => !i.inDropdown && !i.isToggle && i.width > 0 && i.label)
+      .sort((a, b) => Math.round(a.top / 10) - Math.round(b.top / 10) || a.left - b.left)
+      .map((i) => i.label);
+    const folded = items.filter((i) => i.inDropdown && i.label).map((i) => i.label);
+    return { shown, folded };
+  }
+
+  /** Click the kanban icon of the view switcher and wait for the grouped kanban columns. */
+  async switchToKanbanView(): Promise<void> {
+    const icon = this.kanbanViewSwitch();
+    await icon.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await icon.click();
+    await this.kanbanGroups().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Switched to the kanban view (kanban icon)');
+  }
+
+  // The CURRENT stage of the form's stage bar (Odoo marks it btn-primary).
+  private readonly stageBarCurrent = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_statusbar_status')]//button[contains(@class,'btn-primary')]")
+      .or(this.page.locator('.o_statusbar_status button.btn-primary')).first();
+  // The form's Active / Archived toggle in the button box (name toggle_active). On the ticket FORM it is the only
+  // archive control a helpdesk user gets: the form's Action menu holds Duplicate / Share / Helpdesk Schedule Followup /
+  // The link of an EARLIER breadcrumb crumb (the current crumb has no link).
+  private readonly breadcrumbCrumbLink = (text: string) =>
+    this.page.locator(`xpath=//div[contains(@class,'o_control_panel')]//ol[contains(@class,'breadcrumb')]/li/a[normalize-space()='${text}']`)
+      .or(this.page.locator('.o_control_panel .breadcrumb li a').filter({ hasText: new RegExp(`^\\s*${text}\\s*$`) })).first();
+
+  /**
+   * In the ticket LIST on screen (e.g. a team's TICKETS switched to list), click CREATE, type the Subject, SAVE and
+   * return the new record id. The team comes from the list's own context (a team's TICKETS action defaults the team),
+   * so the caller re-reads it. THROWS when the ticket is not created - a setup step must never fail silently.
+   */
+  async createTicketInCurrentList(subject: string): Promise<string> {
+    const create = this.listCreateButton();
+    await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await create.click();
+    await this.waitForFormView(CommonUtils.waitTimes.abnormalWait);
+    const subj = this.subjectField();
+    await subj.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await subj.click();
+    await subj.fill(subject);
+    await this.wait(CommonUtils.waitTimes.short);
+    const save = this.formSaveButton();
+    await save.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await save.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    const popup = await this.getBlockingPopupText(CommonUtils.waitTimes.long);
+    if (popup) throw new Error(`createTicketInCurrentList("${subject}") was blocked by a dialog: ${popup}`);
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.abnormalWait);
+    if (!/^\d+$/.test(id)) throw new Error(`createTicketInCurrentList("${subject}") did not yield a record id (got "${id}")`);
+    await this.stageBar().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log(`  - Created helpdesk ticket #${id} - Subject "${subject}"`);
+    return id;
+  }
+
+  /** The stage the open ticket is in, as stored (textContent; the UPPERCASE on screen is CSS only). */
+  async getCurrentStage(): Promise<string> {
+    await this.stageBarCurrent().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const t = await this.stageBarCurrent().textContent({ timeout: CommonUtils.waitTimes.abnormalWait });
+    return (t || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Number of rows of the list on screen whose text contains `text` - bounded, never hangs on an empty list. */
+  async countListRowsContaining(text: string): Promise<number> {
+    await this.listOrEmptyHelper().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    return this.listRows().filter({ hasText: text }).count();
+  }
+
+  /**
+   * Wait (bounded) until a row containing `text` is drawn, then count the matches. Right after a search the list still
+   * shows the previous page for a moment, so an immediate count reads 0 (measured 2026-10-22). Returns 0 when no row
+   * appears within abnormalWait.
+   */
+  async waitForListRowsContaining(text: string): Promise<number> {
+    await this.listRows().filter({ hasText: text }).first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => {});
+    return this.countListRowsContaining(text);
+  }
+
+  /** Open the ONLY list row containing `text`; throws unless exactly one row matches (never acts on a row it did not create). */
+  async openOnlyListRowContaining(text: string): Promise<void> {
+    const n = await this.waitForListRowsContaining(text);
+    if (n !== 1) throw new Error(`openOnlyListRowContaining("${text}"): ${n} matching rows, expected exactly 1`);
+    await this.listRows().filter({ hasText: text }).first().click();
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad);
+    await this.stageBar().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog();
+    console.log(`  - Opened the only row containing "${text}"`);
+  }
+
+  /** Click the earlier breadcrumb crumb `text` (e.g. "Tickets") and wait for that view to render again. */
+  async goBackToBreadcrumb(text: string): Promise<void> {
+    const link = this.breadcrumbCrumbLink(text);
+    await link.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await link.click();
+    await this.ticketsViewRoot().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Back to breadcrumb "${text}"`);
+  }
+
+  /**
+   * [INTERNAL, Call API] Teardown of a ticket a spec created, as the signed-in user: read the ticket BY ID, require its
+   * name to equal `expectedSubject` (deny-list by the run's own marker - never touches another ticket), write
+   * active = False (helpdesk users hold no unlink), re-read it. Returns true only when it reads back inactive.
+   * Why not the UI: a list search once answered 0 rows for a probe that existed, the form's Action menu has no Archive
+   * for a helpdesk user, and the button-box Active toggle left the record active (all measured 2026-10-22).
+   */
+  async archiveTicketByIdOverRpc(ticketId: number | string, expectedSubject: string): Promise<boolean> {
+    const res = await this.page.evaluate(async ([id, subject]) => {
+      const kw = async (method: string, args: unknown[]) => {
+        const r = await fetch('/web/dataset/call_kw', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: 'helpdesk.ticket', method, args, kwargs: {} } }),
+        });
+        return r.json();
+      };
+      const read = await kw('search_read', [[['id', '=', id], ['active', 'in', [true, false]]], ['name', 'active']]);
+      if (read.error) return { error: String((read.error.data && read.error.data.message) || read.error.message) };
+      const row = read.result && read.result[0];
+      if (!row) return { error: `no ticket #${id}` };
+      if (row.name !== subject) return { error: `ticket #${id} is "${row.name}", not this run's "${subject}" - not archived` };
+      if (row.active) {
+        const w = await kw('write', [[id], { active: false }]);
+        if (w.error) return { error: String((w.error.data && w.error.data.message) || w.error.message) };
+      }
+      const after = await kw('search_read', [[['id', '=', id], ['active', 'in', [true, false]]], ['active']]);
+      return { active: !!(after.result && after.result[0] && after.result[0].active) };
+    }, [Number(ticketId), expectedSubject] as [number, string]);
+    if ('error' in res) throw new Error(`HelpdeskPage.archiveTicketByIdOverRpc: ${res.error}`);
+    console.log(`  - [INTERNAL, Call API] ticket #${ticketId} archived - reads back active = ${res.active}`);
+    return !res.active;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: whether ticket `ticketId` is active (archived ones included in the read). */
+  async isTicketActive(ticketId: number | string): Promise<boolean> {
+    const res = await this.page.evaluate(async (id) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call',
+          params: { model: 'helpdesk.ticket', method: 'search_read', args: [[['id', '=', id], ['active', 'in', [true, false]]], ['active']], kwargs: { limit: 1 } },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { found: !!(j.result && j.result[0]), active: !!(j.result && j.result[0] && j.result[0].active) };
+    }, Number(ticketId));
+    if ('error' in res) throw new Error(`HelpdeskPage.isTicketActive(${ticketId}): ${res.error}`);
+    if (!res.found) throw new Error(`HelpdeskPage.isTicketActive(${ticketId}): no such ticket`);
+    return res.active;
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY, as the signed-in user: the user's employee record and its "Support Team"
+   * (hr.employee.support_team: l1 / l2 / it_l1 / it_l2). Lets a spec prove it runs as the tier the TC names.
+   * THROWS on an RPC error, so a refusal is never read as "no tier".
+   */
+  async getMyEmployeeSupportTeam(): Promise<{ uid: number; employee: string; supportTeam: string }> {
+    const res = await this.page.evaluate(async () => {
+      const call = async (url: string, params: unknown) => {
+        const r = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params }),
+        });
+        return r.json();
+      };
+      const info = await call('/web/session/get_session_info', {});
+      if (info.error) return { error: String(info.error.message) };
+      const uid = info.result.uid as number;
+      const emp = await call('/web/dataset/call_kw', {
+        model: 'hr.employee', method: 'search_read',
+        args: [[['user_id', '=', uid]], ['name', 'support_team']], kwargs: { limit: 1 },
+      });
+      if (emp.error) return { error: String((emp.error.data && emp.error.data.message) || emp.error.message) };
+      const row = (emp.result && emp.result[0]) || null;
+      return { uid, employee: row ? String(row.name) : '', supportTeam: row && row.support_team ? String(row.support_team) : '' };
+    });
+    if ('error' in res) throw new Error(`HelpdeskPage.getMyEmployeeSupportTeam: ${res.error}`);
+    return res;
+  }
+
+  // ─── Lifecycle & escalation (CRM-11859 Helpdesk A/B: TC-FLOW-002 / 030 / 032 / 058, TC-UI-063) ───────────
+
+  // The header button "Hibernate" of the ticket form (a button, not a stage: the stage bar refuses Hibernate).
+  private readonly headerHibernateButton = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_statusbar_buttons')]//button[normalize-space()='Hibernate']")
+      .or(this.page.locator('.o_statusbar_buttons button').filter({ hasText: /^\s*Hibernate\s*$/ })).first();
+  // The "Hibernate ticket" wizard (a modal): "Hibernate until" (date, defaults to today + 14) and "Hibernate reason".
+  private readonly hibernateDialog = () =>
+    this.page.locator("xpath=//div[contains(@class,'modal') and contains(@class,'show')][.//*[normalize-space()='Hibernate ticket']]")
+      .or(this.page.locator('div.modal.show').filter({ hasText: 'Hibernate ticket' })).last();
+  private readonly hibernateUntilInput = () =>
+    this.hibernateDialog().locator("xpath=.//input[@name='hibernate_until']").or(this.hibernateDialog().locator("input[name='hibernate_until']")).first();
+  private readonly hibernateReasonInput = () =>
+    this.hibernateDialog().locator("xpath=.//textarea[@name='hibernate_reason']").or(this.hibernateDialog().locator("textarea[name='hibernate_reason']")).first();
+  private readonly hibernateOkButton = () =>
+    this.hibernateDialog().locator("xpath=.//footer//button[normalize-space()='OK' or normalize-space()='Ok']")
+      .or(this.hibernateDialog().locator('footer button').filter({ hasText: /^\s*OK\s*$/i })).first();
+  // The yellow banner Odoo draws on a hibernated ticket (matched on its leaf text node).
+  private readonly hibernationBannerLeaf = () =>
+    this.page.locator("xpath=//*[not(*)][contains(normalize-space(.),'This ticket is hibernated')]").first();
+  // The button-box "Active / Archive" toggle of the ticket form (name toggle_active; its confirm attribute asks first).
+  private readonly activeToggleButton = () =>
+    this.page.locator("xpath=//button[@name='toggle_active']").or(this.page.locator("button[name='toggle_active']")).first();
+  // A kanban column by its exact title ("Hibernate", "Open", ...).
+  private kanbanColumnByTitle(title: string) {
+    return this.page
+      .locator(`xpath=//div[contains(concat(' ',normalize-space(@class),' '),' o_kanban_group ')][.//*[contains(@class,'o_column_title') or contains(@class,'o_kanban_header_title')][normalize-space()='${title}']]`)
+      .or(this.page.locator('div.o_kanban_group').filter({ has: this.page.locator('.o_column_title, .o_kanban_header_title').filter({ hasText: new RegExp(`^\\s*${title}\\s*$`) }) }))
+      .first();
+  }
+
+  /** Click the header button "Hibernate" and wait for the "Hibernate ticket" wizard to open. */
+  async openHibernateDialog(): Promise<void> {
+    await this.dismissErrorDialog();
+    const btn = this.headerHibernateButton();
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.scrollIntoViewIfNeeded().catch(() => {});
+    await btn.click();
+    await this.hibernateDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log('  - Opened the "Hibernate ticket" wizard (header button Hibernate)');
+  }
+
+  /** The wizard as shown: the "Hibernate until" value (MM/DD/YYYY), whether the reason is required, the footer buttons. */
+  async getHibernateDialogDefaults(): Promise<{ until: string; reasonRequired: boolean; buttons: string[] }> {
+    await this.hibernateDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const until = ((await this.hibernateUntilInput().inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    const reasonRequired = await this.hibernateReasonInput()
+      .evaluate((e) => (e.getAttribute('class') || '').includes('o_required_modifier'), undefined, { timeout: CommonUtils.waitTimes.abnormalWait })
+      .catch(() => false);
+    const buttons = (await this.hibernateDialog().locator('footer button').allTextContents().catch(() => [] as string[]))
+      .map((t) => t.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+    return { until, reasonRequired, buttons };
+  }
+
+  /** Type the wizard's reason and press OK; waits until the wizard has closed. */
+  async confirmHibernate(reason: string): Promise<void> {
+    const ta = this.hibernateReasonInput();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await ta.click();
+    await ta.fill(reason);
+    await this.wait(CommonUtils.waitTimes.short);
+    await this.hibernateOkButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.hibernateDialog().waitFor({ state: 'detached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Hibernate confirmed (reason "${reason}")`);
+  }
+
+  /** The yellow hibernation banner of the open ticket ('' when none is drawn). */
+  async getHibernationBannerText(): Promise<string> {
+    const leaf = this.hibernationBannerLeaf();
+    if (!(await leaf.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return '';
+    return ((await leaf.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * The chatter messages that carry a field-tracking line ("Stage: ..."), newest first, each with its author. Odoo draws
+   * the arrow between the old and the new stage as an icon, so the line reads "Stage: L2 In Progress (L2)" as text.
+   */
+  async getStageTrackingLines(): Promise<Array<{ author: string; line: string }>> {
+    const thread = await this.getChatterThread();
+    return thread
+      .filter((m) => /Stage:/.test(m.body))
+      .map((m) => ({ author: m.info.split(' - ')[0].replace(/^Note by\s+/i, '').trim(), line: m.body.replace(/\s+/g, ' ').trim() }));
+  }
+
+  /** Total behind the list pager ("1-80 / 2424" -> 2424); -1 when no pager is drawn. */
+  async getPagerTotal(): Promise<number> {
+    const m = (await this.getPagerText()).match(/\/\s*(\d+)\s*$/);
+    return m ? parseInt(m[1], 10) : -1;
+  }
+
+  /** The stage column a ticket's kanban card sits in, by the column title ('' when the card is not drawn). */
+  async getKanbanColumnOfCard(subject: string): Promise<string> {
+    return this.page.evaluate((s) => {
+      const rec = Array.from(document.querySelectorAll('div.o_kanban_record')).find((e) => (e.textContent || '').includes(s));
+      if (!rec) return '';
+      const g = rec.closest('.o_kanban_group');
+      if (!g) return '';
+      const t = g.querySelector('.o_column_title, .o_kanban_header_title') as HTMLElement | null;
+      return (t?.innerText || '').replace(/\s+/g, ' ').trim();
+    }, subject);
+  }
+
+  /**
+   * Drag the kanban card of the ticket `subject` onto the column `columnTitle` with real pointer moves (Odoo's kanban
+   * listens to them). The viewport is widened to 3800 px for the drag only: the 13 stage columns do not fit 1920 px, the
+   * Hibernate column starts at x = 2720, and a drop at the clamped edge put the card in Resolving (measured 2026-10-23).
+   * Returns the dialog Odoo shows and the column before and after; the viewport is back at 1920 x 1080 afterwards.
+   */
+  async dragKanbanCardToColumn(
+    subject: string,
+    columnTitle: string,
+    opts: { onDialog?: (dialogText: string) => Promise<void> } = {}
+  ): Promise<{ dialog: string; columnBefore: string; columnAfter: string }> {
+    let result = { dialog: '', columnBefore: '', columnAfter: '' };
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      result = await this.dragKanbanCardOnce(subject, columnTitle, opts);
+      if (result.dialog || result.columnAfter !== result.columnBefore) return result;
+      console.log(`  - Drop attempt ${attempt} produced no dialog and no move (pointer drop not registered) - retrying`);
+    }
+    return result;
+  }
+
+  /**
+   * One pointer drag of the card onto the column (see dragKanbanCardToColumn for the retry around it).
+   * `onDialog` runs while the refusal dialog is still drawn, at 1920 px, BEFORE it is closed: the spec takes the
+   * verify-evidence shot of the dialog there (a dialog-borne value is shot before the dialog is dismissed).
+   */
+  private async dragKanbanCardOnce(
+    subject: string,
+    columnTitle: string,
+    opts: { onDialog?: (dialogText: string) => Promise<void> } = {}
+  ): Promise<{ dialog: string; columnBefore: string; columnAfter: string }> {
+    const columnBefore = await this.getKanbanColumnOfCard(subject);
+    await this.page.setViewportSize({ width: 3800, height: 1080 });
+    await this.wait(CommonUtils.waitTimes.standard);
+    const card = this.ticketCardByText(subject);
+    await card.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const target = this.kanbanColumnByTitle(columnTitle);
+    await target.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const from = await card.boundingBox();
+    const to = await target.boundingBox();
+    if (!from || !to) throw new Error(`dragKanbanCardToColumn("${subject}" -> "${columnTitle}"): no bounding box (card ${!!from}, column ${!!to})`);
+    await this.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await this.page.mouse.down();
+    await this.page.mouse.move(from.x + from.width / 2 + 12, from.y + from.height / 2 + 12, { steps: 5 });
+    await this.page.mouse.move(to.x + to.width / 2, to.y + 160, { steps: 30 });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await this.page.mouse.up();
+    await this.shownDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
+    const dialog = await this.getShownDialogText();
+    if (dialog && opts.onDialog) {
+      await this.page.setViewportSize({ width: 1920, height: 1080 });
+      await this.wait(CommonUtils.waitTimes.standard);
+      await opts.onDialog(dialog);
+      await this.page.setViewportSize({ width: 3800, height: 1080 });
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    await this.closeShownDialog();
+    await this.wait(CommonUtils.waitTimes.long);
+    const columnAfter = await this.getKanbanColumnOfCard(subject);
+    await this.page.setViewportSize({ width: 1920, height: 1080 });
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log(`  - Dragged "${subject}" onto "${columnTitle}": card ${columnBefore} -> ${columnAfter}; dialog "${dialog}"`);
+    return { dialog, columnBefore, columnAfter };
+  }
+
+  /** Press the button-box "Active" toggle of the open ticket form; Odoo answers with its confirmation (not yet confirmed). */
+  async clickActiveToggleOnForm(): Promise<void> {
+    await this.dismissErrorDialog();
+    const toggle = this.activeToggleButton();
+    await toggle.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await toggle.click();
+    await this.shownDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log('  - Pressed the form\'s Active / Archive toggle (button box)');
+  }
+
+  /** Press OK on the confirmation Odoo shows, then wait for it to close. */
+  async confirmShownDialogWithOk(): Promise<void> {
+    const dlg = this.shownDialog();
+    await dlg.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await dlg.locator("xpath=.//footer//button[normalize-space()='Ok' or normalize-space()='OK']").first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await dlg.waitFor({ state: 'detached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Confirmed the dialog (OK)');
+  }
+
+  /**
+   * Open the list's Advanced Search and tick the "Archived" filter under Filters. Odoo keeps the filter in the page only.
+   * Returns false when the item is not on the menu.
+   */
+  async applyArchivedFilter(): Promise<boolean> {
+    // The search options (Filters, Group By, Favorites) are drawn by default. The "Advanced Search" icon
+    // (span.o_searchview_more) HIDES them (measured 2026-10-23), so the icon is not clicked here.
+    const toggler = this.page
+      .locator("xpath=//button[contains(@class,'o_dropdown_toggler_btn')][normalize-space()='Filters']")
+      .or(this.page.locator('button.o_dropdown_toggler_btn').filter({ hasText: /^\s*Filters\s*$/ }))
+      .first();
+    await toggler.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await toggler.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const archived = this.page
+      .locator("xpath=//a[contains(@class,'dropdown-item')][normalize-space()='Archived']")
+      .or(this.page.locator('a.dropdown-item').filter({ hasText: /^\s*Archived\s*$/ }))
+      .first();
+    if (!(await archived.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return false;
+    await archived.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Filters > Archived applied');
+    return true;
+  }
+
+  // ─── CRM-11859 close gate (TC-FLOW-038..041, side A) and the list mass stage edit (TC-UI-059, side A) ───
+
+  /** Set a native select of the ticket form (EDIT mode) by its Odoo field name, to the option with this label. */
+  async setFormSelectByName(fieldName: string, label: string): Promise<void> {
+    const sel = this.page.locator(`xpath=//select[@name='${fieldName}']`).or(this.page.locator(`select[name='${fieldName}']`)).first();
+    await sel.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await sel.selectOption({ label }, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - ${fieldName} = "${label}"`);
+  }
+
+  /** Fill a textarea of the ticket form (EDIT mode) by its Odoo field name. */
+  async setFormTextAreaByName(fieldName: string, text: string): Promise<void> {
+    const ta = this.page.locator(`xpath=//textarea[@name='${fieldName}']`).or(this.page.locator(`textarea[name='${fieldName}']`)).first();
+    await ta.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await ta.fill(text, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.short);
+    console.log(`  - ${fieldName} = "${text}"`);
+  }
+
+  /** Option labels a many2one field of the ticket form (EDIT mode) offers for `typed`. Read only - nothing is picked. */
+  async listFormMany2oneOptions(fieldName: string, typed: string): Promise<string[]> {
+    const input = this.formM2oInput(fieldName);
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.pressSequentially(typed, { delay: 30 });
+    await this.wait(CommonUtils.waitTimes.long);
+    return (await this.page.locator('ul.ui-autocomplete:visible li').allTextContents())
+      .map((t) => t.replace(/\s+/g, ' ').trim())
+      .filter(Boolean);
+  }
+
+  /** Pick the autocomplete option whose text is exactly `option` for a many2one field of the ticket form (EDIT mode). */
+  async setFormMany2oneByName(fieldName: string, typed: string, option: string): Promise<void> {
+    const input = this.formM2oInput(fieldName);
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.pressSequentially(typed, { delay: 30 });
+    const items = this.page.locator('ul.ui-autocomplete:visible li');
+    await items.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await items.filter({ hasText: new RegExp(`^\\s*${escapeRegExp(option)}\\s*$`) }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - ${fieldName} = "${option}"`);
+  }
+
+  private formM2oInput(fieldName: string): Locator {
+    return this.page.locator(`xpath=//div[@name='${fieldName}']//input`).or(this.page.locator(`div[name='${fieldName}'] input`)).first();
+  }
+
+  /** Select the list rows whose subjects are given, through their row checkboxes (each one verified). Returns the count. */
+  async selectListRowsBySubjects(subjects: string[]): Promise<number> {
+    for (const subject of subjects) {
+      if (!(await this.ticketRowByText(subject).isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false))) {
+        throw new Error(`selectListRowsBySubjects: no list row for "${subject}"`);
+      }
+      const input = this.ticketRowCheckboxInput(subject);
+      let checked = await input.isChecked().catch(() => false);
+      for (const target of [this.ticketRowSelectorLabel(subject), this.ticketRowSelectorCtrl(subject), this.ticketRowSelectorCell(subject)]) {
+        if (checked) break;
+        await target.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+        await this.wait(CommonUtils.waitTimes.short);
+        checked = await input.isChecked().catch(() => false);
+      }
+      if (!checked) throw new Error(`selectListRowsBySubjects: the row checkbox of "${subject}" did not register`);
+      console.log(`  - Row selected: "${subject}"`);
+    }
+    return subjects.length;
+  }
+
+  /** Open the list's Action menu (drawn only while rows are selected) and choose the item with this exact label. */
+  async chooseListActionItem(label: string): Promise<void> {
+    const actionBtn = this.listActionMenuButton();
+    await actionBtn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await actionBtn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const item = this.page.locator('.dropdown-menu.show a.dropdown-item')
+      .filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`) }).first();
+    await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Action > ${label}`);
+  }
+
+  /** In the open "Mass Editing (Stage)" wizard: choose Set, the stage, then Apply. Waits (bounded) for the wizard to close. */
+  async applyMassEditStage(stageName: string): Promise<string> {
+    const wizard = this.page.locator('.modal.show').filter({ hasText: 'Mass Editing (Stage)' }).last();
+    await wizard.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await wizard.locator("select[name='selection__stage_id']").selectOption({ label: 'Set' }, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.short);
+    const input = wizard.locator("div[name='stage_id'] input").first();
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.pressSequentially(stageName, { delay: 30 });
+    const items = this.page.locator('ul.ui-autocomplete:visible li');
+    await items.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await items.filter({ hasText: new RegExp(`^\\s*${escapeRegExp(stageName)}\\s*$`) }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await wizard.locator("button[name='action_apply']").click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await wizard.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.savingPage }).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const serverError = await this.readOdooServerErrorSummary();
+    console.log(`  - Mass Editing (Stage): Set "${stageName}" > Apply${serverError ? ` - server error: ${serverError}` : ''}`);
+    return serverError;
+  }
+
+  /** The "Odoo Server Error" dialog drawn after a failed server call, reduced to its exception line ('' when none is drawn). */
+  async readOdooServerErrorSummary(): Promise<string> {
+    const dlg = this.page.locator('.modal.show').filter({ hasText: 'Odoo Server Error' }).last();
+    if (!(await dlg.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return '';
+    const details = dlg.locator('a, button, span').filter({ hasText: /^\s*See details\s*$/ }).first();
+    if (await details.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+      await details.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    const text = await dlg.innerText({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
+    const exc = text.split('\n').map((l) => l.trim()).filter((l) => /^(\w+Error|\w+Exception|UserError|AccessError): /.test(l));
+    return exc.length ? exc[exc.length - 1] : 'Odoo Server Error (no exception line could be read)';
+  }
+
+  /** The text of the warning Odoo shows after a refused stage move ('' when none), read after the dialog is drawn (bounded). */
+  async getStageRefusalText(): Promise<string> {
+    return this.getShownDialogText();
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY, as the signed-in user: the stage name of one ticket (helpdesk.ticket.stage_id). */
+  async readStageOverRpc(ticketId: number | string): Promise<string> {
+    const res = await this.page.evaluate(async (id) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call',
+          params: { model: 'helpdesk.ticket', method: 'read', args: [[id], ['stage_id']], kwargs: {} },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      const row = j.result && j.result[0];
+      return { stage: row && Array.isArray(row.stage_id) ? String(row.stage_id[1]) : '' };
+    }, Number(ticketId));
+    if ('error' in res) throw new Error(`HelpdeskPage.readStageOverRpc(${ticketId}): ${res.error}`);
+    return res.stage;
+  }
+}
+
+/** Escape a string for use inside a RegExp source. */
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

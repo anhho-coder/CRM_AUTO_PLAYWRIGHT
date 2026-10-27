@@ -97,6 +97,15 @@ export const users = {
     password: pw('support_l2_manager_nam'),
     displayName: 'Nam Pham',
   },
+  // L1 agent Giang Le on PRE-PROD (CRM-11859 Helpdesk A/B lifecycle cases, side A). The SAME login as
+  // users.support_l1_giang_support_mig (giang.le@nakivo.com) - this entry REUSES that secret: the password was set
+  // on 2026-10-22 and is the same on both hosts (2FA off). Pre-condition 1 of each L1 spec asserts that his employee
+  // record reads Support Team = 'l1'.
+  support_l1_giang_preprod: {
+    username: 'giang.le@nakivo.com',
+    password: pw('support_l1_giang_support_mig'),
+    displayName: 'Giang Le',
+  },
   admin_crm: {
     username: 'anh.ho@nakivo.com',
     password: pw('admin_crm'),
@@ -199,6 +208,51 @@ export const users = {
     password: pw('admin_discount_mig'),
     displayName: 'anh.ho@nakivo.com',
   },
+  // ---- Support service (baseUrl_support_mig below), admin account handed over 2026-10-22. NOT an
+  // Odoo login - Frappe Helpdesk: sign in on its /login form (API: POST /api/method/login
+  // {usr,pwd}), never loginPage. The login is Frappe's built-in superuser "Administrator", not
+  // anh.ho@nakivo.com (that one answered 401). Verified 2026-10-22: "Logged In", full_name
+  // Administrator, home_page /helpdesk.
+  admin_support_mig: {
+    username: 'Administrator',
+    password: pw('admin_support_mig'),
+    displayName: 'Administrator',
+  },
+  // Support agents on the same host - passwords set as Administrator on 2026-10-22, each login
+  // verified ("Logged In", displayName = Frappe full_name). Level = the tester's statement, checked
+  // against HD Agent "Support Level" / "Job Level".
+  // "Support Manager" in a TC = THIS account (tester, 2026-10-22). Do not pick it from the server
+  // data: her HD Agent reads L1 / no job level, and the "Nakivo Support Manager" role is held by
+  // the L1 agents Giang and Vince as well.
+  support_manager_julia_support_mig: {
+    username: 'julia.petrenko@nakivo.com',
+    password: pw('support_manager_julia_support_mig'),
+    displayName: 'Julia Petrenko',
+  },
+  // HD Agent: L2 / Manager
+  support_l2_alexandr_support_mig: {
+    username: 'alexandr.yuntsov@nakivo.com',
+    password: pw('support_l2_alexandr_support_mig'),
+    displayName: 'Alexandr Yuntsov',
+  },
+  // HD Agent: L2 / Senior
+  support_l2_nam_support_mig: {
+    username: 'nam.pham@nakivo.com',
+    password: pw('support_l2_nam_support_mig'),
+    displayName: 'Nam Pham',
+  },
+  // HD Agent: L1 / no job level
+  support_l1_giang_support_mig: {
+    username: 'giang.le@nakivo.com',
+    password: pw('support_l1_giang_support_mig'),
+    displayName: 'Giang Le',
+  },
+  // HD Agent: L1 / no job level
+  support_l1_vince_support_mig: {
+    username: 'vince.pham@nakivo.com',
+    password: pw('support_l1_vince_support_mig'),
+    displayName: 'Pham Tan Vinh (Vince)',
+  },
   // ---- Quoc Anh comment: Oct 14, 2026 [COMMON ACCOUNT] Pre-production serrver, CRM-Mig serrver, Pre-sales, Subscriptions service
   // These accounts need to be re-created if the servers above clone database from Production.
   // CRM-12144 Discounts - the test customer of the dev's QA Instructions (p.11) and the second
@@ -287,6 +341,10 @@ export const baseUrl_mailpit_mig = 'https://crm-mig.nakivo.site/mailpit/';
 // with users.admin_discount_mig on its own /login form. Unauthenticated pages 302 to /login, /api/*
 // answers 401. The cert chain is self-signed (curl needs -k, Playwright ignoreHTTPSErrors).
 export const baseUrl_discount_mig = 'https://discount-crm-mig.nakivo.site/';
+
+// Support service of the migration - Frappe Helpdesk (NOT Odoo: /web/* answers 404). The root
+// redirects to /helpdesk; sign in with users.admin_support_mig on /login. Verified 2026-10-22.
+export const baseUrl_support_mig = 'https://support-crm-mig.nakivo.site/';
 
 // Pre-Sales Application (CRM-12135) - the NEW helpdesk the pre-sale requests are worked on, a
 // SEPARATE Odoo 19 instance from the CRM above. A pre-sale spec drives BOTH hosts in one run:

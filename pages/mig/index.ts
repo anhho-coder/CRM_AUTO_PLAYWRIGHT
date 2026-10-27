@@ -38,3 +38,4 @@ export type { VersionInfo, ModuleInfo } from './MigPlatformPage';
 export type { QueueEntry, SimulatorRecord } from './MigIntegrationHubPage';
 export type { PreSaleRequest, PreSaleMail } from './MigPreSalePage';
 export type { ProviderConfig, ProviderRow } from './CurrencyRateProviderPageMig';
+export { SupportDeskPageMig } from './SupportDeskPageMig';
