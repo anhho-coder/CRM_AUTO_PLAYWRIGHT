@@ -1706,6 +1706,25 @@ export class DealElementPage extends BasePage {
   }
 
   /**
+   * Type a Validity / Expiration date (validity_date) in the form's format, e.g. "12/10/2026" - edit mode. Enter commits
+   * the typed value (the same way QuotationPage.setOrderDate commits Order Date).
+   * @returns true when the input reads back the typed date
+   */
+  async setValidityDate(dateText: string): Promise<boolean> {
+    console.log(`  - Setting Validity / Expiration = ${dateText}`);
+    const input = this.validityInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ clickCount: 3 });
+    await this.page.keyboard.press('Backspace');
+    await input.fill(dateText, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.keyboard.press('Enter');
+    await this.wait(CommonUtils.waitTimes.medium);
+    const readBack = (await input.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')).trim();
+    console.log(`  - Validity / Expiration reads back as "${readBack}"`);
+    return readBack === dateText;
+  }
+
+  /**
    * Clear the Validity date (validity_date) field
    */
   async clearValidityField(): Promise<void> {

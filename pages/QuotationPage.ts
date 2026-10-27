@@ -92,7 +92,7 @@ export class QuotationPage extends BasePage {
     .first();
   private readonly salesOrderNumberField = () => this.page.locator('xpath=(//span[@name="name"] | //div[@name="name"]//span | //h1[@name="name"])[1]').first();
   private readonly quotationStatusField = () => this.page.locator('xpath=//div[contains(@class,"o_statusbar_status")]//button[@aria-checked="true" or @aria-selected="true" or contains(@class,"btn-primary")]').first();
-  private readonly totalInCompanyCurrencyField = () => this.page.locator('xpath=//div[@name="currency_amount_total"]//span | //span[@name="currency_amount_total"] | //div[@name="amount_total"]//span[@class="o_stat_value"] | //td[@name="currency_amount_total"] | //span[@name="amount_total"]').first();
+  private readonly totalInCompanyCurrencyField = () => this.page.locator('xpath=//div[@name="currency_amount_total"]//span | //span[@name="currency_amount_total"] | //div[@name="amount_total"]//span[@class="o_stat_value"] | //td[@name="currency_amount_total"]').first();
   // "Payer" (partner_id) on the Quotation/Sales Order: readonly link primary, edit-mode input fallback.
   private readonly payerInput = () => this.page.locator('xpath=//div[@name="partner_id"]//input').first();
   private readonly payerReadonly = () => this.page.locator('xpath=//a[@name="partner_id"]').or(this.page.locator('xpath=//div[@name="partner_id"]//a')).first();
@@ -128,6 +128,25 @@ export class QuotationPage extends BasePage {
   // "no content" helper (an Opportunity with zero quotations) - both count as "the list opened".
   private readonly listViewRoot = () => this.page.locator('.o_list_view, .o_list_table, .o_view_nocontent').first();
   private readonly listDataRows = () => this.page.locator('.o_list_view tbody tr.o_data_row, .o_list_table tbody tr.o_data_row');
+  // Quotations LIST - "Total in Company Currency" (list-only column), XPath primary, CSS fallback
+  private readonly qListTable = () =>
+    this.page.locator('xpath=//table[contains(@class,"o_list_view")]').or(this.page.locator('table.o_list_view')).first();
+  private readonly qFacetRemove = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_searchview")]//*[contains(@class,"o_facet_remove")]').or(this.page.locator('.o_searchview .o_facet_remove'));
+  private readonly qFiltersToggle = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_search_options')]//button[normalize-space()='Filters']").or(this.page.locator('.o_search_options button:has-text("Filters")')).first();
+  private readonly qAddCustomFilter = () =>
+    this.page.locator("xpath=//button[contains(normalize-space(),'Add Custom Filter')] | //a[contains(normalize-space(),'Add Custom Filter')]").or(this.page.locator('.o_filters_menu :is(a,button):has-text("Add Custom Filter")')).first();
+  private readonly qFilterFieldSelect = () =>
+    this.page.locator("xpath=//select[contains(@class,'o_searchview_extended_prop_field')]").or(this.page.locator('select.o_searchview_extended_prop_field')).first();
+  private readonly qFilterValueInput = () =>
+    this.page.locator("xpath=//input[contains(@class,'o_searchview_extended_prop_value')] | //span[contains(@class,'o_searchview_extended_prop_value')]//input").or(this.page.locator('.o_searchview_extended_prop_value input, input.o_searchview_extended_prop_value')).first();
+  private readonly qFilterApply = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_filters_menu')]//button[normalize-space()='Apply'] | //button[normalize-space()='Apply']").or(this.page.locator('.o_filters_menu button:has-text("Apply")')).first();
+  private readonly qOptionalColumnsToggler = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_control_panel")]//*[contains(@class,"o_optional_columns_dropdown_toggle")]').or(this.page.locator('.o_control_panel .o_optional_columns_dropdown_toggle, .o_control_panel button[title*="olumn"]')).first();
+  private readonly qTotalInCompanyCurrencyHeader = () =>
+    this.page.locator('xpath=//table[contains(@class,"o_list_view")]//th[starts-with(normalize-space(),"Total in Company Currency")]').or(this.page.locator('table.o_list_view thead th:has-text("Total in Company Currency")')).first();
 
   constructor(page: Page) {
     super(page);
@@ -192,7 +211,7 @@ export class QuotationPage extends BasePage {
    */
   async clickEdit(timeout: number = 10000): Promise<void> {
     await this.editButtonLoc().waitFor({ state: 'visible', timeout });
-    await this.editButtonLoc().click();
+    await this.editButtonLoc().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked EDIT button');
     
     // Wait for form to be in edit mode - Save button should appear
@@ -790,12 +809,132 @@ export class QuotationPage extends BasePage {
    */
   async getTotalInCompanyCurrency(timeout: number = 15000): Promise<string> {
     const field = this.totalInCompanyCurrencyField();
-    await field.waitFor({ state: 'visible', timeout });
+    const shown = await field.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    // No fallback to the document-currency grand total (amount_total): that is a different currency's figure.
+    if (!shown) throw new Error('No "Total in Company Currency" element is visible on the quotation form');
     const raw = (await field.innerText()).trim();
     // Strip currency symbol and non-breaking spaces (e.g. "$ 329.00" → "329.00")
     const value = raw.replace(/^[^0-9]+/, '').trim();
     console.log(`  ✓ Total in Company Currency: ${value} (raw: "${raw}")`);
     return value;
+  }
+
+  /**
+   * "Total in Company Currency" of ONE quotation, read from the Quotations LIST on crm-mig (2026-10-22).
+   *
+   * The quotation FORM does not show this figure (it shows only the document total, e.g. "Total: EUR 1.50"), so the
+   * value is read the way the tester reads it: Sales > Orders > Quotations (list view) -> the "Total in Company
+   * Currency" optional column is switched on in the column toggler left of the search bar -> Filters > Add Custom
+   * Filter > ID = <quotationId> > Apply, so the list holds that ONE quotation -> that row's cell is read.
+   * The filtered list stays on screen for the verify-point shot.
+   *
+   * @param listUrl the Quotations list URL, e.g. MigPlatformPage.appUrlFor('quotations') (resolved from the live menu)
+   * @param quotationId the quotation's numeric id
+   * @returns value = the cell as a plain number string ('' when the column or the row is absent); rows = how many
+   *          rows the filter left; columnSwitchedOn = whether this call had to switch the column on
+   */
+  async getTotalInCompanyCurrencyForQuotationId(
+    listUrl: string,
+    quotationId: number | string,
+  ): Promise<{ value: string; rows: number; columnSwitchedOn: boolean }> {
+    console.log(`  - Reading "Total in Company Currency" of quotation ${quotationId} from the Quotations list`);
+    // Null onbeforeunload first (we may be leaving a form) so a "unsaved changes" prompt cannot block the navigation.
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(listUrl, { waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.dismissErrorDialog().catch(() => {});
+    await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+    // A hash-only navigation from a FORM may not re-render the action: reload ONLY when the list table did not appear.
+    if (!(await this.qListTable().isVisible().catch(() => false))) {
+      await this.page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+      await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+    }
+    const listShown = await this.qListTable().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad })
+      .then(() => true).catch(() => false);
+    if (!listShown) throw new Error(`The Quotations list did not open at ${listUrl} (landed on ${this.page.url()})`);
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // Narrow the list to THIS quotation only: clear the default facets, then ID = <quotationId>.
+    await this.clearQuotationListFacets();
+    await this.addQuotationListIdFilter(quotationId);
+    await this.waitForLoadingOverlayHidden(CommonUtils.waitTimes.abnormalWait).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+
+    // The column is an optional one: switch it on in the column toggler when the list hides it.
+    let columnSwitchedOn = false;
+    if (!(await this.qTotalInCompanyCurrencyHeader().isVisible().catch(() => false))) {
+      const toggler = this.qOptionalColumnsToggler();
+      if (await toggler.isVisible().catch(() => false)) {
+        await toggler.click({ timeout: CommonUtils.waitTimes.elementVisibility });
+        await this.page.locator('.dropdown-menu.show').getByText('Total in Company Currency', { exact: true }).first()
+          .click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
+        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.wait(CommonUtils.waitTimes.long);
+        columnSwitchedOn = true;
+      }
+    }
+
+    const read = await this.page
+      .evaluate(() => {
+        const table = document.querySelector('table.o_list_view') || document.querySelector('.o_list_view table');
+        if (!table) return { raw: '', rows: 0 };
+        const headers = Array.from(table.querySelectorAll('thead th'));
+        const colIdx = headers.findIndex((h) => (h.textContent || '').replace(/\s+/g, ' ').trim().startsWith('Total in Company Currency'));
+        const rows = Array.from(table.querySelectorAll('tbody tr.o_data_row'));
+        if (colIdx === -1 || rows.length === 0) return { raw: '', rows: rows.length };
+        const cell = rows[0].querySelectorAll('td')[colIdx] as HTMLElement | undefined;
+        return { raw: cell ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : '', rows: rows.length };
+      })
+      .catch(() => ({ raw: '', rows: 0 }));
+    // Keep the digits and the decimal point only ("EUR 1.50" / "1.50 EUR" / "1,234.56" -> "1.50" / "1.50" / "1234.56").
+    const value = read.raw.replace(/[^0-9.\-]/g, '');
+    console.log(`  - Quotations list filtered on ID = ${quotationId}: ${read.rows} row(s); Total in Company Currency = "${read.raw}" -> ${value}${columnSwitchedOn ? ' (column switched on)' : ''}`);
+    return { value, rows: read.rows, columnSwitchedOn };
+  }
+
+  /** Remove every search facet the Quotations list starts with, so the next filter is the only condition. */
+  private async clearQuotationListFacets(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    let removed = 0;
+    // Each click re-renders the search bar, so re-query and always take the first remaining control.
+    for (let guard = 0; guard < 10; guard++) {
+      const controls = this.qFacetRemove();
+      if ((await controls.count().catch(() => 0)) === 0) break;
+      const first = controls.first();
+      if (!(await first.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false))) break;
+      await first.click({ timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      removed++;
+    }
+    if (removed) console.log(`    - cleared ${removed} search facet(s) on the Quotations list`);
+    return removed;
+  }
+
+  /**
+   * Filters > Add Custom Filter > ID = <id> > Apply. Not the autocomplete route: on an integer field it waits for an
+   * autocomplete that never comes (the same trap as the Invoices list, Discount_2.4, 2026-10-21).
+   */
+  private async addQuotationListIdFilter(quotationId: number | string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    console.log(`    - Add Custom Filter: ID = ${quotationId}`);
+    // The Filters entry only exists on the list control panel: poll for "Add Custom Filter", opening Filters when it is not shown.
+    const add = this.qAddCustomFilter();
+    for (let attempt = 1; attempt <= 8; attempt++) {
+      if (await add.isVisible().catch(() => false)) break;
+      if (await this.qFiltersToggle().isVisible().catch(() => false)) await this.qFiltersToggle().click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+    await add.click({ timeout });
+    await this.wait(CommonUtils.waitTimes.standard);
+    await this.qFilterFieldSelect().selectOption({ label: 'ID' }, { timeout });
+    await this.wait(CommonUtils.waitTimes.standard);
+    const input = this.qFilterValueInput();
+    await input.waitFor({ state: 'visible', timeout });
+    await input.fill(String(quotationId), { timeout });
+    await this.page.keyboard.press('Tab');
+    await this.qFilterApply().click({ timeout });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.dismissErrorDialog().catch(() => {});
+    const facets = ((await this.page.locator('.o_searchview .o_searchview_facet').allInnerTexts().catch(() => [] as string[])) || [])
+      .map((t) => t.replace(/\s+/g, ' ').trim());
+    console.log(`    - search facets now: ${JSON.stringify(facets)}`);
   }
 
   /**
@@ -1633,7 +1772,8 @@ export class QuotationPage extends BasePage {
 
   /** Click SAVE on the current Quotation form. Does NOT assert success - used to trigger the guard. */
   async clickSaveButton(): Promise<void> {
-    await this.saveButton().click();
+    // Bounded: an unbounded click waits out the whole test budget when SAVE is covered by a dialog.
+    await this.saveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
   }
 
   // ==========================================================================================
@@ -2245,6 +2385,15 @@ export class QuotationPage extends BasePage {
   // READ those three things, so all three cases were parked as [BLOCKED].
   // The form must be in EDIT mode first - the caller does that with `clickEdit()`.
 
+  /** Bring the "Other Information" notebook page to the front - the page that holds Order Date (CRM-11857_3.3). */
+  async clickOtherInformationTab(): Promise<void> {
+    const tab = this.page.locator('.o_notebook .nav-link').filter({ hasText: /^Other Information$/ }).first();
+    if (await tab.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false)) {
+      await tab.click().catch(() => {});
+      await this.wait(CommonUtils.waitTimes.standard);
+    }
+  }
+
   /** The Order Date input (`date_order`) on the quotation form, in edit mode. */
   private readonly orderDateInput = () =>
     this.page
@@ -2274,6 +2423,9 @@ export class QuotationPage extends BasePage {
    */
   async setOrderDate(dateText: string): Promise<boolean> {
     console.log(`  - Setting Order Date = ${dateText}`);
+    // Order Date sits on the "Other Information" notebook page. The form opens on "Order Lines", so the
+    // input is in the DOM but 0x0 until that page is active - waiting for visibility without this click timed out.
+    await this.clickOtherInformationTab();
     const input = this.orderDateInput();
     const visible = await input
       .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
@@ -2287,12 +2439,34 @@ export class QuotationPage extends BasePage {
     await this.page.keyboard.press('Control+A');
     await this.page.keyboard.press('Backspace');
     await input.fill(dateText, { timeout: CommonUtils.waitTimes.abnormalWait });
-    // Escape closes the datepicker overlay without discarding the typed value.
-    await this.page.keyboard.press('Escape');
+    // Enter commits the typed value. Escape does not: on this build it keeps the OLD date while the input still shows the typed one.
+    await this.page.keyboard.press('Enter');
     await this.wait(CommonUtils.waitTimes.medium);
     const readBack = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
     console.log(`  - Order Date reads back as "${readBack}"`);
     return readBack.trim() === dateText.trim();
+  }
+
+  /**
+   * The Order Date as the saved (read-mode) quotation shows it, e.g. "08/03/2026 10:00:00".
+   * Read from the element's text, so it works while the "Other Information" page is not in front.
+   */
+  async getOrderDateDisplayed(): Promise<string> {
+    // Save is asynchronous. Until the Edit button is back the form is still in edit mode, and the only
+    // [name="date_order"] element is the edit-mode datepicker wrapper, which holds an input and no text.
+    const readMode = await this.editButtonLoc().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage })
+      .then(() => true).catch(() => false);
+    if (!readMode) console.log('  ! The quotation did not return to read mode after Save');
+    // The read-mode value sits on the "Other Information" page, which is hidden while "Order Lines" is in front,
+    // so read the element's text, not its visibility.
+    const shown = this.page.locator('[name="date_order"]:not(input)');
+    const n = await shown.count().catch(() => 0);
+    for (let i = 0; i < n; i++) {
+      const text = (await shown.nth(i).textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '';
+      const normalized = text.replace(/\s+/g, ' ').trim();
+      if (normalized) return normalized;
+    }
+    return '';
   }
 
   /**
@@ -2327,6 +2501,60 @@ export class QuotationPage extends BasePage {
     return ok;
   }
 
+  /** An option of the open many2one autocomplete whose text matches `text`. */
+  private readonly autocompleteItem = (text: RegExp) =>
+    this.page
+      .locator("xpath=//ul[contains(@class,'ui-autocomplete') and not(contains(@style,'display: none'))]//li[contains(@class,'ui-menu-item')]")
+      .or(this.page.locator('ul.ui-autocomplete:visible li.ui-menu-item'))
+      .filter({ hasText: text })
+      .first();
+
+  /** The Payment Terms many2one input (edit mode), the visible copy. */
+  private readonly paymentTermInputVisible = () =>
+    this.page
+      .locator('xpath=//div[@name="payment_term_id" and not(contains(@class,"o_invisible_modifier"))]//input')
+      .or(this.page.locator('div[name="payment_term_id"]:not(.o_invisible_modifier) input'))
+      .first();
+
+  /**
+   * Set the Pricelist (edit mode) to EXACTLY `displayName` as Odoo 12 lists it: "<name> (<CUR>)". Not
+   * setQuotationPricelist() - Enter takes the FIRST suggestion, and pre-production and crm-mig both hold a USD
+   * pricelist literally named "Public Pricelist_EUR (EUR)" (DISCOUNT_BASELINE, QuotationPageMig.setPricelistExactMig).
+   * @returns the value the input reads back
+   */
+  async setQuotationPricelistExact(displayName: string): Promise<string> {
+    const input = this.pricelistInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(displayName.replace(/\s*\([A-Z]{3}\)\s*$/, ''), { timeout: CommonUtils.waitTimes.abnormalWait });
+    const option = this.autocompleteItem(new RegExp(`^\\s*${displayName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`));
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long); // pricelist onchange
+    const readBack = ((await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    console.log(`  - Pricelist reads "${readBack}"`);
+    return readBack;
+  }
+
+  /**
+   * Set Payment Terms (edit mode) to EXACTLY `term`: type it, click the option whose text is exactly the term.
+   * @returns the value the input reads back
+   */
+  async setQuotationPaymentTermExact(term: string): Promise<string> {
+    const input = this.paymentTermInputVisible();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(term, { timeout: CommonUtils.waitTimes.abnormalWait });
+    const option = this.autocompleteItem(new RegExp(`^\\s*${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`));
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const readBack = ((await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    console.log(`  - Payment Terms reads "${readBack}"`);
+    return readBack;
+  }
+
   /**
    * Change the quantity of an EXISTING order line. The form must already be in EDIT mode.
    *
@@ -2336,6 +2564,9 @@ export class QuotationPage extends BasePage {
    */
   async setOrderLineQuantity(productTerm: string, quantity: number): Promise<boolean> {
     console.log(`  - Setting the quantity of the "${productTerm}" line to ${quantity}`);
+    // The lines live on the "Order Lines" notebook page. setOrderDate() leaves "Other Information" in front,
+    // and then the row is 0x0 in the DOM - bring the lines page back first (CRM-11857_3.3 step 3).
+    await this.clickOrderLinesTab();
     const row = this.orderLineRowFor(productTerm);
     const present = await row
       .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
