@@ -191,7 +191,7 @@ test.describe(`${TC} - Order exactly at the 1,400.00 USD minimum and one cent be
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const rewards = rewardRows(await dealElementPage.getAllOrderLineRows());
       const total = await dealElementPage.getSubtotalFooterValue('amount_total');

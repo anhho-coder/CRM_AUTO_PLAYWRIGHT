@@ -160,7 +160,7 @@ test.describe(`${TC} - Order with a listed product and a Support Services produc
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const rewards = rewardRows(await dealElementPage.getAllOrderLineRows());
       const total = await dealElementPage.getSubtotalFooterValue('amount_total');

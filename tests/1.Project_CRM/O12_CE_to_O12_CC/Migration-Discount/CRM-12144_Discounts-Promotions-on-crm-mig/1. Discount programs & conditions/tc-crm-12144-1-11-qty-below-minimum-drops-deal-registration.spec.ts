@@ -166,7 +166,7 @@ test.describe(`${TC} - Lower the quantity of an order carrying Deal registration
       console.log(`\n--- ${STEP.s2} ---`);
       await dealElementPage.addOrderLineStrict(DISCOUNT_MIG.listedProduct, 5);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,645.00');
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const rewards = await readRewardLines('after Save');
       await recordChecks(page, testInfo, checks, [
@@ -196,7 +196,7 @@ test.describe(`${TC} - Lower the quantity of an order carrying Deal registration
       await dealElementPage.clickEdit();
       await dealElementPage.changeQtyInRow(DISCOUNT_MIG.listedProduct, 6);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,974.00');
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const rewards = await readRewardLines('qty 6, after Save');
       await recordChecks(page, testInfo, checks, [

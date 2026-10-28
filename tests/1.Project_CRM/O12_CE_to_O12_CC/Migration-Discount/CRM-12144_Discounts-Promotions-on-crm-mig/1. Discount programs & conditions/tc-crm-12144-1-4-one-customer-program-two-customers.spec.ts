@@ -31,6 +31,8 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 21, Jira link empty)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
+ * Revised          : 2026-10-27 - program-editor steps reworded to the Kanban path (New program > Save; card >
+ *                    Delete), master row 21 updated the same day - the CRM-12144_5.3 standard (tester 2026-10-27)
  * Baseline         : Discount_1.4 (Jira CRM-13767; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-4-one-customer-program-two-customers.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-02
@@ -45,8 +47,8 @@ import {
  *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
  *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
  *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
- *     - Pre-condition 5 : add the row QA-Disc-<timestamp> (customer = Disc-CustA) and Save as version N
- *     - Step 5          : Clean-up - delete the row QA-Disc-<timestamp> and Save as version N
+ *     - Pre-condition 5 : create the program QA-Disc-<timestamp> (Kanban: New program) (customer = Disc-CustA) and Save
+ *     - Step 5          : Clean-up - Delete the program QA-Disc-<timestamp> on its Kanban card and confirm
  *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
  *           development team's: QI p.3 (except TC-13) and p.28 (TC-14 to TC-18 at QA's request); Nathan,
  *           CRM-12467 2026-10-20: QA runs only TC-13 and TC-19"
@@ -77,14 +79,14 @@ import {
  *  _ Name = Disc-CustB-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
  *  _ Pricelist = Public Pricelist (USD)
- *  Add a row to the program table with:
+ *  In the Program editor, open Discount Programs (Kanban view), click New program and enter:
  *  _ Promo code = QA-<timestamp>
- *  _ Name = QA-Disc-<timestamp>
- *  _ Reward percent = 5.0
- *  _ Scope = order
- *  _ Target product codes = (empty)
- *  _ Customer condition (Advanced) = customer name is Disc-CustA-<timestamp>
- *  Click Save as version N and confirm the new version is the active one
+ *  _ Program name = QA-Disc-<timestamp>
+ *  _ Reward = 5.0 %
+ *  _ Applies to = Whole order
+ *  _ For = (empty - the For field shows only for Specific products)
+ *  _ Advanced (customer condition) = customer name is Disc-CustA-<timestamp>
+ *  Click Save and confirm the new version is the active one (top bar: Version N / active)
  *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-OppA-<timestamp>
@@ -98,7 +100,7 @@ import {
  *  2. Open the Promotion list
  *  3. Open Disc-OppB-<timestamp> and click DEAL ELEMENT; add A2160B with Ordered Qty 1
  *  4. Open the Promotion list
- *  5. Clean-up: in the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N
+ *  5. Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion
  *
  *  Expected Results:
  *  2. The list contains QA-Disc-<timestamp>
@@ -108,8 +110,8 @@ import {
  *  (a company needs a session; the master lists the login after the row). Company names: the helper names each run's
  *  company Disc-Cust-<timestamp> (runA and runB have distinct timestamps); the master's Disc-CustA / Disc-CustB names
  *  are kept in STEP only (the baseline did not reproduce them either). The program's customer = run A's company.
- *  Two DiscountRun objects are torn down in afterEach and swept in afterAll. Editor row keys = the editor's column
- *  titles; "Customer condition (Advanced)" goes to the column "Advanced".
+ *  Two DiscountRun objects are torn down in afterEach and swept in afterAll. The program is entered with the program
+ *  form's labels; "Customer condition (Advanced)" goes to the form's "Advanced".
  * ================================================================================================
  */
 
@@ -124,14 +126,14 @@ const STEP = {
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-CustA-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
   pre4: 'Pre-condition 4: On crm-mig, create a new company in Contacts with: Name = Disc-CustB-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre5: 'Pre-condition 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Add a row to the program table with: Promo code = QA-<timestamp>, Name = QA-Disc-<timestamp>, Reward percent = 5.0, Scope = order, Target product codes = (empty), Customer condition (Advanced) = customer name is Disc-CustA-<timestamp>; Click Save as version N and confirm the new version is the active one',
+  pre5: 'Pre-condition 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-CustA-<timestamp>; Click Save and confirm the new version is the active one (top bar: Version N / active)',
   pre6: 'Pre-condition 6: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-OppA-<timestamp>, Customer = Disc-CustA-<timestamp>',
   pre7: 'Pre-condition 7: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-OppB-<timestamp>, Customer = Disc-CustB-<timestamp>',
-  s1: 'Step 1: Open Disc-OppA-<timestamp> and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment; add A2160B with Ordered Qty 1',
+  s1: 'Step 1: Open Disc-OppA-<timestamp> and click DEAL ELEMENT; add A2160B with Ordered Qty 1 [if Payment Terms is empty, Payment Terms = Immediate Payment is set first]',
   s2: 'Step 2: Open the Promotion list',
   s3: 'Step 3: Open Disc-OppB-<timestamp> and click DEAL ELEMENT; add A2160B with Ordered Qty 1',
   s4: 'Step 4: Open the Promotion list',
-  s5: 'Step 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N',
+  s5: 'Step 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
 
@@ -139,7 +141,7 @@ test.use({ ignoreHTTPSErrors: true, actionTimeout: MIG_ACTION_TIMEOUT }); // the
 
 /** Every run of this file - the afterAll sweep re-finds a run's leftovers by its own marker (never by a keep-list). */
 const runs: DiscountRun[] = [];
-/** Program-editor rows this file added and has not removed yet, by the name the add call gave them. */
+/** Programs this file created in the Program editor and has not deleted yet, by the name the create call gave them. */
 const editorRows: string[] = [];
 
 const forgetEditorRow = (name: string): void => {
@@ -147,13 +149,13 @@ const forgetEditorRow = (name: string): void => {
   if (i >= 0) editorRows.splice(i, 1);
 };
 
-/** Remove the Program-editor rows this file added and has not removed (crm-mig rule: the teardown deletes what it made). */
+/** Delete the programs this file created in the Program editor and has not deleted (crm-mig rule: the teardown deletes what it made). */
 async function removeEditorRows(page: Page): Promise<void> {
   if (!editorRows.length) return;
   const editor = new DiscountProgramEditorPageMig(page);
   await editor.signIn(EDITOR_ACCOUNT);
   for (const name of [...editorRows]) {
-    await editor.deleteProgramRowAndSaveVersion(name);
+    await editor.deleteProgramOnKanban(name);
     forgetEditorRow(name);
   }
 }
@@ -239,22 +241,21 @@ test.describe(`${TC} - Offer a program limited to one customer on orders of two 
     await test.step(STEP.pre5, async () => {
       console.log(`\n--- ${STEP.pre5} ---`);
       // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
-      await editor.addProgramRowAndSaveVersion({
+      const versionBefore = await editor.getActiveVersionNumber(); // Kanban top bar, before Save
+      await editor.createProgramOnKanban({
         'Promo code': promoCode,
-        Name: programName,
-        'Reward percent': '5.0',
-        Scope: 'order',
-        'Target product codes': '', // "(empty)" in the master row
+        'Program name': programName,
+        Reward: '5.0',
+        'Applies to': 'Whole order',
+        For: '', // "(empty)" in the master row - the For field shows only for Specific products
         Advanced: `customer name is ${run.company}`,
       });
       editorRows.push(programName);
-      const versions = await editor.getVersions();
-      const newest = Math.max(...versions.map((v) => v.version));
-      const active = versions.find((v) => v.active);
+      const versionAfter = await editor.getActiveVersionNumber(); // Kanban top bar "Version N / active"
       await recordChecks(page, testInfo, checks, [
-        { what: 'Pre-condition 5 - the new version is the active one', expected: `Version ${newest} (newest) Active`, actual: active ? `Version ${active.version} Active` : '(none active)', passed: !!active && active.version === newest },
-      ], `${TC} - Pre-condition 5 new version active`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - program row saved as a new version');
+        { what: 'Pre-condition 5 - the new version is the active one (top bar: Version N / active)', expected: `Version ${versionBefore + 1} / active`, actual: Number.isFinite(versionAfter) ? `Version ${versionAfter} / active` : '(not shown)', passed: versionAfter === versionBefore + 1 },
+      ], `${TC} - Pre-condition 5 new version active`, [DiscountProgramEditorPageMig.VERSION_CHIP]);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - program saved as a new version');
     });
 
     await test.step(STEP.pre6, async () => {
@@ -307,7 +308,7 @@ test.describe(`${TC} - Offer a program limited to one customer on orders of two 
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
       // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
-      await editor.deleteProgramRowAndSaveVersion(programName);
+      await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
     });
 

@@ -536,6 +536,52 @@ export class CurrencyRateProviderPageMig extends BasePage {
   }
 
   /**
+   * Run the provider's "Update Rates Wizard" from the OPEN provider form (crm-mig, measured 2026-10-22 by
+   * EXPLORE-20261022_18 and _19): the form's Action menu lists "Update Rates Wizard"; the dialog holds Start Date and
+   * End Date (both default to today) plus UPDATE and Cancel. The dates are left at their defaults and UPDATE is pressed.
+   * This is the crm-mig equivalent of "RUN MANUALLY" on the scheduled action (which needs Administration rights and is
+   * not used here). The scheduled action is not started, activated or edited by this method.
+   *
+   * @returns ran = the dialog closed after UPDATE with no error dialog on screen; error = the error text, '' when none
+   */
+  async runUpdateRatesWizard(timeout: number = CommonUtils.waitTimes.elementAppear): Promise<{ ran: boolean; error: string }> {
+    console.log('  - Action > Update Rates Wizard on the open provider form');
+    const actionToggle = this.page
+      .locator('xpath=//div[contains(@class,"o_control_panel")]//button[contains(@class,"dropdown-toggle") and normalize-space()="Action"]')
+      .or(this.page.locator('.o_control_panel button.dropdown-toggle:has-text("Action")'))
+      .first();
+    await actionToggle.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.standard);
+    const wizardItem = this.page
+      .locator('xpath=//div[contains(@class,"dropdown-menu") and contains(@class,"show")]//a[normalize-space()="Update Rates Wizard"]')
+      .or(this.page.locator('.dropdown-menu.show a:has-text("Update Rates Wizard")'))
+      .first();
+    await wizardItem.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialog = this.page
+      .locator('xpath=//div[contains(@class,"modal") and contains(@class,"show")]')
+      .or(this.page.locator('.modal.show'))
+      .last();
+    await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    const updateButton = dialog
+      .locator('xpath=.//button[normalize-space()="Update"]')
+      .or(dialog.locator('button.btn-primary:has-text("Update")'))
+      .first();
+    await updateButton.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    // The wizard closes when the update has finished. An error stays on screen instead of closing.
+    const closed = await dialog.waitFor({ state: 'hidden', timeout }).then(() => true).catch(() => false);
+    const errorDialog = this.page
+      .locator('xpath=//div[contains(@class,"o_dialog") or contains(@class,"modal")]//*[contains(@class,"modal-body") and string-length(normalize-space())>0]')
+      .or(this.page.locator('.o_dialog .modal-body, .modal.show .modal-body'))
+      .filter({ hasText: /error|warning|failed|refus|could not|not allowed/i })
+      .first();
+    const errorShown = await errorDialog.isVisible({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => false);
+    const error = errorShown ? ((await errorDialog.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim() : '';
+    const ran = closed && !errorShown;
+    console.log(`  ${ran ? '✓' : '!'} Update Rates Wizard: dialog closed=${closed}, error="${error}"`);
+    return { ran, error };
+  }
+
+  /**
    * Delete an open provider by clicking the "Delete" button and confirming.
    *
    * VERIFIED on crm-mig 2026-10-05: Form structure is confirmed. Delete behavior is standard Odoo
@@ -683,13 +729,13 @@ export class CurrencyRateProviderPageMig extends BasePage {
   async addCurrencyToProvider(currencyCode: string): Promise<boolean> {
     console.log(`  - Adding "${currencyCode}" to the provider's Currencies`);
     await this.enterEditMode();
-    const input = this.fieldInput('currency_ids');
+    const input = this.currencyTagsInput();
     const visible = await input
       .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait })
       .then(() => true)
       .catch(() => false);
     if (!visible) {
-      console.log('  ! The "currency_ids" field is not on the form');
+      console.log('  ! The "currency_ids" tags input is not on the form');
       return false;
     }
     await input.fill(currencyCode, { timeout: CommonUtils.waitTimes.abnormalWait });
@@ -742,6 +788,19 @@ export class CurrencyRateProviderPageMig extends BasePage {
     this.page
       .locator(`xpath=//div[@name="currency_ids"]//span[contains(@class,"badge")][contains(normalize-space(),"${currencyCode}")]//span[contains(@class,"o_delete")]`)
       .or(this.page.locator(`div[name="currency_ids"] .badge:has-text("${currencyCode}") .o_delete`))
+      .first();
+
+  /**
+   * The typing input of the `currency_ids` tags widget (class o_field_many2manytags).
+   * Odoo 12 puts `name="currency_ids"` on the widget's WRAPPER div, not on the <input> inside it, so
+   * `//input[@name="currency_ids"]` matches nothing - the add path then reported "not on the form" while
+   * the field was on screen. Measured on crm-mig 2026-10-22 (EXPLORE-20261022_1): the wrapper carries the
+   * name, the input carries only class o_input.
+   */
+  protected readonly currencyTagsInput = () =>
+    this.page
+      .locator('xpath=//div[@name="currency_ids" and contains(@class,"o_field_many2manytags")]//input[not(@type="hidden")]')
+      .or(this.page.locator('div.o_field_many2manytags[name="currency_ids"] input'))
       .first();
 
   /** Put the open provider form into EDIT mode when it is not already there. */

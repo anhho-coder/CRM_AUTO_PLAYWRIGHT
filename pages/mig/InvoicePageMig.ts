@@ -381,6 +381,36 @@ export class InvoicePageMig extends InvoicePage {
   }
 
   /**
+   * Read the defaults of the open "Register Payment" dialog: Payment Amount, currency and Payment Date.
+   * Measured on crm-mig 2026-10-22 (EXPLORE-20261022_2): the dialog is a `.modal.show`; the amount and the
+   * currency sit in wrappers named amount / currency_id (their inputs carry no name); the date input is
+   * name="payment_date". Read only - nothing is validated here.
+   * @returns the three values as the dialog shows them (e.g. "100.00", "EUR", "10/22/2026")
+   */
+  async readRegisterPaymentDialog(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{ amount: string; currency: string; paymentDate: string }> {
+    const amount = this.page
+      .locator('xpath=//div[contains(@class,"modal") and contains(@class,"show")]//div[@name="amount"]//input')
+      .or(this.page.locator('.modal.show div[name="amount"] input'))
+      .first();
+    const currency = this.page
+      .locator('xpath=//div[contains(@class,"modal") and contains(@class,"show")]//div[@name="currency_id"]//input')
+      .or(this.page.locator('.modal.show div[name="currency_id"] input'))
+      .first();
+    const paymentDate = this.page
+      .locator('xpath=//div[contains(@class,"modal") and contains(@class,"show")]//input[@name="payment_date"]')
+      .or(this.page.locator('.modal.show input[name="payment_date"]'))
+      .first();
+    await amount.waitFor({ state: 'visible', timeout });
+    const result = {
+      amount: (await amount.inputValue({ timeout })).trim(),
+      currency: (await currency.inputValue({ timeout }).catch(() => '')).trim(),
+      paymentDate: (await paymentDate.inputValue({ timeout }).catch(() => '')).trim(),
+    };
+    console.log(`  - Register Payment dialog: Amount = "${result.amount}", Currency = "${result.currency}", Payment Date = "${result.paymentDate}"`);
+    return result;
+  }
+
+  /**
    * Set the Currency of the open invoice form.
    * @param currencyCode - e.g. "EUR"
    */

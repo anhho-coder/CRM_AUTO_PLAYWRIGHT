@@ -60,6 +60,12 @@ export const SCREEN_XMLIDS = {
     fallbackMenuId: 26,
     fallbackActionId: 11,
   },
+  collectionsByTeam: {
+    menu: 'nakivo_sale.menu_nakivo_collections_report',
+    action: 'nakivo_sale.action_nakivo_collections_report',
+    fallbackMenuId: 490,
+    fallbackActionId: 870,
+  },
 } as const;
 
 export interface ScreenIds {

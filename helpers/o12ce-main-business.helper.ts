@@ -482,6 +482,10 @@ export async function pressNewQuotationOnO12CE(
   // The Deal Element is itself a sale.order, so a "model=sale.order" URL wait would match instantly
   // and report a navigation that never happened. Detect the switch by the record id changing instead.
   const dealElementId = quotationPage.getRecordIdFromUrl();
+  // Decided BEFORE the click: NEW QUOTATION can switch the form to the Quotation (sale.order) at once, so a URL
+  // read after the click no longer says which record the id belonged to (CRM-11857_3.3 registered the
+  // Opportunity's id as a Deal Element that way).
+  const startedOnOpportunity = /[?#&]model=crm\.lead\b/.test(page.url());
   const start = Date.now();
   await opportunityPage.clickNewQuotation();
   const quotationId = await quotationPage.waitForRecordIdChange(dealElementId, CommonUtils.waitTimes.savingPage);
@@ -490,7 +494,11 @@ export async function pressNewQuotationOnO12CE(
   console.log(`  Deal Element record id : ${dealElementId || '(none)'}`);
   console.log(`  Record id after click  : ${quotationId || '(unchanged)'}`);
   // The Deal Element is a sale.order this run created, so it is torn down like any other record.
-  registerMigRecord('sale.order', dealElementId, 'Deal Element');
+  // Not when the call started on the Opportunity: NEW QUOTATION sits on the Opportunity form too (CRM-11857_3.3),
+  // and there the "record id" is a crm.lead id - it must never be registered as a sale.order.
+  if (!startedOnOpportunity) {
+    registerMigRecord('sale.order', dealElementId, 'Deal Element');
+  }
 
   if (outcome.navigated) {
     outcome.landedOnQuotation = true;
@@ -507,7 +515,7 @@ export async function pressNewQuotationOnO12CE(
     outcome.quotationId = found.id;
     outcome.quotationName = found.name;
     if (found.id) {
-      await page.goto(`${baseUrl_mig}web#id=${found.id}&model=sale.order&view_type=form`);
+      await page.goto(`${baseUrl_mig}web#id=${found.id}&model=sale.order&view_type=form`, { timeout: CommonUtils.waitTimes.abnormalWait });
       await quotationPage.waitForFormView(CommonUtils.waitTimes.savingPage);
       await quotationPage.waitForEditButton(CommonUtils.waitTimes.savingPage);
       outcome.landedOnQuotation = true;
@@ -891,7 +899,48 @@ const CANCEL_BEFORE_UNLINK: Record<
   },
   // sale.order.unlink() raises unless the order is draft or cancelled ('sent' included).
   'sale.order': { action: 'action_cancel', deletableStates: ['draft', 'cancel'] },
+  // account.payment.unlink() raises for a posted payment ("cannot delete a payment that is already posted").
+  // cancel() unreconciles and cancels its journal entry, after which the payment is deletable. Without this
+  // the payment and its journal items kept the customer alive (CRM-11857_4.2 leftovers).
+  'account.payment': { action: 'cancel', deletableStates: ['draft', 'cancelled'] },
 };
+
+/**
+ * Delete one account.payment together with its journal entries. Odoo 12 refuses to unlink a payment whose
+ * journal entry is numbered ("It is not allowed to delete a payment that already created a journal entry
+ * since it would create a gap in the numbering"), so the entries go first: read them, cancel the payment,
+ * cancel and delete any entry still there, then delete the payment. Every step reads before it writes.
+ */
+async function unlinkPaymentWithItsEntries(platform: MigPlatformPage, paymentId: number): Promise<void> {
+  const [pay] = await platform.callKw<Array<{ state?: string; move_line_ids?: number[] }>>(
+    'account.payment', 'read', [[paymentId], ['state', 'move_line_ids']],
+  );
+  const state = pay?.state ?? '';
+  console.log(`    account.payment#${paymentId} state before cleanup: "${state}"`);
+  const lineIds = pay?.move_line_ids ?? [];
+  const lines = lineIds.length
+    ? await platform.callKw<Array<{ move_id: [number, string] | false }>>('account.move.line', 'read', [lineIds, ['move_id']])
+    : [];
+  const moveIds = [...new Set(lines.map((l) => (l.move_id ? l.move_id[0] : 0)).filter((m) => m > 0))];
+  if (state && !['draft', 'cancelled'].includes(state)) {
+    await platform.callKw('account.payment', 'cancel', [[paymentId]]);
+    console.log(`    cancelled account.payment#${paymentId} (was "${state}")`);
+  }
+  const existing = moveIds.length
+    ? await platform.callKw<Array<{ id: number; state?: string }>>(
+        'account.move', 'search_read', [[['id', 'in', moveIds]], ['id', 'state']],
+      )
+    : [];
+  for (const mv of existing) {
+    if (mv.state === 'posted') await platform.callKw('account.move', 'button_cancel', [[mv.id]]);
+    await platform.callKw('account.move', 'unlink', [[mv.id]]);
+    console.log(`    deleted   account.move#${mv.id} (journal entry of the payment)`);
+  }
+  // The numbering guard reads the payment's own move_name (the same field the invoice path clears).
+  await platform.callKw('account.payment', 'write', [[paymentId], { move_name: false }]);
+  console.log(`    cleared   account.payment#${paymentId} move_name (blocks unlink)`);
+  await platform.callKw('account.payment', 'unlink', [[paymentId]]);
+}
 
 /**
  * Delete one already-ordered list of records over RPC, cancelling first where Odoo 12 refuses to
@@ -906,6 +955,11 @@ async function unlinkMigRecords(
 
   for (const record of queued) {
     try {
+      if (record.model === 'account.payment') {
+        await unlinkPaymentWithItsEntries(platform, record.id);
+        console.log(`  deleted   ${record.model}#${record.id} (${record.label}) - with its journal entries`);
+        continue;
+      }
       const needsCancel = CANCEL_BEFORE_UNLINK[record.model];
       if (needsCancel) {
         const [row] = await platform.callKw<Array<{ state?: string }>>(
@@ -1125,6 +1179,159 @@ export async function sweepMigLeftoversAfterAll(browser: Browser, tcId: string):
   } finally {
     await context?.close().catch(() => {});
   }
+}
+
+/**
+ * Added 2026-10-26 (CRM-11857_4.3 / 4.4 / 4.6 / 8.4). An afterAll sweep keyed on THIS RUN's marker - the specs that name
+ * their records `AUTO-CRM-11857-<tc>-<runId>...` (no "TEST" prefix, so sweepMigLeftoversOnO12CE never matches them).
+ *
+ * DENY-LIST: it only touches records whose NAME carries `marker` (the run marker, e.g. "AUTO-CRM-11857-4.3-1793..."), and
+ * the sale.orders of those Opportunities / partners. It COUNTS first and refuses to delete when a model returns more than
+ * `maxPerModel` rows - that many marker hits means the marker is wrong, not that more should go.
+ * Child-first: quotations / deal elements -> opportunities -> partners. Never throws.
+ */
+export async function sweepMigRunMarkerAfterAll(
+  browser: Browser,
+  marker: string,
+  maxPerModel: number = 20,
+  /**
+   * Added 2026-10-26 (review item 7), optional: `skip` = the spec's SKIP_CLEANUP toggle (true -> no sweep at all);
+   * `expected` = the most rows per model this run can have created - a marker hit above it STOPS the sweep (nothing is
+   * deleted), because more hits than the run created means the marker matches something that is not ours.
+   */
+  opts: { skip?: boolean; expected?: Partial<Record<'crm.lead' | 'res.partner' | 'sale.order', number>> } = {},
+): Promise<void> {
+  test.setTimeout(MIG_SWEEP_HOOK_TIMEOUT_MS);
+  if (opts.skip) {
+    console.log(`[mig-sweep] SKIPPED by the spec's cleanup toggle - records named "${marker}..." are KEPT`);
+    return;
+  }
+  if (!marker || marker.length < 20) {
+    console.log(`[mig-sweep] SKIPPED - marker "${marker}" is too short to be a run marker`);
+    return;
+  }
+  let context: BrowserContext | undefined;
+  try {
+    context = await browser.newContext();
+    const page = await context.newPage();
+    const loginPage = new LoginPageMig(page);
+    await loginPage.navigateTo(baseUrl_mig);
+    await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
+    const platform = new MigPlatformPage(page);
+    const search = async (model: string, domain: any[]) =>
+      platform.callKw<Array<{ id: number; name: string }>>(model, 'search_read', [domain, ['id', 'name']], {
+        limit: maxPerModel + 1, context: { active_test: false },
+      });
+    const leads = await search('crm.lead', [['name', 'like', marker]]);
+    const partners = await search('res.partner', [['name', 'like', marker]]);
+    const orderDomain: any[] = leads.length && partners.length
+      ? ['|', ['opportunity_id', 'in', leads.map((l) => l.id)], ['partner_id', 'in', partners.map((p) => p.id)]]
+      : leads.length ? [['opportunity_id', 'in', leads.map((l) => l.id)]]
+        : partners.length ? [['partner_id', 'in', partners.map((p) => p.id)]] : [];
+    const orders = orderDomain.length ? await search('sale.order', orderDomain) : [];
+    console.log(`[mig-sweep] marker "${marker}": crm.lead=${leads.length} res.partner=${partners.length} sale.order=${orders.length}`);
+    if ([leads, partners, orders].some((rows) => rows.length > maxPerModel)) {
+      console.log(`[mig-sweep] STOPPED - more than ${maxPerModel} rows match one model; nothing deleted (count before unlink)`);
+      return;
+    }
+    const found: Record<'crm.lead' | 'res.partner' | 'sale.order', number> = {
+      'crm.lead': leads.length, 'res.partner': partners.length, 'sale.order': orders.length,
+    };
+    const over = (Object.keys(opts.expected ?? {}) as Array<keyof typeof found>)
+      .filter((m) => found[m] > (opts.expected![m] ?? Number.MAX_SAFE_INTEGER));
+    if (over.length) {
+      console.log(`[mig-sweep] STOPPED - more rows than this run created: ${over.map((m) => `${m} ${found[m]} > ${opts.expected![m]}`).join(', ')}; nothing deleted`);
+      return;
+    }
+    const doomed: MigCreatedRecord[] = [
+      ...orders.sort((a, b) => b.id - a.id).map((r) => ({ model: 'sale.order', id: r.id, label: `${r.name} (swept)` })),
+      ...leads.map((r) => ({ model: 'crm.lead', id: r.id, label: `${r.name} (swept)` })),
+      ...partners.map((r) => ({ model: 'res.partner', id: r.id, label: `${r.name} (swept)` })),
+    ];
+    if (!doomed.length) {
+      console.log(`[mig-sweep] clean - nothing named "${marker}..." is left on crm-mig`);
+      return;
+    }
+    const failed = await unlinkMigRecords(platform, doomed);
+    console.log(failed.length
+      ? `[mig-sweep] SWEEP INCOMPLETE:\n${failed.map((r) => `  LEFTOVER ${r.model}#${r.id} (${r.label})`).join('\n')}`
+      : `[mig-sweep] done - ${doomed.length} leftover(s) of this run deleted`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+    console.log(`[mig-sweep] SKIPPED - ${msg}`);
+  } finally {
+    await context?.close().catch(() => {});
+  }
+}
+
+/**
+ * Added 2026-10-26: read back, over RPC as the CURRENT session, how many records still carry `marker` - the teardown
+ * evidence ("verified by a read-back"). Returns -1 for a model whose count could not be read.
+ */
+export async function countMigRecordsByMarker(page: Page, marker: string): Promise<Record<string, number>> {
+  const platform = new MigPlatformPage(page);
+  const out: Record<string, number> = {};
+  for (const model of ['crm.lead', 'res.partner', 'sale.order']) {
+    const field = model === 'sale.order' ? 'opportunity_id.name' : 'name';
+    out[model] = await platform.callKw<number>(model, 'search_count', [[[field, 'like', marker]]], { context: { active_test: false } })
+      .catch(() => -1);
+  }
+  return out;
+}
+
+/**
+ * Added 2026-10-26 (review item 6) - STRICT teardown read-back: counts, as the current session, the records that still
+ * carry `marker` (crm.lead / res.partner by name, sale.order by its opportunity's or partner's name) plus any `extra`
+ * (model + domain) and THROWS when one is left (> 0) or a count cannot be read. countMigRecordsByMarker() (lenient, -1 on
+ * error) is unchanged for its other callers.
+ */
+export async function assertNoMigRecordsLeft(
+  page: Page,
+  marker: string,
+  extra: Array<{ label: string; model: string; domain: any[] }> = [],
+): Promise<Record<string, number>> {
+  const platform = new MigPlatformPage(page);
+  const checks = [
+    { label: 'crm.lead', model: 'crm.lead', domain: [['name', 'like', marker]] },
+    { label: 'res.partner', model: 'res.partner', domain: [['name', 'like', marker]] },
+    { label: 'sale.order', model: 'sale.order', domain: ['|', ['opportunity_id.name', 'like', marker], ['partner_id.name', 'like', marker]] },
+    ...extra,
+  ];
+  const out: Record<string, number> = {};
+  const problems: string[] = [];
+  for (const c of checks) {
+    try {
+      out[c.label] = await platform.callKw<number>(c.model, 'search_count', [c.domain], { context: { active_test: false } });
+      if (out[c.label] > 0) problems.push(`${c.label}: ${out[c.label]} left`);
+    } catch (err) {
+      out[c.label] = -1;
+      problems.push(`${c.label}: count unreadable (${err instanceof Error ? err.message.split(String.fromCharCode(10))[0] : String(err)})`);
+    }
+  }
+  console.log(`[mig-cleanup] strict read-back for "${marker}": ${JSON.stringify(out)}`);
+  if (problems.length) throw new Error(`Teardown read-back FAILED for "${marker}" - ${problems.join('; ')}`);
+  return out;
+}
+
+/** Added 2026-10-26 (review item 9): the user of the CURRENT browser session, from the server (/web/session/get_session_info). */
+export async function getMigSessionUser(page: Page): Promise<{ uid: number; login: string }> {
+  const info = await page.evaluate(async () => {
+    const r = await fetch('/web/session/get_session_info', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }),
+    });
+    const j = await r.json();
+    return { uid: Number(j?.result?.uid ?? 0), login: String(j?.result?.username ?? '') };
+  });
+  return info;
+}
+
+/** Added 2026-10-26 (review item 9): res.users.has_group for the CURRENT session user, one call per group XML id. */
+export async function getMigSessionGroups(page: Page, groupXmlIds: string[]): Promise<Record<string, boolean>> {
+  const platform = new MigPlatformPage(page);
+  const out: Record<string, boolean> = {};
+  for (const g of groupXmlIds) out[g] = Boolean(await platform.callKw<boolean>('res.users', 'has_group', [g]));
+  return out;
 }
 
 export async function teardownMigRecords(

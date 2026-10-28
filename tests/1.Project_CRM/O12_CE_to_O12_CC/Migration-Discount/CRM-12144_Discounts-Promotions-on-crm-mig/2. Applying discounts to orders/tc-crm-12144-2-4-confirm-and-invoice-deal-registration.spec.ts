@@ -73,6 +73,8 @@ import {
  *         - Name        = Disc-Opp-<timestamp>
  *         - Customer    = Disc-Cust-<timestamp>
  *    4. Have an Operations user to read Booked value (company currency)
+ *    5. As the salesperson, in Invoicing > Customers > Invoices (list), switch on the "Total in Company Currency"
+ *       column in the column panel - crm-mig hides it by default, pre-production shows it (tester, 2026-10-23)
  *  Executed Steps
  *    1. Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment; add A2144B with Ordered Qty 6, pick Deal registration, click Save, then New quotation
  *    2. Click Confirm
@@ -96,6 +98,7 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only who also has Accounting & Finance / Billing (Thomas Semerich)',
   pre2: 'Pre-condition 2: On crm-mig, create a new company in Contacts: Name = Disc-Cust-<timestamp>, end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
   pre3: 'Pre-condition 3: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields): Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
+  pre5: 'Pre-condition 5: As the salesperson, in Invoicing > Customers > Invoices (list), switch on the "Total in Company Currency" column in the column panel (hidden by default on crm-mig)',
   s1: 'Step 1: Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment; add A2144B with Ordered Qty 6, pick Deal registration, click Save, then New quotation',
   s2: 'Step 2: Click Confirm',
   s3: 'Step 3: Click Create Invoice and create the invoice',
@@ -170,13 +173,25 @@ test.describe(`${TC} - Confirm and invoice a quotation carrying Deal registratio
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 3 - opportunity created');
     });
 
+    await test.step(STEP.pre5, async () => {
+      console.log(`\n--- ${STEP.pre5} ---`);
+      await invoicePage.openCustomerInvoicesList();
+      const on = await invoicePage.switchOnListColumn('amount_total_company_signed', 'Total in Company Currency');
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - Total in Company Currency column on');
+      if (!on) throw new Error('Pre-condition 5: the "Total in Company Currency" column could not be switched on in the Invoices list');
+      // back on the opportunity form: Step 1 starts there (DEAL ELEMENT)
+      if (!run.urlOpp) throw new Error('Pre-condition 5: the opportunity URL of Pre-condition 3 is unknown');
+      await page.goto(run.urlOpp);
+      await page.waitForTimeout(CommonUtils.waitTimes.long);
+    });
+
     // ================= Steps =================
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
       await openDealElementFromOpportunity(page);
       await dealElementPage.addOrderLineStrict(DISCOUNT_MIG.listedProduct, 6);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,974.00');
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const qId = await newQuotationMig(page, run);
       await quotationPage.dismissErrorDialogWithRetry();

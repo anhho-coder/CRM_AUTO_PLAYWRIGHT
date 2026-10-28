@@ -342,13 +342,34 @@ export class CommonUtils {
               'box-shadow:0 0 0 6px rgba(224,49,49,.12) !important;border-radius:3px !important;}';
             document.head.appendChild(style);
 
+            // Only a RENDERED element counts as marked: a DOM match that is hidden (display:none, an Odoo
+            // o_invisible_modifier, visibility:hidden) or has no size draws no outline on the shot.
+            // Counted PER SELECTOR, so one dead selector in a multi-selector call is reported too
+            // (review 2026-10-26, CRM-12144_4.3 / 7.5: hidden fields were "hits" and no warning fired).
+            const rendered = (el: Element): boolean => {
+              const r = (el as HTMLElement).getBoundingClientRect();
+              if (!(r.width > 0 && r.height > 0)) return false;
+              const cs = getComputedStyle(el as HTMLElement);
+              return cs.visibility !== 'hidden' && cs.display !== 'none';
+            };
             let hits = 0;
-            selectors.forEach((sel) =>
-              document.querySelectorAll(sel).forEach((el) => {
+            const invalid: string[] = [];
+            const dead: string[] = [];
+            selectors.forEach((sel) => {
+              // one invalid selector (e.g. jQuery's ':visible') must not drop the banner and the other outlines
+              let found: NodeListOf<Element>;
+              try { found = document.querySelectorAll(sel); } catch { invalid.push(sel); return; }
+              let shown = 0;
+              found.forEach((el) => {
+                if (!rendered(el)) return;
                 (el as HTMLElement).classList.add(HIT);
-                hits++;
-              })
-            );
+                shown++;
+              });
+              if (!shown) dead.push(sel + (found.length ? ` (${found.length} in the DOM, none visible)` : ''));
+              hits += shown;
+            });
+            (window as unknown as { __pwVerifyInvalid?: string[] }).__pwVerifyInvalid = invalid;
+            (window as unknown as { __pwVerifyDead?: string[] }).__pwVerifyDead = dead;
 
             if (lines && lines.length) {
               const place =
@@ -387,7 +408,19 @@ export class CommonUtils {
       // A selector that matches nothing means the evidence shot silently lost its box - say so,
       // rather than attaching a picture with no verify point marked on it.
       if (selectors.length && hits === 0) {
-        console.log(`WARNING: verify-evidence highlight matched NOTHING (${selectors.join(', ')}) - the shot carries no marked verify point`);
+        console.log(`WARNING: verify-evidence highlight matched NOTHING visible (${selectors.join(', ')}) - the shot carries no marked verify point`);
+      } else if (hits > 0) {
+        // some outline is drawn, but a selector of this call marks nothing visible - its verify point is unmarked
+        const dead: string[] = await page.evaluate(() => (window as unknown as { __pwVerifyDead?: string[] }).__pwVerifyDead || []).catch(() => [] as string[]);
+        if (dead.length) console.log(`WARNING: verify-evidence highlight matched NOTHING visible for ${dead.join('; ')} (${opts.name}) - that verify point is not marked`);
+      }
+      // hits = -1: the decoration itself failed, so the shot has no banner and no outline - never silent
+      if (hits < 0) {
+        console.log(`WARNING: verify-evidence decoration FAILED (${opts.name}) - the shot carries no VERIFY banner and no outline`);
+      }
+      const invalid: string[] = hits < 0 ? [] : await page.evaluate(() => (window as unknown as { __pwVerifyInvalid?: string[] }).__pwVerifyInvalid || []).catch(() => [] as string[]);
+      if (invalid.length) {
+        console.log(`WARNING: verify-evidence highlight matched NOTHING (invalid CSS selector: ${invalid.join(', ')}) - that verify point is not marked`);
       }
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${opts.name} - ${verdict}`);

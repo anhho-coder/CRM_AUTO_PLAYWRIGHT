@@ -33,6 +33,8 @@ import {
  * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 20, Jira link empty)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
+ * Revised          : 2026-10-27 - program-editor steps reworded to the Kanban path (New program > Save; card >
+ *                    Delete), master row 20 updated the same day - the CRM-12144_5.3 standard (tester 2026-10-27)
  * Baseline         : Discount_1.3 (Jira CRM-13766; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-3-quotation-program-ends-within-30-days.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-01, IS-CRM-FUNC-0076
@@ -48,8 +50,8 @@ import {
  *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
  *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
  *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
- *     - Pre-condition 4 : add the row QA-Disc-<timestamp> with Valid to = today + 10 at 23:59:59 (UTC), Save as version N
- *     - Step 7          : Clean-up - delete the row QA-Disc-<timestamp> and Save as version N
+ *     - Pre-condition 4 : create the program QA-Disc-<timestamp> (Kanban: New program) with Valid to = today + 10 at 23:59:59 (UTC), Save
+ *     - Step 7          : Clean-up - Delete the program QA-Disc-<timestamp> on its Kanban card and confirm
  *   Not a program-table write (so not labelled MANUAL): Step 1 "Run Manually" of the scheduled action
  *   "NAKIVO Promotion: sync catalogue from Discount Service" on crm-mig - it runs only when the spec is unskipped.
  *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
@@ -79,15 +81,15 @@ import {
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
  *  _ Pricelist = Public Pricelist (USD)
- *  Add a row to the program table with:
+ *  In the Program editor, open Discount Programs (Kanban view), click New program and enter:
  *  _ Promo code = QA-<timestamp>
- *  _ Name = QA-Disc-<timestamp>
- *  _ Reward percent = 5.0
- *  _ Scope = order
- *  _ Target product codes = (empty)
- *  _ Customer condition (Advanced) = customer name is Disc-Cust-<timestamp>
+ *  _ Program name = QA-Disc-<timestamp>
+ *  _ Reward = 5.0 %
+ *  _ Applies to = Whole order
+ *  _ For = (empty - the For field shows only for Specific products)
+ *  _ Advanced (customer condition) = customer name is Disc-Cust-<timestamp>
  *  _ Valid to = <a day within the next 30 days> 23:59:59 (UTC)
- *  Click Save as version N and confirm the new version is the active one
+ *  Click Save and confirm the new version is the active one (top bar: Version N / active)
  *  Login to crm-mig as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user
  *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
@@ -101,11 +103,11 @@ import {
  *  4. Read the quotation's Validity
  *  5. Pick QA-Disc-<timestamp> in Promotion
  *  6. Clear Promotion
- *  7. Clean-up: in the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N
+ *  7. Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion
  *
  *  Expected Results:
  *  4. Validity = today + 30 days
- *  5. Validity changes to the date in the Valid to cell
+ *  5. Validity changes to the program's Valid to date
  *  6. Validity stays on the Valid to date
  *
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts; the admin login is pre-condition 6 (the master
@@ -129,7 +131,7 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)',
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-Cust-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre4: 'Pre-condition 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Add a row to the program table with: Promo code = QA-<timestamp>, Name = QA-Disc-<timestamp>, Reward percent = 5.0, Scope = order, Target product codes = (empty), Customer condition (Advanced) = customer name is Disc-Cust-<timestamp>, Valid to = <a day within the next 30 days> 23:59:59 (UTC); Click Save as version N and confirm the new version is the active one',
+  pre4: 'Pre-condition 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-Cust-<timestamp>, Valid to = <a day within the next 30 days> 23:59:59 (UTC); Click Save and confirm the new version is the active one (top bar: Version N / active)',
   pre5: 'Pre-condition 5: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
   pre6: 'Pre-condition 6: Login to crm-mig (https://crm-mig.nakivo.site) as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user',
   s1: 'Step 1: As the administrator, open Settings > Technical > Scheduled Actions (developer mode), open "NAKIVO Promotion: sync catalogue from Discount Service" and click Run Manually',
@@ -138,7 +140,7 @@ const STEP = {
   s4: "Step 4: Read the quotation's Validity",
   s5: 'Step 5: Pick QA-Disc-<timestamp> in Promotion',
   s6: 'Step 6: Clear Promotion',
-  s7: 'Step 7: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, delete the QA-Disc-<timestamp> row and click Save as version N',
+  s7: 'Step 7: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
 
@@ -146,7 +148,7 @@ test.use({ ignoreHTTPSErrors: true, actionTimeout: MIG_ACTION_TIMEOUT }); // the
 
 /** Every run of this file - the afterAll sweep re-finds a run's leftovers by its own marker (never by a keep-list). */
 const runs: DiscountRun[] = [];
-/** Program-editor rows this file added and has not removed yet, by the name the add call gave them. */
+/** Programs this file created in the Program editor and has not deleted yet, by the name the create call gave them. */
 const editorRows: string[] = [];
 
 const forgetEditorRow = (name: string): void => {
@@ -154,13 +156,13 @@ const forgetEditorRow = (name: string): void => {
   if (i >= 0) editorRows.splice(i, 1);
 };
 
-/** Remove the Program-editor rows this file added and has not removed (crm-mig rule: the teardown deletes what it made). */
+/** Delete the programs this file created in the Program editor and has not deleted (crm-mig rule: the teardown deletes what it made). */
 async function removeEditorRows(page: Page): Promise<void> {
   if (!editorRows.length) return;
   const editor = new DiscountProgramEditorPageMig(page);
   await editor.signIn(EDITOR_ACCOUNT);
   for (const name of [...editorRows]) {
-    await editor.deleteProgramRowAndSaveVersion(name);
+    await editor.deleteProgramOnKanban(name);
     forgetEditorRow(name);
   }
 }
@@ -254,23 +256,22 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
     await test.step(STEP.pre4, async () => {
       console.log(`\n--- ${STEP.pre4} ---`);
       // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
-      await editor.addProgramRowAndSaveVersion({
+      const versionBefore = await editor.getActiveVersionNumber(); // Kanban top bar, before Save
+      await editor.createProgramOnKanban({
         'Promo code': promoCode,
-        Name: programName,
-        'Reward percent': '5.0',
-        Scope: 'order',
-        'Target product codes': '', // "(empty)" in the master row
+        'Program name': programName,
+        Reward: '5.0',
+        'Applies to': 'Whole order',
+        For: '', // "(empty)" in the master row - the For field shows only for Specific products
         Advanced: `customer name is ${run.company}`,
         'Valid to': stamp(validToDay, '23:59:59'),
       });
       editorRows.push(programName);
-      const versions = await editor.getVersions();
-      const newest = Math.max(...versions.map((v) => v.version));
-      const active = versions.find((v) => v.active);
+      const versionAfter = await editor.getActiveVersionNumber(); // Kanban top bar "Version N / active"
       await recordChecks(page, testInfo, checks, [
-        { what: 'Pre-condition 4 - the new version is the active one', expected: `Version ${newest} (newest) Active`, actual: active ? `Version ${active.version} Active` : '(none active)', passed: !!active && active.version === newest },
-      ], `${TC} - Pre-condition 4 new version active`);
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 4 - program row saved as a new version');
+        { what: 'Pre-condition 4 - the new version is the active one (top bar: Version N / active)', expected: `Version ${versionBefore + 1} / active`, actual: Number.isFinite(versionAfter) ? `Version ${versionAfter} / active` : '(not shown)', passed: versionAfter === versionBefore + 1 },
+      ], `${TC} - Pre-condition 4 new version active`, [DiscountProgramEditorPageMig.VERSION_CHIP]);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 4 - program saved as a new version');
     });
 
     await test.step(STEP.pre5, async () => {
@@ -346,7 +347,7 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
       await quotationPage.discardChanges().catch(() => {}); // the quotation's edits first (as the baseline's Step 7)
       console.log('  - Quotation edits discarded; the run records are removed by the teardown');
       // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
-      await editor.deleteProgramRowAndSaveVersion(programName);
+      await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
     });
 

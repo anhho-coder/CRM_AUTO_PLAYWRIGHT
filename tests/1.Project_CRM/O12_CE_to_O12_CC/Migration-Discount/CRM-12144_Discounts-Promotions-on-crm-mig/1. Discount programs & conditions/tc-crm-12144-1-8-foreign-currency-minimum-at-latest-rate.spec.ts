@@ -241,7 +241,7 @@ test.describe(`${TC} - Compare a EUR order with the 1,400 USD minimum converted 
 
       await test.step(label(STEP.s7), async () => {
         console.log(`\n--- ${label(STEP.s7)} ---`);
-        await dealElementPage.setPromotion('Deal registration');
+        await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
         await saveDealElement(page, run);
         const rewards = rewardRows(await dealElementPage.getAllOrderLineRows());
         const expectedReward = -Math.round(T * 10) / 100;

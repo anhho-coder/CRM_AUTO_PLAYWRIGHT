@@ -118,6 +118,27 @@ export class CurrencySettingsPageMig extends CurrencySettingsPage {
   }
 
   /**
+   * Bring the "Currencies" section of the open Invoicing Settings form into view (for the evidence shot) and
+   * report whether the section's OCA checkbox wrapper is on the page.
+   * Added 2026-10-26 for CRM-11857_9.1 step 2 ("go to the Currencies section").
+   * @returns true when the `currency_rates_autoupdate` field wrapper is visible after scrolling
+   */
+  async scrollToCurrenciesSection(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    const field = this.page.locator('xpath=//*[@name="currency_rates_autoupdate"]')
+      .or(this.page.locator('[name="currency_rates_autoupdate"]')).first();
+    const present = await field.waitFor({ state: 'attached', timeout }).then(() => true).catch(() => false);
+    if (!present) {
+      console.log('  ! The Currencies section (currency_rates_autoupdate) is not on the Settings form');
+      return false;
+    }
+    await field.scrollIntoViewIfNeeded({ timeout }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.standard);
+    const visible = await field.isVisible().catch(() => false);
+    console.log(`  - Currencies section scrolled into view: ${visible}`);
+    return visible;
+  }
+
+  /**
    * Read one res.config.settings boolean by its Odoo field name.
    *
    * The field's `name` attribute is on the WRAPPER div, so the checkbox is read from the input INSIDE

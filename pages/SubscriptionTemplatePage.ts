@@ -44,9 +44,19 @@ export class SubscriptionTemplatePage extends BasePage {
   private readonly saveButton = () =>
     this.page.locator('xpath=//button[contains(@class,"o_form_button_save")]')
       .or(this.page.locator('.o_form_button_save')).first();
+  // Scoped to the OPEN FORM VIEW, and checkboxes excluded on purpose. Unscoped, this locator also
+  // matches a hidden `<input name="name" type="checkbox" class="columnCheckbox">` that lives on the
+  // Subscription Templates LIST page: when the form fails to render, `.first()` silently resolves to
+  // that invisible checkbox and the click burns its whole timeout reporting an unrelated element
+  // (measured 2026-10-21, subscription-2.2, 30 s on `pages/SubscriptionTemplatePage.ts:326`).
   private readonly nameInput = () =>
-    this.page.locator('xpath=//input[@name="name"] | //div[@name="name"]//input | //textarea[@name="name"]')
-      .or(this.page.locator('input[name="name"]')).first();
+    this.formView().locator(
+      'xpath=.//input[@name="name"][not(@type="checkbox")] | .//div[@name="name"]//input[not(@type="checkbox")] | .//textarea[@name="name"]',
+    ).first();
+  private readonly formView = () =>
+    this.page.locator('//div[contains(@class,"o_form_view")]').or(this.page.locator('.o_form_view')).first();
+  private readonly connectionLostDialog = () =>
+    this.page.locator('.o_notification:has-text("Connection lost"), .alert:has-text("Connection lost")').first();
   private readonly selectField = (name: string) =>
     this.page.locator(`xpath=//select[@name="${name}"]`).or(this.page.locator(`select[name="${name}"]`)).first();
   private readonly spanField = (name: string) =>
@@ -320,8 +330,20 @@ export class SubscriptionTemplatePage extends BasePage {
    */
   async createTemplate(name: string, paymentModeLabel: string, invoiceMailTemplate = 'Subscription Invoice: Send by email'): Promise<void> {
     await this.createButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.waitForFormView().catch(() => {});
+    await this.waitForFormView();
     await this.wait(CommonUtils.waitTimes.long);
+
+    // BasePage.waitForFormView() swallows its own timeout, so the form not rendering has to be
+    // asserted here. Without this check the method walks on and the failure surfaces much later as
+    // a click timeout on an unrelated element, hiding what actually happened.
+    if (!(await this.formView().isVisible().catch(() => false))) {
+      const lost = await this.connectionLostDialog().isVisible().catch(() => false);
+      throw new Error(
+        `createTemplate("${name}"): the template form never rendered after clicking CREATE` +
+        (lost ? ' - Odoo is showing "Connection lost / Trying to reconnect...", so the session dropped' : '') +
+        '. Nothing was created.',
+      );
+    }
 
     await this.nameInput().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.nameInput().fill(name);

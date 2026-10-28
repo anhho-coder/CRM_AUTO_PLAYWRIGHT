@@ -34,7 +34,9 @@ export const DISCOUNT_HIGHLIGHT = {
   orderLines: '.o_notebook .tab-pane.active table.o_list_view',
   totals: '.oe_subtotal_footer',
   promotionField: "div[name='promotion_id']",
-  promotionList: 'ul.ui-autocomplete:visible',
+  // plain CSS (document.querySelectorAll): jQuery's ':visible' threw there, which dropped the shot's banner silently
+  // (CRM-12144_7.5 review 2026-10-26); a closed jQuery-UI menu carries style="display: none;"
+  promotionList: 'ul.ui-autocomplete:not([style*="display: none"])',
 } as const;
 
 /**

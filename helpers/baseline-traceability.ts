@@ -53,10 +53,11 @@ export function baselineDetailsFrom(
   const link = map[tc];
   if (!link) throw new Error(`${tc} has no entry in ${info.mapFile} - add its pre-production baseline there`);
   return {
-    tag: ['@baseline-preprod', `@${link.baselineJira}`, `@${link.baselineTc}`],
+    // A baseline not imported to Xray yet has baselineJira '' - no empty "@" tag and no dead Jira link for it.
+    tag: ['@baseline-preprod', ...(link.baselineJira ? [`@${link.baselineJira}`] : []), `@${link.baselineTc}`],
     annotation: [
       { type: 'baseline', description: `${link.baselineTc} (pre-production)` },
-      { type: 'baseline-jira', description: `${JIRA_BROWSE}${link.baselineJira}` },
+      { type: 'baseline-jira', description: link.baselineJira ? `${JIRA_BROWSE}${link.baselineJira}` : 'not imported to Xray yet' },
       { type: 'baseline-spec', description: link.baselineSpec },
       {
         type: 'manual-tc',

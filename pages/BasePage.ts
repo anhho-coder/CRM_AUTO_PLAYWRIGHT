@@ -1,5 +1,5 @@
 import { CommonUtils } from '@/helpers/common.utils';
-import { Page } from '@playwright/test';
+import { Locator, Page } from '@playwright/test';
 
 /**
  * Base Page Object
@@ -416,6 +416,7 @@ await newPage.close();
     
     if (dialogVisible) {
       console.log('  ⚠️ Error dialog detected - clicking OK button');
+      await this.logErrorDialogDetails();
       await this.errorDialogOkButton().click();
       console.log('  ✓ Error dialog dismissed');
       await this.page.waitForTimeout(waitAfterDismiss);
@@ -423,6 +424,53 @@ await newPage.close();
     }
 
     return false;
+  }
+
+  /** Evidence hook: the box of an open Odoo dialog (not its full-screen overlay). */
+  static readonly ERROR_DIALOG_BOX = '.modal.show .modal-content';
+
+  /**
+   * Read an error dialog WITHOUT closing it - its title and message (whitespace folded) - so a spec can record and
+   * shoot what it says before dismissErrorDialog() presses OK. null when no error dialog shows within `timeout`.
+   */
+  async readErrorDialog(timeout: number = CommonUtils.waitTimes.extraLong): Promise<{ title: string; message: string } | null> {
+    const dialog = this.errorDialog().first();
+    // waitFor, not isVisible: isVisible ignores its timeout, and this dialog renders after the onchange round-trip
+    if (!(await dialog.waitFor({ state: 'visible', timeout }).then(() => true, () => false))) return null;
+    const fold = (s: string | null) => (s || '').replace(/\s+/g, ' ').trim();
+    return {
+      title: fold(await dialog.locator('.modal-title').first().innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '')),
+      message: fold(await dialog.locator('.modal-body').first().innerText({ timeout: CommonUtils.waitTimes.standard }).catch(() => '')),
+    };
+  }
+
+  /**
+   * Log what an error dialog says before it is dismissed: its title, its message and - after opening
+   * "See details" - the traceback Odoo keeps in a <pre> under that toggle (CRM-12144_7.5, 27-10-2026: an
+   * "Odoo Server Error" on a Settings save was clicked away with nothing left to report). Best-effort and
+   * bounded - never throws - and masks obvious secrets (Bearer / token= / password=) in what it prints.
+   */
+  private async logErrorDialogDetails(): Promise<void> {
+    const dialog = this.errorDialog().first();
+    const read = (loc: Locator) => loc.innerText({ timeout: 1000 }).then((t) => t.trim()).catch(() => '');
+    const mask = (s: string) => s
+      .replace(/(Bearer\s+)\S+/gi, '$1***')
+      .replace(/((?:token|password|passwd|secret|api[_-]?key)["']?\s*[:=]\s*["']?)[^\s"',}]+/gi, '$1***');
+    const title = await read(dialog.locator('.modal-title').first());
+    const message = await read(dialog.locator('.modal-body').first());
+    const details = dialog.getByText(/^\s*See details\s*$/i).first();
+    if (await details.isVisible().catch(() => false)) await details.click({ timeout: 2000 }).catch(() => {});
+    const pre = dialog.locator('pre').first();
+    const trace = (await pre.count().catch(() => 0)) ? ((await pre.textContent({ timeout: 1000 }).catch(() => '')) ?? '') : '';
+    const lines = mask(trace).split('\n').map((l) => l.trimEnd()).filter(Boolean);
+    console.log(`  - Error dialog title   : ${title || '(none)'}`);
+    console.log(`  - Error dialog message : ${mask(message.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 6).join(' | ')).slice(0, 400) || '(none)'}`);
+    if (lines.length) {
+      console.log(`  - Error dialog details (last ${Math.min(lines.length, 40)} of ${lines.length} lines):`);
+      lines.slice(-40).forEach((l) => console.log(`      ${l}`));
+    } else {
+      console.log('  - Error dialog details : (no traceback in the dialog)');
+    }
   }
 
   /**

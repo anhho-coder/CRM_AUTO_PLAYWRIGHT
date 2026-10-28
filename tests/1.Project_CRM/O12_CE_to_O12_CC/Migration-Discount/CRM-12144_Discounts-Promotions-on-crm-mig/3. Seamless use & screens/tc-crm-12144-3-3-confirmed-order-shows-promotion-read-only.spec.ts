@@ -156,7 +156,7 @@ test.describe(`${TC} - Confirm a quotation carrying Deal registration and read t
       await openDealElementFromOpportunity(page);
       await dealElementPage.addOrderLineStrict(DISCOUNT_MIG.listedProduct, 5);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,645.00');
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       const qId = await newQuotationMig(page, run);
       await quotationPage.dismissErrorDialogWithRetry();

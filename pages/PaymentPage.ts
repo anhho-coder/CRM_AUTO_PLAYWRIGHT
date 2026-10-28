@@ -61,7 +61,9 @@ export class PaymentPage extends BasePage {
   // "Payment Matching" smart button (open_payment_matching_screen) - visible ONLY when move_reconciled=false
   // (i.e. the payment is NOT fully reconciled). Its absence => the payment is reconciled.
   private readonly paymentMatchingButton = () => this.page.locator('xpath=//button[@name="open_payment_matching_screen"]').first();
-  private readonly firstDataRow          = () => this.page.locator('tr.o_data_row').first();
+  // First VISIBLE data row. A plain `.first()` takes the first DOM match, which on an invoice is a hidden
+  // row of another notebook tab (Invoice Lines), so the Payments-tab row was never seen (CRM-11857_4.2).
+  private readonly firstDataRow          = () => this.page.locator('tr.o_data_row:visible').first();
   // "Journal Entry" (move_id) on the account.move.line form - readonly link.
   private readonly moveIdLink            = () => this.page.locator('xpath=//a[@name="move_id"]').or(this.page.locator('xpath=//div[@name="move_id"]')).first();
 

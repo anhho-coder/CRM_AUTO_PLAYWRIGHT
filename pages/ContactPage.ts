@@ -13,7 +13,11 @@ export class ContactPage extends BasePage {
   // Form view locators (using XPath for new locators as per instructions)
   private readonly individualTypeLabel = () => this.page.locator('//div[@name="company_type"]//label[normalize-space()="Individual"]').or(this.page.locator('div[name="company_type"] label:has-text("Individual")')).first();
   private readonly individualTypeRadio = () => this.page.locator('//div[@name="company_type"]//input[@type="radio"][@data-value="person"]').or(this.page.locator('div[name="company_type"] input[type="radio"][data-value="person"]')).first();
-  private readonly companyTypeRadio = () => this.page.locator('//label[contains(text(), "Company")]//input[@type="radio"]').or(this.page.locator('//input[@type="radio"][@name="company_type"][@value="company"]')).or(this.page.locator('//label[@class=\'custom-control-label o_form_label\'][normalize-space()=\'Company\']')).first();
+  // Measured on crm-mig 2026-10-22 (EXPLORE-20261022_1): the radios sit in div[name="company_type"] with
+  // data-value="company"; their <label for=...> is a SIBLING, not a parent, so the label-wrapped XPath
+  // below matches nothing on this build. Kept as the fallback.
+  private readonly companyTypeRadio = () => this.page.locator('//div[@name="company_type"]//input[@type="radio"][@data-value="company"]')
+    .or(this.page.locator('//label[contains(text(), "Company")]//input[@type="radio"]')).or(this.page.locator('//input[@type="radio"][@name="company_type"][@value="company"]')).or(this.page.locator('//label[@class=\'custom-control-label o_form_label\'][normalize-space()=\'Company\']')).first();
   private readonly companyCheckbox = () => this.page.locator('//input[@type="checkbox" and contains(@name, "is_company")]').first();
   private readonly contactNameInput = () => this.page.getByRole('textbox', { name: 'Name' }).or(this.page.locator('input[name="name"]')).first();
   private readonly emailInput = () => this.page.locator('tr').filter({ hasText: 'Email' }).filter({ hasNotText: 'Email Templates' }).locator('input:visible').first();
@@ -233,9 +237,9 @@ export class ContactPage extends BasePage {
     const radio = this.companyTypeRadio();
     const exists = await radio.count() > 0;
     if (exists) {
-      const isChecked = await radio.isChecked();
+      const isChecked = await radio.isChecked({ timeout: CommonUtils.waitTimes.abnormalWait });
       if (!isChecked) {
-        await radio.click({ force: true });
+        await radio.click({ force: true, timeout: CommonUtils.waitTimes.abnormalWait });
         await this.wait(500);
       }
       return true;
@@ -285,7 +289,7 @@ export class ContactPage extends BasePage {
    * Fill contact name
    */
   async fillContactName(name: string) {
-    await this.contactNameInput().fill(name);
+    await this.contactNameInput().fill(name, { timeout: CommonUtils.waitTimes.abnormalWait });
   }
 
   /**
@@ -1312,7 +1316,7 @@ export class ContactPage extends BasePage {
    */
   async clickSalesPurchasesTab(): Promise<void> {
     await this.salesPurchasesTab().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.salesPurchasesTab().click();
+    await this.salesPurchasesTab().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(2000);
   }
 
@@ -1348,7 +1352,7 @@ export class ContactPage extends BasePage {
       await option.click();
     } else {
       await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
-      await option.click().catch(async () => {
+      await option.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(async () => {
         await this.page.keyboard.press('Enter');
       });
     }

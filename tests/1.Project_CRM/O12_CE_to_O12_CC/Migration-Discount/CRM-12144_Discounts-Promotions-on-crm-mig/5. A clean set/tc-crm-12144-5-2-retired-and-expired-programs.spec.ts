@@ -9,7 +9,7 @@ import {
   DiscountRun,
   Check,
   newDiscountRun,
-  recordChecks,
+  recordChecksMig,
   printVerifyAndAssertMig,
   signInMig,
   createEndCustomerCompanyMig,
@@ -26,27 +26,30 @@ import {
  *  CRM-12144_5.2 - Look for retired and expired programs on a new order and in the Program editor   (crm-mig + Program editor)
  * ================================================================================================
  * Test Case ID     : CRM-12144_5.2
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 52, Jira link empty)
+ * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 56, Jira link empty)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
+ * Revised          : 2026-10-27 - the Program editor is read on Discount Programs in the KANBAN view (every card of every
+ *                    column) instead of the List view - the CRM-12144_5.3 standard (tester 2026-10-27: "khi nói về
+ *                    program editor thì phải dùng trên Kanban view")
  * Baseline         : Discount_5.2 (Jira CRM-13795; tests/1.Project_CRM/10.Sales_Module/Discount/5. A clean set/
  *                    tc-discount-5-2-retired-and-expired-programs.spec.ts) - pre-production; its API read of the
  *                    programs is replaced by the Program editor (no sale.coupon.program on crm-mig)
  * Spec             : [Migration] Discounts (Promotions) v6 - IS-CRM-FUNC-0086
- * Source version   : master row CRM-12144_5.2 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row 56 (CRM-12144_5.2) as reworded to the Kanban path 2026-10-27 - re-check before
+ *                    trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) and the Program editor of crm-mig
  *                    (Discount Service, https://discount-crm-mig.nakivo.site)
  * Run as           : crm-mig - salesperson Thomas Semerich (users.sale_ic_thomas_crm_mig);
  *                    Program editor - QA's named account users.admin_discount_mig (CRM-12467 row 1.7)
  *
  * BLOCKED (not scored): Step 1 expected result 1 ("no row exists for a program the audit retired") - the migration
- * audit is not delivered yet (CRM-12467 row 2.3). The Program editor rows are read and printed, not judged against it.
+ * audit is not delivered yet (CRM-12467 row 2.3). The Program editor's Kanban cards are read and printed, not judged against it.
  *
  * Summary
  * -------
- * The Program editor's List view is read for the active version. On a new order of A2144B x 5 on crm-mig, "Trade-in
- * Promotion 5%" must not be listed, and every listed program must end in the future by the Program editor's Valid to
- * and Status (a program with an empty Valid to, or a future one, and not Ended).
+ * Every card of the Program editor's Kanban (active version) is read. On a new order of A2144B x 5 on crm-mig, "Trade-in
+ * Promotion 5%" must not be listed, and every listed program must have a Kanban card outside the Ended column.
  *
  * Command to run
  * --------------
@@ -71,19 +74,23 @@ import {
  *         - Customer    = Disc-Cust-<timestamp>
  *    5. Have the migration audit from the development team
  *  Executed Steps
- *    1. In the Program editor, open the program table of the active version
+ *    1. In the Program editor, open Discount Programs (Kanban view) of the active version (top bar: Version N / active)
  *    2. In crm-mig, Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms =
  *       Immediate Payment, add A2144B with Ordered Qty 5 and open the Promotion list
  *  Expected Results
- *    1. No row exists for a program the audit retired
+ *    1. No card exists for a program the audit retired
  *    2. No retired program is listed, and no program past its validity end date (e.g. "Trade-in Promotion 5%", valid
  *       to 2026-09-30)
  *
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts. The Program editor is read on its own tab of the
  *  same browser context (ignoreHTTPSErrors, 1920x1080), so the crm-mig session is not disturbed. The baseline's
  *  JSON-RPC read of rule_date_to has no crm-mig equivalent: "ends in the future" is judged from the Program editor's
- *  Valid to and Status of each program listed on the Promotion list, matched by exact Name. The Program editor is read
- *  only (getListRows); nothing is saved. Teardown deletes the run's records; afterAll sweeps by run marker.
+ *  Kanban - the cards are grouped by status from Valid from / Valid to (Active / Scheduled / Ended / Needs the table),
+ *  so a program listed on the Promotion list must have a card (matched by exact name) outside the Ended column; its date
+ *  chip is printed. The Program editor is read only (getKanbanCards); no card is opened, nothing is saved. Teardown
+ *  deletes the run's records; afterAll sweeps by run marker.
+ *  Revision 2026-10-27: Step 1 read the List view (getListRows) and judged Valid to / Status cells - replaced by the
+ *  Kanban; the "ends in the future" evidence is now shot on the Program editor (the cards outlined), not on crm-mig.
  * ================================================================================================
  */
 
@@ -96,8 +103,8 @@ const STEP = {
   pre3: 'Pre-condition 3: Create a new company in Contacts with Name = Disc-Cust-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist_USD',
   pre4: 'Pre-condition 4: Create a new opportunity in CRM > Pipeline with Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
   pre5: '[NOT AVAILABLE - the migration audit is not delivered yet, CRM-12467 row 2.3] Pre-condition 5: Have the migration audit from the development team',
-  s1: 'Step 1: In the Program editor, open the program table of the active version',
-  s2: 'Step 2: In crm-mig, open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment, add A2144B with Ordered Qty 5 and open the Promotion list',
+  s1: 'Step 1: In the Program editor, open Discount Programs (Kanban view) of the active version (top bar: Version N / active) [every card of every column is read - read only]',
+  s2: 'Step 2: In crm-mig, Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment, add A2144B with Ordered Qty 5 and open the Promotion list',
   verify: 'Verification',
 } as const;
 
@@ -105,19 +112,12 @@ const SKIP_CLEANUP = false; // true = keep the run's records for debugging (crm-
 const EDITOR_ACCOUNT = users.admin_discount_mig;
 const SALES = users.sale_ic_thomas_crm_mig;
 const EXPIRED_PROGRAM = 'Trade-in Promotion 5%';
-const ENDED_STATUS = /ended|expired|retired/i;
-const NO_END_DATE = ['', '-', '—']; // empty Valid to cell (the last one is an em dash, written as an escape to keep the file ASCII)
+/** The Kanban column of the programs past their validity end date (cards are grouped by status from Valid from / Valid to). */
+const ENDED_COLUMN = 'Ended';
 const runs: DiscountRun[] = []; // every crm-mig run of this file - the afterAll sweep re-checks them
 
-/** Unquoted cell text: the decision table keeps the quotes ("specific_products"). */
-const unquote = (s: string): string => s.replace(/^\s*"|"\s*$/g, '').trim();
-
-/** The Valid to cell as a timestamp: empty = no end date; unreadable = NaN. */
-function validToTime(text: string): number | undefined {
-  if (NO_END_DATE.includes(text)) return undefined;
-  const direct = Date.parse(text);
-  return Number.isNaN(direct) ? Date.parse(text.replace(' ', 'T')) : direct;
-}
+/** Card text as ASCII for stdout and the evidence banner (date chips carry an en dash, names an em dash). */
+const ascii = (s: string): string => s.replace(/[–—]/g, '-');
 
 test.use({ ignoreHTTPSErrors: true, actionTimeout: MIG_ACTION_TIMEOUT }); // the Discount Service certificate chain is self-signed
 
@@ -161,16 +161,27 @@ test.describe(`${TC} - Retired and expired programs (crm-mig + Program editor)`,
     };
     const run = newRun();
     let editor: DiscountProgramEditorPageMig | undefined;
-    let editorRows: Array<Record<string, string>> = [];
+    let cards: Awaited<ReturnType<DiscountProgramEditorPageMig['getKanbanCards']>> = [];
 
     // ================= Pre-conditions =================
     await test.step(STEP.pre1, async () => {
       console.log(`\n--- ${STEP.pre1} ---`);
       console.log(`  - Login : ${EDITOR_ACCOUNT.username} (Program editor, own tab of the same browser context)`);
       editorPage = await page.context().newPage();
-      await editorPage.setViewportSize({ width: 1920, height: 1080 }); // the decision table renders no rows in a small viewport
+      await editorPage.setViewportSize({ width: 1920, height: 1080 });
       editor = new DiscountProgramEditorPageMig(editorPage);
       await editor.signIn(EDITOR_ACCOUNT);
+      // the ROLE the TC names: a NAMED Program editor account - the account menu must say who is signed in
+      const who = await editor.getSignedInAs({ keepOpen: true });
+      await recordChecksMig(editorPage, testInfo, checks, [
+        {
+          what: 'Pre-condition 1 - the Program editor session belongs to the named account (a FAIL means the run did not use the account the TC names)',
+          expected: `"Signed in as" ${EDITOR_ACCOUNT.username}`,
+          actual: who ? `"Signed in as" ${who}` : '(empty)',
+          passed: who === EDITOR_ACCOUNT.username,
+        },
+      ], `${TC} - Pre-condition 1 Signed in as`, [DiscountProgramEditorPageMig.ACCOUNT_DROPDOWN], 'bottom-right');
+      await editor.closeAccountMenu();
       await CommonUtils.captureAndAttachScreenshot(editorPage, testInfo, 'Pre-condition 1 - signed in on the Program editor');
     });
 
@@ -203,13 +214,25 @@ test.describe(`${TC} - Retired and expired programs (crm-mig + Program editor)`,
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
       if (!editor || !editorPage) throw new Error('The Program editor was not opened at Pre-condition 1');
-      editorRows = await editor.getListRows();
-      console.log(`  - Program rows in the List view of the active version: ${editorRows.length}`);
-      for (const r of editorRows) {
-        console.log(`    - ${(r['Code'] ?? '').padEnd(12)} | ${(r['Name'] ?? '').padEnd(70)} | Valid to ${r['Valid to'] || '(empty)'} | Status ${r['Status'] || '(empty)'}`);
+      await editor.openProgramsKanban();
+      const version = await editor.getActiveVersionNumber();
+      cards = await editor.getKanbanCards();
+      console.log(`  - Screen         : Discount Programs (Kanban view)`);
+      console.log(`  - Active version : ${Number.isFinite(version) ? version : '(not shown)'}`);
+      console.log(`  - Program cards  : ${cards.length}`);
+      for (const c of cards) {
+        console.log(`    - ${c.column.padEnd(16)} | ${c.code.padEnd(24)} | ${ascii(c.name).padEnd(70)} | ${ascii(c.tags.join(' | ')) || '(no chips)'}`);
       }
-      console.log('  BLOCKED (not scored) - expected result 1 "No row exists for a program the audit retired": the migration audit is not delivered yet (CRM-12467 row 2.3).');
-      await CommonUtils.captureAndAttachScreenshot(editorPage, testInfo, 'Step 1 - Program editor List view of the active version');
+      await recordChecksMig(editorPage, testInfo, checks, [
+        {
+          what: 'Step 1 - (guard) the Program editor shows an active rule version',
+          expected: '"Version N / active" in the top bar, N a number',
+          actual: Number.isFinite(version) ? `Version ${version} / active` : '(not shown)',
+          passed: Number.isFinite(version),
+        },
+      ], `${TC} - Step 1 Kanban of the active version`, [DiscountProgramEditorPageMig.VERSION_CHIP], 'bottom-right');
+      console.log('  BLOCKED (not scored) - expected result 1 "No card exists for a program the audit retired": the migration audit is not delivered yet (CRM-12467 row 2.3).');
+      await CommonUtils.captureAndAttachScreenshot(editorPage, testInfo, 'Step 1 - Program editor Kanban of the active version');
     });
 
     await test.step(STEP.s2, async () => {
@@ -220,42 +243,44 @@ test.describe(`${TC} - Retired and expired programs (crm-mig + Program editor)`,
       const options = await dealElementPage.getPromotionOptions('', { keepOpen: true });
       console.log(`  - Promotion list (${options.length}): ${options.join(' | ') || '(empty)'}`);
 
-      // "ends in the future" judged from the Program editor's Valid to / Status of each listed name (exact Name match)
-      const now = Date.now();
-      const judged = options.map((name) => {
-        const row = editorRows.find((r) => (r['Name'] ?? '').trim() === name.trim());
-        if (!row) return { name, valid: false, text: 'no Program editor row with that name' };
-        const validText = (row['Valid to'] ?? '').trim();
-        const status = (row['Status'] ?? '').trim();
-        const t = validToTime(validText);
-        const endsInFuture = NO_END_DATE.includes(validText) || (t !== undefined && !Number.isNaN(t) && t >= now);
-        const dateNote = validText && t !== undefined && Number.isNaN(t) ? ' (Valid to is not a date)' : '';
-        return {
-          name,
-          valid: endsInFuture && !ENDED_STATUS.test(status),
-          text: `Valid to ${validText || '(empty)'}${dateNote} | Status ${status || '(empty)'}`,
-        };
-      });
-      judged.forEach((j) => console.log(`    - ${j.name} : ${j.text}`));
-
-      await recordChecks(page, testInfo, checks, [
+      // (a) "Trade-in Promotion 5%" - owned by the Promotion list on crm-mig
+      await recordChecksMig(page, testInfo, checks, [
         {
           what: `Step 2 - "${EXPIRED_PROGRAM}" is not listed`,
-          expected: 'not listed',
-          actual: options.includes(EXPIRED_PROGRAM) ? 'listed' : 'not listed',
+          expected: 'not listed (valid to 2026-09-30, past its validity end date)',
+          actual: options.includes(EXPIRED_PROGRAM) ? 'listed' : `not listed - the list holds ${options.length}: ${options.join(' | ') || '(empty)'}`,
           passed: !options.includes(EXPIRED_PROGRAM),
         },
-        {
-          what: 'Step 2 - every listed program ends in the future (Program editor Valid to / Status by exact Name)',
-          expected: 'a non-empty Promotion list, every listed program valid',
-          actual: !options.length
-            ? 'empty Promotion list'
-            : judged.filter((j) => !j.valid).map((j) => `${j.name}: ${j.text}`).join(' | ') || `${judged.length} listed, all valid`,
-          passed: options.length > 0 && judged.every((j) => j.valid),
-        },
-      ], `${TC} - Step 2 Promotion list`, [DISCOUNT_HIGHLIGHT.promotionField, DISCOUNT_HIGHLIGHT.promotionList]);
+      ], `${TC} - Step 2 Promotion list`, [DISCOUNT_HIGHLIGHT.promotionField, DISCOUNT_HIGHLIGHT.promotionList], 'bottom-right');
       await dealElementPage.closePromotionList();
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - Promotion list open on crm-mig');
+
+      // (b) "no program past its validity end date" - judged on the Program editor's Kanban (cards grouped by status from
+      // Valid from / Valid to): every listed program must have a card, matched by exact name, outside the Ended column
+      if (!editor || !editorPage) throw new Error('The Program editor was not opened at Pre-condition 1');
+      cards = await editor.getKanbanCards(); // read again right before the shot: re-tags the cards (data-pw-card)
+      const judged = options.map((name) => {
+        const card = cards.find((c) => c.name.trim() === name.trim());
+        return {
+          name,
+          card,
+          valid: !!card && card.column !== ENDED_COLUMN,
+          text: card ? `card ${card.code} in ${card.column} (${ascii(card.tags.join(' | ')) || 'no chips'})` : 'no Kanban card with that name',
+        };
+      });
+      judged.forEach((j) => console.log(`    - ${ascii(j.name)} : ${j.text}`));
+      const shown = judged.filter((j) => j.card).map((j) => DiscountProgramEditorPageMig.kanbanCardSelector(j.card!.code));
+      await recordChecksMig(editorPage, testInfo, checks, [
+        {
+          what: 'Step 2 - no listed program is past its validity end date (Program editor Kanban, by exact name)',
+          expected: `a non-empty Promotion list, every listed program on a Kanban card outside the "${ENDED_COLUMN}" column (a program in ${ENDED_COLUMN}, or with no card, is a FAIL - it is offered past its validity end date)`,
+          actual: !options.length
+            ? 'empty Promotion list'
+            : judged.filter((j) => !j.valid).map((j) => `${ascii(j.name)}: ${j.text}`).join(' | ') || judged.map((j) => `${ascii(j.name)}: ${j.text}`).join(' | '),
+          passed: options.length > 0 && judged.every((j) => j.valid),
+        },
+      ], `${TC} - Step 2 listed programs on the Kanban`, shown.length ? shown : [DiscountProgramEditorPageMig.KANBAN_CARDS], 'bottom-right');
+      await CommonUtils.captureAndAttachScreenshot(editorPage, testInfo, 'Step 2 - listed programs on the Program editor Kanban');
     });
 
     await test.step(STEP.verify, async () => {

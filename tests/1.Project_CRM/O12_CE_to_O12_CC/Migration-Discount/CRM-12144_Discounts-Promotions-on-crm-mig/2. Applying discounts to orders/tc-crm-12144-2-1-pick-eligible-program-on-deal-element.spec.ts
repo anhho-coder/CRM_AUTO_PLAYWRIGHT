@@ -180,7 +180,7 @@ test.describe(`${TC} - Pick an eligible program on a Deal Element (crm-mig)`, ()
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      const picked = await dealElementPage.setPromotion('Deal registration');
+      const picked = await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       console.log(`  - Promotion picked : ${picked}`);
       const rowCount = await dealElementPage.waitForOrderLineRowCount(2);
       const rows = await dealElementPage.getAllOrderLineRows();

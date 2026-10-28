@@ -143,13 +143,14 @@ async function promotionStep(p: Page, de: DealElementPage, testInfo: TestInfo, c
 /** Step 2 - Deal registration, Save, then the reward, the Total and the Total in Company Currency. */
 async function rewardStep(p: Page, de: DealElementPage, run: DiscountRun, testInfo: TestInfo, checks: Check[], tag: string, out: Values): Promise<void> {
   // setPromotion falls back to Enter when the dropdown is slow and still reports success (seen 2026-10-23: a Deal
-  // Element saved with an empty Promotion) - read the field back, pick once more if empty, stop if still empty
-  await de.setPromotion('Deal registration');
-  if (!/deal registration/i.test(await de.getAppliedPromotionName())) {
-    console.log(`  ⚠ [${tag}] Promotion is still empty after the pick - picking Deal registration once more`);
-    await de.setPromotion('Deal registration');
+  // Element saved with an empty Promotion) - read the field back, pick once more if empty, stop if still empty.
+  // Exact name: a cloned "AUTO-CRM-13822-CLONE Deal registration ..." program also matches the short text (27-10).
+  await de.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true }).catch((e) => console.log(`  ⚠ [${tag}] ${e instanceof Error ? e.message : String(e)}`));
+  if ((await de.getAppliedPromotionName()) !== DISCOUNT_MIG.dealRegistration) {
+    console.log(`  ⚠ [${tag}] Promotion does not read the Deal registration program after the pick - picking it once more`);
+    await de.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
     const picked = await de.getAppliedPromotionName();
-    if (!/deal registration/i.test(picked)) throw new Error(`${tag} - Step 2: Deal registration could not be picked in Promotion (field reads "${picked}")`);
+    if (picked !== DISCOUNT_MIG.dealRegistration) throw new Error(`${tag} - Step 2: Deal registration could not be picked in Promotion (field reads "${picked}")`);
   }
   await saveDealElement(p, run);
   const rewards = rewardRows(await de.getAllOrderLineRows());

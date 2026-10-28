@@ -2,6 +2,7 @@ import { CurrencyPage, CurrencyRateRow } from '@pages';
 import { CommonUtils } from '@/helpers/common.utils';
 import { resolveScreenIds, SCREEN_XMLIDS } from '@helpers/odoo-xmlid.helper';
 import { Page } from '@playwright/test';
+import { ControlPanelFiltersMig } from '@pages/mig/ControlPanelFiltersMig';
 
 /**
  * CurrencyPageMig - fork of CurrencyPage for the O12 CE migration server.
@@ -296,6 +297,211 @@ export class CurrencyPageMig extends CurrencyPage {
 
     console.log(`  ✓ Invoicing > Configuration menu present: true; offers (${labels.length}): ${labels.join(', ')}`);
     return { present: true, labels };
+  }
+
+  // ─── Added 2026-10-26 (CRM-11857 group R: 5.3 / 6.2 / 7.1) ─────────────────
+  /** One top-level navbar section of an app ("Customers", "Configuration", ...), as a sidebar-theme session renders it. */
+  protected readonly menuSectionsRoot = () =>
+    this.page.locator('xpath=//*[contains(@class,"o_menu_sections")]').or(this.page.locator('.o_menu_sections')).first();
+  protected readonly menuSectionTopLevel = () =>
+    this.page.locator('xpath=//*[contains(@class,"o_menu_sections")]//a[contains(@class,"o_menu_header_lvl_1") or contains(@class,"o_menu_entry_lvl_1")]')
+      .or(this.page.locator('.o_menu_sections a.o_menu_header_lvl_1, .o_menu_sections a.o_menu_entry_lvl_1'));
+  /** Every "Invoicing" app anchor - the DOM holds a hidden apps-menu copy AND the visible sidebar one (no .first()). */
+  protected readonly invoicingAppEntries = () =>
+    this.page.locator('xpath=//a[@data-menu-xmlid="account.menu_finance"]')
+      .or(this.page.locator('a[data-menu-xmlid="account.menu_finance"]'));
+  /** A field wrapper on the open form by its technical name (the `name` attribute sits on the wrapper). */
+  protected readonly formFieldByName = (name: string) =>
+    this.page.locator(`xpath=//div[contains(@class,"o_form_view")]//*[@name="${name}" and contains(@class,"o_field_widget")]`)
+      .or(this.page.locator(`.o_form_view .o_field_widget[name="${name}"]`)).first();
+  /** The archive (Active / Inactive) stat button at the top right of the currency form. */
+  protected readonly activeToggleButton = () =>
+    this.page.locator('xpath=//div[contains(@class,"o_form_view")]//button[@name="toggle_active"]')
+      .or(this.page.locator('.o_form_view button[name="toggle_active"]')).first();
+
+  /**
+   * Read the "Currency" (name) and "Symbol" fields of the currency FORM currently open.
+   * Added 2026-10-26 for CRM-11857_5.3 step 5 ("Currency = JPY and Symbol are unchanged").
+   * @throws when either field is not on the form - an unread field must not look like an unchanged one
+   */
+  async readCurrencyFormFields(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<{ currency: string; symbol: string }> {
+    // The wrapper is ATTACHED as soon as the form renders; the visible copy is picked in the page, because the
+    // DOM can also hold a hidden copy of the same field (measured 2026-10-26: waiting for `.first()` to become
+    // visible timed out on a form whose "Currency" field was on screen).
+    await this.formFieldByName('name').waitFor({ state: 'attached', timeout });
+    const read = async (name: string): Promise<string> => {
+      const text = await this.page.evaluate((n: string) => {
+        const nodes = Array.from(document.querySelectorAll(`.o_form_view .o_field_widget[name="${n}"]`)) as HTMLElement[];
+        const shown = nodes.find((el) => el.offsetParent !== null) || null;
+        if (!shown) return null;
+        const input = shown.matches('input') ? (shown as HTMLInputElement) : shown.querySelector('input');
+        return input ? (input as HTMLInputElement).value : (shown.textContent || '');
+      }, name);
+      if (text === null) throw new Error(`Currency form field "${name}" is not visible on ${this.page.url()} - it was not read`);
+      return text.replace(/\s+/g, ' ').trim();
+    };
+    const visibleNow = async (n: string) => this.page.evaluate((f: string) =>
+      (Array.from(document.querySelectorAll(`.o_form_view .o_field_widget[name="${f}"]`)) as HTMLElement[])
+        .some((el) => el.offsetParent !== null), n);
+    if (!(await visibleNow('symbol'))) {
+      // Odoo 12's base res.currency form puts Symbol in its "Display" group with groups="base.group_no_one", so
+      // it renders only in developer mode - for every user, on crm-mig and on pre-production alike (same base
+      // view). A human reads it with ?debug=1; so does this method. Same record, same form, only the mode differs.
+      const url = new URL(this.page.url());
+      const debugUrl = `${url.origin}/web?debug=1${url.hash}`;
+      console.log('  - Symbol is a developer-mode field on the currency form; re-opening the same form with ?debug=1');
+      await this.page.goto(debugUrl, { waitUntil: 'domcontentloaded', timeout });
+      await this.formFieldByName('symbol').waitFor({ state: 'attached', timeout });
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    const currency = await read('name');
+    const symbol = await read('symbol');
+    console.log(`  - Currency form: Currency = "${currency}", Symbol = "${symbol}"`);
+    return { currency, symbol };
+  }
+
+  /**
+   * Read the archive stat button's label with the mouse OFF the button.
+   *
+   * Odoo 12's boolean_button shows the STATE ("Active" / "Inactive") at rest and swaps to the ACTION
+   * ("Deactivate" / "Activate") while hovered - and right after a click the pointer still sits on it. The TC
+   * reads "The button shows Active / Inactive", i.e. the label at rest, so the pointer is moved away first.
+   * Added 2026-10-26 for CRM-11857_5.3 steps 3 and 5.
+   * @returns the label exactly as rendered, e.g. "Active"; '' when the button is not on screen
+   */
+  async readActiveButtonLabelAtRest(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const btn = this.activeToggleButton();
+    if (!(await btn.isVisible({ timeout }).catch(() => false))) return '';
+    // Park the pointer in the bottom-left corner of the CURRENT viewport (not a fixed 1080p coordinate).
+    const vp = this.page.viewportSize() || { width: 1280, height: 720 };
+    await this.page.mouse.move(5, Math.max(0, vp.height - 5));
+    await this.wait(CommonUtils.waitTimes.medium);
+    const label = ((await btn.innerText({ timeout }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    console.log(`  - Archive button label (at rest): "${label}"`);
+    return label;
+  }
+
+  /**
+   * Open each top-level menu of the Invoicing app and read what it offers, as the signed-in user sees it.
+   *
+   * On crm-mig's sidebar theme the app's navbar sections are drawn only once the app is ENTERED from the
+   * sidebar (a hash navigation leaves `.o_menu_sections` empty - the 2026-10-13 "menus do not render" note).
+   * Measured 2026-10-26 (EXPLORE-20261026_31) as faye: after clicking the Invoicing sidebar entry the navbar
+   * holds 7 sections - Overview, Customers, Vendors, Accounting, Export Transaction File, Reporting,
+   * Configuration - each a dropdown of .dropdown-header (group) + .dropdown-item (entry) nodes.
+   * Added 2026-10-26 for CRM-11857_6.2 step 4.
+   *
+   * @returns one entry per top-level section: its label and the labels it offers (headers prefixed "## ")
+   */
+  async readInvoicingModuleMenus(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<Array<{ section: string; entries: string[] }>> {
+    await this.invoicingAppEntries().filter({ visible: true }).first().click({ timeout });
+    await this.page.waitForLoadState('domcontentloaded').catch(() => {});
+    await this.menuSectionTopLevel().first().waitFor({ state: 'visible', timeout });
+    await this.wait(CommonUtils.waitTimes.long);
+    const count = await this.menuSectionTopLevel().count();
+    const result: Array<{ section: string; entries: string[] }> = [];
+    for (let i = 0; i < count; i++) {
+      const top = this.menuSectionTopLevel().nth(i);
+      const section = ((await top.innerText({ timeout }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+      const isDropdown = ((await top.getAttribute('class', { timeout }).catch(() => '')) || '').includes('dropdown-toggle');
+      let entries: string[] = [];
+      if (isDropdown) {
+        await top.click({ timeout });
+        await this.openDropdownMenu().waitFor({ state: 'visible', timeout }).catch(() => {});
+        entries = await this.openDropdownMenu().evaluate((menu) =>
+          Array.from(menu.querySelectorAll('.dropdown-header, .dropdown-item')).map((n) => {
+            const text = (n.textContent || '').replace(/\s+/g, ' ').trim();
+            return n.classList.contains('dropdown-header') ? `## ${text}` : text;
+          }).filter((t) => t && t !== '##'), undefined, { timeout });
+        // No .catch(() => []): a dropdown that could not be read must fail loudly, not look like an empty menu.
+        if (entries.length === 0) throw new Error(`Invoicing > ${section}: the dropdown opened but no entry could be read`);
+        await this.page.keyboard.press('Escape');
+        if (await this.openDropdownMenu().isVisible().catch(() => false)) await top.click({ timeout }).catch(() => {});
+        await this.wait(CommonUtils.waitTimes.short);
+      }
+      console.log(`  - Invoicing > ${section}${isDropdown ? ` (${entries.length}): ${entries.join(' | ')}` : ' (direct link)'}`);
+      result.push({ section, entries });
+    }
+    return result;
+  }
+
+  /**
+   * Click a column header of the open list exactly ONCE (the TC's "click the Date column header") and wait for the
+   * rows to re-render. The resulting order is for the caller to verify - this method does not retry towards a
+   * wanted direction. Added 2026-10-26 for CRM-11857_6.2 step 3.
+   * @throws when the header is not on the list
+   */
+  async clickListColumnHeaderOnce(label: string, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<void> {
+    const header = this.page.locator(`xpath=//table[contains(@class,"o_list_view")]//thead//th[normalize-space(.)="${label.replace(/"/g, '')}"]`)
+      .or(this.page.locator('table.o_list_view thead th').filter({ hasText: new RegExp(`^\\s*${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`) }))
+      .first();
+    await header.click({ timeout });
+    await this.waitForLoadingOverlayHidden(timeout).catch(() => {});
+    await this.currencyListTable().locator('tbody tr.o_data_row').first().waitFor({ state: 'visible', timeout });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Clicked the "${label}" column header once`);
+  }
+
+  /**
+   * The Invoicing menu tree exactly as the web client loads it for the signed-in user (`ir.ui.menu.load_menus`,
+   * already filtered by the user's groups), each leaf with the model its window action opens.
+   * Added 2026-10-26 for CRM-11857_6.2 step 4 - the cross-check that no entry opens res.currency.rate.
+   * @returns leaves as "path" + "resModel" ('' for a non-window action)
+   */
+  async readInvoicingMenuLeavesAsUser(): Promise<Array<{ path: string; resModel: string }>> {
+    return this.page.evaluate(async () => {
+      const call = async (model: string, method: string, args: any[], kwargs: any = {}) => {
+        const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method, args, kwargs } }) });
+        const j = await r.json();
+        if (j.error) throw new Error(String((j.error.data || {}).message || j.error.message));
+        return j.result;
+      };
+      const tree = await call('ir.ui.menu', 'load_menus', [false]);
+      const inv = (tree.children || []).find((c: any) => c.xmlid === 'account.menu_finance');
+      const leaves: Array<{ path: string; action: string }> = [];
+      const walk = (n: any, p: string) => {
+        const path = p ? `${p} > ${n.name}` : n.name;
+        if (n.action) leaves.push({ path, action: n.action });
+        (n.children || []).forEach((c: any) => walk(c, path));
+      };
+      if (inv) walk(inv, '');
+      const windowIds = leaves.filter((l) => l.action.startsWith('ir.actions.act_window,')).map((l) => Number(l.action.split(',')[1]));
+      const acts: Array<{ id: number; res_model: string }> = windowIds.length
+        ? await call('ir.actions.act_window', 'read', [windowIds, ['res_model']]) : [];
+      const modelOf = new Map(acts.map((a) => [a.id, a.res_model]));
+      return leaves.map((l) => ({
+        path: l.path,
+        resModel: l.action.startsWith('ir.actions.act_window,') ? (modelOf.get(Number(l.action.split(',')[1])) || '') : '',
+      }));
+    });
+  }
+
+  /**
+   * On the open Currency Rates list: Filters > Add Custom Filter > <field> <operator> <value> > Apply.
+   * Added 2026-10-26 for CRM-11857_7.1 step 2 (Date is less than or equal to 08/25/2026).
+   * @returns the facet texts after Apply
+   */
+  async addRateListCustomFilter(fieldLabel: string, operatorLabel: string | { value: string }, value: string): Promise<string[]> {
+    const facets = await new ControlPanelFiltersMig(this.page).addCustomFilter(fieldLabel, operatorLabel, value);
+    await this.currencyListTable().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return facets;
+  }
+
+  /**
+   * Remove the search facet whose text contains `text` from the open list (e.g. the custom "Date" filter).
+   * Added 2026-10-26 for CRM-11857_7.1 step 3.
+   * @returns true when no facet with that text is left
+   */
+  async removeListFacetContaining(text: string): Promise<boolean> {
+    const removed = await new ControlPanelFiltersMig(this.page).removeFacetContaining(text);
+    await this.currencyListTable().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return removed;
+  }
+
+  /** The facet chips currently applied on the open list (evidence for the log). */
+  async getListFacetTexts(): Promise<string[]> {
+    return new ControlPanelFiltersMig(this.page).getFacetTexts();
   }
 
   /**

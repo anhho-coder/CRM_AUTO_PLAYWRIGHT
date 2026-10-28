@@ -342,7 +342,7 @@ export class InvoicePage extends BasePage {
     await saveButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Found "SAVE" button');
     
-    await saveButton.click();
+    await saveButton.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "SAVE" button (performance timer started)');
     
     // Wait for save to complete - Edit button should appear again
@@ -2897,6 +2897,37 @@ export class InvoicePage extends BasePage {
   }
 
   /**
+   * Switch a list column ON in the list's column panel. crm-mig layout (measured 2026-10-23): a panel of ~160 entries,
+   * each row `div.o_row` with `input.columnCheckbox#<field>` + `button.btn-toggle` (icon fa-times = off, fa-check = on);
+   * only the BUTTON flips it - clicking the label or the hidden checkbox does nothing. The choice is stored per USER on
+   * the server: it survives logout / login and a new browser. Pre-production shows "Total in Company Currency" by default.
+   * @returns whether the column header is on screen afterwards
+   */
+  async switchOnListColumn(field: string, label: string): Promise<boolean> {
+    const header = this.page.locator(`xpath=//table[contains(@class,"o_list_view")]//th[starts-with(normalize-space(),"${label}")]`).first();
+    if (await header.isVisible().catch(() => false)) {
+      console.log(`    - column "${label}" already shown`);
+      return true;
+    }
+    const toggler = this.page.locator('.o_control_panel .o_optional_columns_dropdown_toggle, .o_list_view .o_optional_columns_dropdown_toggle, .o_control_panel button[title*="olumn"]').first();
+    if (!(await toggler.isVisible().catch(() => false))) {
+      console.log(`    - the list has no column panel - "${label}" stays hidden`);
+      return false;
+    }
+    await toggler.click({ timeout: CommonUtils.waitTimes.elementVisibility });
+    const box = this.page.locator(`.dropdown-menu.show input.columnCheckbox#${field}`).first();
+    if ((await box.count().catch(() => 0)) && !(await box.isChecked().catch(() => false))) {
+      await box.locator('xpath=following-sibling::button[1]').click({ timeout: CommonUtils.waitTimes.elementVisibility });
+    }
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const shown = await header.isVisible().catch(() => false);
+    console.log(`    - column panel: "${label}" ${shown ? 'switched on' : 'could NOT be switched on'}`);
+    return shown;
+  }
+
+  /**
    * "Total in Company Currency" of ONE invoice, read the way the tester reads it (2026-10-21): the invoice FORM does
    * not show it, the Invoices LIST does. Invoicing > Customers > Invoices (list) -> filter "ID = <id>" so the list
    * holds that one invoice only (a draft has no Number to search by) -> make sure the "Total in Company Currency"
@@ -2913,16 +2944,8 @@ export class InvoicePage extends BasePage {
     const header = this.page.locator('xpath=//table[contains(@class,"o_list_view")]//th[starts-with(normalize-space(),"Total in Company Currency")]').first();
     let columnSwitchedOn = false;
     if (!(await header.isVisible().catch(() => false))) {
-      // the list hides the column: switch it on in the column toggler (crm-mig layout, tester's screenshot)
-      const toggler = this.page.locator('.o_control_panel .o_optional_columns_dropdown_toggle, .o_list_view .o_optional_columns_dropdown_toggle, .o_control_panel button[title*="olumn"]').first();
-      if (await toggler.isVisible().catch(() => false)) {
-        await toggler.click({ timeout: CommonUtils.waitTimes.elementVisibility });
-        const item = this.page.locator('.dropdown-menu.show').getByText('Total in Company Currency', { exact: true }).first();
-        await item.click({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => {});
-        await this.page.keyboard.press('Escape').catch(() => {});
-        await this.wait(CommonUtils.waitTimes.long);
-        columnSwitchedOn = true;
-      }
+      // the list hides the column (crm-mig default): switch it on in the column panel
+      columnSwitchedOn = await this.switchOnListColumn('amount_total_company_signed', 'Total in Company Currency');
     }
     const read = await this.page
       .evaluate(() => {

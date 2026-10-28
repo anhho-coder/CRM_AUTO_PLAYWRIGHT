@@ -597,7 +597,22 @@ export class SubscriptionPageMig extends MigPreSalePage {
     // the save icon disappears once there is nothing dirty left to save
     await btn.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.savingPage }).catch(() => {});
     await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 2);
-    return await this.readEmbedReference(frame);
+    const ref = await this.readEmbedReference(frame);
+    if (!ref) {
+      // A bare '' sent one session hunting a write lag that was never there. Report what the form
+      // is actually showing: an unsaved record keeps the save icon, and a rejected one raises a
+      // dialog whose text names the missing field.
+      const dialog = (await frame.locator('.modal.show, .o_dialog, .o_notification')
+        .first().innerText({ timeout: CommonUtils.waitTimes.long }).catch(() => '') || '')
+        .replace(/\s+/g, ' ').trim();
+      const stillDirty = (await frame.locator(SubscriptionPageMig.EMBED_SAVE_SELECTOR)
+        .first().isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false));
+      console.log(
+        `  ! saveInEmbed(): no Reference after the save. url="${frame.url()}" ` +
+        `saveIconStillVisible=${stillDirty} dialog="${dialog || '(none)'}"`,
+      );
+    }
+    return ref;
   }
 
   /**
@@ -859,9 +874,22 @@ export class SubscriptionPageMig extends MigPreSalePage {
    * '', it hangs until the TEST timeout and the run reads as "slow embed" instead of "no stage bar
    * here". Measured 2026-10-09.
    */
+  /**
+   * The stage the embedded form's status bar highlights.
+   *
+   * Reads `textContent`, NOT `innerText`. The backend theme UPPERCASES the status bar with a CSS
+   * `text-transform`, and `innerText` returns the TRANSFORMED string - so the stage came back
+   * "IN PROGRESS" and the baseline's `toBe('In Progress')` failed on a record that was in exactly
+   * the right stage (CRM-11806_3.1, 2026-10-21). `textContent` returns the underlying text, which
+   * is what the baseline compares against. If a stage really is stored uppercase this still
+   * reports it uppercase, so a genuine difference is not hidden.
+   */
   async getEmbedStage(frame: Frame): Promise<string> {
-    const active = frame.locator('button.o_arrow_button.o_arrow_button_current, .o_statusbar_status button[aria-checked="true"]').first();
-    return (await active.innerText({ timeout: CommonUtils.waitTimes.long * 2 }).catch(() => '')).trim();
+    const current = frame.locator('.o_statusbar_status button.o_arrow_button_current, '
+      + '.o_statusbar_status button[aria-checked="true"]').first();
+    const raw = (await current.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '') || '').trim();
+    if (raw) return raw.replace(/\s+/g, ' ');
+    return (await current.innerText({ timeout: CommonUtils.waitTimes.long }).catch(() => '') || '').trim();
   }
 
   /**

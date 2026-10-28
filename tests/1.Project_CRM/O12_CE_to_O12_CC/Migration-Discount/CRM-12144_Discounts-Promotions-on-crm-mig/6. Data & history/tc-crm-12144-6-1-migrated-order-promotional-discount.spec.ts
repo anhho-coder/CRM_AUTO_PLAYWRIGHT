@@ -49,15 +49,20 @@ import {
  * A migrated sale order with a "10.0% discount on products" line and its invoice are read on crm-mig: exactly one
  * reward line, and the order Total, Total in Company Currency and the invoice Total and Total in Company Currency shown.
  *
- * Known bug - SKIPPED (tester decision 2026-10-23)
- * ------------------------------------------------
+ * BLOCKED by CRM-11861 - SKIPPED (tester decision 2026-10-27, replaces the CRM-13822 skip of 2026-10-23)
+ * ------------------------------------------------------------------------------------------------------
+ * CRM-13822 was closed as not a bug - Khang (2026-10-23): "This test case should be run in data migration task".
+ * The tester agreed: this TC waits for the Data Migration phase CRM-11861 ([Odoo migration] Data Migration phase,
+ * Open). Nathan's conclusion on CRM-13822: the sales order step of the ETL has no mapping for the Promotion field
+ * (crm-mig points it to nakivo.promotion, pre-production to sale.coupon.program). Remove the skip and re-run once
+ * CRM-11861 delivers the migrated Promotion. History below kept as found on 2026-10-23.
  * CRM-13822 (Bug [Maintenance], P2, assigned to Nathan Do): migrated Sales Orders carry no Promotion on crm-mig.
  * SO217919 shows "Deal registration promotion, 10% on Product, Support Services do not qualify" on the reference
  * system and an empty Promotion on crm-mig, so the (now removed) Step 3 - Promotion comparison failed; the other 27 of
  * 28 checks passed (last run 2026-10-23 11:32). Database read 2026-10-23: no migrated order on crm-mig carries a
- * Promotion, for any program. The whole describe block is skipped by test.skip(true, KNOWN_BUG) at describe level.
+ * Promotion, for any program. The whole describe block is skipped by test.skip(true, BLOCKED_BY) at describe level.
  * Since the pre-production steps were removed, no check left in this spec reads the Promotion (it is printed and shot
- * only). Remove the skip once CRM-13822 is fixed and re-run.
+ * only).
  *
  * Command to run
  * --------------
@@ -102,8 +107,8 @@ const STEP = {
 const CRM_READER = users.admin_crm_mig;
 const REWARD_PRODUCT = DISCOUNT_MIG.dealRegistrationProduct;
 const CANDIDATES = 20; // newest orders per search - still bounded
-const KNOWN_BUG =
-  'Skipped due to bug CRM-13822 - migrated Sales Orders carry no Promotion on crm-mig; expected result kept, see header';
+const BLOCKED_BY =
+  'Migrated Sales Orders carry no Promotion on crm-mig (CRM-13822 closed: to be run in the data migration task); expected result kept, see header - blocked by CRM-11861';
 
 type Inv = { id: number; number: string; type: string; state: string };
 interface Candidate { id: number; name: string; partner: string; invoiceId: number; invoiceNumber: string }
@@ -217,8 +222,8 @@ async function recordOnScreens(page: Page, testInfo: TestInfo, checks: Check[], 
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
 
 test.describe(`${TC} - Migrated order and invoice with a promotional discount (crm-mig only, read-only)`, () => {
-  // Skipped due to bug CRM-13822: migrated Sales Orders carry no Promotion on crm-mig (every program) - remove when fixed
-  test.skip(true, KNOWN_BUG); // bug CRM-13822 (open)
+  // Blocked by CRM-11861 (Data Migration phase): migrated Sales Orders carry no Promotion yet - remove when it delivers
+  test.skip(true, BLOCKED_BY); // CRM-11861 (Open)
 
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
@@ -229,7 +234,7 @@ test.describe(`${TC} - Migrated order and invoice with a promotional discount (c
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - end').catch(() => {});
   });
 
-  test(`${TC}: Open a migrated order and invoice that carried a promotional discount [CRM-13822]`, baselineDetails(TC), async ({ page }, testInfo) => {
+  test(`${TC}: Open a migrated order and invoice that carried a promotional discount [CRM-11861]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
     const checks: Check[] = [];

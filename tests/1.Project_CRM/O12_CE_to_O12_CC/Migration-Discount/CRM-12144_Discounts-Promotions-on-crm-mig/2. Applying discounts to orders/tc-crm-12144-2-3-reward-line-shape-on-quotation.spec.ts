@@ -166,7 +166,7 @@ test.describe(`${TC} - Read the reward line of a quotation created from a Deal E
       console.log(`\n--- ${STEP.s2} ---`);
       await dealElementPage.addOrderLineStrict(DISCOUNT_MIG.listedProduct, 5);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,645.00');
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       await saveDealElement(page, run);
       console.log(`  - Deal Element reward lines : ${rewardRows(await dealElementPage.getAllOrderLineRows()).length}`);
     });

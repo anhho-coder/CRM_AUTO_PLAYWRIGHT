@@ -190,7 +190,7 @@ test.describe(`${TC} - Promotion list of a qualifying new order (crm-mig)`, () =
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      await dealElementPage.setPromotion('Deal registration');
+      await dealElementPage.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
       const lineSubtotal = await dealElementPage.getOrderLineRowCells(0).then((r) => r['Subtotal'] ?? '');
       await saveDealElement(page, run);
       const rewards = rewardRows(await dealElementPage.getAllOrderLineRows());

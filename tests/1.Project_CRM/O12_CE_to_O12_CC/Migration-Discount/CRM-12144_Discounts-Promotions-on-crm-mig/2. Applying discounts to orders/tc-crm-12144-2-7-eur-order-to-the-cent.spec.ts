@@ -146,7 +146,7 @@ async function lineStep(de: DealElementPage, tag: string, out: Amounts): Promise
 
 /** Step 3 - Deal registration, Save, then the reward and the totals: the baseline's assertions. */
 async function rewardStep(p: Page, de: DealElementPage, run: DiscountRun, testInfo: TestInfo, checks: Check[], tag: string, out: Amounts): Promise<void> {
-  await de.setPromotion('Deal registration');
+  await de.setPromotion(DISCOUNT_MIG.dealRegistration, { exact: true });
   await saveDealElement(p, run);
   const rewards = rewardRows(await de.getAllOrderLineRows());
   out['Reward'] = rewards[0]?.['Unit Price'] ?? '';

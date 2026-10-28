@@ -1062,9 +1062,12 @@ export class DealElementPage extends BasePage {
    * in edit mode) to the given promotion name, then pick it from the dropdown. After SAVE, the promo is
    * added as a discount line in Order Lines and the order total is reduced. (The form must be in edit
    * mode - e.g. right after adding a product line - because in readonly mode promotion_id is a <span>.)
+   * @param opts.exact - pick only the option whose whole text IS promoName, with no Enter fallback; throws when no
+   *   such option is offered. The default (contains + first) also matches a longer name that merely contains it -
+   *   e.g. the cloned "AUTO-CRM-13822-CLONE Deal registration ..." program on crm-mig (CRM-12144, 27-10-2026).
    * @returns true if the field was found and set, false if its input is absent (form readonly).
    */
-  async setPromotion(promoName: string): Promise<boolean> {
+  async setPromotion(promoName: string, opts: { exact?: boolean } = {}): Promise<boolean> {
     const input = this.promotionIdInput();
     if ((await input.count().catch(() => 0)) === 0) {
       console.log('  ⚠ Promotion field input not found (form not in edit mode?)');
@@ -1074,6 +1077,17 @@ export class DealElementPage extends BasePage {
     await input.click();
     await input.fill(promoName);
     await this.wait(CommonUtils.waitTimes.long);
+    if (opts.exact) {
+      const options = this.dropdownOption().filter({ visible: true });
+      await options.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      const texts = (await options.allInnerTexts().catch(() => [] as string[])).map((t) => t.replace(/\s+/g, ' ').trim());
+      const idx = texts.indexOf(promoName);
+      if (idx < 0) throw new Error(`Promotion "${promoName}" is not offered as an exact option - offered: ${JSON.stringify(texts)}`);
+      await options.nth(idx).click();
+      console.log(`  ✓ Promotion set to "${promoName}" (exact option ${idx + 1} of ${texts.length}: ${JSON.stringify(texts)})`);
+      await this.wait(CommonUtils.waitTimes.long); // let the discount line + totals recompute (onchange)
+      return true;
+    }
     const option = this.dropdownOption().filter({ hasText: promoName }).first();
     const optVisible = await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
     if (optVisible) {
