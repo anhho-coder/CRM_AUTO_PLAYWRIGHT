@@ -364,6 +364,33 @@ const AUTOMATION_COVERAGE = {
   automationJql: 'project = CRM AND issuetype = "Post-EA - Test Case" AND status != "closed" AND "Automation scope" = Yes',
 };
 
+// --- Automation coverage — Migration feature (same donut, Migration folders only) --
+// The same point-in-time donut as AUTOMATION_COVERAGE, scoped to the Odoo-migration
+// features' Xray Test Repository folders. The JQL is CRM-13900's "all features" pair:
+//   totalTcs      = every Test in the folders below and their sub-folders
+//   automationTcs = that set AND "Automation scope" = Yes  (no status filter — as CRM-13900)
+// A feature joins the card by adding its folder here (Discounts has none yet: Jira answers
+// "Folder path … is not valid" for a missing folder, which would fail the whole count).
+const MIGRATION_TC_FOLDERS = [
+  'CRM test/Migration - Setup New CRM',
+  'CRM test/Migration - Exchange Rates',
+  'CRM test/Migration - Pre-sales',
+  'CRM test/Migration - Subscriptions',
+];
+const migrationFolderJql = MIGRATION_TC_FOLDERS
+  .map((f) => `issue in testRepositoryFolderTests("CRM", "${f}", "true")`).join(' OR ');
+const AUTOMATION_COVERAGE_MIGRATION = {
+  label: 'Automation Coverage - Migration feature',
+  kpiName: 'Jira · Xray Migration folders, test cases in automation scope (point-in-time snapshot)',
+  totalJql: migrationFolderJql,
+  automationJql: `(${migrationFolderJql}) AND "Automation scope" = Yes`,
+  notes: [
+    'A POINT-IN-TIME snapshot of the Odoo-migration features’ Xray Test Repository folders — NOT limited to a range or a quarter. It reflects the current Jira state each build.',
+    `<b>Total TCs</b> = every Test in these folders and their sub-folders: ${MIGRATION_TC_FOLDERS.join(' · ')}. <b>Automation TCs</b> = the subset whose “Automation scope” = Yes. <b>Remaining</b> = Total − Automation.`,
+    'Coverage % = Automation TCs ÷ Total TCs. Same queries as Jira CRM-13900.',
+  ],
+};
+
 // --- Jira SPLIT metrics (Metrics Report · Automation test page, "By range") ---
 // A metric that PARTITIONS an already-collected status-transition daily series at a
 // cutoff date into two halves, rendered as slide-style stat cards. It performs NO
@@ -878,7 +905,7 @@ const SHARDS = ['odoo-kpi', 'jira-dashboard', 'frd', 'manual-heavy', 'manual-lig
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR, CACHE_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, AUTOMATION_COVERAGE_MIGRATION, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

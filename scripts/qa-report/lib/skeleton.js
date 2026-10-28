@@ -40,6 +40,7 @@ function buildSkeleton(now) {
     bugByPriority: null,
     supportClassification: null,
     automationCoverage: null,
+    automationCoverageMigration: null,
   };
 }
 

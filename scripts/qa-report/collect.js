@@ -232,6 +232,10 @@ async function main() {
     const ac = data.automationCoverage;
     console.log(`[collect]   Automation coverage: ${ac.automationTcs}/${ac.totalTcs} = ${ac.coverage}% (remaining ${ac.remaining})`);
   }
+  if (data.automationCoverageMigration) {
+    const ac = data.automationCoverageMigration;
+    console.log(`[collect]   Automation coverage (Migration): ${ac.automationTcs}/${ac.totalTcs} = ${ac.coverage}% (remaining ${ac.remaining})`);
+  }
   if (data.supportClassification) {
     const tq = data.supportClassification.ranges.thisQuarter;
     if (tq) console.log(`[collect]   Classified Support ticket (this quarter): ${tq.total.tickets} = ` +

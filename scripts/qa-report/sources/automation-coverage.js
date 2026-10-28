@@ -14,13 +14,15 @@
  * vs Remaining) with the coverage % in the centre. Stored under data.automationCoverage.
  *
  * Verified vs live Jira 2026-07-27: total 3972, automation 784 → 19.7% coverage.
+ *
+ * The same collector serves AUTOMATION_COVERAGE_MIGRATION (the Migration folders' card,
+ * data.automationCoverageMigration) — pass that config as `c`; its `notes` ride along.
  */
 const { JiraClient } = require('../lib/jira');
 const { loadJira, AUTOMATION_COVERAGE } = require('../config');
 
-async function collectAutomationCoverage() {
+async function collectAutomationCoverage(c = AUTOMATION_COVERAGE) {
   const jira = new JiraClient(loadJira());
-  const c = AUTOMATION_COVERAGE;
   const [totalTcs, automationTcs] = await Promise.all([
     jira.count(c.totalJql),
     jira.count(c.automationJql),
@@ -36,6 +38,7 @@ async function collectAutomationCoverage() {
     coverage,           // %, one decimal (automationTcs ÷ totalTcs)
     totalJql: c.totalJql,
     automationJql: c.automationJql,
+    notes: c.notes || null,   // card-specific "How it is counted" bullets (render default when null)
   };
 }
 

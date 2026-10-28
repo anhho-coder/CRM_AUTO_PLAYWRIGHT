@@ -1351,7 +1351,9 @@ function automationDonut(ac) {
 
 function automationCoverageNote(ac) {
   const code = (s) => `<code>${esc(s)}</code>`;
-  const notes = [
+  // A card may carry its own bullets (the Migration card does, from config); else the
+  // whole-repo defaults below.
+  const notes = ac.notes || [
     'A POINT-IN-TIME snapshot of the whole CRM Test Repository — NOT limited to a range or a quarter. It reflects the current Jira state each build.',
     '<b>Total TCs</b> = every CRM Post-EA test case. <b>Automation TCs</b> = the still-open subset (status ≠ Closed) whose “Automation scope” = Yes. <b>Remaining</b> = Total − Automation (the non-automation test cases).',
     'Coverage % = Automation TCs ÷ Total TCs.',
@@ -2448,6 +2450,10 @@ function main() {
     // own data shape), shown at the bottom of the "Quarterly KPI" view only.
     const automationCoverageHtml = (navKey === 'automation' && data.automationCoverage)
       ? withAnchor({ key: 'automationCoverage', label: data.automationCoverage.label }, automationCoverageSection(data.automationCoverage)) : '';
+    // "Automation Coverage - Migration feature" — the same donut scoped to the Migration
+    // Xray folders, placed right under the whole-repo one.
+    const automationCoverageMigrationHtml = (navKey === 'automation' && data.automationCoverageMigration)
+      ? withAnchor({ key: 'automationCoverageMigration', label: data.automationCoverageMigration.label }, automationCoverageSection(data.automationCoverageMigration)) : '';
     return `${docHead(title)}
 <div class="hero hero--plus">
   ${HERO_PLUS}
@@ -2467,6 +2473,7 @@ function main() {
     ${quarterlyPickerHtml}
     ${quarterlySections || '<p class="muted">No quarterly data available.</p>'}
     ${automationCoverageHtml}
+    ${automationCoverageMigrationHtml}
   </div>
 
   <div class="view${defView === 'range' ? ' is-active' : ''}" data-view="range">

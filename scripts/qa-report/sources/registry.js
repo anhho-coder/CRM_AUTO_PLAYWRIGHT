@@ -5,7 +5,7 @@
  * The monolithic collect.js (18 try/catch blocks, 45 min runtime) is being split into
  * independent SHARDS — each a unit that fetches one logical collection group (odoo-kpi,
  * jira metrics, allure, worklog, etc.) and emits a part file. This registry defines the
- * 18 units and groups them so the Jenkins pipeline can run shards in parallel, then merge
+ * 19 units and groups them so the Jenkins pipeline can run shards in parallel, then merge
  * the part files back into the exact same latest.json.
  *
  * Each unit.run(ctx) is a faithful transcription of its corresponding try/catch block in
@@ -387,6 +387,22 @@ const UNITS = [
       // Test Case repository is in automation scope. Two whole-repo count() queries.
       patch.automationCoverage = await collectAutomationCoverage();
       patch.sources.jiraAutomationCoverage = { status: 'ok', source: 'jira automation-scope test-case coverage' };
+
+      return patch;
+    }
+  },
+  {
+    id: 'jiraAutomationCoverageMigration',
+    group: 'automation',
+    sourceKeys: ['jiraAutomationCoverageMigration'],
+    async run(ctx) {
+      const { cfg } = ctx;
+      const patch = { automationCoverageMigration: null, sources: {} };
+
+      // Same donut as jiraAutomationCoverage, scoped to the Odoo-migration features'
+      // Xray folders (cfg.AUTOMATION_COVERAGE_MIGRATION — CRM-13900's JQL pair).
+      patch.automationCoverageMigration = await collectAutomationCoverage(cfg.AUTOMATION_COVERAGE_MIGRATION);
+      patch.sources.jiraAutomationCoverageMigration = { status: 'ok', source: 'jira migration-folder automation coverage' };
 
       return patch;
     }

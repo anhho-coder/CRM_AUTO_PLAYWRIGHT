@@ -35,7 +35,8 @@ function emptyPatch() {
 
 /**
  * Deep-merge a patch into report data. Replaces some keys wholesale
- * (worklog, featureExec, bugByPriority, supportClassification, automationCoverage)
+ * (worklog, featureExec, bugByPriority, supportClassification, automationCoverage,
+ * automationCoverageMigration)
  * and merges others key-by-key (metrics, quarterly, sources, kpiJql).
  *
  * Does NOT mutate the patch — only reads it.
@@ -47,7 +48,7 @@ function applyPatch(data, patch) {
   if (!patch || typeof patch !== 'object') return;
 
   // Keys that are replaced wholesale (only if present in the patch)
-  const REPLACE_KEYS = ['worklog', 'featureExec', 'bugByPriority', 'supportClassification', 'automationCoverage'];
+  const REPLACE_KEYS = ['worklog', 'featureExec', 'bugByPriority', 'supportClassification', 'automationCoverage', 'automationCoverageMigration'];
   for (const key of REPLACE_KEYS) {
     if (key in patch) {
       data[key] = patch[key];
