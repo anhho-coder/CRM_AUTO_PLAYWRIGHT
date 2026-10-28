@@ -42,7 +42,9 @@ import {
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7; "Signed in as"
  *                    asserted); CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich,
- *                    users.sale_ic_thomas_crm_mig; group membership asserted)
+ *                    users.sale_ic_thomas_crm_mig; group membership asserted) for the pre-conditions and Step 2;
+ *                    Step 4 = Sales / Manager (Max Zaprykutenko, users.manager_max_crm_mig; group membership asserted) -
+ *                    tester decision 2026-10-28, see the FINDING below
  *
  * WRITES (tester, 2026-10-27: "QA có quyền tạo Discount program test (rồi teardown). Ko sửa Discount program có sẵn"):
  *   the run creates its OWN program QA-Disc-<timestamp>, limited to its own customer Disc-Cust-<timestamp> (Advanced),
@@ -64,6 +66,9 @@ import {
  * nakivo.promotion row (NEW1) when the salesperson first opened the Promotion list, and cannot UPDATE it in the
  * salesperson's session. The
  * spec records Expected 4 and 5 as FAIL with that text and shoots the dialog before OK. No bug filed yet (tester decides).
+ * Tester decision 2026-10-28: the error is a missing privilege of the salesperson, so Step 4 now signs in as Max
+ * Zaprykutenko, a member of "Sales / Manager" on crm-mig (res.groups 13 = sales_team.group_sale_manager; Max uid 48 is a
+ * member, Thomas uid 9470 is not - read 2026-10-28). The error branch stays: if the manager is refused too, it is recorded.
  *
  * Summary
  * -------
@@ -126,6 +131,7 @@ const TC = 'CRM-12144_8.2';
 const SKIP_CLEANUP = false; // true = keep the run's records for debugging (crm-mig rule: never leave it true)
 const EDITOR_ACCOUNT = users.admin_discount_mig; // QA's named Program editor account (CRM-12467 row 1.7)
 const SALES = users.sale_ic_thomas_crm_mig;
+const MANAGER = users.manager_max_crm_mig; // Step 4 only: updating crm-mig's nakivo.promotion row needs Sales / Manager (tester 2026-10-28)
 const ONE_MINUTE = CommonUtils.waitTimes.abnormalWait * 2;
 const PRODUCT_5 = '5.0% discount on total amount';
 const PRODUCT_7 = '7.0% discount on total amount';
@@ -140,7 +146,7 @@ const STEP = {
   s1: 'Step 1: In the Program editor, open Discount Programs (Kanban view), click New program and enter Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order and Advanced (customer condition) = customer name is Disc-Cust-<timestamp>; click Save [Advanced = the rule Payer > Name is Disc-Cust-<timestamp>: crm-mig labels the order\'s customer "Payer"]',
   s2: 'Step 2: In crm-mig, without running a sync, Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment, add A2160B with Ordered Qty 1, pick QA-Disc-<timestamp> and click Save [not offered yet: wait one minute and change the quantity to ask again]',
   s3: 'Step 3: In the Program editor, open the card QA-Disc-<timestamp>, click Edit, change Reward to 7.0 % and click Save',
-  s4: 'Step 4: Open Disc-Opp2-<timestamp>, click DEAL ELEMENT, add A2160B with Ordered Qty 1, pick QA-Disc-<timestamp> and click Save',
+  s4: 'Step 4: Open Disc-Opp2-<timestamp>, click DEAL ELEMENT, add A2160B with Ordered Qty 1, pick QA-Disc-<timestamp> and click Save [as Max Zaprykutenko - Sales / Manager (tester 2026-10-28): the salesperson may not update the program\'s nakivo.promotion row]',
   s5: 'Step 5: Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
@@ -439,13 +445,17 @@ test.describe(`${TC} - Add and then change a program in the Program editor witho
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
+      // run 2026-10-27 18:21: as the salesperson, picking the CHANGED program raised "Access Error ... Sales/Manager
+      // (Document model: nakivo.promotion) - (Operation: write, User: 9470)" - tester 2026-10-28: Step 4 runs as Max
+      console.log(`  - Login : ${MANAGER.username} (${MANAGER.displayName})`);
+      await signInMig(page, MANAGER);
+      await recordSignedInRoleMig(page, testInfo, checks, MANAGER, 'Sales / Manager', 'Step 4', `${TC} - Step 4 role of the manager`);
       await opportunityPage.openByUrlReloaded(opp2Url);
       await openDealElementFromOpportunity(page);
       await dealElementPage.addOrderLineStrict(DISCOUNT_MIG.noProgramProduct, 1);
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '21.00');
       await dealElementPage.setPromotion(programName, { exact: true });
-      // run 2026-10-27 18:21: picking the CHANGED program raised "Access Error ... (Document model: nakivo.promotion) -
-      // (Operation: write, User: 9470)" for the salesperson - record what it said, shoot it BEFORE OK, skip the Save
+      // if the manager is refused as well, record what it said, shoot it BEFORE OK, skip the Save
       const pickError = await dealElementPage.readErrorDialog();
       if (pickError) {
         blocked4 = `${pickError.title}: ${pickError.message}`;
