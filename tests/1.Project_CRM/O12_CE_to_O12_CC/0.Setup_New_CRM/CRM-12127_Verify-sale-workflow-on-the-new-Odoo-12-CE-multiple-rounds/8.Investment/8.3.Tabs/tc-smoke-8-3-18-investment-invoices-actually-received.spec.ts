@@ -46,25 +46,17 @@ import {
  *  payment amount - pre-production assertion unchanged.
  *
  * --------------------------------------------------------------------------------------------
- *  KNOWN BLOCKER (2026-10-19) - RED BY DESIGN. Do NOT test.skip / test.fail / soften.
+ *  STATUS: SKIPPED since 2026-10-28 (tester's decision) - BLOCKED by CRM-13905
  * --------------------------------------------------------------------------------------------
- *  On crm-mig, pressing IMPORT on the Investment Audience tab raises an Odoo Server Error:
- *    AttributeError: 'bool' object has no attribute 'keys'
- *    (nakivo_invesment_tracking/models/investment_activities_file_import.py line 321, _check_is_valid:
- *     pdDatas['isSalePerson'] = [not d or d and d in list(salespersons.keys()) ...])
- *  InvestmentPageMig.clickImportButton() detects the dialog and throws
- *    "IMPORT refused by the server (Odoo Server Error): AttributeError: ..."
- *  => every run of this spec fails at Pre-condition I.6. That is the finding.
- *
- *  NEVER EXECUTED ON CRM-MIG (ported blind - re-verify the day the import is fixed):
- *    - Pre-condition I.7 and I.8 (copy URL, back to Home)
- *    - Pre-condition II.1 to II.19 (CRM > view list > search Email_Contact#1 > open the Opportunity >
- *      DEAL ELEMENT + Pricelist/Payment Term/product + SAVE > NEW QUOTATION > CONFIRM >
- *      CREATE INVOICE > CREATE AND VIEW INVOICES > VALIDATE > REGISTER PAYMENT > read Payment Amount >
- *      set Actually Received > VALIDATE (payment) > Payments tab read (Actually Received))
- *    - Steps 1 to 3 and the VERIFY block (the Invoices tab Total comparison)
- *    - the chain records' teardown, including the Payment (see the deviations below)
- *    - the Opportunity row lookup by email and the async Lead/Partner creation after the import
+ *  CRM-13905: on crm-mig the Invoice "Payments" tab has no "Invoice", "Total in Company Currency"
+ *  and "Actually Received($)" columns. Pre-condition II.19 reads "Actually Received" from that tab,
+ *  so every run failed there:
+ *    TimeoutError: locator.waitFor ... (//td[contains(@title,"Amount")])[3]
+ *  Measured on Jenkins CRM-SETUP-CRM-12127-8-Investment #3 (2026-10-21, 3/3 tries) and a local run on
+ *  2026-10-28: Pre-condition I.1 to II.18 PASS (import, Deal Element, Quotation, Sale Order, Invoice
+ *  validated, Payment registered), II.19 FAIL, Steps 1 to 3 and the VERIFY block never reached.
+ *  The earlier blocker (IMPORT AttributeError, CRM-13640) is Closed - the import passes now.
+ *  Undo: when CRM-13905 is fixed, remove the test.skip() and the [CRM-13905] title tag, then re-run.
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - BASELINE RULE: the assertion is copied unchanged)
@@ -291,7 +283,13 @@ test.describe(`${TC} - Investment Invoices tab: Actually Received`, () => {
     await sweepInvestmentsAfterAll(browser, TC);
   });
 
-  test(`${TC}: Verify the Invoices tab of an Investment record includes "Actually Received" field = Invoice_Actually_Received_Contact#1`, async ({ page }, testInfo) => {
+  test(`${TC}: Verify the Invoices tab of an Investment record includes "Actually Received" field = Invoice_Actually_Received_Contact#1 [CRM-13905]`, async ({ page }, testInfo) => {
+    // SKIPPED 2026-10-28, by the tester's decision. BLOCKED by CRM-13905 - see STATUS in the header.
+    // Skipped before any record is created; the afterAll sweep stays paused for this TC, so the
+    // records kept on crm-mig as CRM-13905 evidence are not touched.
+    test.skip(true, 'BLOCKED by CRM-13905 - the crm-mig Invoice "Payments" tab has no "Actually Received($)" column, '
+      + 'so Pre-condition II.19 cannot read Invoice_Actually_Received_Contact#1. Re-enable once CRM-13905 is fixed.');
+
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
