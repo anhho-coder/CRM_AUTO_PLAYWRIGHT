@@ -36,7 +36,7 @@ import {
  * Baseline         : Discount_1.10 (Jira CRM-13773; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-10-one-of-two-conditions-met.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0075
- * Source version   : master row CRM-12144_1.10 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row CRM-12144_1.10 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
@@ -71,6 +71,7 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-CustA-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
@@ -88,7 +89,6 @@ import {
  *  _ Advanced (customer condition) = customer name is Disc-CustA-<timestamp>
  *  _ Minimum quantity = 3
  *  Click Save and confirm the new version is the active one (top bar: Version N / active)
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-OppA-<timestamp>
  *  _ Customer = Disc-CustA-<timestamp>
@@ -110,7 +110,7 @@ import {
  *  5. The list contains QA-Disc-<timestamp> (both conditions met)
  *
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts; the crm-mig login is moved ahead of the companies
- *  (a company needs a session; the master lists the login after the row). Company names: the helper names each run's
+ *  (a company needs a session; the master listed the login after the row until 2026-10-30). Company names: the helper names each run's
  *  company Disc-Cust-<timestamp> (run A and run B have distinct timestamps); the master's Disc-CustA / Disc-CustB names
  *  are kept in STEP only (as in CRM-12144_1.4). Customer A = run, customer B = runB. The program is entered with the
  *  program form's labels ("Customer condition (Advanced)" -> "Advanced", "Min qty" -> "Minimum quantity"). Both runs are torn

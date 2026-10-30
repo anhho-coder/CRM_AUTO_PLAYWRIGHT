@@ -36,7 +36,7 @@ import {
  * Baseline         : none - no pre-production baseline (REQUIREMENT #8: written from the crm-mig manual TC; the
  *                    baseline set Discount_x.y stops at section 7)
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-SUPP-0002 (no redeployment)
- * Source version   : master row 74 as read 2026-10-27, steps 1 / 3 / 5 reworded to the Kanban path (tester decision
+ * Source version   : master row 74 as read 2026-10-27, steps 1 / 3 / 5 reworded to the Kanban path (tester decision (pre-condition order re-synced 2026-10-30)
  *                    2026-10-27, the CRM-12144_5.3 standard; master row 74 updated the same day) - re-check before
  *                    trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
@@ -89,11 +89,11 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
  *  _ Pricelist = Public Pricelist (USD)
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-Opp-<timestamp>
  *  _ Customer = Disc-Cust-<timestamp>
@@ -118,7 +118,7 @@ import {
  *  5. No step needed a code change or a redeployment of the CRM or the Discount Service
  *
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts; the crm-mig login is moved ahead of the company
- *  (a company cannot be created without a session; the master lists the login after it); company and opportunities
+ *  (a company cannot be created without a session; the master listed the login after it until 2026-10-30); company and opportunities
  *  through the Mig helpers; the opportunities are re-opened by URL after the Program-editor steps; "Advanced (customer
  *  condition) = customer name is X" is entered as the rule Payer > Name is X - crm-mig labels the order's customer
  *  "Payer" and the rule's code reads partner_id.name == "X" (read 2026-10-27); no Promo code is typed (the master gives

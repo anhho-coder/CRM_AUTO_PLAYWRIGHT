@@ -35,7 +35,7 @@ import {
  * Baseline         : Discount_1.2 (Jira CRM-13765; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-2-deal-element-before-valid-from.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-01
- * Source version   : master row CRM-12144_1.2 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row CRM-12144_1.2 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
@@ -70,6 +70,7 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
@@ -83,7 +84,6 @@ import {
  *  _ Advanced (customer condition) = customer name is Disc-Cust-<timestamp>
  *  _ Valid from = tomorrow 00:00:00 (UTC)
  *  Click Save and confirm the new version is the active one (top bar: Version N / active)
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-Opp-<timestamp>
  *  _ Customer = Disc-Cust-<timestamp>
@@ -100,7 +100,7 @@ import {
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts; company and opportunity through the Mig helpers;
  *  "Valid from" = tomorrow 00:00:00 UTC computed at run time (YYYY-MM-DD 00:00:00); the program is entered with the
  *  program form's labels ("Customer condition (Advanced)" goes to the form's "Advanced"); the crm-mig login is moved
- *  ahead of the company because a company needs a crm-mig session (the master lists the login after the row). Teardown =
+ *  ahead of the company because a company needs a crm-mig session (the master listed the login after the row until 2026-10-30). Teardown =
  *  teardownDiscountRunMig in afterEach + sweepDiscountRunsMig in afterAll.
  * ================================================================================================
  */

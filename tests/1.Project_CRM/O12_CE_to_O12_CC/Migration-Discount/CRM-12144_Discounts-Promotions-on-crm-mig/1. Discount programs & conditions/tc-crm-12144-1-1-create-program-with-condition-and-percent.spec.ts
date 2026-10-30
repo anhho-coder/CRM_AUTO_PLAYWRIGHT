@@ -38,7 +38,7 @@ import {
  * Baseline         : Discount_1.1 (Jira CRM-13764; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-1-create-program-with-condition-and-percent.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0073
- * Source version   : master row CRM-12144_1.1 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row CRM-12144_1.1 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
@@ -75,11 +75,11 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
  *  _ Pricelist = Public Pricelist (USD)
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-Opp-<timestamp>
  *  _ Customer = Disc-Cust-<timestamp>
@@ -106,7 +106,7 @@ import {
  *  in between); teardown = teardownDiscountRunMig in afterEach + sweepDiscountRunsMig in afterAll; the program is
  *  entered with the program form's labels ("Customer condition" goes to the form's "Advanced");
  *  the master row gives no Promo code and no For, so none are passed; the crm-mig login is moved
- *  ahead of the company because a company cannot be created without a session (the master lists the login after it).
+ *  ahead of the company because a company cannot be created without a session (the master listed the login after it until 2026-10-30).
  * ================================================================================================
  */
 

@@ -37,7 +37,7 @@ import {
  * Baseline         : Discount_2.6 (Jira CRM-13783; tests/1.Project_CRM/10.Sales_Module/Discount/2. Applying discounts to orders/
  *                    tc-discount-2-6-two-programs-at-the-same-time.spec.ts) - CRM-side assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0080, IS-CRM-FUNC-0096
- * Source version   : master row CRM-12144_2.6 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row CRM-12144_2.6 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
@@ -81,6 +81,7 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
@@ -93,7 +94,6 @@ import {
  *  _ For = (empty - the For field shows only for Specific products)
  *  _ Advanced (customer condition) = customer name is Disc-Cust-<timestamp>
  *  Click Save and confirm the new version is the active one (top bar: Version N / active)
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-Opp-<timestamp>
  *  _ Customer = Disc-Cust-<timestamp>
@@ -112,7 +112,7 @@ import {
  *  _ Deal registration = -164.50 (10% of 1,645.00)
  *
  *  Port notes (mechanical only): crm-mig host and *_crm_mig accounts; company and opportunity through the Mig helpers;
- *  the crm-mig login is moved ahead of the company (a company needs a session; the master lists the login after the row);
+ *  the crm-mig login is moved ahead of the company (a company needs a session; the master listed the login after the row until 2026-10-30);
  *  the program is entered with the program form's labels ("Customer condition (Advanced)" -> "Advanced"); Step 4 is the
  *  baseline's one-program assertion (see the Expected result conflict above). Teardown = teardownDiscountRunMig in
  *  afterEach + sweepDiscountRunsMig in afterAll.

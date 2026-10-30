@@ -38,7 +38,7 @@ import {
  * Baseline         : Discount_1.3 (Jira CRM-13766; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-3-quotation-program-ends-within-30-days.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-01, IS-CRM-FUNC-0076
- * Source version   : master row CRM-12144_1.3 as read 2026-10-21 - re-check before trusting this spec
+ * Source version   : master row CRM-12144_1.3 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    Step 1 = Administration / Settings user users.admin_crm_mig (Anh Ho);
@@ -77,6 +77,7 @@ import {
  *  Pre-running conditions:
  *  * Pre-conditions:
  *  Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)
+ *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new company in Contacts with:
  *  _ Name = Disc-Cust-<timestamp>
  *  _ Type = end customer (no Reseller, no Distributor)
@@ -90,11 +91,10 @@ import {
  *  _ Advanced (customer condition) = customer name is Disc-Cust-<timestamp>
  *  _ Valid to = <a day within the next 30 days> 23:59:59 (UTC)
  *  Click Save and confirm the new version is the active one (top bar: Version N / active)
- *  Login to crm-mig as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user
- *  Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-Opp-<timestamp>
  *  _ Customer = Disc-Cust-<timestamp>
+ *  Login to crm-mig as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user
  *
  *  Executed Steps:
  *  1. As the administrator, open Settings > Technical > Scheduled Actions (developer mode), open "NAKIVO Promotion: sync catalogue from Discount Service" and click Run Manually
