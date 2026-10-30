@@ -1520,6 +1520,166 @@ export class SupportDeskPageMig extends BasePage {
     if (still.length) throw new Error(`restoreMyDefaultTicketView: ${still.join(', ')} still differ after the restore`);
     return `default view ${snapshot.name} restored (${changed.join(', ')})`;
   }
+
+  // ─── 1. Ticket ownership (CRM-11859 Helpdesk A/B: TC-SEC-066 / TC-SEC-080) ─────────────────────────────────────
+
+  /** READ-ONLY REST, as the signed-in user: HD Ticket rows over `filters` with `fields`, bounded by `limit`. Throws on HTTP error. */
+  async listTicketsOverRest(filters: unknown[], fields: string[], limit: number): Promise<Array<Record<string, unknown>>> {
+    const res = await this.page.evaluate(async ([f, flds, l]) => {
+      const q = new URLSearchParams({ doctype: 'HD Ticket', fields: JSON.stringify(flds), filters: JSON.stringify(f), limit_page_length: String(l) });
+      const r = await fetch(`/api/method/frappe.client.get_list?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, [filters, fields, limit] as [unknown[], string[], number]);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.listTicketsOverRest: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return JSON.parse(res.body).message || [];
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: how many Communications (mails) the ticket's thread holds. Throws on HTTP error -
+   * a refusal is never read as an empty thread.
+   */
+  async countTicketCommunicationsOverRest(ticketName: string): Promise<number> {
+    const res = await this.page.evaluate(async (n) => {
+      const q = new URLSearchParams({ doctype: 'Communication', filters: JSON.stringify([['reference_doctype', '=', 'HD Ticket'], ['reference_name', '=', n]]) });
+      const r = await fetch(`/api/method/frappe.client.get_count?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, ticketName);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.countTicketCommunicationsOverRest(${ticketName}): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return Number(JSON.parse(res.body).message);
+  }
+
+  /**
+   * All Tickets list, quick filter "All" (the first box of the quick-filter row): type `text`, press Enter and wait for the
+   * list. FF SAVES it in the user's own default view (filter __nk_all LIKE, measured 2026-10-30) - take
+   * readMyDefaultTicketView() before and restoreMyDefaultTicketView() after.
+   */
+  async searchListAll(text: string): Promise<void> {
+    const box = this.page.locator('input[placeholder="All"]').first();
+    await box.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.fill(text, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.press('Enter', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Quick filter All = "${text}"`);
+  }
+
+  /**
+   * Clear every filter of the list - the X beside the "Filter N" button (e.g. the user's own status != Closed). SAVED in the
+   * user's own default view like a quick search. No-op when no filter is set.
+   */
+  async clearListFilters(): Promise<void> {
+    const filterBtn = this.page.getByRole('button', { name: /^Filter\b/ }).first();
+    await filterBtn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const label = ((await filterBtn.innerText({ timeout: CommonUtils.waitTimes.abnormalWait })) || '').replace(/\s+/g, ' ').trim();
+    if (!/\d/.test(label)) {
+      console.log('  - No list filter set');
+      return;
+    }
+    // The clear button is the second button of the "Filter N" group (an unnamed X icon, measured 2026-10-30).
+    await filterBtn.locator('xpath=..').locator('button').nth(1).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - List filters cleared (was "${label}")`);
+  }
+
+  /** The ticket names of the rows the list draws now (up to `n`), or [] when it shows "No tickets found". */
+  async getListTicketNamesOrNone(n: number): Promise<string[]> {
+    if (await this.page.getByText('No tickets found', { exact: true }).first().isVisible().catch(() => false)) return [];
+    return this.getListTicketNames(n);
+  }
+
+  /** CSS hook of what markListResult() tagged - for captureVerifyEvidence's highlight. */
+  static readonly LIST_HIT = '[data-pw-verify="list-hit"]';
+
+  /**
+   * Whether the ticket list DRAWS `text` (e.g. "(#374537)" - the end of a migrated ticket's subject; the Archived view draws
+   * its rows without ticket links, so the drawn text is read, not the links) and whether it shows "No tickets found". Tags
+   * the quick filter "All" box plus the matching row, else the empty-list message, for the verify shot (LIST_HIT).
+   */
+  async markListResult(text: string): Promise<{ shown: boolean; empty: boolean }> {
+    return this.page.evaluate((t) => {
+      document.querySelectorAll('[data-pw-verify]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const all = document.querySelector<HTMLElement>('input[placeholder="All"]');
+      if (all) all.setAttribute('data-pw-verify', 'list-hit');
+      const leaves = Array.from(document.querySelectorAll<HTMLElement>('body *')).filter((e) => e.children.length === 0 && e.offsetParent !== null);
+      const hit = leaves.find((e) => (e.textContent || '').includes(t));
+      const none = leaves.find((e) => (e.textContent || '').trim() === 'No tickets found');
+      const mark = hit ? ((hit.closest('a, [role="row"], tr') as HTMLElement | null) || hit) : none ? (none.parentElement || none) : null;
+      if (mark) mark.setAttribute('data-pw-verify', 'list-hit');
+      return { shown: !!hit, empty: !!none };
+    }, text);
+  }
+
+  /** markPanelRow() for several rows at once - each side-panel row whose caption is exactly one of `labels`. Returns how many were tagged. */
+  async markPanelRows(labels: string[]): Promise<number> {
+    return this.page.evaluate((ls) => {
+      document.querySelectorAll('[data-pw-verify]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      let n = 0;
+      for (const cap of Array.from(document.querySelectorAll<HTMLElement>('span[data-grace-area-trigger]'))) {
+        if (!ls.includes((cap.textContent || '').replace(/\s+/g, ' ').trim()) || cap.getBoundingClientRect().width === 0) continue;
+        const row = cap.parentElement?.parentElement as HTMLElement | null;
+        if (row) { row.setAttribute('data-pw-verify', 'panel-row'); n++; }
+      }
+      return n;
+    }, labels).catch(() => 0);
+  }
+
+  /** CSS hook of the Desk form controls tagged by readDeskTabFields() / readDeskCreatedTimestamp(). */
+  static readonly DESK_FIELD = '[data-pw-verify="desk-field"]';
+
+  /** Open the Desk form /app/hd-ticket/<name> and wait for its title (the ticket subject). Reads only - nothing is saved. */
+  async openDeskTicketForm(baseUrl: string, ticketName: string): Promise<void> {
+    await this.page.goto(`${baseUrl.replace(/\/$/, '')}/app/hd-ticket/${ticketName}`, { waitUntil: 'domcontentloaded' });
+    await this.page.locator('.page-title .title-text, .page-head h3').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Opened Desk form ${this.page.url()}`);
+  }
+
+  /**
+   * Desk form: click the tab `tab` and return the values of the controls `fieldnames` as drawn (input value, else the
+   * shown text; '' when the control is not drawn). Tags each control read (DESK_FIELD). Reads only.
+   */
+  async readDeskTabFields(tab: string, fieldnames: string[]): Promise<Record<string, string>> {
+    await this.page.getByRole('tab', { name: tab, exact: true }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    return this.page.evaluate((names) => {
+      document.querySelectorAll('[data-pw-verify="desk-field"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const out: Record<string, string> = {};
+      for (const n of names) {
+        const c = Array.from(document.querySelectorAll<HTMLElement>(`.frappe-control[data-fieldname="${n}"]`)).find((e) => e.offsetParent !== null);
+        if (!c) { out[n] = ''; continue; }
+        const input = c.querySelector('input, textarea') as HTMLInputElement | null;
+        const shown = (c.querySelector('.control-value, .like-disabled-input') as HTMLElement | null)?.innerText || '';
+        out[n] = ((input && input.value) || shown || '').replace(/\s+/g, ' ').trim();
+        c.setAttribute('data-pw-verify', 'desk-field');
+      }
+      return out;
+    }, fieldnames);
+  }
+
+  /**
+   * Desk form sidebar: the "<user> created this · <n> ago" line and its full timestamp - the title FF puts on the relative
+   * time, DD-MM-YYYY HH:mm:ss in the signed-in user's time zone. Tags the line (DESK_FIELD). { text: '', title: '' } when absent.
+   */
+  async readDeskCreatedTimestamp(): Promise<{ text: string; title: string }> {
+    return this.page.evaluate(() => {
+      document.querySelectorAll('[data-pw-verify="desk-field"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const ts = Array.from(document.querySelectorAll<HTMLElement>('.frappe-timestamp')).find((e) => /created this/.test(e.parentElement?.innerText || ''));
+      if (!ts || !ts.parentElement) return { text: '', title: '' };
+      ts.parentElement.setAttribute('data-pw-verify', 'desk-field');
+      return { text: ts.parentElement.innerText.replace(/\s+/g, ' ').trim(), title: ts.getAttribute('title') || '' };
+    });
+  }
+
+  /** READ-ONLY REST: the signed-in user's own time zone (User.time_zone) - the zone FF draws datetimes in for them. */
+  async readMyTimeZone(user: string): Promise<string> {
+    const res = await this.page.evaluate(async (u) => {
+      const q = new URLSearchParams({ doctype: 'User', fields: JSON.stringify(['time_zone']), filters: JSON.stringify([['name', '=', u]]) });
+      const r = await fetch(`/api/method/frappe.client.get_list?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, user);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.readMyTimeZone: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return String(((JSON.parse(res.body).message || [])[0] || {}).time_zone || '');
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

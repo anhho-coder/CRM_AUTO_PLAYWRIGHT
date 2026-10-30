@@ -2163,6 +2163,117 @@ export class HelpdeskPage extends BasePage {
     if ('error' in res) throw new Error(`HelpdeskPage.countTicketsOverRpc: ${res.error}`);
     return res.n;
   }
+
+  // ─── 1. Ticket ownership (CRM-11859 Helpdesk A/B: TC-SEC-066 / TC-SEC-080) ─────────────────────────────────────
+
+  /** One READ-ONLY JSON-RPC call_kw as the signed-in user. THROWS on an RPC error, so a refusal is never read as "nothing". */
+  private async callKwReadOnly(model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}): Promise<unknown> {
+    const res = await this.page.evaluate(async (p) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: p }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { result: j.result as unknown };
+    }, { model, method, args, kwargs });
+    if ('error' in res) throw new Error(`HelpdeskPage ${model}.${method}: ${res.error}`);
+    return res.result;
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY, as the signed-in user: helpdesk.ticket rows over `domain` (archived ones only when
+   * the domain names `active`), `order`ed and bounded by `limit`. Datetimes come back in UTC, many2one as [id, name].
+   */
+  async searchTicketsOverRpc(domain: unknown[], fields: string[], opts: { limit: number; order: string }): Promise<Array<Record<string, unknown>>> {
+    return (await this.callKwReadOnly('helpdesk.ticket', 'search_read', [domain, fields], { limit: opts.limit, order: opts.order })) as Array<Record<string, unknown>>;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: `fields` of the partner `partnerId`. THROWS when it does not exist. */
+  async readPartnerOverRpc(partnerId: number, fields: string[]): Promise<Record<string, unknown>> {
+    const rows = (await this.callKwReadOnly('res.partner', 'read', [[partnerId], fields])) as Array<Record<string, unknown>>;
+    if (!rows.length) throw new Error(`HelpdeskPage.readPartnerOverRpc(${partnerId}): no such partner`);
+    return rows[0];
+  }
+
+  /** CSS hook of the form rows tagged by readFormFieldsByName() - for captureVerifyEvidence's highlight. */
+  static readonly FORM_FIELD = '[data-pw-verify="odoo-field"]';
+
+  /**
+   * The values the open ticket form DRAWS (read mode) for the Odoo fields `names`: the text of the first VISIBLE widget of
+   * each (a many2one = its link text); '' when Odoo draws none (an empty field is hidden in read mode). Tags each field's
+   * label + value row (and the title for `name`) for the verify shot - FORM_FIELD. Reads only.
+   */
+  async readFormFieldsByName(names: string[]): Promise<Record<string, string>> {
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    return this.page.evaluate((list) => {
+      document.querySelectorAll('[data-pw-verify="odoo-field"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const out: Record<string, string> = {};
+      for (const n of list) {
+        const el = Array.from(document.querySelectorAll<HTMLElement>(`.o_form_view .o_field_widget[name="${n}"]`)).find((e) => e.offsetParent !== null);
+        out[n] = el ? (el.innerText || (el as HTMLInputElement).value || '').replace(/\s+/g, ' ').trim() : '';
+        if (!el) continue;
+        const row = (el.closest('tr') as HTMLElement | null) || (el.closest('.oe_title') as HTMLElement | null) || el;
+        row.setAttribute('data-pw-verify', 'odoo-field');
+      }
+      return out;
+    }, names);
+  }
+
+  /** The control-panel breadcrumb of the open form - the record's display name, e.g. "subject (#374559)". */
+  async getFormBreadcrumb(): Promise<string> {
+    const crumb = this.page.locator('.o_control_panel .breadcrumb li.active, .o_control_panel .breadcrumb-item.active').last();
+    await crumb.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return ((await crumb.innerText({ timeout: CommonUtils.waitTimes.abnormalWait })) || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * A stored UTC datetime ('YYYY-MM-DD HH:mm:ss') as THIS browser's Odoo web client draws it: MM/DD/YYYY HH:mm:ss in the
+   * browser's time zone (Odoo 12 converts with the browser offset). Lets a spec compare the drawn value to the stored one.
+   */
+  async formatUtcAsOdooDatetime(utc: string): Promise<string> {
+    return this.page.evaluate((v) => {
+      const d = new Date(`${v.replace(' ', 'T')}Z`);
+      const p = (x: number) => String(x).padStart(2, '0');
+      return `${p(d.getMonth() + 1)}/${p(d.getDate())}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+    }, utc);
+  }
+
+  /** Remove every facet of the control-panel search box (e.g. the user's own default favorite), so the action's own list shows. */
+  async clearSearchFacets(): Promise<void> {
+    for (let i = 0; i < 8; i++) {
+      const x = this.page.locator('.o_searchview_facet .o_facet_remove').first();
+      if ((await x.count()) === 0) break;
+      await x.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    console.log(`  - Search facets cleared (now: ${JSON.stringify(await this.getSearchFacets())})`);
+  }
+
+  /**
+   * Control-panel search box: type `text` and choose the option "Search <field> for: <text>" (e.g. field 'All' or
+   * 'Ticket ID'), then wait for the list. THROWS when Odoo does not offer that option.
+   */
+  async searchListFor(field: string, text: string): Promise<void> {
+    const box = this.page.locator('.o_searchview_input').first();
+    await box.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.type(text, { delay: 30, timeout: CommonUtils.waitTimes.abnormalWait });
+    const option = this.page.locator('.o_searchview_autocomplete li')
+      .filter({ hasText: new RegExp(`^\\s*Search ${escapeRegExp(field)} for:\\s*${escapeRegExp(text)}\\s*$`) }).first();
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.listOrEmptyHelper().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Search ${field} for: ${text} -> facets ${JSON.stringify(await this.getSearchFacets())}`);
+  }
+
+  /** CSS hook of the list (rows or the empty-list helper) - for captureVerifyEvidence's highlight. */
+  static readonly LIST_VIEW = '.o_list_view, .o_view_nocontent';
 }
 
 /** Escape a string for use inside a RegExp source. */
