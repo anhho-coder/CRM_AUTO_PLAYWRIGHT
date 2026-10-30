@@ -1344,7 +1344,8 @@ export class SupportDeskPageMig extends BasePage {
   /**
    * Header Actions > Schedule meeting: returns what the server answered (nakivo_helpdesk.meetings.form_defaults - its
    * `message`, e.g. "Please assign engineer to ticket") and the text shown on screen for it ('' when nothing is drawn within
-   * the bound). Measured 2026-10-28: on an unassigned ticket the server sends the message but nothing is drawn.
+   * the bound). The "Schedule meeting #N" drawer EMBEDS the Desk page "New NK Meeting" in a frame, and the message is a Desk
+   * "Message" dialog inside that frame - a top-document read sees nothing (TC-CUST-051_B false FAIL, tester 2026-10-30).
    */
   async scheduleMeetingFromActions(fragment: string): Promise<{ serverMessage: string; shown: string }> {
     const answer = this.page.waitForResponse((r) => /meetings\.form_defaults/.test(r.url()), { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
@@ -1352,14 +1353,60 @@ export class SupportDeskPageMig extends BasePage {
     const resp = await answer;
     let serverMessage = '';
     if (resp) { try { serverMessage = String(((await resp.json()).message || {}).message || ''); } catch { serverMessage = ''; } }
-    const shown = await this.waitForVisibleMessage(fragment, CommonUtils.waitTimes.long);
+    const shown = await this.waitForMessageInAnyFrame(fragment, CommonUtils.waitTimes.abnormalWait);
     return { serverMessage, shown };
   }
 
-  /** Whether a meeting-scheduling form (a dialog asking for the meeting's date / time / link) is on screen. Reads only. */
+  /** Bounded wait until a visible leaf text containing `fragment` is drawn in the page OR a frame embedded in it; '' when none. */
+  async waitForMessageInAnyFrame(fragment: string, timeout: number): Promise<string> {
+    const deadline = Date.now() + timeout;
+    do {
+      for (const frame of this.page.frames()) {
+        const text = await frame.evaluate((f) => {
+          const hit = Array.from(document.querySelectorAll('*')).find((e) => e.children.length === 0 && (e.textContent || '').includes(f) && e.getBoundingClientRect().width > 0);
+          return hit ? (hit.textContent || '').replace(/\s+/g, ' ').trim() : '';
+        }, fragment).catch(() => '');
+        if (text) return text;
+      }
+      await this.wait(CommonUtils.waitTimes.medium);
+    } while (Date.now() < deadline);
+    return '';
+  }
+
+  /**
+   * Outline (in `colour`) the visible message box holding `fragment`, in whichever frame draws it. captureVerifyEvidence
+   * outlines only top-document elements, so the outline is drawn inline here; the box also gets data-pw-verify="message".
+   */
+  async outlineMessageInAnyFrame(fragment: string, colour: string): Promise<boolean> {
+    for (const frame of this.page.frames()) {
+      const done = await frame.evaluate(({ f, colour }) => {
+        const leaf = Array.from(document.querySelectorAll<HTMLElement>('*')).find((e) => e.children.length === 0 && (e.textContent || '').includes(f) && e.getBoundingClientRect().width > 0);
+        if (!leaf) return false;
+        const box = (leaf.closest('.modal-content, .msgprint, [role="dialog"]') as HTMLElement) || leaf;
+        box.setAttribute('data-pw-verify', 'message');
+        box.style.outline = `3px solid ${colour}`;
+        box.style.outlineOffset = '2px';
+        return true;
+      }, { f: fragment, colour }).catch(() => false);
+      if (done) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Whether a meeting-scheduling form is on screen: a top-document dialog with inputs, or the drawer's embedded Desk page
+   * "New NK Meeting" (Dial Number / Access Code / Attendees). Reads only.
+   */
   async isMeetingFormOpen(): Promise<boolean> {
-    return this.page.evaluate(() => Array.from(document.querySelectorAll('[role="dialog"]')).some((d) => (d as HTMLElement).offsetParent !== null
+    const top = await this.page.evaluate(() => Array.from(document.querySelectorAll('[role="dialog"]')).some((d) => (d as HTMLElement).offsetParent !== null
       && /meeting/i.test((d as HTMLElement).innerText || '') && d.querySelectorAll('input, textarea, select').length > 0));
+    if (top) return true;
+    for (const frame of this.page.frames().filter((f) => f !== this.page.mainFrame())) {
+      const embedded = await frame.evaluate(() => (/nk-meeting/i.test(location.pathname) || /NK Meeting/.test(document.title))
+        && Array.from(document.querySelectorAll<HTMLElement>('input, textarea, select')).some((e) => e.offsetParent !== null)).catch(() => false);
+      if (embedded) return true;
+    }
+    return false;
   }
 
   /** The kanban's total "<n> tickets" (n = -1 when no such text is drawn). */

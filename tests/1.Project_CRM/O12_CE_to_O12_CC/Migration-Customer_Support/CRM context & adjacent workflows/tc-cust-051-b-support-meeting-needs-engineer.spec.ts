@@ -20,8 +20,8 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  * Data             : one unassigned probe ticket (+ its Contact) per run, DELETED in afterEach
  * Folder           : "CRM context & adjacent workflows" = Confluence 231246777 spec area of IS-CRM-FUNC-0289 (author's mapping)
  *
- * Summary: on an unassigned ticket, "Schedule meeting" must be refused with 'Please assign engineer to ticket'; the meeting
- * form must not open and nothing may be created.
+ * Summary: on an unassigned ticket, "Schedule meeting" must be refused with 'Please assign engineer to ticket' and nothing
+ * may be created (the meeting form opening behind the message is accepted - tester decision 2026-10-30, below).
  * Command to run: npx playwright test tc-cust-051-b-support --grep "TC-CUST-051_B:" --project=chromium-headless
  *
  *  Source manual TC : Helpdesk-AB-Test-Cases - Pre-pro.csv, record 381 = row TC-CUST-051 (refs E25, E25-T1, IN-009, AU-031) - 3 steps
@@ -41,6 +41,10 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *  [INTERNAL check, Call API] line) - the scored check is that the MESSAGE IS SHOWN, as the B expected says.
  *  UI vs TC (measured 2026-10-28): 'Schedule meeting' is an entry of the ticket header's Actions menu. "Nothing is created" is
  *  read from the same menu's "Meetings (N)" counter before and after (baseline-then-delta, must stay equal).
+ *  Measured 2026-10-30: the click opens a "Schedule meeting #N" drawer that EMBEDS the Desk page "New NK Meeting" (Dial
+ *  Number, Access Code, Attendees) in a frame; the message is a Desk "Message" dialog drawn over that form, inside the frame.
+ *  Tester decision 2026-10-30: the form opening behind the message is ACCEPTED - "the meeting form does not open" (B expected)
+ *  is printed as an INFO line, not scored. The scored checks are the message and "nothing is created".
  *
  * Evidence: Pre-condition 1 + 2 end shots; Step 1 end shot; Step 3 verify shots (the message; the Meetings counter);
  * afterEach start + end.
@@ -107,7 +111,7 @@ test.describe(`${TC} - Schedule meeting requires an engineer on the Support serv
     if (cleanupError) throw new Error(`afterEach cleanup: ${cleanupError}`);
   });
 
-  test(`${TC}: Schedule meeting requires an assigned engineer - B: Frappe Helpdesk refuses with 'Please assign engineer to ticket', no form, nothing created`, customerSupportBaselineDetails(TC), async ({ page }, testInfo) => {
+  test(`${TC}: Schedule meeting requires an assigned engineer - B: Frappe Helpdesk refuses with 'Please assign engineer to ticket', nothing created`, customerSupportBaselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     const desk = new SupportDeskPageMig(page);
     const checks: Check[] = [];
@@ -158,12 +162,14 @@ test.describe(`${TC} - Schedule meeting requires an engineer on the Support serv
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      const tagged = await desk.markVisibleMessage('assign engineer');
+      const shownOk = message.includes(MESSAGE);
+      // The message sits in the drawer's embedded frame, out of captureVerifyEvidence's reach - outlined there directly.
+      await desk.outlineMessageInAnyFrame('assign engineer', shownOk ? '#1a9641' : '#e03131');
       const formOpen = await desk.isMeetingFormOpen();
+      console.log(`  [INFO] the meeting form behind the message: ${formOpen ? 'New NK Meeting form open' : 'no meeting form'} - accepted by the tester 2026-10-30, not scored`);
       await recordChecks(page, testInfo, checks, [
-        { what: 'Step 3 the message', expected: `"${MESSAGE}" shown on screen`, actual: message ? `"${message.slice(0, 160)}"` : 'nothing shown (the server answered the message - see stdout)', passed: message.includes(MESSAGE) },
-        { what: 'Step 3 the meeting form does not open', expected: 'no meeting form on screen', actual: formOpen ? 'a meeting form is open' : 'no meeting form', passed: !formOpen },
-      ], `${TC} - Step 3 message`, tagged ? [SupportDeskPageMig.MESSAGE] : []);
+        { what: 'Step 3 the message', expected: `"${MESSAGE}" shown on screen`, actual: message ? `"${message.slice(0, 160)}"` : 'nothing shown (the server answered the message - see stdout)', passed: shownOk },
+      ], `${TC} - Step 3 message`);
       await page.keyboard.press('Escape').catch(() => {});
       await desk.openTicketByLink(baseUrl_support_mig, ticketName);
       const meetingsAfter = await meetingsEntry();
@@ -178,7 +184,7 @@ test.describe(`${TC} - Schedule meeting requires an engineer on the Support serv
       checks.forEach((c, i) => console.log(`  Verify #${i + 1} - ${c.what}:\n     Expected : ${c.expected}\n     Actual   : ${c.actual}\n     Result   : ${c.passed ? 'PASS' : 'FAIL'}`));
       console.log('===============================================');
       const failed = checks.filter((c) => !c.passed);
-      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => c.what).join('; ')}` : `OVERALL: PASS - '${MESSAGE}', no meeting form, nothing created`);
+      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => c.what).join('; ')}` : `OVERALL: PASS - '${MESSAGE}' and nothing created`);
       for (const c of checks) expect.soft(c.passed, `${c.what} - expected ${c.expected}, actual ${c.actual}`).toBe(true);
       expect(failed.map((c) => c.what), 'the meeting needs an engineer').toEqual([]);
     });
