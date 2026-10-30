@@ -19,6 +19,12 @@ export interface SupportProbe {
   subject: string;
   /** this run's unique Raised By address - FF creates a Contact named after it */
   contactEmail?: string;
+  /**
+   * Start of the run in the server's zone ('YYYY-MM-DD HH:mm:ss'). When set, the ticket's ToDo (assignment) and HD
+   * Notification rows CREATED SINCE then are deleted too - the assignments this run made. Ticket numbers are reused after a
+   * delete, so a row is never deleted on its ticket number alone.
+   */
+  since?: string;
 }
 
 /**
@@ -31,11 +37,21 @@ const TICKET_LINKED_ROWS: ReadonlyArray<{ doctype: string; field: string }> = [
   { doctype: 'HD Ticket Comment', field: 'reference_ticket' },
 ];
 
-async function clearTicketLinkedRows(api: APIRequestContext, ticket: string, log: string[]): Promise<void> {
+/** Assignment rows a run can cause on its own ticket - deleted only with `since` (rows created during the run). */
+const TICKET_ASSIGNMENT_ROWS: ReadonlyArray<{ doctype: string; field: string; extra: unknown[][] }> = [
+  { doctype: 'ToDo', field: 'reference_name', extra: [['reference_type', '=', 'HD Ticket']] },
+  { doctype: 'HD Notification', field: 'reference_ticket', extra: [] },
+];
+
+async function clearTicketLinkedRows(api: APIRequestContext, ticket: string, log: string[], since?: string): Promise<void> {
   const enc = (o: unknown) => encodeURIComponent(JSON.stringify(o));
-  for (const g of TICKET_LINKED_ROWS) {
+  const groups = [
+    ...TICKET_LINKED_ROWS.map((g) => ({ ...g, filters: [[g.field, '=', ticket]] as unknown[][] })),
+    ...(since ? TICKET_ASSIGNMENT_ROWS.map((g) => ({ ...g, filters: [[g.field, '=', ticket], ...g.extra, ['creation', '>=', since]] as unknown[][] })) : []),
+  ];
+  for (const g of groups) {
     const r = await api.get(
-      `/api/resource/${encodeURIComponent(g.doctype)}?fields=${enc(['name', g.field])}&filters=${enc([[g.field, '=', ticket]])}&limit_page_length=51`
+      `/api/resource/${encodeURIComponent(g.doctype)}?fields=${enc(['name', g.field])}&filters=${enc(g.filters)}&limit_page_length=51`
     );
     if (r.status() !== 200) throw new Error(`${g.doctype} of ticket ${ticket}: lookup answered HTTP ${r.status()}`);
     const rows: Array<Record<string, string>> = (await r.json()).data || [];
@@ -106,7 +122,7 @@ export async function deleteSupportProbeAsAdmin(
       }
       const doc = (await g.json()).data || {};
       if (doc.subject !== probe.subject) throw new Error(`ticket ${name} has subject "${doc.subject}", not this run's "${probe.subject}" - not deleted`);
-      await clearTicketLinkedRows(api, name, log);
+      await clearTicketLinkedRows(api, name, log, probe.since);
       await deleteTicketAndLinkedRows(api, name, log);
       const after = (await api.get(`/api/resource/HD Ticket/${name}`)).status();
       if (after !== 404) throw new Error(`ticket ${name}: still readable after the delete (HTTP ${after})`);
@@ -130,4 +146,35 @@ export async function deleteSupportProbeAsAdmin(
     await api.dispose();
   }
   return log;
+}
+
+/**
+ * READ-ONLY, as Administrator (an agent cannot read Email Queue): the Email Queue rows that reference HD Ticket `ticket` and
+ * were created since `since` (server zone 'YYYY-MM-DD HH:mm:ss'), with their recipients. At most 20 - more throws.
+ */
+export async function readTicketEmailQueueAsAdmin(
+  baseUrl: string,
+  admin: { username: string; password: string },
+  ticket: string,
+  since: string
+): Promise<Array<{ name: string; status: string; creation: string; recipients: string[] }>> {
+  const api = await request.newContext({ baseURL: baseUrl.replace(/\/$/, ''), ignoreHTTPSErrors: true });
+  const enc = (o: unknown) => encodeURIComponent(JSON.stringify(o));
+  try {
+    const lg = await api.post('/api/method/login', { data: { usr: admin.username, pwd: admin.password } });
+    if (lg.status() !== 200) throw new Error(`Administrator login refused: HTTP ${lg.status()}`);
+    const r = await api.get(`/api/resource/Email Queue?fields=${enc(['name', 'status', 'creation'])}&filters=${enc([['reference_doctype', '=', 'HD Ticket'], ['reference_name', '=', ticket], ['creation', '>=', since]])}&limit_page_length=21`);
+    if (r.status() !== 200) throw new Error(`Email Queue of ticket ${ticket}: lookup answered HTTP ${r.status()}`);
+    const rows: Array<{ name: string; status: string; creation: string }> = (await r.json()).data || [];
+    if (rows.length > 20) throw new Error(`more than 20 Email Queue rows for ticket ${ticket} since ${since}`);
+    const out: Array<{ name: string; status: string; creation: string; recipients: string[] }> = [];
+    for (const row of rows) {
+      const d = await api.get(`/api/resource/Email Queue/${encodeURIComponent(row.name)}`);
+      const doc = d.status() === 200 ? (await d.json()).data || {} : {};
+      out.push({ ...row, recipients: (doc.recipients || []).map((x: { recipient: string }) => x.recipient) });
+    }
+    return out;
+  } finally {
+    await api.dispose();
+  }
 }

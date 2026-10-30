@@ -1719,6 +1719,450 @@ export class HelpdeskPage extends BasePage {
     if ('error' in res) throw new Error(`HelpdeskPage.readStageOverRpc(${ticketId}): ${res.error}`);
     return res.stage;
   }
+
+  // ─── Service-level targets (CRM-11859 Helpdesk A/B batch 2: TC-FLOW-013 / 015 / 018 / 020) ────────────────
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY, as the signed-in user: `fields` of ticket `ticketId` as STORED - datetimes come
+   * back in UTC ('YYYY-MM-DD HH:mm:ss'), selections as their keys, many2one as [id, name]. Archived tickets included.
+   * THROWS on an RPC error or a missing ticket, so a refusal is never read as an empty value.
+   */
+  async readTicketOverRpc(ticketId: number | string, fields: string[]): Promise<Record<string, unknown>> {
+    const res = await this.page.evaluate(async ([id, flds]) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0', method: 'call',
+          params: { model: 'helpdesk.ticket', method: 'search_read', args: [[['id', '=', id], ['active', 'in', [true, false]]], flds], kwargs: { limit: 1 } },
+        }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { row: (j.result && j.result[0]) || null };
+    }, [Number(ticketId), fields] as [number, string[]]);
+    if ('error' in res) throw new Error(`HelpdeskPage.readTicketOverRpc(${ticketId}): ${res.error}`);
+    if (!res.row) throw new Error(`HelpdeskPage.readTicketOverRpc(${ticketId}): no such ticket`);
+    return res.row as Record<string, unknown>;
+  }
+
+  /**
+   * Set the priority of the open ticket form: EDIT, click the star `label` (Low = no star), SAVE. Does nothing when the
+   * form already shows `label` - a new CS ticket defaults to Medium, and clicking the star that is already the current
+   * level CLEARS it to Low (measured 2026-10-28). Throws when the save is blocked.
+   */
+  async setPriorityAndSave(label: string): Promise<void> {
+    if ((await this.getPriorityLabel()) === label) {
+      console.log(`  - Priority already "${label}" - left as is`);
+      return;
+    }
+    await this.clickEditTicket();
+    await this.setPriority(label);
+    if (!(await this.clickSaveTicket())) throw new Error(`setPriorityAndSave("${label}"): the form did not return to read mode after SAVE`);
+  }
+
+  // The control panel's "Filters" toggler and the items of its open dropdown (filters + the dividers between groups).
+  private readonly filtersToggler = () =>
+    this.page.locator("xpath=//button[contains(@class,'o_dropdown_toggler_btn')][normalize-space()='Filters']")
+      .or(this.page.locator('button.o_dropdown_toggler_btn').filter({ hasText: /^\s*Filters\s*$/ })).first();
+  private readonly filtersMenu = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_filters_menu') or contains(@class,'o_search_options')]//ul[contains(@class,'dropdown-menu') and contains(@class,'show')]")
+      .or(this.page.locator('.o_filters_menu.show, ul.o_filters_menu.show, .o_search_options .dropdown-menu.show')).first();
+  // A ticket's kanban card, found by a text its card carries (the subject).
+  private readonly kanbanCardWithText = (text: string) =>
+    this.page.locator('div.o_kanban_record:not(.o_kanban_ghost)').filter({ hasText: text }).first();
+
+  /** Open the control panel's "Filters" dropdown (it stays open for reading). */
+  async openFiltersMenu(): Promise<void> {
+    await this.filtersToggler().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    if (await this.filtersMenu().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false)) return;
+    await this.filtersToggler().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.filtersMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /** The entries of the OPEN Filters dropdown in screen order; each divider between groups reads '---'. Reads only. */
+  async getFiltersMenuEntries(): Promise<string[]> {
+    await this.openFiltersMenu();
+    return this.page.evaluate(() => {
+      const menu = Array.from(document.querySelectorAll('.o_filters_menu')).find((m) => (m as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
+      if (!menu) return [];
+      const out: string[] = [];
+      menu.querySelectorAll('a.dropdown-item, .dropdown-divider').forEach((e) => {
+        const el = e as HTMLElement;
+        if (el.classList.contains('dropdown-divider')) { if (out.length && out[out.length - 1] !== '---') out.push('---'); return; }
+        if (el.offsetParent === null) return;
+        const t = (el.innerText || '').replace(/\s+/g, ' ').trim();
+        if (t) out.push(t);
+      });
+      return out;
+    });
+  }
+
+  /** Control panel > Filters > the entry `label` (exact text); waits for the list to reload. Throws when the entry is absent. */
+  async chooseSearchFilter(label: string): Promise<void> {
+    await this.openFiltersMenu();
+    const item = this.page
+      .locator(`xpath=//a[contains(@class,'dropdown-item')][normalize-space()='${label}']`)
+      .or(this.page.locator('a.dropdown-item').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`) }))
+      .first();
+    if (!(await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false))) {
+      throw new Error(`chooseSearchFilter: no "${label}" entry in the Filters menu`);
+    }
+    await item.click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    console.log(`  - Filters > ${label} applied`);
+  }
+
+  /** Ticket ids of the first `n` list rows in screen order, read from the "(#id)" the Subject column carries. */
+  async getListRowTicketIds(n: number): Promise<string[]> {
+    await this.listOrEmptyHelper().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const texts = await this.listRows().evaluateAll((rows, max) => rows.slice(0, max as number).map((r) => (r as HTMLElement).innerText || ''), n);
+    return texts.map((t) => (t.match(/\(#(\d+)\)/) || [])[1] || '').filter(Boolean);
+  }
+
+  /** The Due Date the open form SHOWS (the visible `overdue` widget - the form carries a red and a plain one) and its CSS colour. */
+  async getVisibleDueDateStyle(): Promise<{ text: string; color: string }> {
+    return this.page.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('.o_form_view [name="overdue"]')).find((e) => (e as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
+      if (!el) return { text: '', color: '' };
+      return { text: (el.innerText || (el as HTMLInputElement).value || '').trim(), color: getComputedStyle(el).color };
+    });
+  }
+
+  /** On a kanban view: the Due Date block of the card showing `cardText` (the subject) - its text, class (oe_kanban_text_red / _black) and colour. */
+  async getKanbanCardDueDateStyle(cardText: string): Promise<{ found: boolean; text: string; className: string; color: string }> {
+    const card = this.kanbanCardWithText(cardText);
+    // isVisible() does not wait - give the kanban a bounded moment to draw the card.
+    if (!(await card.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long }).then(() => true).catch(() => false))) return { found: false, text: '', className: '', color: '' };
+    await card.scrollIntoViewIfNeeded().catch(() => {});
+    return card.evaluate((c) => {
+      const box = c.querySelector('[class*="oe_kanban_text_"]') as HTMLElement | null;
+      if (!box) return { found: true, text: '', className: '', color: '' };
+      box.setAttribute('data-pw-verify', 'kanban-due');
+      return { found: true, text: (box.innerText || '').trim(), className: box.className, color: getComputedStyle(box).color };
+    });
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY: the domain of the saved search (ir.filters, "Favorites") `name` on helpdesk.ticket
+   * that the signed-in user sees (his own or a shared one; his own wins), parsed from Odoo's Python-literal text into a
+   * JSON domain. THROWS when no such favorite exists - an unknown facet must never be read as "no condition".
+   */
+  async readSavedFilterDomain(name: string): Promise<unknown[]> {
+    const res = await this.page.evaluate(async (n) => {
+      const call = async (url: string, params: unknown) => (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params }) })).json();
+      const info = await call('/web/session/get_session_info', {});
+      const uid = info.result.uid as number;
+      const j = await call('/web/dataset/call_kw', { model: 'ir.filters', method: 'search_read', args: [[['model_id', '=', 'helpdesk.ticket'], ['name', '=', n], ['user_id', 'in', [uid, false]]], ['domain', 'user_id']], kwargs: { limit: 5 } });
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      const rows = (j.result || []) as Array<{ domain: string; user_id: [number, string] | false }>;
+      const row = rows.find((r) => r.user_id && r.user_id[0] === uid) || rows[0];
+      return { domain: row ? row.domain : null };
+    }, name);
+    if ('error' in res) throw new Error(`HelpdeskPage.readSavedFilterDomain("${name}"): ${res.error}`);
+    if (!res.domain) throw new Error(`HelpdeskPage.readSavedFilterDomain("${name}"): no saved search of that name`);
+    const json = res.domain.replace(/\(/g, '[').replace(/\)/g, ']').replace(/\bFalse\b/g, 'false').replace(/\bTrue\b/g, 'true').replace(/'/g, '"');
+    return JSON.parse(json) as unknown[];
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY, on the ticket list just opened: its action's context (e.g.
+   * "{'search_default_is_open': True}") and the signed-in user's OWN default saved search on that action, which Odoo applies
+   * instead ('' when he has none). Throws on an RPC error.
+   */
+  async readAllTicketsDefaults(): Promise<{ actionContext: string; myDefaultFavorite: string }> {
+    const res = await this.page.evaluate(async () => {
+      const call = async (url: string, params: unknown) => (await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params }) })).json();
+      const info = await call('/web/session/get_session_info', {});
+      const uid = info.result.uid as number;
+      // The action on screen (two actions are named "All Tickets" - measured 2026-10-28), from the URL's action=<id>.
+      const actionId = Number(((window.location.hash || '').match(/[#&]action=(\d+)/) || [])[1] || 0);
+      if (!actionId) return { error: `no action=<id> in the URL ${window.location.href}` };
+      const a = await call('/web/dataset/call_kw', { model: 'ir.actions.act_window', method: 'read', args: [[actionId], ['id', 'context']], kwargs: {} });
+      if (a.error || a.result.length !== 1) return { error: a.error ? String(a.error.data?.message || a.error.message) : `action ${actionId} not readable` };
+      const f = await call('/web/dataset/call_kw', { model: 'ir.filters', method: 'search_read', args: [[['model_id', '=', 'helpdesk.ticket'], ['is_default', '=', true], ['user_id', '=', uid], ['action_id', '=', a.result[0].id]], ['name']], kwargs: { limit: 1 } });
+      if (f.error) return { error: String(f.error.data?.message || f.error.message) };
+      return { actionContext: String(a.result[0].context), myDefaultFavorite: f.result.length ? String(f.result[0].name) : '' };
+    });
+    if ('error' in res) throw new Error(`HelpdeskPage.readAllTicketsDefaults: ${res.error}`);
+    return res;
+  }
+
+  /** The texts of list column `index` (0 = first data column, the row selector excluded) for the first `n` rows. */
+  async getListColumnTexts(index: number, n: number): Promise<string[]> {
+    await this.listOrEmptyHelper().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.listRows().evaluateAll((rows, [i, max]) => rows.slice(0, max).map((r) => {
+      const cells = Array.from(r.querySelectorAll('td')).filter((td) => !td.classList.contains('o_list_record_selector'));
+      return ((cells[i] as HTMLElement | undefined)?.innerText || '').replace(/\s+/g, ' ').trim();
+    }), [index, n] as [number, number]);
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: the names of the stages of team 1 Customer Support. Throws on an RPC error. */
+  async readCsStageNamesOverRpc(): Promise<string[]> {
+    const res = await this.page.evaluate(async () => {
+      const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: 'helpdesk.stage', method: 'search_read', args: [[['team_ids', 'in', [1]]], ['name']], kwargs: { limit: 60 } } }) });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { names: (j.result as Array<{ name: string }>).map((s) => s.name) };
+    });
+    if ('error' in res) throw new Error(`HelpdeskPage.readCsStageNamesOverRpc: ${res.error}`);
+    return res.names;
+  }
+
+  /** SEC checks: how many <img src="x"> elements the page holds (an executed `<img src=x onerror=...>` payload) and whether `text` is in the page's visible text. */
+  async inspectInjectedMarkup(text: string): Promise<{ injectedImages: number; textShown: boolean }> {
+    return this.page.evaluate((t) => ({
+      injectedImages: document.querySelectorAll('img[src="x"]').length,
+      textShown: (document.body.innerText || '').includes(t),
+    }), text);
+  }
+
+  // ─── CRM context (CRM-11859 batch 2: TC-CUST-051 / TC-CUST-074) ─────────────────────────────────────────────────
+
+  /**
+   * Chatter > Schedule activity > Activity Type "Schedule Support Meeting" > Meeting Type "Regular meeting", Assignee
+   * `activityAssignee` (both required by the dialog) > SAVE & OPEN CALENDAR, and return the warning
+   * Odoo shows ('' when none). The warning dialog is LEFT OPEN for the evidence shot - closeShownDialog() and
+   * discardActivityDialog() follow. Measured 2026-10-28: the type is a many2one autocomplete; the footer carries hidden
+   * twins of its buttons, so only the VISIBLE "SAVE & OPEN CALENDAR" is clicked.
+   */
+  async trySaveSupportMeetingAndOpenCalendar(activityAssignee: string): Promise<string> {
+    await this.page.locator('button.o_chatter_button_schedule_activity').first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialog = this.page.locator('.modal.show .modal-content').filter({ hasText: 'Activity' }).last();
+    await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const type = dialog.locator('[name="activity_type_id"] input:visible').first();
+    await type.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await type.fill('Schedule Support Meeting', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.autocompleteItems().filter({ hasText: 'Schedule Support Meeting' }).first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.autocompleteItems().filter({ hasText: 'Schedule Support Meeting' }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    // The type then asks for two REQUIRED fields (measured 2026-10-28): "Meeting Type" (a select) and the activity's
+    // "Assignee" (a many2one). With either empty SAVE does nothing, so the ticket's engineer check is never reached.
+    // Only the VISIBLE select that offers "Regular meeting" - the dialog's note editor carries hidden selects too.
+    const meetingType = dialog.locator('select:visible').filter({ has: this.page.locator('option', { hasText: 'Regular meeting' }) }).first();
+    if (await meetingType.count()) {
+      await meetingType.selectOption({ label: 'Regular meeting' }, { timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    // The activity's "Assignee" is mail.activity.support_user_id (many2one over the support team users; the plain user_id is
+    // hidden for a meeting - read from the view arch 2026-10-28).
+    const input = dialog.locator('[name="support_user_id"] input:visible').first();
+    if (await input.count()) {
+      await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await input.fill(activityAssignee, { timeout: CommonUtils.waitTimes.abnormalWait });
+      const item = this.autocompleteItems().filter({ hasText: activityAssignee }).first();
+      await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.medium);
+      console.log(`  - Activity Assignee = ${activityAssignee}`);
+    }
+    const btn = dialog.locator('.modal-footer button:visible').filter({ hasText: /^\s*SAVE & OPEN CALENDAR\s*$/i }).first();
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    return this.waitForMessageContaining('assign engineer');
+  }
+
+  /**
+   * Wait (bounded) for any visible text containing `fragment` - a warning dialog or a notification toast - and return the
+   * text of the box that holds it ('' when none appears). That box is tagged MESSAGE for the evidence outline.
+   * The holder is the INNERMOST visible element whose text carries the whole fragment, not a leaf: Odoo 12's warning
+   * dialog writes the message into div.o_dialog_warning with t-raw ("\n" -> <br/>), so that div has element children
+   * (TC-CUST-051_A read "(no message)" with the dialog on screen - 2026-10-28).
+   */
+  async waitForMessageContaining(fragment: string): Promise<string> {
+    const drawn = await this.page.waitForFunction(
+      (f) => Array.from(document.querySelectorAll('body *')).some((e) => (e.textContent || '').includes(f) && e.getBoundingClientRect().width > 0
+        && !Array.from(e.children).some((c) => (c.textContent || '').includes(f))),
+      fragment, { timeout: CommonUtils.waitTimes.abnormalWait }
+    ).then(() => true).catch(() => false);
+    if (!drawn) return '';
+    return this.page.evaluate((f) => {
+      document.querySelectorAll('[data-pw-verify="odoo-msg"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const holder = Array.from(document.querySelectorAll('body *')).find((e) => (e.textContent || '').includes(f) && e.getBoundingClientRect().width > 0
+        && !Array.from(e.children).some((c) => (c.textContent || '').includes(f))) as HTMLElement;
+      const box = (holder.closest('.modal-content, .o_notification, .o_dialog_warning') as HTMLElement) || holder;
+      box.setAttribute('data-pw-verify', 'odoo-msg');
+      return (box.innerText || '').replace(/\s+/g, ' ').trim();
+    }, fragment);
+  }
+
+  /** The message box tagged by waitForMessageContaining (for the evidence outline). */
+  static readonly MESSAGE = '[data-pw-verify="odoo-msg"]';
+
+  /** Discard the open "Activity" dialog (and any warning above it) with its DISCARD / close buttons. */
+  async discardActivityDialog(): Promise<void> {
+    for (let i = 0; i < 3 && (await this.page.locator('.modal.show').count()); i++) {
+      const discard = this.page.locator('.modal.show .modal-footer button:visible').filter({ hasText: /^\s*(DISCARD|Discard|Ok|OK|Close)\s*$/ }).last();
+      if (await discard.count()) await discard.click().catch(() => {});
+      else await this.page.keyboard.press('Escape').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: activities and calendar events linked to ticket `ticketId`. */
+  async countActivitiesAndEventsOverRpc(ticketId: number | string): Promise<{ activities: number; events: number }> {
+    const res = await this.page.evaluate(async (id) => {
+      const kw = async (model: string, args: unknown[]) => { const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method: 'search_count', args, kwargs: {} } }) }); return r.json(); };
+      const a = await kw('mail.activity', [[['res_model', '=', 'helpdesk.ticket'], ['res_id', '=', id]]]);
+      const e = await kw('calendar.event', [[['res_model', '=', 'helpdesk.ticket'], ['res_id', '=', id]]]);
+      if (a.error || e.error) return { error: String((a.error || e.error).data?.message || (a.error || e.error).message) };
+      return { activities: Number(a.result), events: Number(e.result) };
+    }, Number(ticketId));
+    if ('error' in res) throw new Error(`HelpdeskPage.countActivitiesAndEventsOverRpc(${ticketId}): ${res.error}`);
+    return res;
+  }
+
+  /** Whether the ticket view on screen is the LIST view (o_list_view drawn). */
+  async isListViewShown(): Promise<boolean> {
+    return this.page.locator('.o_list_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long }).then(() => true).catch(() => false);
+  }
+
+  // ─── Queue, ownership & team (CRM-11859 Helpdesk A/B batch 2: TC-FLOW-003, TC-UI-038, TC-SEC-018 / 019) ─────────
+
+  /** EDIT mode: the text input of char field `fieldName` (e.g. partner_email) - cleared, typed, then Tab. */
+  async setFormInputByName(fieldName: string, value: string): Promise<void> {
+    const input = this.page.locator(`xpath=//div[contains(@class,'o_form_view')]//input[@name='${fieldName}']`)
+      .or(this.page.locator(`.o_form_view input[name="${fieldName}"]`)).first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(value);
+    await input.press('Tab').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - ${fieldName} = "${value}"`);
+  }
+
+  /**
+   * In the ticket LIST on screen: CREATE, fill Subject and the optional Customer Email / Priority / Assigned to, SAVE once,
+   * and return the new id. Priority: a new ticket starts at Medium and clicking the current level clears it, so the star
+   * is clicked only when it differs. THROWS when the ticket is not created.
+   */
+  async createTicketWithFieldsInCurrentList(data: { subject: string; customerEmail?: string; priority?: string; assignedTo?: string }): Promise<string> {
+    const create = this.listCreateButton();
+    await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await create.click();
+    await this.waitForFormView(CommonUtils.waitTimes.abnormalWait);
+    const subj = this.subjectField();
+    await subj.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await subj.fill(data.subject);
+    if (data.customerEmail) await this.setFormInputByName('partner_email', data.customerEmail);
+    if (data.priority && (await this.getPriorityLabel()) !== data.priority) await this.setPriority(data.priority);
+    if (data.assignedTo) await this.setAssignedTo(data.assignedTo);
+    await this.formSaveButton().click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    const popup = await this.getBlockingPopupText(CommonUtils.waitTimes.long);
+    if (popup) throw new Error(`createTicketWithFieldsInCurrentList("${data.subject}") was blocked by a dialog: ${popup}`);
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.abnormalWait);
+    if (!/^\d+$/.test(id)) throw new Error(`createTicketWithFieldsInCurrentList("${data.subject}") did not yield a record id (got "${id}")`);
+    await this.stageBar().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log(`  - Created helpdesk ticket #${id} - Subject "${data.subject}"`);
+    return id;
+  }
+
+  /**
+   * EDIT mode: type `text` into "Assigned to" and return what its autocomplete OFFERS (item texts, "Search More..." and
+   * "Create ..." entries included as shown). Closes the dropdown with Escape unless `keepOpen` (for the evidence shot -
+   * closeAssignedToDropdown() follows); nothing is chosen.
+   */
+  async getAssignedToOptions(text: string, keepOpen = false): Promise<string[]> {
+    const input = this.assignedToInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await input.pressSequentially(text, { delay: 20 });
+    await this.autocompleteItems().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const items = (await this.autocompleteItems().allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (!keepOpen) await this.closeAssignedToDropdown();
+    return items;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: helpdesk team `teamId` - its name and members (login, name). Throws on an RPC error. */
+  async readTeamMembersOverRpc(teamId: number): Promise<{ name: string; members: Array<{ login: string; name: string }> }> {
+    const res = await this.page.evaluate(async (id) => {
+      const kw = async (model: string, method: string, args: unknown[], kwargs: unknown = {}) => (await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model, method, args, kwargs } }) })).json();
+      const t = await kw('helpdesk.team', 'read', [[id], ['name', 'member_ids']]);
+      if (t.error) return { error: String((t.error.data && t.error.data.message) || t.error.message) };
+      const team = t.result[0];
+      const u = await kw('res.users', 'read', [team.member_ids, ['login', 'name']]);
+      if (u.error) return { error: String((u.error.data && u.error.data.message) || u.error.message) };
+      return { name: String(team.name), members: (u.result as Array<{ login: string; name: string }>).map((x) => ({ login: x.login, name: x.name })) };
+    }, teamId);
+    if ('error' in res) throw new Error(`HelpdeskPage.readTeamMembersOverRpc(${teamId}): ${res.error}`);
+    return res;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: the assign method of helpdesk team `teamId` (manual / randomly / balanced). */
+  async readTeamAssignMethodOverRpc(teamId: number): Promise<string> {
+    const res = await this.page.evaluate(async (id) => {
+      const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: 'helpdesk.team', method: 'read', args: [[id], ['assign_method']], kwargs: {} } }) });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { method: String(j.result[0].assign_method) };
+    }, teamId);
+    if ('error' in res) throw new Error(`HelpdeskPage.readTeamAssignMethodOverRpc(${teamId}): ${res.error}`);
+    return res.method;
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY: whether an active user with `login` exists. (A helpdesk agent cannot read
+   * res.groups - its group membership is measured as an administrator and recorded in the spec header instead.)
+   */
+  async userExistsOverRpc(login: string): Promise<boolean> {
+    const res = await this.page.evaluate(async (l) => {
+      const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: 'res.users', method: 'search_count', args: [[['login', '=', l], ['active', '=', true]]], kwargs: {} } }) });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { n: Number(j.result) };
+    }, login);
+    if ('error' in res) throw new Error(`HelpdeskPage.userExistsOverRpc(${login}): ${res.error}`);
+    return res.n > 0;
+  }
+
+  /** Close the "Assigned to" autocomplete with Escape (nothing chosen). */
+  async closeAssignedToDropdown(): Promise<void> {
+    await this.assignedToInput().press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.short);
+  }
+
+  /** Selector of the open many2one autocomplete list (for the evidence outline). */
+  static readonly AUTOCOMPLETE = 'ul.ui-autocomplete';
+
+  /** EDIT mode: type `text` into "Assigned to" and press Enter (Odoo takes the first offered item, if any); returns the field's text after. */
+  async typeAssignedToAndEnter(text: string): Promise<string> {
+    const input = this.assignedToInput();
+    await input.click();
+    await input.fill('');
+    await input.pressSequentially(text, { delay: 20 });
+    await this.wait(CommonUtils.waitTimes.long);
+    await input.press('Enter');
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    return (await input.inputValue().catch(() => '')).trim();
+  }
+
+  /** Selector of the kanban Due Date block tagged by getKanbanCardDueDateStyle (for the evidence outline). */
+  static readonly KANBAN_DUE = '[data-pw-verify="kanban-due"]';
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY, as the signed-in user: search_count of helpdesk.ticket over `domain` (Odoo
+   * domain syntax). THROWS on an RPC error so a refusal is never read as 0.
+   */
+  async countTicketsOverRpc(domain: unknown[]): Promise<number> {
+    const res = await this.page.evaluate(async (d) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: 'helpdesk.ticket', method: 'search_count', args: [d], kwargs: {} } }),
+      });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { n: Number(j.result) };
+    }, domain);
+    if ('error' in res) throw new Error(`HelpdeskPage.countTicketsOverRpc: ${res.error}`);
+    return res.n;
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

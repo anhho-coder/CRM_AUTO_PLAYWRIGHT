@@ -95,7 +95,11 @@ export class SupportDeskPageMig extends BasePage {
    * hold text, and the server refuses a ticket with neither Raised By nor Contact ("Set the customer's e-mail or pick a
    * contact.") WITHOUT any toast - so the server's answer is read here and a refusal THROWS with its message.
    */
-  async createTicketFromList(data: { raisedBy: string; subject: string; description: string }): Promise<string> {
+  async createTicketFromList(data: {
+    raisedBy: string; subject: string; description: string;
+    /** optional right-panel comboboxes of the New Ticket form, picked before Submit */
+    priority?: string; assignedTo?: string; customer?: string;
+  }): Promise<string> {
     const create = this.headerButtonByLabel('Create');
     await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await create.click({ timeout: CommonUtils.waitTimes.abnormalWait });
@@ -106,6 +110,9 @@ export class SupportDeskPageMig extends BasePage {
     await this.newTicketDescriptionEditor().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.page.keyboard.type(data.description);
     await this.wait(CommonUtils.waitTimes.medium);
+    if (data.customer) await this.pickNewTicketCombobox('Customer company', data.customer);
+    if (data.priority) await this.pickNewTicketCombobox('Priority', data.priority);
+    if (data.assignedTo) await this.pickNewTicketCombobox('A member of the team', data.assignedTo);
     const submit = this.newTicketSubmitButton();
     if (await submit.isDisabled({ timeout: CommonUtils.waitTimes.abnormalWait })) {
       throw new Error('createTicketFromList: Submit is still disabled after Subject + Description were filled');
@@ -130,6 +137,27 @@ export class SupportDeskPageMig extends BasePage {
     await this.wait(CommonUtils.waitTimes.long);
     console.log(`  - Created ticket ${name} - Subject "${data.subject}"`);
     return name;
+  }
+
+  /**
+   * New Ticket form (/helpdesk/tickets/new), right panel: type the FIRST WORD of `option` into the combobox whose
+   * placeholder is `placeholder` ("Customer company", "Priority", "A member of the team") and click the first offered
+   * option CONTAINING the whole `option`. The agent search matches one word, not a full name ("Giang" offers
+   * "giang.le@nakivo.com Giang Le", "Giang Le" offers nothing - measured 2026-10-28). Throws when nothing matches.
+   */
+  async pickNewTicketCombobox(placeholder: string, option: string): Promise<void> {
+    const input = this.page.locator(`input[role="combobox"][placeholder="${placeholder}"]`).first();
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(option.split(/\s+/)[0], { timeout: CommonUtils.waitTimes.abnormalWait });
+    const item = this.page.locator('[role="option"]').filter({ hasText: option }).first();
+    // isVisible() does not wait; the options arrive after the search round-trip, so wait for the match (bounded).
+    if (!(await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false))) {
+      await this.page.keyboard.press('Escape').catch(() => {});
+      throw new Error(`pickNewTicketCombobox("${placeholder}"): no option containing "${option}" is offered`);
+    }
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - New Ticket form: ${placeholder} = "${option}"`);
   }
 
   /** READ-ONLY REST, as the signed-in user: the fields of one ticket this spec checks after creating it. */
@@ -1066,9 +1094,399 @@ export class SupportDeskPageMig extends BasePage {
       return '';
     }, [idx, subject] as [number, string]);
   }
+
+  // ─── Service-level targets / side panel rows (CRM-11859 Helpdesk A/B batch 2) ─────────────────────────────
+
+  // A side-panel row's VALUE cell: the sibling of the cell that holds the row caption (span[data-grace-area-trigger]).
+  private readonly sidePanelValueCell = (label: string) =>
+    this.page.locator(`xpath=//span[@data-grace-area-trigger and normalize-space()='${label}']/../following-sibling::div[1]`)
+      .or(this.page.locator('div.flex.gap-2').filter({ has: this.page.locator('span[data-grace-area-trigger]').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`) }) }).locator(':scope > div').nth(1))
+      .first();
+
+  /**
+   * The side-panel rows in on-screen order (top to bottom): the caption and the value its control shows. An empty control
+   * reads '' - FF draws an empty one as its placeholder "Set <label>..." (measured 2026-10-28), which is not a value. Rows
+   * FF hides while empty are not in the list. Reads only.
+   */
+  async getSidePanelRows(): Promise<Array<{ label: string; value: string }>> {
+    const rows = await this.page.evaluate(() => {
+      const caps = Array.from(document.querySelectorAll('span[data-grace-area-trigger]')) as HTMLElement[];
+      return caps.map((cap) => {
+        const row = cap.parentElement?.parentElement as HTMLElement | null;
+        const cell = row && row.children.length > 1 ? (row.children[1] as HTMLElement) : null;
+        let value = '';
+        if (cell) {
+          const ctl = cell.querySelector('input, textarea') as HTMLInputElement | null;
+          value = ctl ? ctl.value : (cell.innerText || '');
+        }
+        const r = cap.getBoundingClientRect();
+        return { label: (cap.textContent || '').replace(/\s+/g, ' ').trim(), value: value.replace(/\s+/g, ' ').trim(), top: r.top, visible: r.width > 0 && r.height > 0 };
+      });
+    });
+    return rows
+      .filter((r) => r.visible && r.label)
+      .sort((a, b) => a.top - b.top)
+      .map((r) => ({ label: r.label, value: /^Set .*\.\.\.$/.test(r.value) ? '' : r.value }));
+  }
+
+  /** The value the side-panel row `label` shows ('' when empty, hidden or absent). Reads only. */
+  async getSidePanelRowValue(label: string): Promise<string> {
+    const row = (await this.getSidePanelRows()).find((r) => r.label === label);
+    return row ? row.value : '';
+  }
+
+  /** Whether the side-panel row `label` is drawn. */
+  async isSidePanelRowShown(label: string): Promise<boolean> {
+    return (await this.getSidePanelRows()).some((r) => r.label === label);
+  }
+
+  /**
+   * Set the side-panel PRIORITY (the overview row "Priority": a combobox input whose placeholder is "Set Priority...") to
+   * `option` (Low / Medium / High / Urgent) and wait for the save.
+   */
+  async setSidePanelPriority(option: string): Promise<void> {
+    const input = this.sidePanelValueCell('Priority').locator('input[role="combobox"]').first();
+    await this.withSave(async () => {
+      await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.page.locator('[role="option"]').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.medium);
+      await this.pickDropdownOption(option);
+    });
+    console.log(`  - Priority = "${option}"`);
+  }
+
+  // ─── Ticket list: Filters menu, counts, saved list state (CRM-11859 batch 2: FLOW-020, UI-043/045/046/050/061) ─────
+
+  /**
+   * On the tickets list, open the header "Filters" menu (the preset views of nakivo_helpdesk.navigation.ticket_filters)
+   * and return its groups top to bottom: each group's heading ('' when it has none) and its entries. Leaves the menu OPEN
+   * (for the evidence shot); closeOpenMenu() closes it. Choosing nothing changes nothing.
+   */
+  async openFiltersMenuGroups(): Promise<Array<{ heading: string; entries: string[] }>> {
+    const btn = this.headerButtonByLabel('Filters');
+    await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.openMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    return this.page.evaluate(() => {
+      const menu = document.querySelector('[role="menu"]');
+      if (!menu) return [];
+      menu.setAttribute('data-pw-verify', 'menu');
+      return Array.from(menu.querySelectorAll('[data-slot="group"]')).map((g) => {
+        const entries = Array.from(g.querySelectorAll('[role="menuitem"]')).map((i) => ((i as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+        const all = ((g as HTMLElement).innerText || '').split('\n').map((t) => t.trim()).filter(Boolean);
+        const heading = all.length && !entries.includes(all[0]) ? all[0] : '';
+        return { heading, entries };
+      });
+    });
+  }
+
+  // ─── Assignee picker (CRM-11859 batch 2: TC-SEC-018) ─────────────────────────────────────────────────────────────
+
+  /**
+   * Side panel > Assignee: open the picker, type the first word of `text` and return the agents it OFFERS (one line per
+   * option). The picker is LEFT OPEN for the evidence shot - pickOfferedAssignee() or closeOpenMenu() follows.
+   */
+  async searchSidePanelAssignee(text: string): Promise<string[]> {
+    await this.sidePanelValueCell('Assignee').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await this.page.keyboard.type(text.split(/\s+/)[0], { delay: 40 });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    return this.page.evaluate(() => {
+      const box = Array.from(document.querySelectorAll('[role="dialog"], [role="listbox"]')).find((d) => (d as HTMLElement).offsetParent !== null) as HTMLElement | undefined;
+      if (!box) return [];
+      box.setAttribute('data-pw-verify', 'menu');
+      const lines = (box.innerText || '').split('\n').map((t) => t.trim()).filter((t) => t.length > 1);
+      return Array.from(new Set(lines));
+    });
+  }
+
+  /**
+   * In the open Assignee picker, click the option `label` and return what the server answered to the assignment
+   * (HTTP status + its message, '' when it accepted) - the caller reads the assignees afterwards.
+   */
+  async pickOfferedAssignee(label: string): Promise<{ status: number; message: string }> {
+    // The picker is a multi-select (a checkbox per agent): ticking one may only be sent when the picker closes.
+    const answer = this.page.waitForResponse((r) => r.request().method() === 'POST' && /assign/i.test(r.url()), { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+    await this.page.locator('[role="dialog"], [role="listbox"]').getByText(label, { exact: true }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    const resp = await answer;
+    await this.wait(CommonUtils.waitTimes.long);
+    if (!resp) return { status: 0, message: '(no assignment request was sent)' };
+    const body = await resp.text().catch(() => '');
+    return { status: resp.status(), message: resp.status() === 200 ? '' : serverMessage(body) };
+  }
+
+  /**
+   * [INTERNAL check, Call API] what Desk /app/hd-ticket/<n> > Assigned To > Add calls: frappe.desk.form.assign_to.add for
+   * `user`, as the signed-in user. Returns the HTTP status and the server's message ('' when it accepted).
+   */
+  async addAssignmentLikeDesk(ticketName: string, user: string): Promise<{ status: number; message: string }> {
+    const res = await this.page.evaluate(async ([n, u]) => {
+      // Desk keeps the token in frappe.csrf_token; the agent app in window.csrf_token.
+      const w = window as unknown as { csrf_token?: string; frappe?: { csrf_token?: string } };
+      const r = await fetch('/api/method/frappe.desk.form.assign_to.add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': (w.frappe && w.frappe.csrf_token) || w.csrf_token || '' },
+        body: JSON.stringify({ doctype: 'HD Ticket', name: n, assign_to: [u] }),
+      });
+      return { status: r.status, body: await r.text() };
+    }, [ticketName, user] as [string, string]);
+    const message = res.status === 200 ? '' : serverMessage(res.body);
+    // "Invalid Request" (HTTP 400) is Frappe's CSRF refusal - the call never reached the permission check, so it is NOT
+    // an answer to "may this user be assigned" and must never be read as one (measured 2026-10-28).
+    if (res.status === 400 && /Invalid Request/i.test(message)) throw new Error('addAssignmentLikeDesk: CSRF refusal ("Invalid Request") - the try did not reach the assignment rules');
+    return { status: res.status, message };
+  }
+
+  /** Desk (/app/...): wait until the document form has drawn (its page head and form layout). */
+  async waitForDeskForm(): Promise<void> {
+    await this.page.locator('.page-head, .form-layout').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Desk form drawn: ${this.page.url()}`);
+  }
+
+  /** READ-ONLY REST, as the signed-in user: the users of HD Team `team`. Throws on HTTP error. */
+  async getHdTeamUsers(team: string): Promise<string[]> {
+    const res = await this.page.evaluate(async (t) => {
+      const r = await fetch(`/api/resource/HD Team/${encodeURIComponent(t)}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, team);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.getHdTeamUsers("${team}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return ((JSON.parse(res.body).data || {}).users || []).map((u: { user: string }) => u.user);
+  }
+
+  /** READ-ONLY REST, as the signed-in user: whether the HD Agent `user` exists and its display name. Throws on HTTP error other than 404. */
+  async getHdAgent(user: string): Promise<{ exists: boolean; name: string; active: boolean }> {
+    const res = await this.page.evaluate(async (u) => {
+      const r = await fetch(`/api/resource/HD Agent/${encodeURIComponent(u)}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, user);
+    if (res.status === 404) return { exists: false, name: '', active: false };
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.getHdAgent("${user}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const d = JSON.parse(res.body).data || {};
+    return { exists: true, name: String(d.agent_name || ''), active: !!d.is_active };
+  }
+
+  /** READ-ONLY REST, as the signed-in user: whether an HD Customer named exactly `name` exists. Throws on HTTP error. */
+  async hdCustomerExists(name: string): Promise<boolean> {
+    const res = await this.page.evaluate(async (n) => {
+      const q = new URLSearchParams({ doctype: 'HD Customer', filters: JSON.stringify([['name', '=', n]]) });
+      const r = await fetch(`/api/method/frappe.client.get_count?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, name);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.hdCustomerExists("${name}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return Number(JSON.parse(res.body).message) > 0;
+  }
+
+  /** The open dropdown menu tagged by openFiltersMenuGroups (for the evidence outline). */
+  static readonly MENU = '[data-pw-verify="menu"]';
+
+  /**
+   * Filters menu > `label`: opens that preset view (?view=NK-VIEW-...) and waits for its list. A preset view does NOT
+   * change the user's own saved list state (the default HD View - measured 2026-10-28, `modified` unchanged).
+   */
+  async chooseFiltersMenuEntry(label: string): Promise<void> {
+    if (!(await this.openMenu().isVisible({ timeout: CommonUtils.waitTimes.short }).catch(() => false))) await this.openFiltersMenuGroups();
+    const item = this.openMenuItems().filter({ hasText: new RegExp(`^\\s*${escapeRegExp(label)}\\s*$`) }).first();
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.waitForURL(/[?&]view=/, { timeout: CommonUtils.waitTimes.pageLoad });
+    await this.ticketListLinks().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Filters > ${label} -> ${this.page.url()}`);
+  }
+
+  /** The list's column headers left to right (each header is a div[title] carrying a column-resize handle). Reads only. */
+  async getListColumnHeaders(): Promise<string[]> {
+    await this.ticketListLinks().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    return this.page.evaluate(() => {
+      const heads = Array.from(document.querySelectorAll('div[title]')).filter((d) => d.querySelector('.cursor-col-resize')) as HTMLElement[];
+      const out = heads.map((h) => ({ t: h.getAttribute('title') || '', x: h.getBoundingClientRect().left })).filter((h) => h.t);
+      const row = heads[0]?.parentElement;
+      if (row) row.setAttribute('data-pw-verify', 'list-head');
+      return out.sort((a, b) => a.x - b.x).map((h) => h.t);
+    });
+  }
+
+  /** READ-ONLY, as the signed-in user (frappe.client.get_list - an agent may not GET /api/resource/HD View): the filters of HD View `name`. */
+  async readHdViewFilters(name: string): Promise<string> {
+    const res = await this.page.evaluate(async (n) => {
+      const r = await fetch('/api/method/frappe.client.get_list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': (window as unknown as { csrf_token?: string }).csrf_token || '' },
+        body: JSON.stringify({ doctype: 'HD View', fields: ['name', 'filters'], filters: [['name', '=', n]], limit_page_length: 1 }),
+      });
+      return { status: r.status, body: await r.text() };
+    }, name);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.readHdViewFilters("${name}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const row = (JSON.parse(res.body).message || [])[0];
+    if (!row) throw new Error(`SupportDeskPageMig.readHdViewFilters("${name}"): no such HD View`);
+    return String(row.filters || '');
+  }
+
+  /** SEC checks: how many <img src="x"> elements the page holds (an executed `<img src=x onerror=...>` payload) and whether `text` is in the page's visible text. */
+  async inspectInjectedMarkup(text: string): Promise<{ injectedImages: number; textShown: boolean }> {
+    return this.page.evaluate((t) => ({
+      injectedImages: document.querySelectorAll('img[src="x"]').length,
+      textShown: (document.body.innerText || '').includes(t),
+    }), text);
+  }
+
+  /** Desk report view of HD Ticket (/app/hd-ticket/view/report), newest first - opened without a filter (nothing saved). */
+  async openDeskTicketReportView(baseUrl: string): Promise<void> {
+    await this.page.goto(`${baseUrl.replace(/\/$/, '')}/app/hd-ticket/view/report`, { waitUntil: 'domcontentloaded' });
+    await this.page.locator('.dt-scrollable, .result, .frappe-list').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Desk report view: ${this.page.url()}`);
+  }
+
+  /**
+   * Header Actions > Schedule meeting: returns what the server answered (nakivo_helpdesk.meetings.form_defaults - its
+   * `message`, e.g. "Please assign engineer to ticket") and the text shown on screen for it ('' when nothing is drawn within
+   * the bound). Measured 2026-10-28: on an unassigned ticket the server sends the message but nothing is drawn.
+   */
+  async scheduleMeetingFromActions(fragment: string): Promise<{ serverMessage: string; shown: string }> {
+    const answer = this.page.waitForResponse((r) => /meetings\.form_defaults/.test(r.url()), { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+    await this.chooseHeaderMenuItem('Schedule meeting');
+    const resp = await answer;
+    let serverMessage = '';
+    if (resp) { try { serverMessage = String(((await resp.json()).message || {}).message || ''); } catch { serverMessage = ''; } }
+    const shown = await this.waitForVisibleMessage(fragment, CommonUtils.waitTimes.long);
+    return { serverMessage, shown };
+  }
+
+  /** Whether a meeting-scheduling form (a dialog asking for the meeting's date / time / link) is on screen. Reads only. */
+  async isMeetingFormOpen(): Promise<boolean> {
+    return this.page.evaluate(() => Array.from(document.querySelectorAll('[role="dialog"]')).some((d) => (d as HTMLElement).offsetParent !== null
+      && /meeting/i.test((d as HTMLElement).innerText || '') && d.querySelectorAll('input, textarea, select').length > 0));
+  }
+
+  /** The kanban's total "<n> tickets" (n = -1 when no such text is drawn). */
+  async getKanbanTotal(): Promise<{ n: number; text: string }> {
+    const text = await this.page.evaluate(() => ((document.body.innerText || '').match(/\b(\d[\d,]*)\s+tickets?\b/i) || [''])[0]);
+    const m = text.match(/(\d[\d,]*)/);
+    return { n: m ? Number(m[1].replace(/,/g, '')) : -1, text };
+  }
+
+  /** The list header row tagged by getListColumnHeaders (for the evidence outline). */
+  static readonly LIST_HEAD = '[data-pw-verify="list-head"]';
+
+  /** The text of column `column` in the first `n` list rows (the cell under that header, matched by x position). */
+  async getListColumnCellTexts(column: string, n: number): Promise<string[]> {
+    return this.page.evaluate(([col, max]) => {
+      const head = Array.from(document.querySelectorAll('div[title]')).find((d) => d.getAttribute('title') === col && d.querySelector('.cursor-col-resize')) as HTMLElement | undefined;
+      if (!head) return [];
+      const hr = head.getBoundingClientRect();
+      const rows = Array.from(document.querySelectorAll('a[href^="/helpdesk/tickets/"]:not([href="/helpdesk/tickets/new"])')) as HTMLElement[];
+      return rows.slice(0, max as number).map((row) => {
+        const leaves = Array.from(row.querySelectorAll('*')).filter((e) => e.children.length === 0 && (e.textContent || '').trim()) as HTMLElement[];
+        const inCol = leaves.filter((e) => { const r = e.getBoundingClientRect(); return r.left >= hr.left - 2 && r.right <= hr.right + 40 && r.width > 0; });
+        return inCol.map((e) => (e.textContent || '').trim()).join(' ').replace(/\s+/g, ' ').trim();
+      });
+    }, [column, n] as [string, number]);
+  }
+
+  /** The list's "<shown> of <total>" counter as numbers (-1 when not drawn). */
+  async getListCounter(): Promise<{ shown: number; total: number; text: string }> {
+    const text = await this.page.evaluate(() => {
+      const m = (document.body.innerText || '').match(/(\d[\d,]*)\s*of\s*(\d[\d,]*)/);
+      return m ? m[0].replace(/\s+/g, ' ') : '';
+    });
+    const m = text.match(/(\d[\d,]*) of (\d[\d,]*)/);
+    return { shown: m ? Number(m[1].replace(/,/g, '')) : -1, total: m ? Number(m[2].replace(/,/g, '')) : -1, text };
+  }
+
+  /** Ticket numbers of the first `n` list rows, in screen order (read from the row links). */
+  async getListTicketNames(n: number): Promise<string[]> {
+    await this.ticketListLinks().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    const hrefs = await this.ticketListLinks().evaluateAll((els) => els.map((e) => ({ h: e.getAttribute('href') || '', top: e.getBoundingClientRect().top })));
+    const names: string[] = [];
+    for (const { h } of hrefs.sort((a, b) => a.top - b.top)) {
+      const name = (h.match(/^\/helpdesk\/tickets\/(\d+)/) || [])[1];
+      if (name && !names.includes(name)) names.push(name);
+      if (names.length >= n) break;
+    }
+    return names;
+  }
+
+  /** READ-ONLY REST, as the signed-in user: frappe.client.get_count of HD Ticket over `filters`. Throws on HTTP error. */
+  async countTicketsOverRest(filters: unknown): Promise<number> {
+    const res = await this.page.evaluate(async (f) => {
+      const q = new URLSearchParams({ doctype: 'HD Ticket', filters: JSON.stringify(f) });
+      const r = await fetch(`/api/method/frappe.client.get_count?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, filters);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.countTicketsOverRest: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return Number(JSON.parse(res.body).message);
+  }
+
+  /**
+   * READ-ONLY REST: the signed-in user's own default ticket view (HD View, is_default = 1, route TicketsAgent) - the record
+   * FF saves the All Tickets list state in (filters, order, columns). null when the user has none yet.
+   */
+  async readMyDefaultTicketView(user: string): Promise<{ name: string; filters: string; order_by: string; columns: string; rows: string } | null> {
+    // An agent may not GET /api/resource/HD View (403, measured 2026-10-28); frappe.client.get_list - what the list itself
+    // calls on load - is allowed.
+    const res = await this.page.evaluate(async (u) => {
+      const r = await fetch('/api/method/frappe.client.get_list', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': (window as unknown as { csrf_token?: string }).csrf_token || '' },
+        body: JSON.stringify({
+          doctype: 'HD View',
+          fields: ['name', 'filters', 'order_by', 'columns', 'rows'],
+          filters: [['user', '=', u], ['is_default', '=', 1], ['route_name', '=', 'TicketsAgent']],
+          limit_page_length: 2,
+        }),
+      });
+      return { status: r.status, body: await r.text() };
+    }, user);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.readMyDefaultTicketView: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const rows = JSON.parse(res.body).message || [];
+    if (rows.length > 1) throw new Error(`SupportDeskPageMig.readMyDefaultTicketView: ${rows.length} default views for ${user} - expected one`);
+    return rows[0] || null;
+  }
+
+  /**
+   * Put the signed-in user's own default ticket view back to `snapshot` (filters, order_by, columns, rows) when it differs -
+   * the deny-list restore of the ONE record a quick search changed. Returns what was done.
+   */
+  async restoreMyDefaultTicketView(user: string, snapshot: { name: string; filters: string; order_by: string; columns: string; rows: string }): Promise<string> {
+    const now = await this.readMyDefaultTicketView(user);
+    if (!now) return `default view ${snapshot.name} no longer exists - nothing restored`;
+    if (now.name !== snapshot.name) throw new Error(`restoreMyDefaultTicketView: the default view is now ${now.name}, not ${snapshot.name} - not touched`);
+    const keys = ['filters', 'order_by', 'columns', 'rows'] as const;
+    const changed = keys.filter((k) => (now[k] || '') !== (snapshot[k] || ''));
+    if (!changed.length) return `default view ${snapshot.name} unchanged - nothing to restore`;
+    const res = await this.page.evaluate(async ([name, values]) => {
+      const csrf = (window as unknown as { csrf_token?: string }).csrf_token || '';
+      const r = await fetch('/api/method/frappe.client.set_value', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Frappe-CSRF-Token': csrf },
+        body: JSON.stringify({ doctype: 'HD View', name, fieldname: values }),
+      });
+      return { status: r.status, body: (await r.text()).slice(0, 300) };
+    }, [snapshot.name, Object.fromEntries(changed.map((k) => [k, snapshot[k]]))] as [string, Record<string, string>]);
+    if (res.status !== 200) throw new Error(`restoreMyDefaultTicketView: HTTP ${res.status} ${res.body}`);
+    const after = await this.readMyDefaultTicketView(user);
+    const still = keys.filter((k) => (after?.[k] || '') !== (snapshot[k] || ''));
+    if (still.length) throw new Error(`restoreMyDefaultTicketView: ${still.join(', ')} still differ after the restore`);
+    return `default view ${snapshot.name} restored (${changed.join(', ')})`;
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** The user-facing message of a Frappe error answer (_server_messages, else exception, else the raw start). */
+function serverMessage(body: string): string {
+  try {
+    const j = JSON.parse(body);
+    if (j._server_messages) return JSON.parse(j._server_messages).map((m: string) => { try { return JSON.parse(m).message; } catch { return m; } }).join(' | ').replace(/<[^>]+>/g, '');
+    return String(j.exception || j.exc_type || body).slice(0, 300);
+  } catch {
+    return body.slice(0, 300);
+  }
 }

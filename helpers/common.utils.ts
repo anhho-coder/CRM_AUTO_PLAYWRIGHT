@@ -579,6 +579,7 @@ export class CommonUtils {
     leadMergingNotHappen: 90000,
     /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */
     leadMergeObservation: 300000,
+    helpdeskNoAutoAssignWait: 300000, // CRM-11859 TC-SEC-019: "Wait 5 minutes and reopen the ticket"
     /** Wait time for lead merging process (5 minutes) */
     leadMerging: 60000,
     /** Short wait - 300ms (for quick UI updates, dropdowns) */
