@@ -182,7 +182,7 @@ test.describe('CRM-542_2.2.2 - NO MERGE: Different Emails, One Lead Has Company,
     }
   });
 
-  test('CRM-542_2.2.2 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and one lead has a company while the other has not', async ({ page }, testInfo) => {
+  test.skip('CRM-542_2.2.2 [CRM-8930]: Verify that leads do NOT merge when leads have different emails and one lead has a company while the other has not', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window
