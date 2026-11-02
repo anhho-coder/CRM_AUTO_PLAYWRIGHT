@@ -17,9 +17,9 @@ import {
  *  Baseline        : CRM-542_1.2.1.1 (Jira CRM-8899) - assertions ported unchanged
  *                    tests/1.Project_CRM/3.Lead_Merging/CRM-542_Lead_merging_rules_updated/1.Leads-are-qualified-to-be-merged/1.2.Multiple-leads-same-public-domain-email/1.2.1.Leads-with-different-priority-if/tc-crm-542-1-2-1-1-merge-leads-public-domain-ib-renewal.spec.ts
  *  Source version  : CRM-8899 updated 2026-03-20T05:33+0200 - re-check before trusting this spec
- *  Bug (SKIPPED)   : CRM-14065 - after the PUBLIC-domain merge crm-mig empties Company Name on both leads; pre-production
- *                    keeps it (Step 3.2 / 7.2 FAIL, run 2026-11-02 10:44). Skipped on the tester's request 2026-11-02;
- *                    un-skip when CRM-14065 is fixed.
+ *  Bug (RESOLVED)  : CRM-14065 - after the PUBLIC-domain merge crm-mig emptied Company Name on both leads; pre-production
+ *                    keeps it (Step 3.2 / 7.2 FAIL, run 2026-11-02 10:44). Resolved 2026-11-02 (fix on crm-mig);
+ *                    un-skipped on the tester's request 2026-11-02 to re-verify.
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -134,7 +134,7 @@ import {
  */
 
 const TC = 'CRM-12370_9.1.3';
-const SKIP_CLEANUP_MIG = true;
+const SKIP_CLEANUP_MIG = false;
 
 /** Step labels - one source of truth for the test.step() label AND the stdout banner. */
 const STEP = {
@@ -190,9 +190,7 @@ test.describe(`${TC} - Lead Merging: Same Public Domain Email with Different Pri
     await sweepLeadMergingRunsAfterAll(browser, SKIP_CLEANUP_MIG);
   });
 
-  // Skipped due to bug CRM-14065 (Company Name emptied after a public-domain merge on crm-mig) - declaration-level skip,
-  // so no browser starts and no record is created; un-skip when CRM-14065 is fixed.
-  test.skip(`${TC}: [CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead) [CRM-14065]`, baselineDetails(TC), async ({ page }, testInfo) => {
+  test(`${TC}: [CRM-11289] Verify merging lead happens successfully when leads from same public domain email with different priority (IB renewal lead) [CRM-14065]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const leadPage = new LeadPageMig(page);

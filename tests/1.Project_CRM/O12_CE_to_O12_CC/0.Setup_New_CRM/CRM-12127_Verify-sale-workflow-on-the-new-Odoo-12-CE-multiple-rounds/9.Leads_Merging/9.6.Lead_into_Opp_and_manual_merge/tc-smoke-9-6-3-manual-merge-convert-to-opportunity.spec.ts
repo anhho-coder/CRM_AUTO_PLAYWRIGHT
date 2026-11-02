@@ -13,23 +13,22 @@ import {
  *  CRM-12370_9.6.3 - Manual merge of a Lead into an Opp via "Convert to Opportunity" (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.6.3
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-02
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-10066_1.1 (Jira CRM-11418) - assertions ported unchanged
  *                    tests/1.Project_CRM/3.Lead_Merging/Manual_Lead_Merging_test_cases/CRM-10066_Cannot-make-manual-merging-using-Conver_to_opportunity-option/tc-crm-10066-1-1-manual-merge-convert-to-opportunity.spec.ts
  *  Source version  : CRM-11418 updated 2026-07-07T06:39+0300 - re-check before trusting this spec
- *  Status          : SKIPPED - blocked by CRM-14066 (2026-11-02)
+ *  Status          : UN-SKIPPED 2026-11-02 - CRM-14066 Resolved (fix on crm-mig), re-verify
  *
  * --------------------------------------------------------------------------------------------
- *  Blocked by CRM-14066
+ *  Was blocked by CRM-14066 (Resolved 2026-11-02)
  * --------------------------------------------------------------------------------------------
- *  On crm-mig, CONVERT TO OPPORTUNITY on a Lead opens "Odoo Server Error" instead of the wizard
- *  (nakivo_sale/models/crm_lead.py:361 searches crm.team on 'merge_leads', a field crm-mig does not have), so Step 4
- *  can never be reached. Last run 2026-10-30: Step 4 FAIL, reproduced 2/2. Pre-prod baseline CRM-10066_1.1 re-run
- *  2026-11-02: PASS. The whole describe block is skipped by test.skip(true, BLOCKED_BY) at describe level, so its
- *  afterEach / afterAll hooks do not run either (nothing is created on crm-mig). Un-skip once CRM-14066 is fixed.
+ *  On crm-mig, CONVERT TO OPPORTUNITY on a Lead opened "Odoo Server Error" instead of the wizard
+ *  (nakivo_sale/models/crm_lead.py:361 searches crm.team on 'merge_leads', a field crm-mig did not have), so Step 4
+ *  could never be reached. Run 2026-10-30: Step 4 FAIL, reproduced 2/2. Pre-prod baseline CRM-10066_1.1 re-run
+ *  2026-11-02: PASS. Skip lifted on the tester's request 2026-11-02 after CRM-14066 was resolved.
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -48,8 +47,6 @@ import {
  *  - Login users.admin_crm_mig on baseUrl_mig; CRM lists opened by URL hash (HomePageMig).
  *  - Notebook tabs (CRM Developer) opened inline or through the form's "More (N)" dropdown (LeadPageMig /
  *    OpportunityPageMig): the crm-mig form folds overflow tabs there.
- *  - Data substituted: Lead #1 Sale Team IBSA -> BDEU. crm.team has NO "IBSA" on crm-mig, active or archived (read
- *    2026-10-30); the scenario only needs the Lead's team to differ from Opp #1's CMR, which BDEU keeps.
  *  - Run marker: e-mails <local>@ap14test-crm12370-9-6-3-<runId>.com, names "... CRM-12370_9.6.3 <runId>".
  *  - Lead #1 is not queued for deletion: the manual merge unlinks it. If it survived, the afterEach finds it by
  *    the run marker and deletes it with Opp #1 and the partners carrying the marker.
@@ -86,14 +83,13 @@ import {
  */
 
 const TC = 'CRM-12370_9.6.3';
-const SKIP_CLEANUP_MIG = true;
-const BLOCKED_BY = 'Convert to Opportunity raises Odoo Server Error on crm-mig - blocked by CRM-14066';
+const SKIP_CLEANUP_MIG = false;
 
 /** Step labels - one source of truth for the test.step() label AND the stdout banner. */
 const STEP = {
   pre: 'Pre-condition: Login and open CRM (crm-mig: CRM > Leads opened by URL hash - the sidebar theme hides the top menu)',
   s1: 'Step 1: Create Opp#1 (Email, Lead Form=License, Company=test123, Address, Sale Team=CMR, Status=NEW)',
-  s2: 'Step 2: Create Lead#1 (Email same-domain, Lead Form=IB NC Leads, Company=test123, Address, Sale Team=IBSA -> BDEU on crm-mig)',
+  s2: 'Step 2: Create Lead#1 (Email same-domain, Lead Form=IB NC Leads, Company=test123, Address, Sale Team=IBSA)',
   s3: 'Step 3: Select Lead#1, press "Convert to Opportunity" button',
   s4: 'Step 4: Select option "Merge with existing opportunities"',
   s5: 'Step 5: Select "Add a line" and filter all Opp with Email = Opp#1 email',
@@ -103,14 +99,12 @@ const STEP = {
 } as const;
 
 const OPP1_TEAM = 'CMR';
-/** baseline: IBSA - absent on crm-mig, see header */
-const LEAD1_TEAM = 'BDEU';
+/** baseline value - on crm-mig IBSA is the display name (nakivo_name) of crm.team 20 "Install Base" */
+const LEAD1_TEAM = 'IBSA';
 
 let run: LeadMergingRun | undefined;
 
 test.describe(`${TC} - Manual merge via "Convert to Opportunity" option completes`, () => {
-  test.skip(true, BLOCKED_BY); // CRM-14066
-
   test.afterEach(async ({ page }, testInfo) => {
     await teardownLeadMergingRun(page, testInfo, run, SKIP_CLEANUP_MIG);
   });
