@@ -17,7 +17,15 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 
 export const SUBSCRIPTION_PRICELIST_USD = 'Public Pricelist_USD (USD)';
+/**
+ * The EUR-currency public pricelist, as the picker LABELS it.
+ * Do not type this string into the picker - Odoo's name_search would filter this record out and
+ * leave only the USD-currency trap named "Public Pricelist_EUR (EUR)". Type
+ * SUBSCRIPTION_PRICELIST_EUR_SEARCH instead and match this label exactly.
+ */
 export const SUBSCRIPTION_PRICELIST_EUR = 'Public Pricelist_EUR (EUR)';
+/** What to TYPE to reach the EUR pricelist above. */
+export const SUBSCRIPTION_PRICELIST_EUR_SEARCH = 'Public Pricelist_EUR';
 
 /** Template names exactly as shown in Subscriptions > Configuration > Subscription Templates. */
 export const TEMPLATE_MONTHLY_AUTOCHARGE = 'Monthly Subscription';
@@ -132,7 +140,9 @@ export async function createSubscription(
     console.log(`  - Subscription Template : ${opts.template}`);
     console.log(`  - Start Date            : ${startDate}`);
     await subscriptionPage.fillMany2One('partner_id', opts.customerName, true);
-    await subscriptionPage.fillMany2One('pricelist_id', pricelist);
+    // setPricelist types the bare name and demands an EXACT label match - see its doc for the
+    // "<name> (<currency>)" collision that made a USD pricelist answer to an EUR request.
+    await subscriptionPage.setPricelist(pricelist);
     await subscriptionPage.fillMany2One('template_id', opts.template);
     await subscriptionPage.setDateField('date_start', startDate);
   });

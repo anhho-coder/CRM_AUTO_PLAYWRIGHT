@@ -309,43 +309,82 @@ export class CommonUtils {
     opts: {
       /** Attachment name WITHOUT the verdict suffix, e.g. "CRM-12370_3.2.5 - Print menu". */
       name: string;
-      /** The verdict this shot proves - drives the outline colour and the name suffix. */
-      passed: boolean;
+      /**
+       * The verdict this shot proves - drives the outline colour and the name suffix. 'read' = a value captured
+       * BEFORE any comparison: blue outline, caption "READ", name suffix " - READ" - the shot claims no verdict.
+       */
+      passed: boolean | 'read';
       /** CSS selector(s) of what the check read (the open dropdown, the row, the field, the dialog). */
       highlight?: string | string[];
+      /**
+       * One shot for several checks read on the SAME screen state: each element outlined in the colour of ITS OWN
+       * checks (green PASS / red FAIL), the banner carrying the overall verdict. A merged single colour painted the
+       * passing fields red (CRM-12370_9.1.3 Step 3, 2026-10-30: Tags / Sales Team / Email red for a Company Name FAIL).
+       */
+      outlines?: { selector: string; passed: boolean }[];
       /** The VERIFY lines burned into the image - normally the same strings printed on stdout. */
       lines?: string[];
       /** Which corner the caption sits in. Default 'top-right'. */
       corner?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
     }
   ): Promise<void> {
-    const selectors = typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || []);
-    const verdict = opts.passed ? 'PASS' : 'FAIL';
-    const colour = opts.passed ? '#1a9641' : '#e03131';
+    const verdict = opts.passed === 'read' ? 'READ' : opts.passed ? 'PASS' : 'FAIL';
+    const colour = opts.passed === 'read' ? '#1c7ed6' : opts.passed ? '#1a9641' : '#e03131';
+    // every selector carries its own outline colour: `highlight` takes the shot's verdict, `outlines` their own
+    const marks = [
+      ...(typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || [])).map((selector) => ({ selector, colour })),
+      ...(opts.outlines || []).map((o) => ({ selector: o.selector, colour: o.passed ? '#1a9641' : '#e03131' })),
+    ];
+    const selectors = marks.map((m) => m.selector);
     let decorated = false;
     try {
       const hits = await page.evaluate(
-        ({ selectors, colour, verdict, lines, corner }) => {
+        ({ marks, colour, verdict, lines, corner }) => {
           try {
             const TAG = '__pwVerifyEvidence';
             const HIT = '__pwVerifyHit';
             document.querySelectorAll('.' + TAG).forEach((n) => n.remove());
-            document.querySelectorAll('.' + HIT).forEach((n) => n.classList.remove(HIT));
+            document.querySelectorAll('.' + HIT).forEach((n) => {
+              n.classList.remove(HIT, HIT + 'Pass', HIT + 'Fail');
+            });
 
             const style = document.createElement('style');
             style.className = TAG;
-            style.textContent =
-              '.' + HIT + '{outline:3px solid ' + colour + ' !important;outline-offset:2px !important;' +
+            const rule = (cls: string, c: string) =>
+              '.' + cls + '{outline:3px solid ' + c + ' !important;outline-offset:2px !important;' +
               'box-shadow:0 0 0 6px rgba(224,49,49,.12) !important;border-radius:3px !important;}';
+            style.textContent = rule(HIT, colour) + rule(HIT + 'Pass', '#1a9641') + rule(HIT + 'Fail', '#e03131');
             document.head.appendChild(style);
 
+            // Only a RENDERED element counts as marked: a DOM match that is hidden (display:none, an Odoo
+            // o_invisible_modifier, visibility:hidden) or has no size draws no outline on the shot.
+            // Counted PER SELECTOR, so one dead selector in a multi-selector call is reported too
+            // (review 2026-10-26, CRM-12144_4.3 / 7.5: hidden fields were "hits" and no warning fired).
+            const rendered = (el: Element): boolean => {
+              const r = (el as HTMLElement).getBoundingClientRect();
+              if (!(r.width > 0 && r.height > 0)) return false;
+              const cs = getComputedStyle(el as HTMLElement);
+              return cs.visibility !== 'hidden' && cs.display !== 'none';
+            };
             let hits = 0;
-            selectors.forEach((sel) =>
-              document.querySelectorAll(sel).forEach((el) => {
-                (el as HTMLElement).classList.add(HIT);
-                hits++;
-              })
-            );
+            const invalid: string[] = [];
+            const dead: string[] = [];
+            marks.forEach(({ selector: sel, colour: own }) => {
+              // one invalid selector (e.g. jQuery's ':visible') must not drop the banner and the other outlines
+              let found: NodeListOf<Element>;
+              try { found = document.querySelectorAll(sel); } catch { invalid.push(sel); return; }
+              const cls = own === colour ? HIT : own === '#1a9641' ? HIT + 'Pass' : HIT + 'Fail';
+              let shown = 0;
+              found.forEach((el) => {
+                if (!rendered(el)) return;
+                (el as HTMLElement).classList.add(HIT, cls);
+                shown++;
+              });
+              if (!shown) dead.push(sel + (found.length ? ` (${found.length} in the DOM, none visible)` : ''));
+              hits += shown;
+            });
+            (window as unknown as { __pwVerifyInvalid?: string[] }).__pwVerifyInvalid = invalid;
+            (window as unknown as { __pwVerifyDead?: string[] }).__pwVerifyDead = dead;
 
             if (lines && lines.length) {
               const place =
@@ -365,7 +404,7 @@ export class CommonUtils {
               );
               const head = document.createElement('div');
               head.setAttribute('style', 'font-weight:700;margin-bottom:4px;color:' + colour + ';');
-              head.textContent = 'VERIFY - ' + verdict;
+              head.textContent = verdict === 'READ' ? 'READ' : 'VERIFY - ' + verdict;
               const body = document.createElement('div');
               body.textContent = lines.join('\n');
               box.appendChild(head);
@@ -377,14 +416,26 @@ export class CommonUtils {
             return -1;
           }
         },
-        { selectors, colour, verdict, lines: opts.lines || [], corner: opts.corner || 'top-right' }
+        { marks, colour, verdict, lines: opts.lines || [], corner: opts.corner || 'top-right' }
       ).catch(() => -1);
 
       decorated = hits >= 0;
       // A selector that matches nothing means the evidence shot silently lost its box - say so,
       // rather than attaching a picture with no verify point marked on it.
       if (selectors.length && hits === 0) {
-        console.log(`WARNING: verify-evidence highlight matched NOTHING (${selectors.join(', ')}) - the shot carries no marked verify point`);
+        console.log(`WARNING: verify-evidence highlight matched NOTHING visible (${selectors.join(', ')}) - the shot carries no marked verify point`);
+      } else if (hits > 0) {
+        // some outline is drawn, but a selector of this call marks nothing visible - its verify point is unmarked
+        const dead: string[] = await page.evaluate(() => (window as unknown as { __pwVerifyDead?: string[] }).__pwVerifyDead || []).catch(() => [] as string[]);
+        if (dead.length) console.log(`WARNING: verify-evidence highlight matched NOTHING visible for ${dead.join('; ')} (${opts.name}) - that verify point is not marked`);
+      }
+      // hits = -1: the decoration itself failed, so the shot has no banner and no outline - never silent
+      if (hits < 0) {
+        console.log(`WARNING: verify-evidence decoration FAILED (${opts.name}) - the shot carries no VERIFY banner and no outline`);
+      }
+      const invalid: string[] = hits < 0 ? [] : await page.evaluate(() => (window as unknown as { __pwVerifyInvalid?: string[] }).__pwVerifyInvalid || []).catch(() => [] as string[]);
+      if (invalid.length) {
+        console.log(`WARNING: verify-evidence highlight matched NOTHING (invalid CSS selector: ${invalid.join(', ')}) - that verify point is not marked`);
       }
 
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${opts.name} - ${verdict}`);
@@ -392,7 +443,7 @@ export class CommonUtils {
       if (decorated) {
         await page.evaluate(() => {
           document.querySelectorAll('.__pwVerifyEvidence').forEach((n) => n.remove());
-          document.querySelectorAll('.__pwVerifyHit').forEach((n) => n.classList.remove('__pwVerifyHit'));
+          document.querySelectorAll('.__pwVerifyHit').forEach((n) => n.classList.remove('__pwVerifyHit', '__pwVerifyHitPass', '__pwVerifyHitFail'));
         }).catch(() => {});
       }
     }
@@ -543,6 +594,16 @@ export class CommonUtils {
     leadMergingNotHappen: 90000,
     /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */
     leadMergeObservation: 300000,
+    /** crm-mig merge window - 35 min. A same-email merge missed at create time is only picked up by the
+     *  20-min re-scan cron (CRM-12621), and only once the lead is ~10 min old (measured 2026-10-28). */
+    leadMergeMigWindow: 2100000,
+    /** crm-mig merge poll interval - 1 min (reload + read the chatter between polls) */
+    leadMergeMigPoll: 60000,
+    /** crm-mig Lead Merging test budget - 55 min (create 2-3 records + the 35-min window + verification) */
+    leadMergeMigTest: 3300000,
+    // crm-mig notebook "More (N)": time for the dropdown to list its folded tabs after a click (MigNotebook.ts)
+    migNotebookMoreOpen: 10000,
+    helpdeskNoAutoAssignWait: 300000, // CRM-11859 TC-SEC-019: "Wait 5 minutes and reopen the ticket"
     /** Wait time for lead merging process (5 minutes) */
     leadMerging: 60000,
     /** Short wait - 300ms (for quick UI updates, dropdowns) */
@@ -565,6 +626,10 @@ export class CommonUtils {
     elementVisibility: 30000,
     /** Element appear wait - 3 minutes (for complex operations) */
     elementAppear: 180000,
+    /** Email arrival in the crm-mig Mailpit sink - 3 minutes total poll budget (a real one lands in ~6 s) */
+    emailArrivalWait: 180000,
+    /** Mailpit poll interval - 5 seconds between two inbox searches */
+    emailPollInterval: 5000,
     /** Import Audience wait - 2 minutes */
     importAudience: 120000,
     /** Select Product Line wait - 4 seconds (for complex operations) */
@@ -596,6 +661,10 @@ export class CommonUtils {
     hubProcessingWait: 10000,
     /** Integration Hub outbound delivery - 30 seconds (queue entry written -> delivered to the marketing platform) */
     hubDeliveryWait: 30000,
+    /** crm-mig teardown - 2 minutes to re-read a record whose delete got no answer (proxy 502/504) before judging it */
+    migUnlinkRecheck: 120000,
+    /** crm-mig teardown - 10 seconds between those re-reads */
+    migUnlinkRecheckInterval: 10000,
   };
 
   /**

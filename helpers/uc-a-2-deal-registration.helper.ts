@@ -1,6 +1,7 @@
 import { Page, test, expect } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { LoginPage, HomePage, OpportunityPage } from '@pages';
+import { LoginPageMig, HomePageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import { DEAL_REGISTRATION } from '@/test-data/CRM-deal_registration/deal-registration.note';
 
@@ -31,6 +32,19 @@ export interface DealRegCreateInput {
   /** Step-label prefix; defaults to "Steps to reproduce #1". */
   stepPrefix?: string;
   /**
+   * Host to sign in to. Defaults to PRE-PRODUCTION (`baseUrl`), which is what the 61 specs that
+   * already call this helper expect - do not change that default.
+   *
+   * The crm-mig suite (CRM-11806_*) passes `baseUrl_mig` here. Without it a spec that imports
+   * `baseUrl_mig as baseUrl` and the Mig page objects still runs on pre-production the moment it
+   * calls this helper, because the host lives INSIDE the helper. That is how CRM-11806_1.2.18
+   * created a real Opportunity, Sales Order and subscription SUB1732 on pre-production on
+   * 2026-10-12 while looking like a crm-mig spec.
+   */
+  baseUrlOverride?: string;
+  /** Account to sign in as. Defaults to `users.sale_ic_thomas` (the pre-production entry). */
+  thomasAccount?: { username: string; password: string };
+  /**
    * When true, assume Thomas is ALREADY logged in (an active session from a previous create in the
    * same test): skip the login step and return to the Opp list via the in-app CRM brand link instead
    * of the apps-home. Use for creating a 2nd+ Opportunity in one spec (e.g. sort / multiple / isolation).
@@ -45,8 +59,18 @@ export async function createDealRegistrationOpportunityAsThomas(
   page: Page,
   input: DealRegCreateInput
 ): Promise<string> {
-  const loginPage = new LoginPage(page);
-  const homePage = new HomePage(page);
+  // The crm-mig sidebar theme HIDES the navbar, so the base LoginPage's success probe - waiting for
+  // `a[data-menu-xmlid="crm.crm_menu_root"]` to be VISIBLE - never settles there. Measured
+  // 2026-10-21 on CRM-11806_1.4: the locator resolved to that very anchor
+  // (`data-menu-id="179" data-action-id="302"`) and the wait still timed out at 300 s because the
+  // element is hidden. The login had SUCCEEDED; only the probe was wrong. `LoginPageMig` overrides
+  // waitForLoginSuccess() to wait for `.o_web_client` instead. Mechanical host adaptation - it
+  // changes no expected value.
+  const migHost = /crm-mig/i.test(input.baseUrlOverride ?? '');
+  const loginPage = migHost ? new LoginPageMig(page) : new LoginPage(page);
+  // Same theme problem one step later: HomePage.navigateToCRM() clicks the hidden navbar entry.
+  // HomePageMig opens apps by URL hash instead. Measured 2026-10-21 on CRM-11806_1.4 Step 2.
+  const homePage = migHost ? new HomePageMig(page) : new HomePage(page);
   const opportunityPage = new OpportunityPage(page);
 
   const leadForm = input.leadFormValue ?? DEAL_REGISTRATION.leadFormMarker;
@@ -60,9 +84,11 @@ export async function createDealRegistrationOpportunityAsThomas(
       console.log(`${p} - Step 1: Reusing the active Thomas session (no re-login)`);
       return;
     }
-    console.log(`${p} - Step 1: Logging in as Thomas`);
-    await loginPage.navigateTo(baseUrl);
-    await loginPage.login(users.sale_ic_thomas.username, users.sale_ic_thomas.password);
+    const host = input.baseUrlOverride ?? baseUrl;
+    const thomas = input.thomasAccount ?? users.sale_ic_thomas;
+    console.log(`${p} - Step 1: Logging in as Thomas on ${host}`);
+    await loginPage.navigateTo(host);
+    await loginPage.login(thomas.username, thomas.password);
     await loginPage.dismissLocationPermissionDialog().catch(() => {});
     console.log('✓ Logged in as Thomas');
   });
@@ -167,17 +193,21 @@ export async function deleteCreatedOpportunityAsAdmin(
   page: Page,
   url: string | null,
   skip: boolean,
-  testInfo: import('@playwright/test').TestInfo
+  testInfo: import('@playwright/test').TestInfo,
+  /** Same purpose as `DealRegCreateInput.baseUrlOverride` - omit to keep pre-production. */
+  override?: { baseUrlOverride?: string; adminAccount?: { username: string; password: string } },
 ): Promise<void> {
   if (skip || !url) return;
   console.log('Tear down: deleting created Opportunity (re-login as admin, time-bounded best-effort)');
 
   const doDelete = (async () => {
     const loginPage = new LoginPage(page);
-    await loginPage.logout(baseUrl);
+    const host = override?.baseUrlOverride ?? baseUrl;
+    const admin = override?.adminAccount ?? users.admin_crm;
+    await loginPage.logout(host);
     await page.context().clearCookies();
-    await loginPage.navigateTo(baseUrl);
-    await loginPage.login(users.admin_crm.username, users.admin_crm.password);
+    await loginPage.navigateTo(host);
+    await loginPage.login(admin.username, admin.password);
     await loginPage.dismissLocationPermissionDialog().catch(() => {});
     await CommonUtils.deleteRecordByUrl(page, url, testInfo);
     console.log('✓ Created Opportunity deleted');

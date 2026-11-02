@@ -1,6 +1,7 @@
 import { Page, Locator } from '@playwright/test';
 import { BasePage } from './BasePage';
 import { CommonUtils } from '@helpers/common.utils';
+import { openNotebookTabMig } from './mig/MigNotebook';
 
 /**
  * Opportunity Page Object
@@ -11,6 +12,14 @@ export class OpportunityPage extends BasePage {
   private readonly viewListButton = () => this.page.getByRole('button', { name: 'View list' });
   private readonly myPipelineFilterDeleteXPath = () =>
     this.page.locator("xpath=//div[contains(@title,'Remove')]");
+  // The remove control of EVERY facet in the search bar (filters, favorites, search terms). XPath primary, CSS fallback.
+  private readonly searchFacetRemoveButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')]//*[contains(@class,'o_facet_remove')]")
+      .or(this.page.locator('.o_searchview_facet .o_facet_remove'));
+  // Only the FAVORITE facets (label icon fa-star). XPath primary, CSS fallback.
+  private readonly favoriteFacetRemoveButtons = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_searchview_facet')][.//*[contains(@class,'fa-star')]]//*[contains(@class,'o_facet_remove')]")
+      .or(this.page.locator('.o_searchview_facet:has(.fa-star) .o_facet_remove'));
   private readonly searchViewInputXPath = () =>
     this.page.locator("xpath=//div[contains(@class,'o_searchview')]//input[contains(@class,'o_searchview_input')]");
   private readonly createButton = () => this.page.getByRole('button', { name: /CREATE/i });
@@ -48,8 +57,13 @@ export class OpportunityPage extends BasePage {
     .or(this.page.locator('xpath=(//input[@name="lead_form"])[last()]'))
     .first();
   // "IP" (x_studio_ip_lead_source) char field on the Opp form. XPath primary, CSS fallback.
-  private readonly ipInputXPath = () => this.page.locator("xpath=//input[@name='x_studio_ip_lead_source']").first();
-  private readonly ipInputCss = () => this.page.locator("input[name='x_studio_ip_lead_source']").first();
+  // pre-prod = Studio field x_studio_ip_lead_source; O12 CE Migration server = module field
+  // `ip_lead_source` (char, labelled "IP"). Measured on crm-mig 2026-10-21 via ir.model.fields -
+  // same Studio-to-module rename as x_studio_lead_sorce -> lead_form above. Accept both names so
+  // one method fits both hosts; this changes no expected value.
+  private readonly ipInputXPath = () => this.page.locator("xpath=//input[@name='x_studio_ip_lead_source']")
+    .or(this.page.locator("xpath=//input[@name='ip_lead_source']")).first();
+  private readonly ipInputCss = () => this.page.locator("input[name='x_studio_ip_lead_source'], input[name='ip_lead_source']").first();
   private readonly saveButton = () => this.page.getByRole('button', { name: 'Save' }).or(this.page.getByRole('button', { name: 'SAVE' })).first();
   private readonly dropdownOption = () => this.page.locator('.ui-menu-item, .o_m2o_dropdown_option, li[role="option"]');
   private readonly contactFieldXPath = () => this.page.locator("xpath=(//a[@name='contact_partner_id'])[2]");
@@ -307,7 +321,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * Switch from kanban to list view
    */
   async switchToListView() {
-    await this.waitForURL('**/web?*view_type=kanban*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForViewReady('kanban');
     await this.viewListButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     // A loading mask / "Odoo Client Error" modal can sit over the toolbar and intercept the
     // click (observed: 900s timeout - blockUI then o_technical_modal intercepting pointer
@@ -315,8 +329,26 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     await this.dismissErrorDialog();
     await this.waitForLoadingOverlayHidden();
     await this.viewListButton().click();
-    await this.waitForURL('**/web?*view_type=list*', CommonUtils.waitTimes.pageLoad);
+    await this.waitForViewReady('list');
     await this.page.locator('.o_list_view, table.o_list_table').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /**
+   * The CRM view is ready when its URL says so OR when the view has rendered - whichever comes first.
+   * Pre-production rewrites the hash to `view_type=<v>`, so the URL wins there exactly as before.
+   * crm-mig opens CRM by `#menu_id=<m>&action=<a>` and its client does not always write `view_type`
+   * into the hash (2026-10-20: kanban on screen, URL unchanged), so the rendered view wins there.
+   */
+  private async waitForViewReady(viewType: 'kanban' | 'list') {
+    const view = viewType === 'kanban'
+      ? this.page.locator('xpath=//div[contains(@class,"o_kanban_view")]').or(this.page.locator('.o_kanban_view'))
+      : this.page.locator('xpath=//div[contains(@class,"o_list_view")] | //table[contains(@class,"o_list_view") or contains(@class,"o_list_table")]')
+        .or(this.page.locator('.o_list_view, table.o_list_table'));
+    const byUrl = this.waitForURL(`**/web?*view_type=${viewType}*`, CommonUtils.waitTimes.pageLoad).then(() => true, () => false);
+    const byView = view.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).then(() => true, () => false);
+    if (!(await Promise.race([byUrl, byView])) && !(await byUrl) && !(await byView)) {
+      throw new Error(`CRM ${viewType} view not ready: neither the URL (view_type=${viewType}) nor the rendered view appeared`);
+    }
   }
 
   /**
@@ -846,12 +878,24 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
 
   /**
    * Click CRM Developer tab
+   *
+   * On crm-mig the Opportunity notebook folds its overflow tabs into "More (N)", so the inline tab
+   * never becomes visible and the wait below times out (CRM-11806_1.1, 2026-11-02: the form drew 7
+   * tabs plus "More (6)" and CRM Developer sat inside it). Fall back to the mig notebook helper,
+   * which opens "More (N)" and picks the same occurrence. On pre-production the tab is drawn inline,
+   * so the fallback never fires.
    */
   async clickCRMDeveloperTab() {
     await this.wait(500);
-    await this.crmDeveloperTab().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear });
-    await this.crmDeveloperTab().scrollIntoViewIfNeeded();
-    await this.crmDeveloperTab().click();
+    const inline = await this.crmDeveloperTab()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear })
+      .then(() => true, () => false);
+    if (inline) {
+      await this.crmDeveloperTab().scrollIntoViewIfNeeded();
+      await this.crmDeveloperTab().click();
+    } else {
+      await openNotebookTabMig(this.page, 'CRM Developer', 'first');
+    }
     await this.wait(500);
   }
 
@@ -982,7 +1026,8 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       const v = await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '');
       if (v && v.trim()) return v.trim();
     }
-    const span = this.page.locator("xpath=//span[@name='x_studio_ip_lead_source']").first();
+    const span = this.page.locator("xpath=//span[@name='x_studio_ip_lead_source']")
+      .or(this.page.locator("xpath=//span[@name='ip_lead_source']")).first();
     if (await span.count() > 0) {
       return ((await span.textContent({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
     }
@@ -1843,6 +1888,19 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Wait (bounded) until the NEW QUOTATION button is visible on the open Opportunity form.
+   * `hasNewQuotationButton()` only counts, so call this first after a navigation.
+   * @param timeout - max time to wait (default: abnormalWait)
+   * @returns true when the button became visible
+   */
+  async waitForNewQuotationButton(timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<boolean> {
+    return this.newQuotationButton()
+      .waitFor({ state: 'visible', timeout })
+      .then(() => true)
+      .catch(() => false);
+  }
+
+  /**
    * Check if NEW QUOTATION button exists
    * @returns Promise<boolean> - true if button exists
    */
@@ -1857,7 +1915,8 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    */
   async clickNewQuotation(force: boolean = true): Promise<void> {
     await this.newQuotationButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
-    await this.newQuotationButton().click({});
+    // Bounded: an unbounded click here hung CRM-11857_3.3 for the whole 15-minute test budget.
+    await this.newQuotationButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
   }
 
   /**
@@ -1878,6 +1937,30 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     }
     //Quoc Anh's comment: Added wait for the delete button to be hidden after clicking, to ensure the filter is fully removed before proceeding
     await deleteBtn.waitFor({ state: 'hidden', timeout });
+  }
+
+  /**
+   * Remove EVERY facet from the search bar (favorites included), so the next search starts clean.
+   * Why: on pre-production the CRM "Archive > All" (All Leads) action opens with a user's DEFAULT favorite
+   * applied ("Unassigned leads - last 30d - ..."), which silently ANDs with the email search and returns 0 rows
+   * (CRM-3902_1.2.1, 2026-10-21). Re-queries after each click, because the search bar re-renders.
+   * `favoritesOnly` removes just the favorite facets and keeps any filter the action itself put there.
+   * @returns how many facets were removed
+   */
+  async clearSearchFacets(opts: { favoritesOnly?: boolean } = {}, timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<number> {
+    let removed = 0;
+    for (let guard = 0; guard < 10; guard++) {
+      const controls = opts.favoritesOnly ? this.favoriteFacetRemoveButtons() : this.searchFacetRemoveButtons();
+      if ((await controls.count().catch(() => 0)) === 0) break;
+      const first = controls.first();
+      if (!(await first.isVisible({ timeout: CommonUtils.waitTimes.long }).catch(() => false))) break;
+      await first.click({ timeout }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.long);
+      removed++;
+    }
+    if (removed) await this.waitForLoadingOverlayHidden().catch(() => {});
+    console.log(`  ✓ ${opts.favoritesOnly ? 'Favorite' : 'Search'} facets cleared (${removed} removed)`);
+    return removed;
   }
 
   /**
@@ -1918,9 +2001,10 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   } else {
     // Fallback: the search already filtered by email so click the first result row
     console.log(`  ⚠ Email not visible as a column — clicking first search result row`);
+    // The Odoo 12 list table carries `o_list_view` (crm-mig: no `o_list_table` at all) - accept both.
     const firstRow = this.page.locator(
-      `xpath=//table[contains(@class,'o_list_table')]//tr[contains(@class,'o_data_row')]`
-    ).first();
+      `xpath=//table[contains(@class,'o_list_table') or contains(@class,'o_list_view')]//tr[contains(@class,'o_data_row')]`
+    ).or(this.page.locator('table.o_list_table tr.o_data_row, table.o_list_view tr.o_data_row')).first();
     await firstRow.waitFor({ state: 'visible', timeout });
     await firstRow.click();
     console.log(`  ✓ Clicked first Opp row (filtered by email search)`);
@@ -1948,9 +2032,10 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   } else {
     // Fallback: the search already filtered by opportunity name so click the first result row
     console.log(`  ⚠ Opportunity name not visible as a column — clicking first search result row`);
+    // The Odoo 12 list table carries `o_list_view` (crm-mig: no `o_list_table` at all) - accept both.
     const firstRow = this.page.locator(
-      `xpath=//table[contains(@class,'o_list_table')]//tr[contains(@class,'o_data_row')]`
-    ).first();
+      `xpath=//table[contains(@class,'o_list_table') or contains(@class,'o_list_view')]//tr[contains(@class,'o_data_row')]`
+    ).or(this.page.locator('table.o_list_table tr.o_data_row, table.o_list_view tr.o_data_row')).first();
     await firstRow.waitFor({ state: 'visible', timeout });
     await firstRow.click();
     console.log(`  ✓ Clicked first Opp row (filtered by opportunity name search)`);
@@ -3163,6 +3248,26 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /**
+   * Open an Opportunity by URL when ANOTHER Odoo screen is already loaded (another opportunity, a quotation, a
+   * list). A goto that only changes the #hash is a same-document navigation: the previous form stays on screen
+   * and openByUrl() returns at once on ITS .o_form_view (Discount_1.12, 2026-10-20: the next click landed on the
+   * wrong record). The reload makes it a real load at that hash; the wait then checks the URL carries the id.
+   */
+  async openByUrlReloaded(url: string): Promise<void> {
+    const id = /[#&]id=(\d+)/.exec(url)?.[1] ?? '';
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.page.locator('.o_form_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    if (id) {
+      await this.page.waitForFunction((want) => new RegExp('[#&]id=' + want + '(&|$)').test(window.location.hash), id, {
+        timeout: CommonUtils.waitTimes.pageLoad,
+      });
+    }
+    await this.waitForPageReady(CommonUtils.waitTimes.contactShowing).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
    * Read the customer "Phone" (crm.lead.phone) value on the Opportunity form.
    * Handles edit mode (<input name="phone">) and readonly mode (Odoo phone widget
    * <a name="phone" href="tel:<value>">value</a>). An empty phone renders as "false" - normalized to "".
@@ -3398,9 +3503,33 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    * integer parsed from its label (e.g. "1 Tickets" -> 1), or 0 if the button/label is absent.
    * This is the CRM's automatic link between the deal and the SE support ticket(s).
    */
+  /** The smart-button box "More" toggle - Odoo moves overflowing stat buttons into its dropdown. */
+  private readonly buttonBoxMoreToggle = () =>
+    this.page.locator("xpath=//div[contains(@class,'oe_button_box')]//button[contains(@class,'o_button_more') or normalize-space()='More']")
+      .or(this.page.locator('.oe_button_box .o_button_more, .oe_button_box .o_dropdown_more > button')).first();
+
+  /**
+   * Make the "Tickets" smart button visible: when the button box overflows, Odoo hides it under the box's
+   * "More" dropdown, where isVisible() is false although the ticket exists. Returns whether it is visible.
+   */
+  private async revealLinkedTicketsButton(): Promise<boolean> {
+    const btn = this.linkedTicketsButton();
+    if (await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false)) return true;
+    const more = this.buttonBoxMoreToggle();
+    if (await more.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+      await more.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+      await this.wait(CommonUtils.waitTimes.medium);
+      if (await btn.isVisible({ timeout: CommonUtils.waitTimes.extraLong }).catch(() => false)) {
+        console.log('  - "Tickets" smart button found under the button box "More" dropdown');
+        return true;
+      }
+    }
+    return false;
+  }
+
   async getLinkedTicketsCount(): Promise<number> {
     const btn = this.linkedTicketsButton();
-    if (!(await btn.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) {
+    if (!(await this.revealLinkedTicketsButton())) {
       console.log('  - "Tickets" smart button not visible on the Opportunity');
       return 0;
     }
@@ -3409,6 +3538,59 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     const count = m ? parseInt(m[1], 10) : 0;
     console.log(`  - Opportunity "Tickets" smart button: "${txt}" -> ${count}`);
     return count;
+  }
+
+  /**
+   * CRM > Pipeline: open an Opportunity's form by id INSIDE the Pipeline action
+   * (crm.crm_lead_opportunities_tree_view). Without the action Odoo falls back to crm.lead's default form,
+   * the LEAD form, which carries different smart buttons - so the action is part of the route.
+   * goto() + reload(): a hash change alone is a same-document navigation and can leave a stale record on screen.
+   */
+  async openOpportunityInPipelineById(baseUrl: string, oppId: number | string): Promise<void> {
+    const action = await this.xmlId('crm.crm_lead_opportunities_tree_view');
+    const url = `${baseUrl.replace(/\/$/, '')}/web#id=${oppId}&action=${action}&model=crm.lead&view_type=form`;
+    await this.page.goto(url, { waitUntil: 'domcontentloaded' });
+    await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.waitForFormView(CommonUtils.waitTimes.pageLoad);
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Opened Opportunity #${oppId} in CRM > Pipeline (action ${action})`);
+  }
+
+  /**
+   * Click the Opportunity's "Tickets" smart button (open_customer_tickets) and wait for the linked
+   * ticket view to load (a list, a kanban, or the single ticket's form). Returns false when the button
+   * is not on screen (no linked ticket).
+   */
+  async openLinkedTickets(): Promise<boolean> {
+    const btn = this.linkedTicketsButton();
+    if (!(await this.revealLinkedTicketsButton())) {
+      console.log('  - "Tickets" smart button not visible (nor under "More") - nothing to open');
+      return false;
+    }
+    const before = this.page.url();
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.waitForURL((u) => u.toString() !== before && /model=helpdesk\.ticket/.test(u.toString()), { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Tickets smart button opened: ${this.page.url()}`);
+    return true;
+  }
+
+  /**
+   * In READ mode, follow the Opportunity's "Reseller" (reseller_id) link to the reseller partner form.
+   * Returns the partner URL, or '' when the Opportunity has no Reseller link.
+   */
+  async openResellerFromOpportunity(): Promise<string> {
+    const link = this.page.locator("xpath=//*[@name='reseller_id']//a | //a[@name='reseller_id']")
+      .or(this.page.locator("a[name='reseller_id'], [name='reseller_id'] a")).first();
+    if (!(await link.isVisible({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => false))) return '';
+    await link.click();
+    await this.page.waitForURL(/model=res\.partner/, { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.waitForPageReady(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Reseller partner opened: ${this.page.url()}`);
+    return this.page.url();
   }
 
   // --- CRM-12060: Customer (partner_id) many2one on the Opp form + autocomplete options ---
@@ -3434,7 +3616,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
    */
   async openNewOpportunityFormHashSafe(): Promise<void> {
     const origin = new URL(this.page.url()).origin;
-    await this.goto(`${origin}/web#action=152&model=crm.lead&view_type=form&menu_id=111`, { waitUntil: 'domcontentloaded' });
+    await this.goto(`${origin}/web#action=${await this.xmlId('crm.crm_lead_opportunities_tree_view')}&model=crm.lead&view_type=form&menu_id=${await this.xmlId('crm.crm_menu_root')}`, { waitUntil: 'domcontentloaded' });
     await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.dismissErrorDialog().catch(() => {});
     await this.opportunityNameInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
@@ -4137,6 +4319,28 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
     return hit ? hit.value : '';
   }
 
+  // --- Discount baseline (Discount_x.y): the Opportunity's own totals footer ---
+  // Same footer as the Deal Element: discount = "Partner Discount(%)", discount_money = "Partner Discount",
+  // amount_total = "Total" (grounded on pre-prod 2026-10-20).
+  private readonly oppSubtotalFooterFieldXPath = (fieldName: string) =>
+    this.page.locator(`xpath=//table[contains(@class,'oe_subtotal_footer')]//*[@name='${fieldName}']`).first();
+  private readonly oppSubtotalFooterFieldCss = (fieldName: string) =>
+    this.page.locator(`.oe_subtotal_footer [name="${fieldName}"]`).first();
+
+  /**
+   * A field of the Opportunity's totals footer as the screen shows it.
+   * @param fieldName - discount | discount_money | amount_total
+   */
+  async getSubtotalFooterValue(fieldName: string): Promise<string> {
+    let field = this.oppSubtotalFooterFieldXPath(fieldName);
+    await field.waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if ((await field.count()) === 0) field = this.oppSubtotalFooterFieldCss(fieldName);
+    if ((await field.count()) === 0) return '';
+    return await field
+      .evaluate((el: HTMLElement) => (el.innerText || el.textContent || '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim())
+      .catch(() => '');
+  }
+
   /** The tags (tag_ids) the Opportunity carries, in screen order. */
   async getTagList(timeout: number = CommonUtils.waitTimes.elementVisibility): Promise<string[]> {
     const holder = this.page.locator('.o_form_sheet [name="tag_ids"]').first();
@@ -4304,6 +4508,120 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
       if (m) fields[m[1].trim()] = m[2].trim();
     });
     return fields;
+  }
+
+  // ==========================================================================================
+  //  Added 2026-10-26 for CRM-11857_4.3 / 4.4 / 4.6 / 8.4 (Exchange Rates on crm-mig).
+  //  Every wait and click is bounded (the repo sets no actionTimeout).
+  // ==========================================================================================
+
+  /** The visible Customer many2one (`partner_id`; crm-mig labels it "Company") on the Opportunity form. */
+  private readonly fxCustomerInput = () =>
+    this.page.locator("xpath=//div[contains(@class,'o_form_view')]//div[@name='partner_id' and not(contains(@class,'o_invisible_modifier'))]//input")
+      .or(this.page.locator(".o_form_view div[name='partner_id']:not(.o_invisible_modifier) input")).first();
+  private readonly fxVisibleAutocompleteItems = () =>
+    this.page.locator("xpath=//ul[contains(@class,'ui-autocomplete') and not(contains(@style,'display: none'))]//li[contains(@class,'ui-menu-item')]")
+      .or(this.page.locator('ul.ui-autocomplete:visible li.ui-menu-item'));
+
+  /**
+   * Set the Opportunity's Customer (`partner_id`) in edit mode: type the exact name, wait for the
+   * autocomplete to offer it, click the option whose text is exactly that name, read the field back.
+   * Measured on crm-mig 2026-10-26 (EXPLORE-20261026_20): typing a unique company name offers
+   * [<name>, "Create and Edit..."]. Throws when the option never appears or the field does not keep the name.
+   */
+  async setCustomer(name: string): Promise<string> {
+    const input = this.fxCustomerInput();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(name, { timeout: CommonUtils.waitTimes.abnormalWait });
+    const exact = new RegExp(`^\\s*${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`);
+    const option = this.fxVisibleAutocompleteItems().filter({ hasText: exact }).first();
+    await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await option.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long); // partner onchange (address, pricelist currency)
+    const readBack = ((await input.inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '').trim();
+    if (readBack !== name) throw new Error(`Opportunity Customer reads "${readBack}" after picking "${name}"`);
+    return readBack;
+  }
+
+  /**
+   * Read ONE cell of the Opportunities LIST by the column HEADER text (case-insensitive, whitespace-normalised),
+   * on the row whose text contains `rowText`. The list must already be on screen (e.g. after searchByName).
+   * @returns headers = every visible column header in order (evidence), rows = data rows matching rowText,
+   *          raw = the cell text ('' when the column or the row is absent)
+   */
+  async getListCellByHeader(rowText: string, header: string): Promise<{ headers: string[]; rows: number; raw: string }> {
+    const table = this.page.locator('xpath=//table[contains(@class,"o_list_view") or contains(@class,"o_list_table")]')
+      .or(this.page.locator('table.o_list_view, table.o_list_table')).first();
+    await table.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return await table.evaluate(
+      (el: HTMLElement, args: { rowText: string; header: string }) => {
+        const norm = (s: string | null) => (s || '').replace(/​/g, '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim();
+        const ths = Array.from(el.querySelectorAll('thead th'));
+        const headers = ths.map((t) => norm(t.textContent)).filter(Boolean);
+        const idx = ths.findIndex((t) => norm(t.textContent).toLowerCase() === args.header.toLowerCase());
+        const rows = Array.from(el.querySelectorAll('tbody tr.o_data_row')).filter((r) => norm(r.textContent).includes(args.rowText));
+        if (idx < 0 || rows.length === 0) return { headers, rows: rows.length, raw: '' };
+        const cell = rows[0].querySelectorAll('td')[idx] as HTMLElement | undefined;
+        return { headers, rows: rows.length, raw: cell ? norm(cell.textContent) : '' };
+      },
+      { rowText, header },
+      { timeout: CommonUtils.waitTimes.abnormalWait },
+    );
+  }
+
+  /**
+   * Open the CRM app (its default action, My Pipeline) from ANY screen: set the hash, RELOAD, and wait for a VISIBLE
+   * records view that is not a one2many grid of a form. HomePageMig.navigateToCRM() waits on `.o_list_view` .first(),
+   * which can resolve to a hidden grid of the form the browser is leaving (crm-mig 2026-10-26 12:26, from a saved contact
+   * form: 469 x "resolved to hidden <table class=o_list_view>", 240 s). `crmUrl` = MigPlatformPage.appUrlFor('crm').
+   */
+  async openCrmAppReloadedMig(crmUrl: string): Promise<void> {
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(crmUrl, { waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.reload({ waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('xpath=(//div[contains(@class,"o_kanban_view")] | //table[contains(@class,"o_list_view")] | //div[contains(@class,"o_view_nocontent")])[not(ancestor::div[contains(@class,"o_form_view")])]')
+      .or(this.page.locator('.o_content > .o_kanban_view, .o_content > .o_list_view, .o_content .o_view_nocontent')).first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad / 2 });
+    await this.dismissErrorDialog().catch(() => false);
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * Switch the CRM pipeline to its LIST view and accept an EMPTY list. switchToListView() waits for the list table, which
+   * Odoo 12 does not render when the list is empty - it shows the "Add new opportunities" help instead (crm-mig 2026-10-26,
+   * Faye Nguyen: "My Pipeline" is empty and she is in no Sales Team). Ready = the table OR the no-content help is visible.
+   */
+  async switchToListViewAllowEmpty(): Promise<void> {
+    const viewList = this.page.locator('xpath=//button[contains(@class,"o_cp_switch_list")]')
+      .or(this.page.getByRole('button', { name: 'View list' })).first();
+    await viewList.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.dismissErrorDialog().catch(() => false);
+    await this.waitForLoadingOverlayHidden().catch(() => {});
+    await viewList.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    // the list switcher becomes the ACTIVE view button once the list controller is up (the empty-list help is shown by
+    // both the kanban and the list, so it cannot prove the switch on its own)
+    await this.page.locator('xpath=//button[contains(@class,"o_cp_switch_list") and contains(@class,"active")]')
+      .or(this.page.locator('button.o_cp_switch_list.active')).first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('xpath=//table[contains(@class,"o_list_view") or contains(@class,"o_list_table")] | //div[contains(@class,"o_view_nocontent")]')
+      .or(this.page.locator('table.o_list_view, table.o_list_table, .o_view_nocontent')).first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
+  /**
+   * Open an Opportunity form by its record id (URL-hash navigation) and wait until the DEAL ELEMENT / NEW QUOTATION
+   * header has rendered. `baseUrl` is the server root ending in "/".
+   */
+  async openOpportunityByIdHash(baseUrl: string, opportunityId: number | string): Promise<void> {
+    await this.page.evaluate(() => { (window as unknown as { onbeforeunload: unknown }).onbeforeunload = null; }).catch(() => {});
+    await this.page.goto(`${baseUrl}web?#id=${opportunityId}&model=crm.lead&view_type=form`, {
+      waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.abnormalWait,
+    });
+    await this.page.locator('xpath=//div[contains(@class,"o_form_view")]').or(this.page.locator('.o_form_view')).first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
   }
 
 }

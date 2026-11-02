@@ -53,42 +53,6 @@ const pw = (key: string): string => {
 };
 
 export const users = {
-  reseller_basic: {
-    username: 'Test-Reseller@Reseller-company-automation-basic.com',
-    password: pw('reseller_basic'),
-    displayName: 'TEST-Reseller#1_Automation_Basic',
-    level: 'Basic',
-  },
-  reseller_bronze: {
-    username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
-    password: pw('reseller_bronze'),
-    displayName: 'TEST-Reseller#1_Automation_Test',
-    level: 'Bronze',
-  },
-  reseller_silver: {
-    username: 'Test-Reseller@Reseller-company-automation-silver.com',
-    password: pw('reseller_silver'),
-    displayName: 'TEST-Reseller#1_Automation_Silver',
-    level: 'Silver',
-  },
-  reseller_gold: {
-    username: 'Test-Reseller@Reseller-company-automation-gold.com',
-    password: pw('reseller_gold'),
-    displayName: 'TEST-Reseller#1_Automation_Gold',
-    level: 'Gold',
-  },
-  distributor_partner: {
-    username: 'Test-Distributor@Distributor-company.com',
-    password: pw('distributor_partner'),
-    displayName: 'TEST-Distributor#1_Automation',
-    level: 'Distributor',
-  },
-  msp_partner: {
-    username: 'Test-MSP@MSP-company.com',
-    password: pw('msp_partner'),
-    displayName: 'TEST-MSP#1_Automation',
-    level: 'MSP',
-  },
   accountance_ic_faye: {
     username: 'faye.nguyen@nakivo.com',
     password: pw('accountance_ic_faye'),
@@ -132,6 +96,15 @@ export const users = {
     username: 'nam.pham@nakivo.com',
     password: pw('support_l2_manager_nam'),
     displayName: 'Nam Pham',
+  },
+  // L1 agent Giang Le on PRE-PROD (CRM-11859 Helpdesk A/B lifecycle cases, side A). The SAME login as
+  // users.support_l1_giang_support_mig (giang.le@nakivo.com) - this entry REUSES that secret: the password was set
+  // on 2026-10-22 and is the same on both hosts (2FA off). Pre-condition 1 of each L1 spec asserts that his employee
+  // record reads Support Team = 'l1'.
+  support_l1_giang_preprod: {
+    username: 'giang.le@nakivo.com',
+    password: pw('support_l1_giang_support_mig'),
+    displayName: 'Giang Le',
   },
   admin_crm: {
     username: 'anh.ho@nakivo.com',
@@ -217,7 +190,120 @@ export const users = {
     password: pw('admin_subscription_mig'),
     displayName: 'Ho Quoc Anh',
     createdByName: 'Ho Quoc Anh',
-  }
+  },
+  // ---- Mailpit test mailbox of crm-mig (baseUrl_mailpit_mig below), handed over by the dev on
+  // 2026-10-20: "Because email can be sent out, this can be used to test sending email". NOT an
+  // Odoo login - it signs in to the Mailpit web UI / API, never to loginPage.
+  mailpit_crm_mig: {
+    username: 'tester',
+    password: pw('mailpit_crm_mig'),
+    displayName: 'Mailpit tester',
+  },
+  // ---- Discount Service (baseUrl_discount_mig below), admin account handed over 2026-10-20. NOT an
+  // Odoo login - the service has its own sign-in form (POST /login, JSON {username,password} ->
+  // cookie disc_session), never loginPage. Verified 2026-10-20: {"ok":true}, /session/verify ->
+  // login anh.ho@nakivo.com. Same login as admin_crm_mig, different password.
+  admin_discount_mig: {
+    username: 'anh.ho@nakivo.com',
+    password: pw('admin_discount_mig'),
+    displayName: 'anh.ho@nakivo.com',
+  },
+  // ---- Support service (baseUrl_support_mig below), admin account handed over 2026-10-22. NOT an
+  // Odoo login - Frappe Helpdesk: sign in on its /login form (API: POST /api/method/login
+  // {usr,pwd}), never loginPage. The login is Frappe's built-in superuser "Administrator", not
+  // anh.ho@nakivo.com (that one answered 401). Verified 2026-10-22: "Logged In", full_name
+  // Administrator, home_page /helpdesk.
+  admin_support_mig: {
+    username: 'Administrator',
+    password: pw('admin_support_mig'),
+    displayName: 'Administrator',
+  },
+  // Support agents on the same host - passwords set as Administrator on 2026-10-22, each login
+  // verified ("Logged In", displayName = Frappe full_name). Level = the tester's statement, checked
+  // against HD Agent "Support Level" / "Job Level".
+  // "Support Manager" in a TC = THIS account (tester, 2026-10-22). Do not pick it from the server
+  // data: her HD Agent reads L1 / no job level, and the "Nakivo Support Manager" role is held by
+  // the L1 agents Giang and Vince as well.
+  support_manager_julia_support_mig: {
+    username: 'julia.petrenko@nakivo.com',
+    password: pw('support_manager_julia_support_mig'),
+    displayName: 'Julia Petrenko',
+  },
+  // HD Agent: L2 / Manager
+  support_l2_alexandr_support_mig: {
+    username: 'alexandr.yuntsov@nakivo.com',
+    password: pw('support_l2_alexandr_support_mig'),
+    displayName: 'Alexandr Yuntsov',
+  },
+  // HD Agent: L2 / Senior
+  support_l2_nam_support_mig: {
+    username: 'nam.pham@nakivo.com',
+    password: pw('support_l2_nam_support_mig'),
+    displayName: 'Nam Pham',
+  },
+  // HD Agent: L1 / no job level
+  support_l1_giang_support_mig: {
+    username: 'giang.le@nakivo.com',
+    password: pw('support_l1_giang_support_mig'),
+    displayName: 'Giang Le',
+  },
+  // HD Agent: L1 / no job level
+  support_l1_vince_support_mig: {
+    username: 'vince.pham@nakivo.com',
+    password: pw('support_l1_vince_support_mig'),
+    displayName: 'Pham Tan Vinh (Vince)',
+  },
+  // ---- Quoc Anh comment: Oct 14, 2026 [COMMON ACCOUNT] Pre-production serrver, CRM-Mig serrver, Pre-sales, Subscriptions service
+  // These accounts need to be re-created if the servers above clone database from Production.
+  // CRM-12144 Discounts - the test customer of the dev's QA Instructions (p.11) and the second
+  // customer of TC-14 step 5. COMPANIES, not logins: no username / password. Company type = Company,
+  // Customer, no Reseller / Distributor, "Public Pricelist_USD", United States / Connecticut.
+  // Created 2026-10-19 through the Odoo MCP on both servers: pre-prod res.partner 716109 / 716110,
+  // crm-mig 100001641 / 100001642 (ids for cleanup only - specs find them by name, QI p.10).
+  // Kept until the CRM-12144 execution ends: the 16:00 crm-mig leftover check will list them, and a
+  // CRM-12144 spec sweep must never match the bare "AUTO-CRM-12144-" prefix or it deletes these.
+  end_customer_1: {
+    displayName: 'AUTO-CRM-12144-EndCustomer-1',
+  },
+  end_customer_2: {
+    displayName: 'AUTO-CRM-12144-EndCustomer-2',
+  },
+  reseller_basic: {
+    username: 'Test-Reseller@Reseller-company-automation-basic.com',
+    password: pw('reseller_basic'),
+    displayName: 'TEST-Reseller#1_Automation_Basic',
+    level: 'Basic',
+  },
+  reseller_bronze: {
+    username: 'Test-Reseller-Automation-Jun10@Reseller-company2026-05-22-220038.com',
+    password: pw('reseller_bronze'),
+    displayName: 'TEST-Reseller#1_Automation_Test',
+    level: 'Bronze',
+  },
+  reseller_silver: {
+    username: 'Test-Reseller@Reseller-company-automation-silver.com',
+    password: pw('reseller_silver'),
+    displayName: 'TEST-Reseller#1_Automation_Silver',
+    level: 'Silver',
+  },
+  reseller_gold: {
+    username: 'Test-Reseller@Reseller-company-automation-gold.com',
+    password: pw('reseller_gold'),
+    displayName: 'TEST-Reseller#1_Automation_Gold',
+    level: 'Gold',
+  },
+  distributor_partner: {
+    username: 'Test-Distributor@Distributor-company.com',
+    password: pw('distributor_partner'),
+    displayName: 'TEST-Distributor#1_Automation',
+    level: 'Distributor',
+  },
+  msp_partner: {
+    username: 'Test-MSP@MSP-company.com',
+    password: pw('msp_partner'),
+    displayName: 'TEST-MSP#1_Automation',
+    level: 'MSP',
+  },
 } as const;
 
 // Eager validation, reported in one shot. Every pw() above has run by now, so `missingKeys` holds
@@ -243,6 +329,22 @@ export const baseUrl = 'http://pre-production.nakivo.site/';
 // screens re-created under new naming). Pass this explicitly to loginPage.navigateTo(...) in Mig
 // specs; the default baseUrl (pre-prod) above is unchanged, so existing specs are unaffected.
 export const baseUrl_mig = 'https://crm-mig.nakivo.site/';
+
+// Mailpit test mailbox of crm-mig - catches the email the CRM sends out, so a spec can assert on
+// it. HTTP Basic auth with users.mailpit_crm_mig (401 without it) - pass it as the context's
+// httpCredentials, there is no login form. REST API under <this URL>api/v1/. Verified 2026-10-20:
+// Mailpit v1.31.6, GET api/v1/info -> 200. The host's cert chain is self-signed (curl needs -k).
+export const baseUrl_mailpit_mig = 'https://crm-mig.nakivo.site/mailpit/';
+
+// Discount Service (nakivo-discount-facade) - NOT Odoo: a FastAPI app holding the promotion rules as
+// a versioned GoRules decision table; crm-mig posts each quotation to its /api/evaluate. Sign in
+// with users.admin_discount_mig on its own /login form. Unauthenticated pages 302 to /login, /api/*
+// answers 401. The cert chain is self-signed (curl needs -k, Playwright ignoreHTTPSErrors).
+export const baseUrl_discount_mig = 'https://discount-crm-mig.nakivo.site/';
+
+// Support service of the migration - Frappe Helpdesk (NOT Odoo: /web/* answers 404). The root
+// redirects to /helpdesk; sign in with users.admin_support_mig on /login. Verified 2026-10-22.
+export const baseUrl_support_mig = 'https://support-crm-mig.nakivo.site/';
 
 // Pre-Sales Application (CRM-12135) - the NEW helpdesk the pre-sale requests are worked on, a
 // SEPARATE Odoo 19 instance from the CRM above. A pre-sale spec drives BOTH hosts in one run:
