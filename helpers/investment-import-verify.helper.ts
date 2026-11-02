@@ -1,6 +1,6 @@
 /**
  * UI readers for the Expected Result of the Investments audience-import TCs
- * (CRM-2482_3.1.1.1.1-3 / CRM-3902_1.2.1 on pre-production, CRM-12370_8.4.1-3 / 8.8.2 on crm-mig).
+ * (CRM-2482_3.1.1.1.1-3 / CRM-3902_1.2.1 on pre-production, CRM-12370_8.4.1-3 / 9.7.2 on crm-mig).
  *
  * They only READ what a user sees - the CRM list, the Opportunity form, the Contacts list and
  * forms, the Investment > Leads tab - through the page objects. The spec does the asserting and
@@ -105,7 +105,7 @@ export async function readOpportunity(
 }
 
 /**
- * Lean reader for the merge outcome (CRM-12370_8.8.2 / CRM-3902_1.2.1): ONLY the fields the checks use -
+ * Lean reader for the merge outcome (CRM-12370_9.7.2 / CRM-3902_1.2.1): ONLY the fields the checks use -
  * Opportunity name, Tags, Investment (where the form shows it), then CRM Developer tab Active + Lost Reason.
  * The full readOpportunity() on a MERGED (archived) Opportunity opened from Archive > All hung ~19 min on
  * 2026-10-21 (several getters wait their full default timeout for widgets that form does not render), which
@@ -375,7 +375,7 @@ export function importedContactsChecks(
 }
 
 /**
- * CRM-12370_8.8.2 / CRM-3902_1.2.1 - the two same-email Opportunities are merged LATE, by the
+ * CRM-12370_9.7.2 / CRM-3902_1.2.1 - the two same-email Opportunities are merged LATE, by the
  * "NAKIVO: Re-scan same-email duplicate leads (CRM-12621)" cron (every 20 min; measured 18-27 min after the
  * import on 2026-10-21). Polls the default CRM list (active records only) for the email until `target` rows
  * remain. `openCrm` opens the CRM app on the host the spec drives (the navigation differs per host).
@@ -416,7 +416,7 @@ export async function searchAllOpportunitiesByEmail(page: Page, email: string): 
 }
 
 /**
- * Expected Result 2-3 of CRM-12370_8.8.2 / CRM-3902_1.2.1 after the re-scan merge: exactly 1 of the 2
+ * Expected Result 2-3 of CRM-12370_9.7.2 / CRM-3902_1.2.1 after the re-scan merge: exactly 1 of the 2
  * Opportunities stays Active, the other is merged (Active FALSE, Lost Reason Duplicate), and no Investment moves.
  * Which one survives is NOT fixed (both directions were measured), so no check assumes it. `investment1OnForm` /
  * `investment2OnForm` = the Investment each Opp must keep, where the form shows the field (crm-mig); on

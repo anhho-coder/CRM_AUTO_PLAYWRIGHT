@@ -15,17 +15,17 @@ import {
 
 /**
  * ============================================================================================
- *  CRM-12370_8.8.1 - Investment is not transferred from a Source Lead to the Target Lead on merge
+ *  CRM-12370_9.7.1 - Investment is not transferred from a Source Lead to the Target Lead on merge
  *                    (O12 CE Migration server)
  * ============================================================================================
- *  Test Case ID    : CRM-12370_8.8.1
+ *  Test Case ID    : CRM-12370_9.7.1
  *  Automation-Type : ported
  *  Automation-Date : 2026-10-19
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *
  *  Source TC (pre-production) : CRM-3902_1.1.1
- *  Source spec                : tests/1.Project_CRM/4.Investments/CRM-3902_Investment_transfer_ban_on_merge/
+ *  Source spec                : tests/1.Project_CRM/3.Lead_Merging/CRM-3902_Investment_transfer_ban_on_merge/
  *                               1.Target_Lead/1.1.Source_has_link/tc-crm-3902-1-1-1-investment-not-transferred.spec.ts
  *  Source version             : commit 0037150 (2026-06-15), working tree clean - re-check before trusting this spec
  *
@@ -52,18 +52,18 @@ import {
  * --------------------------------------------------------------------------------------------
  *  Command to run
  * --------------------------------------------------------------------------------------------
- *  npx playwright test --grep "CRM-12370_8\.8\.1:" --project=MigSmoke
+ *  npx playwright test --grep "CRM-12370_9.7.1:" --project=MigSmoke
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - BASELINE RULE: the assertions are copied unchanged)
  * --------------------------------------------------------------------------------------------
  *  - Login users.admin_crm_mig on baseUrl_mig; Investments navigation by XML-id URL hash
  *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on the "Pipeline" breadcrumb).
- *  - Investment names carry the run marker "TEST CRM-12370_8.8.1 ..." for the afterAll sweep.
+ *  - Investment names carry the run marker "TEST CRM-12370_9.7.1 ..." for the afterAll sweep.
  *  - Test data substituted (same intent, existing record on crm-mig):
  *      Completion Events : Attended webinar    -> Atttended webinar     (crm-mig event-type name, sic)
  *      Conversion Events : Download free trial -> Downloaded free trial (crm-mig event-type name)
- *  - Audience files: CSV-Audience-CRM-12370_8.8.1-1.csv and -2.csv (unique per TC).
+ *  - Audience files: CSV-Audience-CRM-12370_9.7.1-1.csv and -2.csv (unique per TC).
  *  - Pre-condition 2 "Steps 1-2" (Home > Investments, then Investment) are folded into one
  *    navigation step: two adjacent purely navigational steps.
  *  - Clean-up: afterEach deletes, over RPC, both Investments, the Leads linked to them and the
@@ -79,7 +79,7 @@ import {
  *    1. Login and navigate to the Investments module (Investments > Investment)
  *    2. Press "CREATE" button and wait
  *    3. Create a blank Investment (Name_Investment#1):
- *         - Investment Name             = TEST CRM-12370_8.8.1 Investment <datetime>
+ *         - Investment Name             = TEST CRM-12370_9.7.1 Investment <datetime>
  *         - Investment ID               = TEST-Investment-<datetime>
  *         - Type                        = Webinar
  *         - Channel                     = Channel
@@ -174,7 +174,7 @@ import {
  * ============================================================================================
  */
 
-const TC = 'CRM-12370_8.8.1';
+const TC = 'CRM-12370_9.7.1';
 
 /** Investment master data - crm-mig substitutions are documented in the header. */
 const INVESTMENT_DATA = {
@@ -275,7 +275,7 @@ function printVerifyBlock(rows: Array<{ check: string; expected: string; actual:
   console.log(`OVERALL: ${rows.every((r) => r.pass) ? 'PASS' : 'FAIL'}`);
 }
 
-test.describe(`${TC} - Investment is not transferred on merge (Source has link)`, () => {
+test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to Target Lead after importing`, () => {
   test.beforeEach(async ({ context, page }) => {
     investmentId1 = 0;
     investmentId2 = 0;

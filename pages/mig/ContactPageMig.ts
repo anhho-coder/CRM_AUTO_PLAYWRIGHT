@@ -199,6 +199,40 @@ export class ContactPageMig extends ContactPage {
   }
 
   /**
+   * Added 2026-10-30 (CRM-12370_9.3.3, port of CRM-542_2.2.1). On the OPEN "Create" form: Company Type = Company, name,
+   * e-mail, street, country, state, Sales Team, Salesperson CLEARED; then SAVE. Same field-by-name approach as
+   * createCompanyMig (the pre-production ContactPage flow hung on crm-mig).
+   * @returns the new res.partner id (from the saved form's URL)
+   */
+  async createCompanyContactMig(data: {
+    name: string;
+    email: string;
+    street: string;
+    country: string;
+    state: string;
+    salesTeam: string;
+  }): Promise<number> {
+    await this.migCompanyTypeLabel('Company').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.standard); // the form re-renders for a company
+    await this.migFillChar('name', data.name);
+    await this.migFillChar('email', data.email);
+    await this.migFillChar('street', data.street);
+    const country = await this.migSetMany2one('country_id', data.country, ContactPageMig.migExact(data.country));
+    const state = await this.migSetMany2one('state_id', data.state, new RegExp(`^\\s*${data.state}\\b`));
+    const team = await this.migSetMany2one('team_id', data.salesTeam, ContactPageMig.migExact(data.salesTeam));
+    const user = await this.migVisibleInput('user_id');
+    await user.fill('', { timeout: CommonUtils.waitTimes.abnormalWait });
+    await user.press('Tab');
+    await this.wait(CommonUtils.waitTimes.long); // onchange
+    const salesperson = (await user.inputValue({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')).trim();
+    console.log(`    form reads: Country = ${country} | State = ${state} | Sales Team = ${team} | Salesperson = ${salesperson || '(cleared)'}`);
+    await this.migSaveButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.pageLoad);
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    return Number(id);
+  }
+
+  /**
    * Added 2026-10-26: Contacts list > CREATE, bounded, with ONE retry. ContactPage.clickCreate() waits 240 s for the form
    * URL after a single click; on crm-mig 2026-10-26 15:17 (CRM-11857_4.6, repeat 2) the click right after the hash
    * navigation from the Currency Rates list landed before the Contacts list had taken over, no form opened, and the URL

@@ -262,6 +262,98 @@ await newPage.close();
     return parts.join(' ').trim();
   }
 
+  /** Evidence hook set by readVisibleFormRow(): the form row a value was read from. */
+  static verifyRow(key: string): string {
+    return `[data-pw-verify="${key}"]`;
+  }
+
+  /** Every form row with a cell holding `label` - readVisibleFormRow() keeps the shown ones whose LABEL cell is `label`. */
+  private readonly formRowsHolding_basePage = (label: string) =>
+    this.page.locator(`xpath=//div[contains(@class,"o_form_view")]//tr[td[contains(normalize-space(),"${label}")]]`)
+      .or(this.page.locator(`.o_form_view td:has-text("${label}")`).locator('..'));
+
+  /** A notebook tab anchor by its exact caption. */
+  private readonly notebookTabByCaption_basePage = (caption: string) =>
+    this.page.locator(`xpath=//div[contains(@class,"o_form_view")]//div[contains(@class,"o_notebook")]/ul[contains(@class,"nav-tabs")]/li/a[normalize-space()="${caption}"]`)
+      .or(this.page.locator('.o_form_view .o_notebook > ul.nav-tabs > li > a').filter({ hasText: new RegExp(`^\\s*${caption}\\s*$`) }));
+
+  /**
+   * Open the notebook tab `caption` (first shown occurrence). The Mig page objects override this: the crm-mig form
+   * folds overflow tabs into "More (N)" (MigNotebook.ts). Throws when no shown tab carries the caption.
+   */
+  protected async openNotebookTabByCaption(caption: string): Promise<void> {
+    const tab = this.notebookTabByCaption_basePage(caption).locator('visible=true').first();
+    await tab.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.extraLong });
+    await this.waitForLoadingOverlayHidden();
+    await tab.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * A labelled form field (Company Name, Address, Is Won, Active, ...) read ONLY where a user can see it: on the form
+   * as shown, else in the `fallbackTab` notebook tab (null = do not open any tab). Tags the label and value cells it
+   * read (`BasePage.verifyRow(key)`) for the verify-evidence outline.
+   * @returns value = the value cell, whitespace collapsed - '' when no shown row carries the label;
+   *          checked = the state of a checkbox in that cell (null when it holds none);
+   *          where = 'main sheet' | '"<tab>" tab' | 'not visible - ...'
+   *
+   * Why: the label readers (getCompanyNameReadonly, getContactNameReadonly, readAddressText) take the first DOM match,
+   * which on a merged Lead (Opportunity layout) is a HIDDEN main-sheet row (o_invisible_modifier). CRM-542_1.2.1.1
+   * [CRM-11289] passed "Company Name = Company Name Lead 1" on 2026-11-02 with no Company Name on screen; the same
+   * values are shown in the "Follow-up" tab (pre-prod leads 1103653/1103654, probe-preprod-merged-lead-hidden-rows).
+   * Likewise Active / Is Won live only in the LAST of the two "CRM Developer" tabs (probe-preprod-crm-developer-tabs).
+   */
+  async readVisibleFormRow(label: string, key: string, fallbackTab: string | null = 'Follow-up'): Promise<{ value: string; checked: boolean | null; where: string }> {
+    await this.page.evaluate((k) => {
+      document.querySelectorAll(`[data-pw-verify="${k}"]`).forEach((el) => el.removeAttribute('data-pw-verify'));
+    }, key).catch(() => {});
+    const shown = await this.findVisibleFormRow(label, key);
+    if (shown) return shown;
+    if (fallbackTab === null) return { value: '', checked: null, where: `not visible - no shown "${label}" field on the form as displayed` };
+    let tabNote = '';
+    await this.openNotebookTabByCaption(fallbackTab).catch((e: Error) => {
+      tabNote = `; the "${fallbackTab}" tab could not be opened: ${e.message.split('\n')[0]}`;
+    });
+    // the tab pane can render a moment after the click
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const inTab = await this.findVisibleFormRow(label, key);
+      if (inTab) return inTab;
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    return { value: '', checked: null, where: `not visible - no shown "${label}" field on the form nor in the "${fallbackTab}" tab${tabNote}` };
+  }
+
+  private async findVisibleFormRow(label: string, key: string): Promise<{ value: string; checked: boolean | null; where: string } | null> {
+    const rows = this.formRowsHolding_basePage(label).locator('visible=true');
+    const total = Math.min(await rows.count().catch(() => 0), 12);
+    // Odoo pads empty readonly cells with a zero-width space
+    const norm = (t: string) => t.replace(/​/g, '').replace(/\s+/g, ' ').trim();
+    for (let i = 0; i < total; i++) {
+      const row = rows.nth(i);
+      const cells = (await row.locator('xpath=./td').or(row.locator(':scope > td')).allInnerTexts().catch(() => [] as string[])).map(norm);
+      // a LABEL cell must be the label itself ("Address Type", "Company Name Lead 1" are other cells); a 4-column group
+      // holds two label/value pairs per row ("Partner | | Lead Form | IB NC Leads"); Odoo appends "?" (help tooltip)
+      // or "*" (required) to some labels
+      const at = cells.findIndex((c) => c.replace(/[?*:]/g, '').trim().toLowerCase() === label.toLowerCase());
+      if (at < 0) continue;
+      const read = await row.evaluate((el, { k, at }) => {
+        const tds = Array.from(el.children).filter((c) => c.tagName === 'TD');
+        const value = tds[at + 1];
+        tds[at]?.setAttribute('data-pw-verify', k);
+        value?.setAttribute('data-pw-verify', k);
+        const box = value?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+        const pane = el.closest('.tab-pane');
+        const tab = pane && pane.id ? document.querySelector(`a[href="#${pane.id}"]`) : null;
+        return {
+          checked: box ? box.checked : null,
+          where: !pane || !pane.id ? 'main sheet' : `"${((tab && tab.textContent) || pane.id).trim()}" tab`,
+        };
+      }, { k: key, at }, { timeout: CommonUtils.waitTimes.extraLong }).catch(() => ({ checked: null, where: 'main sheet' }));
+      return { value: cells[at + 1] ?? '', ...read };
+    }
+    return null;
+  }
+
   /**
    * Read the Odoo record id currently shown in the form URL (`?id=` or `#id=`), without waiting.
    * @returns the id as a string, or '' when the URL carries no numeric id (e.g. an unsaved "New" form)

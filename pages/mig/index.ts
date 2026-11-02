@@ -36,6 +36,8 @@ export { InvoicePageMig } from './InvoicePageMig';
 export { MailpitPageMig } from './MailpitPageMig';
 export { DiscountProgramEditorPageMig } from './DiscountProgramEditorPageMig';
 export { ContactPageMig } from './ContactPageMig';
+export { LeadPageMig } from './LeadPageMig';
+export { OpportunityPageMig } from './OpportunityPageMig';
 export { DealElementPageMig } from './DealElementPageMig';
 export { QuotationPageMig } from './QuotationPageMig';
 export { InvoiceLinesPageMig } from './InvoiceLinesPageMig';

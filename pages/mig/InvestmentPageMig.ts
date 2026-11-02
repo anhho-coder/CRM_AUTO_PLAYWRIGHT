@@ -52,7 +52,7 @@ export class InvestmentPageMig extends InvestmentPage {
     'CRM-12370_8.7.3', 'CRM-12370_8.7.4', 'CRM-12370_8.7.5', 'CRM-12370_8.7.6', 'CRM-12370_8.7.7',
     'CRM-12370_8.7.8', 'CRM-12370_8.7.9', 'CRM-12370_8.7.10', 'CRM-12370_8.7.11', 'CRM-12370_8.7.12',
     'CRM-12370_8.7.13', 'CRM-12370_8.7.14', 'CRM-12370_8.7.15',
-    'CRM-12370_8.8.1', 'CRM-12370_8.8.2',
+    'CRM-12370_9.7.1', 'CRM-12370_9.7.2',
   ]);
 
   /** True when this run's data must be KEPT: the TC is on the pause list and the test did not pass. */
@@ -183,7 +183,7 @@ export class InvestmentPageMig extends InvestmentPage {
    * `HomePageMig.navigateToCRM()` returns as soon as ANY records view is visible. Called right after
    * `returnToHome()` - the Apps screen, itself a kanban - that is already true before the CRM action
    * has loaded, so it returned while Apps was still on screen; `switchToListView()` then switched the
-   * APPS list and `searchByEmail()` typed into the Apps search (CRM-12370_8.8.2 on 2026-10-20: facet
+   * APPS list and `searchByEmail()` typed into the Apps search (CRM-12370_9.7.2, then numbered 8.8.2, on 2026-10-20: facet
    * "Module Test@company...", then a 30 s timeout on the Opp row). This waits until the CRM SCREEN
    * is on: the active breadcrumb reads "Pipeline" (Apps reads otherwise), re-applies the hash with a
    * reload once if it never does, and fails naming the screen it is on.

@@ -316,30 +316,44 @@ export class CommonUtils {
       passed: boolean | 'read';
       /** CSS selector(s) of what the check read (the open dropdown, the row, the field, the dialog). */
       highlight?: string | string[];
+      /**
+       * One shot for several checks read on the SAME screen state: each element outlined in the colour of ITS OWN
+       * checks (green PASS / red FAIL), the banner carrying the overall verdict. A merged single colour painted the
+       * passing fields red (CRM-12370_9.1.3 Step 3, 2026-10-30: Tags / Sales Team / Email red for a Company Name FAIL).
+       */
+      outlines?: { selector: string; passed: boolean }[];
       /** The VERIFY lines burned into the image - normally the same strings printed on stdout. */
       lines?: string[];
       /** Which corner the caption sits in. Default 'top-right'. */
       corner?: 'top-right' | 'top-left' | 'bottom-right' | 'bottom-left';
     }
   ): Promise<void> {
-    const selectors = typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || []);
     const verdict = opts.passed === 'read' ? 'READ' : opts.passed ? 'PASS' : 'FAIL';
     const colour = opts.passed === 'read' ? '#1c7ed6' : opts.passed ? '#1a9641' : '#e03131';
+    // every selector carries its own outline colour: `highlight` takes the shot's verdict, `outlines` their own
+    const marks = [
+      ...(typeof opts.highlight === 'string' ? [opts.highlight] : (opts.highlight || [])).map((selector) => ({ selector, colour })),
+      ...(opts.outlines || []).map((o) => ({ selector: o.selector, colour: o.passed ? '#1a9641' : '#e03131' })),
+    ];
+    const selectors = marks.map((m) => m.selector);
     let decorated = false;
     try {
       const hits = await page.evaluate(
-        ({ selectors, colour, verdict, lines, corner }) => {
+        ({ marks, colour, verdict, lines, corner }) => {
           try {
             const TAG = '__pwVerifyEvidence';
             const HIT = '__pwVerifyHit';
             document.querySelectorAll('.' + TAG).forEach((n) => n.remove());
-            document.querySelectorAll('.' + HIT).forEach((n) => n.classList.remove(HIT));
+            document.querySelectorAll('.' + HIT).forEach((n) => {
+              n.classList.remove(HIT, HIT + 'Pass', HIT + 'Fail');
+            });
 
             const style = document.createElement('style');
             style.className = TAG;
-            style.textContent =
-              '.' + HIT + '{outline:3px solid ' + colour + ' !important;outline-offset:2px !important;' +
+            const rule = (cls: string, c: string) =>
+              '.' + cls + '{outline:3px solid ' + c + ' !important;outline-offset:2px !important;' +
               'box-shadow:0 0 0 6px rgba(224,49,49,.12) !important;border-radius:3px !important;}';
+            style.textContent = rule(HIT, colour) + rule(HIT + 'Pass', '#1a9641') + rule(HIT + 'Fail', '#e03131');
             document.head.appendChild(style);
 
             // Only a RENDERED element counts as marked: a DOM match that is hidden (display:none, an Odoo
@@ -355,14 +369,15 @@ export class CommonUtils {
             let hits = 0;
             const invalid: string[] = [];
             const dead: string[] = [];
-            selectors.forEach((sel) => {
+            marks.forEach(({ selector: sel, colour: own }) => {
               // one invalid selector (e.g. jQuery's ':visible') must not drop the banner and the other outlines
               let found: NodeListOf<Element>;
               try { found = document.querySelectorAll(sel); } catch { invalid.push(sel); return; }
+              const cls = own === colour ? HIT : own === '#1a9641' ? HIT + 'Pass' : HIT + 'Fail';
               let shown = 0;
               found.forEach((el) => {
                 if (!rendered(el)) return;
-                (el as HTMLElement).classList.add(HIT);
+                (el as HTMLElement).classList.add(HIT, cls);
                 shown++;
               });
               if (!shown) dead.push(sel + (found.length ? ` (${found.length} in the DOM, none visible)` : ''));
@@ -401,7 +416,7 @@ export class CommonUtils {
             return -1;
           }
         },
-        { selectors, colour, verdict, lines: opts.lines || [], corner: opts.corner || 'top-right' }
+        { marks, colour, verdict, lines: opts.lines || [], corner: opts.corner || 'top-right' }
       ).catch(() => -1);
 
       decorated = hits >= 0;
@@ -428,7 +443,7 @@ export class CommonUtils {
       if (decorated) {
         await page.evaluate(() => {
           document.querySelectorAll('.__pwVerifyEvidence').forEach((n) => n.remove());
-          document.querySelectorAll('.__pwVerifyHit').forEach((n) => n.classList.remove('__pwVerifyHit'));
+          document.querySelectorAll('.__pwVerifyHit').forEach((n) => n.classList.remove('__pwVerifyHit', '__pwVerifyHitPass', '__pwVerifyHitFail'));
         }).catch(() => {});
       }
     }
@@ -579,6 +594,15 @@ export class CommonUtils {
     leadMergingNotHappen: 90000,
     /** Wait to observe whether an unwanted lead merge occurs before asserting NO-merge - 5 minutes (async merge queue/cron) */
     leadMergeObservation: 300000,
+    /** crm-mig merge window - 35 min. A same-email merge missed at create time is only picked up by the
+     *  20-min re-scan cron (CRM-12621), and only once the lead is ~10 min old (measured 2026-10-28). */
+    leadMergeMigWindow: 2100000,
+    /** crm-mig merge poll interval - 1 min (reload + read the chatter between polls) */
+    leadMergeMigPoll: 60000,
+    /** crm-mig Lead Merging test budget - 55 min (create 2-3 records + the 35-min window + verification) */
+    leadMergeMigTest: 3300000,
+    // crm-mig notebook "More (N)": time for the dropdown to list its folded tabs after a click (MigNotebook.ts)
+    migNotebookMoreOpen: 10000,
     helpdeskNoAutoAssignWait: 300000, // CRM-11859 TC-SEC-019: "Wait 5 minutes and reopen the ticket"
     /** Wait time for lead merging process (5 minutes) */
     leadMerging: 60000,

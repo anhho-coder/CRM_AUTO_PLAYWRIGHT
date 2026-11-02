@@ -25,10 +25,10 @@ import {
 
 /**
  * ============================================================================================
- *  CRM-12370_8.8.2 - Investment is not transferred from a Source Lead to the Target Lead,
+ *  CRM-12370_9.7.2 - Investment is not transferred from a Source Lead to the Target Lead,
  *                    Source has no link (O12 CE Migration server)
  * ============================================================================================
- *  Test Case ID    : CRM-12370_8.8.2
+ *  Test Case ID    : CRM-12370_9.7.2
  *  Automation-Type : ported
  *  Automation-Date : 2026-10-19
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
@@ -39,7 +39,7 @@ import {
  *  Source TC (pre-production) : CRM-3902_1.2.1 (Jira CRM-9963, updated 2026-10-21T10:28+0300 - re-check before trusting this spec)
  *  Expected Result            : pre-production baseline measured 2026-10-21 (Opportunities #1101509/#1101510),
  *                               master 'Migration - Setup New CRM' J411
- *  Source spec                : tests/1.Project_CRM/4.Investments/CRM-3902_Investment_transfer_ban_on_merge/
+ *  Source spec                : tests/1.Project_CRM/3.Lead_Merging/CRM-3902_Investment_transfer_ban_on_merge/
  *                               1.Target_Lead/1.2.Source_no_link/tc-crm-3902-1-2-investment-not-transferred.spec.ts
  *  Source version             : UNTRACKED in git (no commit yet) + uncommitted working-tree edits, read 2026-10-19
  *
@@ -75,7 +75,7 @@ import {
  * --------------------------------------------------------------------------------------------
  *  Command to run
  * --------------------------------------------------------------------------------------------
- *  npx playwright test --grep "CRM-12370_8\.8\.2:" --project=MigSmoke
+ *  npx playwright test --grep "CRM-12370_9.7.2:" --project=MigSmoke
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - BASELINE RULE)
@@ -85,11 +85,11 @@ import {
  *    'Lines [2] "Investment ID" is empty' (seen 2026-10-20 on CRM-12370_8.5.1).
  *  - Login users.admin_crm_mig on baseUrl_mig; Investments navigation by XML-id URL hash
  *    (InvestmentPageMig); Home by HomePageMig.returnToHome; CRM by InvestmentPageMig.openCrmPipeline (verified on the "Pipeline" breadcrumb).
- *  - Investment names carry the run marker "TEST CRM-12370_8.8.2 ..." for the afterAll sweep.
+ *  - Investment names carry the run marker "TEST CRM-12370_9.7.2 ..." for the afterAll sweep.
  *  - Test data substituted (same intent, existing record on crm-mig):
  *      Completion Events : Attended webinar    -> Atttended webinar     (crm-mig event-type name, sic)
  *      Conversion Events : Download free trial -> Downloaded free trial (crm-mig event-type name)
- *  - Audience files: CSV-Audience-CRM-12370_8.8.2-1.csv and -2.csv (unique per TC).
+ *  - Audience files: CSV-Audience-CRM-12370_9.7.2-1.csv and -2.csv (unique per TC).
  *  - Pre-condition 2 "Steps 1-2" (Home > Investments, then Investment) folded into one navigation step.
  *  - Tear-down steps of the source (delete Investment#2, open URL_Investment#1 and delete it, delete
  *    both CSVs) are replaced by the afterEach ledger teardown (RPC, deny-list) and the file removal.
@@ -162,7 +162,7 @@ import {
  * ============================================================================================
  */
 
-const TC = 'CRM-12370_8.8.2';
+const TC = 'CRM-12370_9.7.2';
 
 /** Polls of the CRM list while waiting for the re-scan cron (every 20 min) to merge the two Opportunities. */
 const MERGE_POLLS = 15;
@@ -226,7 +226,7 @@ let audienceCompany2 = '';
 let audienceFile1 = '';
 let audienceFile2 = '';
 
-test.describe(`${TC} - Investment is not transferred on merge (Source has no link)`, () => {
+test.describe(`${TC} - Verify the value of "Investment" field from a Source Lead to Target Lead after importing new audience using csv file`, () => {
   test.beforeEach(async ({ context, page }) => {
     investmentId1 = 0;
     investmentId2 = 0;
