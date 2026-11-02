@@ -11,8 +11,8 @@ import {
  *  CRM-12370_9.3.3 - Lead Merging: NO merge - different emails, each lead belongs to its own company (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.3.3
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-02
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-542_2.2.1 (Jira CRM-8903) - assertions ported unchanged
@@ -46,6 +46,12 @@ import {
  *    afterAll sweeps the run marker (deny-list, counted first).
  *  - Company contacts are created with ContactPageMig.createCompanyContactMig() (field-by-name): the pre-production
  *    ContactPage flow hung on crm-mig (CRM-12144_2.1, 2026-10-21); Company Type = Company replaces the checkbox.
+ *  - Steps 5 and 9 (Log area) added 2026-11-02 from the manual TC CRM-8903 / CRM-14081: the baseline spec has no
+ *    test.step for them (it re-checks the log only in the round-2 deferred job), so the port had none either.
+ *  - Kept as the baseline spec asserts, although the manual TC (CRM-8903 = CRM-14081) words them differently
+ *    (tester's decision 2026-11-02, "same as baseline"):
+ *      3.2 / 7.2  manual "Company Name Lead 1/2"   -> asserted: name of Contact #1 / #2 (the linked company)
+ *      7.7        manual "Email_Lead#1"            -> asserted: Email_Lead#2 (the header block below shows Email_Lead#2)
  *
  * --------------------------------------------------------------------------------------------
  *  Source manual TC (baseline header, verbatim)
@@ -205,6 +211,8 @@ const STEP = {
   s4_2: 'Step 4.2: Verify Active checkbox = TRUE',
   s4_3: 'Step 4.3: Verify Is Won = Pending',
   s4_4: 'Step 4.4: Verify Lost Reason = BLANK',
+  s5: 'Step 5: On the Log area, verify NO merge message',
+  s5_1: 'Step 5.1: Verify NO "[LEAD 2], has been merged into this lead." message',
   s6: 'Step 6: Open the Lead 2 using URL_Lead#2',
   s7: 'Step 7: Verify Lead #2 fields (should remain unchanged)',
   s7_1: 'Step 7.1: Verify Tag field is "Trial download"',
@@ -220,6 +228,8 @@ const STEP = {
   s8_2: 'Step 8.2: Verify Active checkbox = TRUE',
   s8_3: 'Step 8.3: Verify Is Won = Pending',
   s8_4: 'Step 8.4: Verify Lost Reason = BLANK',
+  s9: 'Step 9: On the Log area, verify NO merge message',
+  s9_1: 'Step 9.1: Verify NO "This lead has been merged into [LEAD 1]." message',
   verify: 'Verification',
 } as const;
 
@@ -387,6 +397,10 @@ test.describe(`${TC} - NO MERGE: Different Emails and Different Companies`, () =
       { label: STEP.s4_4, kind: 'lostReason', expected: '' },
     ], () => leadPage.clickCRMDeveloperTab_targetLead());
 
+    await verifyStep(page, testInfo, vlog, leadPage, STEP.s5, [
+      { label: STEP.s5_1, kind: 'noSourceMergeMsg', expected: lead2Name, meaning: 'FOUND means Lead #2 was merged into Lead #1' },
+    ]);
+
     await test.step(STEP.s6, async () => {
       console.log(`\n--- ${STEP.s6} ---`);
       await openRecordByUrl(page, leadPage, lead2.url);
@@ -409,6 +423,10 @@ test.describe(`${TC} - NO MERGE: Different Emails and Different Companies`, () =
       { label: STEP.s8_3, kind: 'isWon', expected: 'Pending' },
       { label: STEP.s8_4, kind: 'lostReason', expected: '' },
     ], () => leadPage.clickCRMDeveloperTab());
+
+    await verifyStep(page, testInfo, vlog, leadPage, STEP.s9, [
+      { label: STEP.s9_1, kind: 'noTargetMergeMsg', expected: lead1Name, meaning: 'FOUND means Lead #2 was merged into Lead #1' },
+    ]);
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
