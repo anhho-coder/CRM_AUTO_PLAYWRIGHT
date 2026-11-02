@@ -88,8 +88,8 @@ test.describe('CRM-2178_2.3.1.2 [CRM-9059] - Lead Merging: Same Contact (Level N
     }
   });
 
-  // FIXME: Test marked as skip due to known bug CRM-9059 (leads with same Contact / Level NOT set and DIFFERENT non-empty Sales Team + Salesperson are still merged)
-  test.skip('CRM-2178_2.3.1.2 [CRM-9059]: Verify merging leads will NOT happen with same Contact (Level NOT set) and DIFFERENT non-empty Sales Team + Salesperson', async ({ page }, testInfo) => {
+  // Un-skipped 2026-10-28: CRM-9059 Closed 2026-09-16 on Jira - re-verification run.
+  test('CRM-2178_2.3.1.2 [CRM-9059]: Verify merging leads will NOT happen with same Contact (Level NOT set) and DIFFERENT non-empty Sales Team + Salesperson', async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
 
     // Track the known defect this test reproduces

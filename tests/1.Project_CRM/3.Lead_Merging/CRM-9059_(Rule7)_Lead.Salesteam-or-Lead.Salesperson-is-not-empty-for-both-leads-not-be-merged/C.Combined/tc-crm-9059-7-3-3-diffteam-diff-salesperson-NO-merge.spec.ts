@@ -133,8 +133,8 @@ test.describe('CRM-9059_7.3.3 - Lead Merging Rule 7: different Sales Team, diffe
     }
   });
 
-  // SKIPPED due to known defect CRM-9059 (Rule 7 merge-guard broken - leads with different Sales Team and Salesperson still merge)
-  test.skip('CRM-9059_7.3.3 [CRM-9059]: Verify leads do NOT merge with DIFFERENT Sales Team and DIFFERENT Salesperson', async ({ page }, testInfo) => {
+  // Un-skipped 2026-10-28: CRM-9059 Closed 2026-09-16 on Jira - re-verification run.
+  test('CRM-9059_7.3.3 [CRM-9059]: Verify leads do NOT merge with DIFFERENT Sales Team and DIFFERENT Salesperson', async ({ page }, testInfo) => {
     testInfo.annotations.push({ type: 'defect', description: 'CRM-9059' });
     test.setTimeout(CommonUtils.waitTimes.runningTestScript);
 

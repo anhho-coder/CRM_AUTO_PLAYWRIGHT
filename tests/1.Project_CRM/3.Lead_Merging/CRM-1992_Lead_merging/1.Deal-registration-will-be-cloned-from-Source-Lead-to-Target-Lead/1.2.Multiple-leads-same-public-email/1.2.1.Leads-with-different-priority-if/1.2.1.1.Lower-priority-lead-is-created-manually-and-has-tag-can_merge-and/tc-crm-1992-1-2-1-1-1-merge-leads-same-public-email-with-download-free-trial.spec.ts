@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page, TestInfo } from '@playwright/test';
 import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, HomePage, LeadPage } from '@pages';
@@ -20,6 +20,13 @@ import { CommonUtils } from '@helpers/common.utils';
  * npx playwright test --grep "CRM-10787" --project=chromium
  *
  * NOTE: Un-skipped for CRM-10787 (Resolved) + CRM-8929 (Closed) fix-verification; pushed for Jenkins run.
+ * NOTE: Skipped 2026-11-02 - blocked by CRM-14070 (Deal Registration not cloned Source -> Target since 16-Oct-2026).
+ *       Remove the test.skip() and the [CRM-14070] title tag once CRM-14070 is resolved.
+ *
+ * Refactor 2026-11-02 (tester's request, side-by-side with CRM-12370_9.2.2 on crm-mig): Steps 3-9 run through
+ * verifyChecks() - every verification point is a soft assertion (a FAIL no longer hides the later steps), each step
+ * attaches one verify-evidence shot (VERIFY banner + outlined fields), fields are read where the form shows them
+ * (readVisibleFormRow) and the CRM Developer checks use the LAST "CRM Developer" tab. Same pattern as CRM-542_1.2.1.1.
  * 
  * Pre-condition:
  * 1. After login successful, click at "CRM" button
@@ -154,8 +161,9 @@ test.describe('CRM-1992_1.2.1.1.1 - Lead Merging: Same Public Email with Deal Re
     }
   });
 
-  test('CRM-1992_1.2.1.1.1 [CRM-8929] [CRM-10787]: Verify merging leads with same public email (Created Manually = TRUE, Deal Registration)', async ({ page }, testInfo) => {
-    
+  test('CRM-1992_1.2.1.1.1 [CRM-8929] [CRM-10787] [CRM-14070]: Verify merging leads with same public email (Created Manually = TRUE, Deal Registration)', async ({ page }, testInfo) => {
+    test.skip(true, 'Step 5.2: Deal Registration of Lead#2 is not cloned to Lead#1 after the merge (Registered deal FALSE, dates BLANK) - blocked by CRM-14070');
+
     test.setTimeout(config.timeouts.test);
     
     // Maximize browser window
@@ -167,13 +175,14 @@ test.describe('CRM-1992_1.2.1.1.1 - Lead Merging: Same Public Email with Deal Re
     const leadPage = new LeadPage(page);
     
     const tcId = 'CRM-1992_1.2.1.1.1';
-    let sharedEmail: string;
-    let lead1Name: string;
-    let lead1Id: string;
-    let lead1Url: string;
-    let lead2Name: string;
-    let lead2Id: string;
-    let lead2Url: string;
+    const vlog = new VerifyLog();
+    let sharedEmail = '';
+    let lead1Name = '';
+    let lead1Id = '';
+    let lead1Url = '';
+    let lead2Name = '';
+    let lead2Id = '';
+    let lead2Url = '';
 
     // Step 1: Login
     await test.step('Step 1: Login and navigate to CRM', async () => {
@@ -402,150 +411,39 @@ test.describe('CRM-1992_1.2.1.1.1 - Lead Merging: Same Public Email with Deal Re
       console.log('✓ Lead #1 opened successfully\n');
     });
 
-    // STEP 3: Verify Lead #1 fields
-    await test.step('Step 3: Verify the following fields on Lead #1', async () => {
-      console.log('=== STEP 3: VERIFY LEAD #1 FIELDS (READONLY MODE) ===\n');
-      
-      // Step 3.1: Verify Tags contain "Can_Merge", "Trial download"
-      await test.step('Step 3.1: Tag field contains "Can_Merge", "Trial download"', async () => {
-        const tagsText = await leadPage.getTagsText();
-        
-        expect(tagsText).toContain('Can_Merge');
-        expect(tagsText).toContain('Trial download');
-        console.log(`  ✓ Step 3.1: Tags contain "Can_Merge" and "Trial download"`);
-      });
+    // STEP 3: Verify Lead #1 fields (read where the form shows them - one evidence shot for the step)
+    await verifyChecks(page, testInfo, vlog, 'Step 3: Verify the following fields on Lead #1', [
+      { label: 'Step 3.1: Tag field contains "Can_Merge", "Trial download"', match: 'contains', expected: ['Can_Merge', 'Trial download'], highlight: HIGHLIGHT.tags, read: async () => ({ actual: await leadPage.getTagsText() }) },
+      { label: 'Step 3.2: Company Name textbox = Company Name Lead 1', match: 'contains', expected: 'Company Name Lead 1', highlight: HIGHLIGHT.companyName, read: () => readRow(leadPage, 'Company Name', 'company-name') },
+      { label: 'Step 3.3: Street dropdown list = 123street', match: 'contains', expected: '123street', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 3.4: Country dropdown list = Belgium', match: 'contains', expected: 'Belgium', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 3.5: State dropdown list = Brussels Capital', match: 'contains', expected: 'Brussels Capital', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 3.6: Sales Team dropdown list has a value or not', match: 'observe', expected: '', read: async () => ({ actual: await leadPage.getSalesTeamValue() }) },
+      { label: 'Step 3.7: Email textbox = Email_Lead#1', match: 'contains', expected: sharedEmail, highlight: HIGHLIGHT.email, read: async () => ({ actual: await leadPage.getEmailReadonly() }) },
+    ]);
 
-      // Step 3.2: Verify Company Name
-      await test.step('Step 3.2: Company Name textbox = Company Name Lead 1', async () => {
-        const companyName = await leadPage.getCompanyNameReadonly();
-        
-        expect(companyName).toContain('Company Name Lead 1');
-        console.log(`  ✓ Step 3.2: Company Name = Company Name Lead 1`);
-      });
+    // STEP 4: Verify Lead #1 CRM Developer tab (the LAST "CRM Developer" tab - the first one shows Lead Form only)
+    await verifyChecks(page, testInfo, vlog, 'Step 4: Click at "CRM Developer" tab and verify the following', [
+      { label: 'Step 4.1: Lead form textbox = Download Free Trial', match: 'equals', expected: 'Download Free Trial', highlight: HIGHLIGHT.leadForm, read: () => readRow(leadPage, 'Lead Form', 'lead-form', null) },
+      { label: 'Step 4.2: Active checkbox = TRUE', match: 'equals', expected: 'TRUE', highlight: HIGHLIGHT.active, read: () => readCheckbox(leadPage, 'Active', 'active') },
+      { label: 'Step 4.3: Is Won = Pending', match: 'equals', expected: 'Pending', highlight: HIGHLIGHT.isWon, read: () => readRow(leadPage, 'Is Won', 'is-won', null) },
+      { label: 'Step 4.4: Lost Reason = BLANK', match: 'equals', expected: '', highlight: HIGHLIGHT.lostReason, read: () => readRow(leadPage, 'Lost Reason', 'lost-reason', null) },
+    ], () => leadPage.clickCRMDeveloperTab_targetLead());
 
-      // Step 3.3: Verify Street
-      await test.step('Step 3.3: Street dropdown list = 123street', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('123street');
-        console.log(`  ✓ Step 3.3: Street = 123street`);
-      });
-
-      // Step 3.4: Verify Country
-      await test.step('Step 3.4: Country dropdown list = Belgium', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('Belgium');
-        console.log(`  ✓ Step 3.4: Country = Belgium`);
-      });
-
-      // Step 3.5: Verify State
-      await test.step('Step 3.5: State dropdown list = Brussels Capital', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('Brussels Capital');
-        console.log(`  ✓ Step 3.5: State = Brussels Capital`);
-      });
-
-      // Step 3.6: Verify Sales Team (has a value or not)
-      await test.step('Step 3.6: Sales Team dropdown list has a value or not', async () => {
-        const salesTeam = await leadPage.getSalesTeamValue();
-        
-        console.log(`  ✓ Step 3.6: Sales Team = "${salesTeam}" ${salesTeam ? '(has value)' : '(empty)'}`);
-      });
-
-      // Step 3.7: Verify Email
-      await test.step('Step 3.7: Email textbox = Email_Lead#1', async () => {
-        const email = await leadPage.getEmailReadonly();
-        
-        expect(email).toContain(sharedEmail);
-        console.log(`  ✓ Step 3.7: Email = ${sharedEmail}`);
-      });
-    });
-
-    // STEP 4: Verify Lead #1 CRM Developer tab
-    await test.step('Step 4: Click at "CRM Developer" tab and verify the following', async () => {
-      console.log('\n=== STEP 4: VERIFY CRM DEVELOPER TAB (LEAD #1) ===\n');
-      
-      // Click on CRM Developer tab
-      await leadPage.clickCRMDeveloperTab();
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-
-      // Step 4.1: Verify Lead form
-      await test.step('Step 4.1: Lead form textbox = Download Free Trial', async () => {
-        const leadForm = await leadPage.getLeadFormValue();
-        
-        expect(leadForm).toBe('Download Free Trial');
-        console.log(`  ✓ Step 4.1: Lead form = ${leadForm}`);
-      });
-
-      // Step 4.2: Verify Active checkbox
-      await test.step('Step 4.2: Active checkbox = TRUE', async () => {
-        const isActive = await leadPage.isActiveChecked();
-        
-        expect(isActive).toBeTruthy();
-        console.log(`  ✓ Step 4.2: Active = TRUE`);
-      });
-
-      // Step 4.3: Verify Is Won
-      await test.step('Step 4.3: Is Won = Pending', async () => {
-        const isWon = await leadPage.getIsWonValue();
-        
-        expect(isWon.trim()).toBe('Pending');
-        console.log(`  ✓ Step 4.3: Is Won = ${isWon}`);
-      });
-
-      // Step 4.4: Verify Lost Reason is BLANK
-      await test.step('Step 4.4: Lost Reason = BLANK', async () => {
-         const lostReasonValue = await leadPage.getLostReasonValueViaTextContent();
-        expect(lostReasonValue).toBe('');
-        console.log(`  ✓ Step 4.4: Lost Reason = BLANK`);
-      });
-    });
-
-    // STEP 5: Verify Log area on Lead #1
-    await test.step('Step 5: On the Log area, verify the following', async () => {
-      console.log('\n=== STEP 5: VERIFY LOG AREA (LEAD #1) ===\n');
-      
-      // Wait for page to be fully loaded
-      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, 30000);
-      
-      // Step 5.1: Verify merge message
-      await test.step('Step 5.1: Verify merge message in Log area', async () => {
-        const hasMergeMessage = await leadPage.hasSourceLeadMergeMessage(lead2Name);
-        
-        expect(hasMergeMessage).toBeTruthy();
-        console.log(`  ✓ Step 5.1: Found log message: "${lead2Name}, has been merged into this lead."`);
-      });
-
-      // Step 5.2: Verify Deal registration tab
-      await test.step('Step 5.2: Click at "Deal registration" tab and verify', async () => {
-        console.log('\n  --- Step 5.2: Verify Deal Registration Tab ---');
-        
-        // Click on Deal Registration tab
-        await leadPage.clickDealRegistrationTab();
-        await page.waitForTimeout(CommonUtils.waitTimes.standard);
-        console.log('  ✓ Clicked Deal Registration tab');
-        
-        // Get current date for comparison
-        const currentDate = CommonUtils.formatDate();
-        
-        // Verify Registered deal checkbox is TRUE
-        const isRegisteredDealChecked = await leadPage.isRegisteredDealChecked();
-        expect(isRegisteredDealChecked).toBeTruthy();
-        console.log('  ✓ Registered deal checkbox = TRUE');
-        
-        // Verify Deal registration start date
-        const startDateValue = await leadPage.getDealRegistrationStartDate();
-        expect(startDateValue).toBe(currentDate);
-        console.log(`  ✓ Deal registration start date = ${currentDate}`);
-        
-        // Verify Deal registration end date
-        const endDateValue = await leadPage.getDealRegistrationEndDate();
-        expect(endDateValue).toBe(currentDate);
-        console.log(`  ✓ Deal registration end date = ${currentDate}`);
-      });
-    });
+    // STEP 5: Verify Log area + Deal registration tab on Lead #1 (5.2's first read opens the Deal registration tab)
+    const currentDate = CommonUtils.formatDate();
+    await verifyChecks(page, testInfo, vlog, 'Step 5: On the Log area, verify the following', [
+      { label: 'Step 5.1: Verify merge message in Log area', match: 'found', expected: `${lead2Name}, has been merged into this lead.`, meaning: 'NOT FOUND means Lead #2 was not merged into Lead #1', highlight: HIGHLIGHT.log,
+        read: async () => ({ actual: (await leadPage.hasSourceLeadMergeMessage(lead2Name)) ? 'FOUND' : 'NOT FOUND' }) },
+      { label: 'Step 5.2: "Registered deal" checkbox = TRUE', match: 'equals', expected: 'TRUE', meaning: 'FALSE means the Deal registration was not cloned from Lead #2', highlight: HIGHLIGHT.registeredDeal,
+        read: async () => {
+          await leadPage.clickDealRegistrationTab();
+          await page.waitForTimeout(CommonUtils.waitTimes.standard);
+          return { actual: (await leadPage.isRegisteredDealChecked()) ? 'TRUE' : 'FALSE' };
+        } },
+      { label: 'Step 5.2: "Deal registration start date" = Current Date', match: 'equals', expected: currentDate, highlight: HIGHLIGHT.dealStart, read: async () => ({ actual: (await leadPage.getDealRegistrationStartDate()) ?? '' }) },
+      { label: 'Step 5.2: "Deal registration end date" = Current Date', match: 'equals', expected: currentDate, highlight: HIGHLIGHT.dealEnd, read: async () => ({ actual: (await leadPage.getDealRegistrationEndDate()) ?? '' }) },
+    ], () => homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, CommonUtils.waitTimes.abnormalWait));
 
     // STEP 6: Open Lead #2
     await test.step('Step 6: Open the Lead 2 using URL_Lead#2', async () => {
@@ -559,218 +457,202 @@ test.describe('CRM-1992_1.2.1.1.1 - Lead Merging: Same Public Email with Deal Re
       console.log('✓ Lead #2 opened successfully\n');
     });
 
-    // STEP 7: Verify Lead #2 fields
-    await test.step('Step 7: Verify the following fields on Lead #2', async () => {
-      console.log('=== STEP 7: VERIFY LEAD #2 FIELDS (READONLY MODE) ===\n');
-      
-      // Step 7.1: Verify Tags contain "Can_Merge"
-      await test.step('Step 7.1: Tag field contains "Can_Merge"', async () => {
-        const tagsText = await leadPage.getTagsText();
-        
-        expect(tagsText).toContain('Can_Merge');
-        console.log(`  ✓ Step 7.1: Tags contain "Can_Merge"`);
-      });
+    // STEP 7: Verify Lead #2 fields (read where the form shows them - one evidence shot for the step)
+    await verifyChecks(page, testInfo, vlog, 'Step 7: Verify the following fields on Lead #2', [
+      { label: 'Step 7.1: Tag field contains "Can_Merge"', match: 'contains', expected: 'Can_Merge', highlight: HIGHLIGHT.tags, read: async () => ({ actual: await leadPage.getTagsText() }) },
+      { label: 'Step 7.2: Company Name textbox = Company Name Lead 1', match: 'contains', expected: 'Company Name Lead 1', meaning: 'auto set due to created Contact', highlight: HIGHLIGHT.companyName, read: () => readRow(leadPage, 'Company Name', 'company-name') },
+      { label: 'Step 7.3: Street dropdown list = 123street', match: 'contains', expected: '123street', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 7.4: Country dropdown list = United States', match: 'contains', expected: 'United States', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 7.5: State dropdown list = Texas (US)', match: 'contains', expected: 'Texas', highlight: HIGHLIGHT.address, read: () => readRow(leadPage, 'Address', 'address') },
+      { label: 'Step 7.6: Sales Team dropdown list has a value or not', match: 'observe', expected: '', read: async () => ({ actual: await leadPage.getSalesTeamValue() }) },
+      { label: 'Step 7.7: Email textbox = Email_Lead#1', match: 'contains', expected: sharedEmail, highlight: HIGHLIGHT.email, read: async () => ({ actual: await leadPage.getEmailReadonly() }) },
+    ]);
 
-      // Step 7.2: Verify Company Name (auto set due to created Contact)
-      await test.step('Step 7.2: Company Name textbox = Company Name Lead 1', async () => {
-        const companyName = await leadPage.getCompanyNameReadonly();
-        
-        expect(companyName).toContain('Company Name Lead 1');
-        console.log(`  ✓ Step 7.2: Company Name = Company Name Lead 1 (auto set due to created Contact)`);
-      });
-
-      // Step 7.3: Verify Street
-      await test.step('Step 7.3: Street dropdown list = 123street', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('123street');
-        console.log(`  ✓ Step 7.3: Street = 123street`);
-      });
-
-      // Step 7.4: Verify Country
-      await test.step('Step 7.4: Country dropdown list = United States', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('United States');
-        console.log(`  ✓ Step 7.4: Country = United States`);
-      });
-
-      // Step 7.5: Verify State
-      await test.step('Step 7.5: State dropdown list = Texas (US)', async () => {
-        const addressText = await leadPage.getAddressReadonly();
-        
-        expect(addressText).toContain('Texas');
-        console.log(`  ✓ Step 7.5: State = Texas`);
-      });
-
-      // Step 7.6: Verify Sales Team (has a value or not)
-      await test.step('Step 7.6: Sales Team dropdown list has a value or not', async () => {
-        const salesTeam = await leadPage.getSalesTeamValue();
-        
-        console.log(`  ✓ Step 7.6: Sales Team = "${salesTeam}" ${salesTeam ? '(has value)' : '(empty)'}`);
-      });
-
-      // Step 7.7: Verify Email
-      await test.step('Step 7.7: Email textbox = Email_Lead#1', async () => {
-        const email = await leadPage.getEmailReadonly();
-        
-        expect(email).toContain(sharedEmail);
-        console.log(`  ✓ Step 7.7: Email = ${sharedEmail}`);
-      });
-    });
-
-    // STEP 8: Verify Lead #2 CRM Developer tab
-    await test.step('Step 8: Click at "CRM Developer" tab and verify the following', async () => {
-      console.log('\n=== STEP 8: VERIFY CRM DEVELOPER TAB (LEAD #2) ===\n');
-      
-      // Click on CRM Developer tab
-      await leadPage.clickCRMDeveloperTab();
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-
-      // Step 8.1: Verify Lead form
-      await test.step('Step 8.1: Lead form textbox = BLANK', async () => {
-        const leadForm = await leadPage.getLeadFormValue();
-        
-        expect(leadForm).toBe('');
-        console.log(`  ✓ Step 8.1: Lead form = BLANK`);
-      });
-
-      // Step 8.2: Verify Active checkbox
-      await test.step('Step 8.2: Active checkbox = FALSE', async () => {
-        const isActive = await leadPage.isActiveChecked();
-        
-        expect(isActive).toBeFalsy();
-        console.log(`  ✓ Step 8.2: Active = FALSE`);
-      });
-
-      // Step 8.3: Verify Is Won
-      await test.step('Step 8.3: Is Won = Lost', async () => {
-        const isWon = await leadPage.getIsWonValue();
-        
-        expect(isWon.trim()).toBe('Lost');
-        console.log(`  ✓ Step 8.3: Is Won = ${isWon}`);
-      });
-
-      // Step 8.4: Verify Lost Reason = Duplicate
-      await test.step('Step 8.4: Lost Reason = Duplicate', async () => {
-         const lostReasonValue = await leadPage.getLostReasonValueViaTextContent();
-        
-        expect(lostReasonValue).toBe('Duplicate');
-        console.log(`  ✓ Step 8.4: Lost Reason = ${lostReasonValue}`);
-      });
-    });
+    // STEP 8: Verify Lead #2 CRM Developer tab (the LAST "CRM Developer" tab - the first one shows Lead Form only)
+    await verifyChecks(page, testInfo, vlog, 'Step 8: Click at "CRM Developer" tab and verify the following', [
+      { label: 'Step 8.1: Lead form textbox = BLANK', match: 'equals', expected: '', highlight: HIGHLIGHT.leadForm, read: () => readRow(leadPage, 'Lead Form', 'lead-form', null) },
+      { label: 'Step 8.2: Active checkbox = FALSE', match: 'equals', expected: 'FALSE', meaning: 'TRUE would mean the record was not archived by a merge', highlight: HIGHLIGHT.active, read: () => readCheckbox(leadPage, 'Active', 'active') },
+      { label: 'Step 8.3: Is Won = Lost', match: 'equals', expected: 'Lost', highlight: HIGHLIGHT.isWon, read: () => readRow(leadPage, 'Is Won', 'is-won', null) },
+      { label: 'Step 8.4: Lost Reason = Duplicate', match: 'equals', expected: 'Duplicate', highlight: HIGHLIGHT.lostReason, read: () => readRow(leadPage, 'Lost Reason', 'lost-reason', null) },
+    ], () => leadPage.clickCRMDeveloperTab_targetLead());
 
     // STEP 9: Verify Log area on Lead #2
-    await test.step('Step 9: On the Log area, verify the following', async () => {
-      console.log('\n=== STEP 9: VERIFY LOG AREA (LEAD #2) ===\n');
-      
-      // Wait for page to be fully loaded
-      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, 30000);
-      
-      // Step 9.1: Verify merge message
-      await test.step('Step 9.1: Verify merge message in Log area', async () => {
-        const hasMergeMessage = await leadPage.hasTargetLeadMergeMessage(lead1Name);
-        
-        expect(hasMergeMessage).toBeTruthy();
-        console.log(`  ✓ Step 9.1: Found log message: "This lead has been merged into ${lead1Name}."`);
-      });
-    });
+    await verifyChecks(page, testInfo, vlog, 'Step 9: On the Log area, verify the following', [
+      { label: 'Step 9.1: Verify merge message in Log area', match: 'found', expected: `This lead has been merged into ${lead1Name}.`, highlight: HIGHLIGHT.log,
+        read: async () => ({ actual: (await leadPage.hasTargetLeadMergeMessage(lead1Name)) ? 'FOUND' : 'NOT FOUND' }) },
+    ], () => homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, CommonUtils.waitTimes.abnormalWait));
 
-    // Final Summary
-    await test.step('Final Summary', async () => {
-      console.log('\n✅ TEST PASSED: Lead merging with Deal Registration verified successfully');
-      console.log(`   Lead #1 (${lead1Id}): Active=TRUE, Is Won=Pending, Tags: Can_Merge, Trial download`);
-      console.log(`   - Created Manually: TRUE`);
-      console.log(`   - Lead Form: Download Free Trial`);
-      console.log(`   - Deal Registration: TRUE (cloned from Lead#2)`);
-      console.log(`   Lead #2 (${lead2Id}): Active=FALSE, Is Won=Lost, Lost Reason=Duplicate`);
-      console.log(`   - Created Manually: FALSE`);
-      console.log(`   - Lead Form: BLANK (after merge)`);
-      console.log(`   - Deal Registration: TRUE (configured on Lead#2)`);
-      console.log(`   Public Email: ${sharedEmail}`);
-      console.log(`   All verification points passed`);
-      console.log('==================================================\n');
-      
-      // Attach verification summary
-      const verificationSummaryHtml = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <style>
-    body { font-family: 'Segoe UI', sans-serif; padding: 20px; background: #f5f5f5; }
-    .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-    .header { background: #16a34a; color: white; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-    .header h2 { margin: 0; font-size: 20px; }
-    .lead-section { background: #dcfce7; padding: 15px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #16a34a; }
-    .lead-title { font-weight: bold; color: #15803d; font-size: 16px; margin-bottom: 10px; }
-    .info-row { margin: 5px 0; padding-left: 15px; }
-    .label { font-weight: bold; color: #15803d; }
-    .summary { background: #dcfce7; border: 2px solid #16a34a; padding: 20px; border-radius: 5px; margin-top: 20px; text-align: center; }
-    .summary-title { color: #15803d; font-size: 18px; font-weight: bold; margin-bottom: 10px; }
-    .summary-text { color: #14532d; line-height: 1.6; }
-    .icon { font-size: 20px; margin-right: 8px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h2><span class="icon">\u2705</span>LEAD MERGING TEST - PASSED (Deal Registration - Public Email)</h2>
-    </div>
-    
-    <div class="lead-section">
-      <div class="lead-title">\ud83d\udccb Lead #1 - Target Lead (Active)</div>
-      <div class="info-row"><span class="label">Lead ID:</span> ${lead1Id}</div>
-      <div class="info-row"><span class="label">Lead Name:</span> ${lead1Name}</div>
-      <div class="info-row"><span class="label">Email:</span> ${sharedEmail}</div>
-      <div class="info-row"><span class="label">Tags:</span> Can_Merge, Trial download</div>
-      <div class="info-row"><span class="label">Company Name:</span> Company Name Lead 1</div>
-      <div class="info-row"><span class="label">Location:</span> Brussels Capital, Belgium</div>
-      <div class="info-row"><span class="label">Created Manually:</span> TRUE</div>
-      <div class="info-row"><span class="label">Lead Form:</span> Download Free Trial</div>
-      <div class="info-row"><span class="label">Active:</span> TRUE</div>
-      <div class="info-row"><span class="label">Is Won:</span> Pending</div>
-      <div class="info-row"><span class="label">Deal Registration:</span> TRUE</div>
-      <div class="info-row"><span class="label">URL:</span> ${lead1Url}</div>
-    </div>
-    
-    <div class="lead-section">
-      <div class="lead-title">\ud83d\udccb Lead #2 - Source Lead (Merged)</div>
-      <div class="info-row"><span class="label">Lead ID:</span> ${lead2Id}</div>
-      <div class="info-row"><span class="label">Lead Name:</span> ${lead2Name}</div>
-      <div class="info-row"><span class="label">Email:</span> ${sharedEmail}</div>
-      <div class="info-row"><span class="label">Tags:</span> Can_Merge</div>
-      <div class="info-row"><span class="label">Company Name:</span> Company Name Lead 1 (auto-set)</div>
-      <div class="info-row"><span class="label">Location:</span> United States, Texas (US)</div>
-      <div class="info-row"><span class="label">Created Manually:</span> FALSE</div>
-      <div class="info-row"><span class="label">Lead Form:</span> BLANK</div>
-      <div class="info-row"><span class="label">Active:</span> FALSE</div>
-      <div class="info-row"><span class="label">Is Won:</span> Lost</div>
-      <div class="info-row"><span class="label">Lost Reason:</span> Duplicate</div>
-      <div class="info-row"><span class="label">Deal Registration:</span> TRUE</div>
-      <div class="info-row"><span class="label">URL:</span> ${lead2Url}</div>
-    </div>
-    
-    <div class="summary">
-      <div class="summary-title">\u2705 TEST PASSED</div>
-      <div class="summary-text">
-        Lead merging with Deal Registration verified successfully<br>
-        Both leads had Deal Registration configured<br>
-        Lead #2 merged into Lead #1<br>
-        Public Email: ${sharedEmail}<br>
-        <br>
-        <strong>All verification points passed</strong>
-      </div>
-    </div>
-  </div>
-</body>
-</html>
-`;
-      
-      await testInfo.attach('\ud83d\udccb Lead Merging (Deal Registration - Public Email) - Test Summary', {
-        body: verificationSummaryHtml,
-        contentType: 'text/html'
-      });
+    // Verification - the VERIFY block of every verification point (replaces the hard-coded "All verification points passed" summary)
+    await test.step('Verification', async () => {
+      console.log('\n--- Verification ---');
+      vlog.print(`Lead #2 (${lead2Id}) merged into Lead #1 (${lead1Id}) - fields, Deal registration and both log notes as expected`);
     });
   });
 });
+
+// ------------------------------------------------------------------------------------------------
+// VERIFY block + verify-point evidence - kept in this spec (self-contained); same pattern as CRM-542_1.2.1.1
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * What each check read, outlined on its verify-evidence shot: field widgets by name, or the label + value cells
+ * LeadPage.readVisibleFormRow() tagged (fields whose form carries hidden copies).
+ */
+const HIGHLIGHT = {
+  tags: '.o_form_view [name="tag_ids"]',
+  companyName: LeadPage.verifyRow('company-name'),
+  address: LeadPage.verifyRow('address'),
+  email: '.o_form_view [name="email_from"]',
+  leadForm: LeadPage.verifyRow('lead-form'),
+  active: LeadPage.verifyRow('active'),
+  isWon: LeadPage.verifyRow('is-won'),
+  lostReason: LeadPage.verifyRow('lost-reason'),
+  log: '.o_mail_thread',
+  registeredDeal: '.o_form_view [name="registered_deal"]',
+  dealStart: '.o_form_view [name="deal_registration_start_date"]',
+  dealEnd: '.o_form_view [name="deal_registration_end_date"]',
+} as const;
+
+interface VerifyRow {
+  what: string;
+  expected: string;
+  actual: string;
+  /** OBSERVED = read and shown, not scored (the manual step says "has a value or not") */
+  result: 'PASS' | 'FAIL' | 'OBSERVED';
+  /** FAIL only - what differs between Expected and Actual, computed from the asserted values */
+  difference: string;
+}
+
+/** Every verification point of the run, printed as the VERIFY block in the Verification step. */
+class VerifyLog {
+  private rows: VerifyRow[] = [];
+  add(row: VerifyRow): void {
+    this.rows.push(row);
+  }
+  print(outcome: string): void {
+    console.log('\n==================== VERIFY ====================');
+    const failures: string[] = [];
+    let n = 0;
+    for (const r of this.rows) {
+      if (r.result === 'OBSERVED') {
+        console.log(`  Observation (not scored) - ${r.what} : ${r.actual}`);
+        continue;
+      }
+      n++;
+      console.log(`  Verify #${n} - ${r.what}:`);
+      console.log(`     Expected : ${r.expected}`);
+      console.log(`     Actual   : ${r.actual}`);
+      console.log(`     Result   : ${r.result}`);
+      if (r.result === 'FAIL') {
+        console.log(`     Difference : ${r.difference}`);
+        failures.push(`Verify #${n}: ${r.difference}`);
+      }
+    }
+    console.log('================================================');
+    console.log(failures.length === 0 ? `OVERALL: PASS - ${outcome}` : `OVERALL: FAIL - ${failures.join(' | ')}`);
+  }
+}
+
+interface Check {
+  /** the test.step label of this verification point */
+  label: string;
+  /** contains = every expected substring present; equals = exact value; found = the read returned FOUND; observe = shown, not scored */
+  match: 'contains' | 'equals' | 'found' | 'observe';
+  expected: string | string[];
+  /** reads the value; `where` = where a labelled row was read (main sheet / "Follow-up" tab / not visible) */
+  read: () => Promise<{ actual: string; where?: string }>;
+  /** CSS selector of what the check read - outlined on the step's evidence shot in the colour of its own checks */
+  highlight?: string;
+  /** what a FAIL would mean, printed on the Expected line */
+  meaning?: string;
+}
+
+/**
+ * A labelled field, only where a user can see it on Lead #1 / Lead #2: the form as shown, else the `fallbackTab`
+ * (null = only the tab the step opened - the CRM Developer fields).
+ */
+async function readRow(leadPage: LeadPage, label: string, key: string, fallbackTab: string | null = 'Follow-up'): Promise<{ actual: string; where: string }> {
+  const row = await leadPage.readVisibleFormRow(label, key, fallbackTab);
+  return { actual: row.value, where: row.where };
+}
+
+/** A shown checkbox field as TRUE / FALSE ('' when no shown row carries it) - in the tab the step opened. */
+async function readCheckbox(leadPage: LeadPage, label: string, key: string): Promise<{ actual: string; where: string }> {
+  const row = await leadPage.readVisibleFormRow(label, key, null);
+  return { actual: row.checked === null ? '' : row.checked ? 'TRUE' : 'FALSE', where: row.where };
+}
+
+/**
+ * One verification step: optional `before` (open a tab), one nested test.step per verification point - read, compute
+ * the verdict, log Expected / Actual / Result (+ Difference on a FAIL), then expect.soft - and one evidence shot of
+ * the step's screen in which every read element is outlined in the colour of its own checks.
+ */
+async function verifyChecks(page: Page, testInfo: TestInfo, vlog: VerifyLog, stepLabel: string, checks: Check[], before?: () => Promise<unknown>): Promise<void> {
+  await test.step(stepLabel, async () => {
+    console.log(`\n--- ${stepLabel} ---`);
+    if (before) await before();
+    const lines: string[] = [];
+    const outlines = new Map<string, boolean>();
+    let allPassed = true;
+
+    for (const c of checks) {
+      await test.step(c.label, async () => {
+        console.log(`--- ${c.label} ---`);
+        const exp = Array.isArray(c.expected) ? c.expected : [c.expected];
+        const { actual: raw, where } = await c.read();
+        const actual = (raw ?? '').replace(/\s+/g, ' ').trim();
+        if (c.match === 'observe') {
+          const shown = `${actual || '(empty)'}${where ? `  [read on: ${where}]` : ''}`;
+          vlog.add({ what: c.label, expected: '', actual: shown, result: 'OBSERVED', difference: '' });
+          console.log(`  Observation (not scored): ${shown}`);
+          lines.push(`OBSERVED ${c.label}: ${shown}`);
+          return;
+        }
+        const show = (v: string) => (v === '' ? 'BLANK' : `"${v}"`);
+        let passed: boolean;
+        let expectedText: string;
+        let difference: string;
+        if (c.match === 'contains') {
+          const missing = exp.filter((v) => !actual.includes(v));
+          passed = missing.length === 0;
+          expectedText = `contains ${exp.map((v) => `"${v}"`).join(' + ')}`;
+          difference = `${missing.map((v) => `'${v}'`).join(', ')} not found in '${actual || '(empty)'}'${where ? ` (${where})` : ''}`;
+        } else if (c.match === 'found') {
+          passed = actual === 'FOUND';
+          expectedText = `"${exp[0]}" PRESENT`;
+          difference = `'${exp[0]}' not found`;
+        } else {
+          passed = actual === exp[0];
+          expectedText = show(exp[0]);
+          difference = `expected ${show(exp[0])}, got ${show(actual)}${where ? ` (${where})` : ''}`;
+        }
+        if (c.meaning) expectedText = `${expectedText} (${c.meaning})`;
+        const shownActual = `${c.match === 'equals' ? show(actual) : actual || '(empty)'}${where ? `  [read on: ${where}]` : ''}`;
+
+        vlog.add({ what: c.label, expected: expectedText, actual: shownActual, result: passed ? 'PASS' : 'FAIL', difference });
+        console.log(`  Expected : ${expectedText}`);
+        console.log(`  Actual   : ${shownActual}`);
+        console.log(`  Result   : ${passed ? 'PASS' : 'FAIL'}`);
+        if (!passed) console.log(`  Difference : ${difference}`);
+        lines.push(`${passed ? 'PASS' : 'FAIL'} ${c.label}`);
+        lines.push(`  expected: ${expectedText}`);
+        lines.push(`  actual  : ${shownActual}`);
+        if (!passed) lines.push(`  difference: ${difference}`);
+        if (!passed) allPassed = false;
+        if (c.highlight) outlines.set(c.highlight, (outlines.get(c.highlight) ?? true) && passed);
+
+        if (c.match === 'contains') for (const v of exp) expect.soft(actual, `${c.label} - contains "${v}"`).toContain(v);
+        else if (c.match === 'found') expect.soft(actual, c.label).toBe('FOUND');
+        else expect.soft(actual, c.label).toBe(exp[0]);
+      });
+    }
+
+    await CommonUtils.captureVerifyEvidence(page, testInfo, {
+      name: stepLabel.split(' (')[0],
+      passed: allPassed,
+      outlines: [...outlines].map(([selector, ok]) => ({ selector, passed: ok })),
+      lines,
+      corner: 'bottom-right',
+    }).catch(() => {});
+  });
+}

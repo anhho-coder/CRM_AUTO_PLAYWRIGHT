@@ -90,7 +90,9 @@ import { CommonUtils } from '@helpers/common.utils';
  * 6. Open the Lead 2 using URL_Lead#2
  * 7. Verify the following:
  *    7.1. Tag field contains "Product Registration"
- *    7.2. Company Name textbox = Company Name Lead 1 <-- which auto set due to created Contact
+ *    7.2. Company Name textbox = Company Name Lead 2
+ *         (public email: the merged-away lead keeps its own Company Name - confirmed as the
+ *          current behaviour by the tester 2026-10-28 after the CRM-11289 fix)
  *    7.3. Street dropdown list = 123street
  *    7.4. Country dropdown list = United States
  *    7.5. State dropdown list = Texas (US)
@@ -150,7 +152,6 @@ test.describe('CRM-2178_1.2.2.1 - Lead Merging: Same Public Email with Same Prio
   });
 
   test('[CRM-11289] Verify merging leads with same public email and same priority', async ({ page }, testInfo) => {
-    test.skip(true, 'Skipped due to bug CRM-11289');
     // CRM-8929 (Closed/Fixed) verification - run as normal assertion
     testInfo.annotations.push({ type: 'defect', description: 'CRM-8929' });
     
@@ -571,12 +572,12 @@ test.describe('CRM-2178_1.2.2.1 - Lead Merging: Same Public Email with Same Prio
         console.log(`  ✓ Step 7.1: Tags contain "Product Registration"`);
       });
 
-      // Step 7.2: Verify Company Name (auto set due to created Contact)
-      await test.step('Step 7.2: Company Name textbox = Company Name Lead 1', async () => {
+      // Step 7.2: Verify Company Name (public email - the merged-away lead keeps its own value)
+      await test.step('Step 7.2: Company Name textbox = Company Name Lead 2', async () => {
         const companyName = await leadPage.getCompanyNameReadonly();
-        
-        expect(companyName).toContain('Company Name Lead 1');
-        console.log(`  ✓ Step 7.2: Company Name = Company Name Lead 1 (auto set due to created Contact)`);
+
+        expect(companyName).toContain('Company Name Lead 2');
+        console.log(`  ✓ Step 7.2: Company Name = Company Name Lead 2`);
       });
 
       // Step 7.3: Verify Street
