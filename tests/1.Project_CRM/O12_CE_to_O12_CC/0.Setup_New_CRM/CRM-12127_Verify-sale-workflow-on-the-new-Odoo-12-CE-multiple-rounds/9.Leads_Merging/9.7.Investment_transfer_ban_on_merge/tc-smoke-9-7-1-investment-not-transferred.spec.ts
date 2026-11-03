@@ -2,9 +2,8 @@ import { test, expect, Browser } from '@playwright/test';
 import * as fs from 'fs';
 import { config } from '@config/test.config';
 import { users, baseUrl_mig } from '@config/users.config';
-import { LoginPageMig, HomePageMig } from '@pages/mig';
+import { LoginPageMig, HomePageMig, OpportunityPageMig } from '@pages/mig';
 import { InvestmentPageMig } from '@pages/mig/InvestmentPageMig';
-import { LeadPage, OpportunityPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   resetMigCreatedRecords,
@@ -12,6 +11,9 @@ import {
   teardownMigRecords,
   listMigCreatedRecords,
 } from '@helpers/o12ce-main-business.helper';
+import {
+  pollForMergeOnMig, pollForMergeIntoTargetOnMig, verifyStep, MergeVerifyLog,
+} from '@helpers/lead-merging-mig.helper';
 
 /**
  * ============================================================================================
@@ -19,8 +21,8 @@ import {
  *                    (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.7.1
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-19
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-03
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *
@@ -39,6 +41,9 @@ import {
  *      pdDatas['isSalePerson'] = [not d or d and d in list(salespersons.keys()) ...]
  *  Everything after it (both imports, the merge verify points) is ported faithfully and is not
  *  reached until the import is fixed.
+ *  2026-11-02 run (19:00 local): both IMPORTs completed - the blocker no longer reproduces. The run then
+ *  failed at II. Step 5: the pre-production merge wait gave up after 6 attempts, while on crm-mig an
+ *  import-created duplicate is merged only by the 20-min re-scan cron (CRM-12621).
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -68,9 +73,14 @@ import {
  *    navigation step: two adjacent purely navigational steps.
  *  - Clean-up: afterEach deletes, over RPC, both Investments, the Leads linked to them and the
  *    partners carrying this run's unique email / company names (deny-list); afterAll sweeps by name.
- *  - LeadPage / OpportunityPage are the pre-production page objects. Their Archive > All navigation,
- *    search, CRM Developer tab and merge-log readers have NO crm-mig variant yet (see report); they
- *    are called as written and may be RED for reasons unrelated to the import.
+ *  - Refactored 2026-11-03 to the section-9 standard (helpers/lead-merging-mig.helper.ts):
+ *      - OpportunityPageMig (CRM Developer tab inside the crm-mig notebook "More" overflow);
+ *      - II/III Step 5 poll the opened Opp for up to waitTimes.leadMergeMigWindow (35 min) instead of the
+ *        pre-production 6-attempt wait - the merge itself is scored by Step 8.1, not by the wait;
+ *      - Steps 6 / 7 / 8 run through verifyStep(): every point is read where shown, recorded Expected /
+ *        Actual, soft-asserted, and each step takes ONE verify-point capture with every field it read
+ *        outlined green (PASS) or red (FAIL); the final "Verification" step prints the VERIFY block.
+ *    Expected values are unchanged from the baseline.
  *
  * --------------------------------------------------------------------------------------------
  *  Source manual TC
@@ -251,6 +261,7 @@ const STEP = {
   iii8: 'III. Source Opp - Step 8: Verify Log area',
   iii81: 'Step 8.1: Log contains "This lead has been merged into [Opp 1]."',
   iii9: 'III. Source Opp - Step 9: Press "Application" button to back to Home page',
+  verify: 'Verification',
 } as const;
 
 /** Per-test state the afterEach needs. */
@@ -261,19 +272,6 @@ let audienceCompany1 = '';
 let audienceCompany2 = '';
 let audienceFile1 = '';
 let audienceFile2 = '';
-
-/** Log-only VERIFY block: printed BEFORE the expect()s, so it shows on a FAIL too. */
-function printVerifyBlock(rows: Array<{ check: string; expected: string; actual: string; pass: boolean }>): void {
-  console.log('\n==================== VERIFY ====================');
-  rows.forEach((r, i) => {
-    console.log(`  Verify #${i + 1} - ${r.check}:`);
-    console.log(`     Expected : ${r.expected}`);
-    console.log(`     Actual   : ${r.actual}`);
-    console.log(`     Result   : ${r.pass ? 'PASS' : 'FAIL'}`);
-  });
-  console.log('===============================================');
-  console.log(`OVERALL: ${rows.every((r) => r.pass) ? 'PASS' : 'FAIL'}`);
-}
 
 test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to Target Lead after importing`, () => {
   test.beforeEach(async ({ context, page }) => {
@@ -333,7 +331,8 @@ test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to 
   });
 
   test(`${TC}: Verify value of Investment field from Source Lead NOT to Target Lead after importing`, async ({ page }, testInfo) => {
-    test.setTimeout(config.timeouts.test);
+    // Setup (two Investments + two imports, ~15 min) + the 35-min merge window + the verify points.
+    test.setTimeout(config.timeouts.test + CommonUtils.waitTimes.leadMergeMigTest);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const now = new Date();
@@ -351,8 +350,8 @@ test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to 
     const loginPage = new LoginPageMig(page);
     const homePage = new HomePageMig(page);
     const investmentPage = new InvestmentPageMig(page);
-    const leadPage = new LeadPage(page);
-    const opportunityPage = new OpportunityPage(page);
+    const opportunityPage = new OpportunityPageMig(page);
+    const vlog = new MergeVerifyLog();
 
     let urlInvestment1 = '';
     let urlInvestment2 = '';
@@ -617,87 +616,28 @@ test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to 
       await opportunityPage.clickOppRowByOppName(csvData1.contactName);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log(`  OK - Clicked Opp row: ${csvData1.contactName}`);
-      console.log('  Waiting for Lead Merging to happen (polling chatter)...');
-      const mergeHappened = await leadPage.waitForLeadMergingHappen_OnTargetLead(csvData2.contactName);
-      expect(mergeHappened).toBeTruthy();
-      console.log('  OK - Lead Merging confirmed via chatter log');
+      // Wait only - the merge is scored by Step 8.1 (its own verify-point capture), never by this wait.
+      await pollForMergeIntoTargetOnMig(page, opportunityPage, { url: page.url(), name: csvData1.contactName }, csvData2.contactName);
     });
 
-    await test.step(STEP.ii6, async () => {
-      console.log(`\n--- ${STEP.ii6} ---`);
-      await test.step(STEP.ii61, async () => {
-        console.log(`\n--- ${STEP.ii61} ---`);
-        const tagsText = await opportunityPage.getTagsText();
-        printVerifyBlock([{ check: '6.1 Tag field', expected: 'contains "Test"', actual: `"${tagsText}"`, pass: tagsText.includes('Test') }]);
-        expect(tagsText).toContain('Test');
-      });
-      await test.step(STEP.ii62, async () => {
-        console.log(`\n--- ${STEP.ii62} ---`);
-        const companyName = await opportunityPage.getCompanyNameReadonly();
-        printVerifyBlock([{ check: '6.2 Company Name', expected: `contains "${csvData1.companyName}"`, actual: `"${companyName}"`, pass: companyName.includes(csvData1.companyName) }]);
-        expect(companyName).toContain(csvData1.companyName);
-      });
-      await test.step(STEP.ii63, async () => {
-        console.log(`\n--- ${STEP.ii63} ---`);
-        const addressText = await opportunityPage.getAddressReadonly();
-        printVerifyBlock([{ check: '6.3 Country', expected: 'contains "China"', actual: `"${addressText}"`, pass: addressText.includes('China') }]);
-        expect(addressText).toContain('China');
-      });
-      await test.step(STEP.ii64, async () => {
-        console.log(`\n--- ${STEP.ii64} ---`);
-        const salesTeam = await opportunityPage.getSalesTeamValue();
-        printVerifyBlock([{ check: '6.4 Sales Team', expected: 'contains "CMR"', actual: `"${salesTeam}"`, pass: salesTeam.includes('CMR') }]);
-        expect(salesTeam).toContain('CMR');
-      });
-      await test.step(STEP.ii65, async () => {
-        console.log(`\n--- ${STEP.ii65} ---`);
-        const email = await opportunityPage.getEmailReadonly();
-        printVerifyBlock([{ check: '6.5 Email', expected: `contains "${csvData1.emailContact1}"`, actual: `"${email}"`, pass: email.includes(csvData1.emailContact1) }]);
-        expect(email).toContain(csvData1.emailContact1);
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.ii6, [
+      { label: STEP.ii61, kind: 'tags', expected: ['Test'] },
+      { label: STEP.ii62, kind: 'company', expected: csvData1.companyName },
+      { label: STEP.ii63, kind: 'address', expected: 'China' },
+      { label: STEP.ii64, kind: 'salesTeam', expected: 'CMR' },
+      { label: STEP.ii65, kind: 'email', expected: csvData1.emailContact1 },
+    ]);
 
-    await test.step(STEP.ii7, async () => {
-      console.log(`\n--- ${STEP.ii7} ---`);
-      await opportunityPage.clickCRMDeveloperTab();
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-      await test.step(STEP.ii71, async () => {
-        console.log(`\n--- ${STEP.ii71} ---`);
-        const expectedLeadForm = `Investment: ID-${investmentId1OnURL}`;
-        const leadForm = await opportunityPage.getLeadFormValue();
-        printVerifyBlock([{ check: '7.1 Lead form', expected: `"${expectedLeadForm}"`, actual: `"${leadForm}"`, pass: leadForm === expectedLeadForm }]);
-        expect(leadForm).toBe(expectedLeadForm);
-      });
-      await test.step(STEP.ii72, async () => {
-        console.log(`\n--- ${STEP.ii72} ---`);
-        const isActive = await opportunityPage.isActiveChecked();
-        printVerifyBlock([{ check: '7.2 Active checkbox', expected: 'TRUE', actual: String(isActive).toUpperCase(), pass: isActive === true }]);
-        expect(isActive).toBeTruthy();
-      });
-      await test.step(STEP.ii73, async () => {
-        console.log(`\n--- ${STEP.ii73} ---`);
-        const isWon = await opportunityPage.getIsWonValue();
-        printVerifyBlock([{ check: '7.3 Is Won', expected: '"Pending"', actual: `"${isWon.trim()}"`, pass: isWon.trim() === 'Pending' }]);
-        expect(isWon.trim()).toBe('Pending');
-      });
-      await test.step(STEP.ii74, async () => {
-        console.log(`\n--- ${STEP.ii74} ---`);
-        const lostReason = await opportunityPage.getLostReasonValueViaTextContent();
-        printVerifyBlock([{ check: '7.4 Lost Reason', expected: 'BLANK (empty string)', actual: `"${lostReason}"`, pass: lostReason === '' }]);
-        expect(lostReason).toBe('');
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.ii7, [
+      { label: STEP.ii71, kind: 'leadFormBe', expected: `Investment: ID-${investmentId1OnURL}`, meaning: 'another ID would mean an Investment was transferred' },
+      { label: STEP.ii72, kind: 'activeTrue', meaning: 'FALSE would mean the Target Opp itself was archived' },
+      { label: STEP.ii73, kind: 'isWon', expected: 'Pending' },
+      { label: STEP.ii74, kind: 'lostReason', expected: '' },
+    ], () => opportunityPage.clickCRMDeveloperTab());
 
-    await test.step(STEP.ii8, async () => {
-      console.log(`\n--- ${STEP.ii8} ---`);
-      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long);
-      await test.step(STEP.ii81, async () => {
-        console.log(`\n--- ${STEP.ii81} ---`);
-        const hasMergeMessage = await opportunityPage.hasSourceLeadMergeMessage(csvData2.contactName);
-        printVerifyBlock([{ check: '8.1 Log merge message (Opp 2)', expected: 'present', actual: hasMergeMessage ? 'present' : 'absent', pass: hasMergeMessage }]);
-        expect(hasMergeMessage).toBeTruthy();
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.ii8, [
+      { label: STEP.ii81, kind: 'sourceMergeMsg', expected: csvData2.contactName, meaning: 'NOT FOUND means Opp 2 was not merged into Opp 1' },
+    ], () => homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long));
 
     await test.step(STEP.ii9, async () => {
       console.log(`\n--- ${STEP.ii9} ---`);
@@ -737,92 +677,39 @@ test.describe(`${TC} - Verify value of Investment field from Source Lead NOT to 
       await opportunityPage.clickOppRowByOppName(csvData2.contactName);
       await page.waitForTimeout(CommonUtils.waitTimes.standard);
       console.log(`  OK - Clicked Opp row: ${csvData2.contactName}`);
-      const mergeHappened = await leadPage.waitForLeadMergingHappen(csvData1.contactName);
-      expect(mergeHappened).toBeTruthy();
-      console.log('  OK - Lead Merging confirmed via chatter log');
+      // Wait only (returns at once when part II already saw the merge) - Step 8.1 scores it.
+      await pollForMergeOnMig(page, opportunityPage, { url: page.url(), name: csvData2.contactName }, csvData1.contactName);
     });
 
-    await test.step(STEP.iii6, async () => {
-      console.log(`\n--- ${STEP.iii6} ---`);
-      await test.step(STEP.iii61, async () => {
-        console.log(`\n--- ${STEP.iii61} ---`);
-        const tagsText = await opportunityPage.getTagsText();
-        printVerifyBlock([{ check: '6.1 Tag field', expected: 'contains "Test"', actual: `"${tagsText}"`, pass: tagsText.includes('Test') }]);
-        expect(tagsText).toContain('Test');
-      });
-      await test.step(STEP.iii62, async () => {
-        console.log(`\n--- ${STEP.iii62} ---`);
-        const companyName = await opportunityPage.getCompanyNameReadonly();
-        printVerifyBlock([{ check: '6.2 Company Name', expected: `contains "${csvData2.companyName}"`, actual: `"${companyName}"`, pass: companyName.includes(csvData2.companyName) }]);
-        expect(companyName).toContain(csvData2.companyName);
-      });
-      await test.step(STEP.iii63, async () => {
-        console.log(`\n--- ${STEP.iii63} ---`);
-        const addressText = await opportunityPage.getAddressReadonly();
-        printVerifyBlock([{ check: '6.3 Country', expected: 'contains "China"', actual: `"${addressText}"`, pass: addressText.includes('China') }]);
-        expect(addressText).toContain('China');
-      });
-      await test.step(STEP.iii64, async () => {
-        console.log(`\n--- ${STEP.iii64} ---`);
-        const salesTeam = await opportunityPage.getSalesTeamValue();
-        printVerifyBlock([{ check: '6.4 Sales Team', expected: 'contains "CMR"', actual: `"${salesTeam}"`, pass: salesTeam.includes('CMR') }]);
-        expect(salesTeam).toContain('CMR');
-      });
-      await test.step(STEP.iii65, async () => {
-        console.log(`\n--- ${STEP.iii65} ---`);
-        const email = await opportunityPage.getEmailReadonly();
-        printVerifyBlock([{ check: '6.5 Email', expected: `contains "${csvData1.emailContact1}"`, actual: `"${email}"`, pass: email.includes(csvData1.emailContact1) }]);
-        expect(email).toContain(csvData1.emailContact1);
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.iii6, [
+      { label: STEP.iii61, kind: 'tags', expected: ['Test'] },
+      { label: STEP.iii62, kind: 'company', expected: csvData2.companyName },
+      { label: STEP.iii63, kind: 'address', expected: 'China' },
+      { label: STEP.iii64, kind: 'salesTeam', expected: 'CMR' },
+      { label: STEP.iii65, kind: 'email', expected: csvData1.emailContact1 },
+    ]);
 
-    await test.step(STEP.iii7, async () => {
-      console.log(`\n--- ${STEP.iii7} ---`);
-      await opportunityPage.clickCRMDeveloperTab();
-      await page.waitForTimeout(CommonUtils.waitTimes.standard);
-      await test.step(STEP.iii71, async () => {
-        console.log(`\n--- ${STEP.iii71} ---`);
-        const expectedLeadForm = `Investment: ID-${investmentId2OnURL}`;
-        const leadForm = await opportunityPage.getLeadFormValue();
-        printVerifyBlock([{ check: '7.1 Lead form', expected: `"${expectedLeadForm}"`, actual: `"${leadForm}"`, pass: leadForm === expectedLeadForm }]);
-        expect(leadForm).toBe(expectedLeadForm);
-      });
-      await test.step(STEP.iii72, async () => {
-        console.log(`\n--- ${STEP.iii72} ---`);
-        const isActive = await opportunityPage.isActiveChecked();
-        printVerifyBlock([{ check: '7.2 Active checkbox', expected: 'FALSE', actual: String(isActive).toUpperCase(), pass: isActive === false }]);
-        expect(isActive).toBeFalsy();
-      });
-      await test.step(STEP.iii73, async () => {
-        console.log(`\n--- ${STEP.iii73} ---`);
-        const isWon = await opportunityPage.getIsWonValue();
-        printVerifyBlock([{ check: '7.3 Is Won', expected: '"Lost"', actual: `"${isWon.trim()}"`, pass: isWon.trim() === 'Lost' }]);
-        expect(isWon.trim()).toBe('Lost');
-      });
-      await test.step(STEP.iii74, async () => {
-        console.log(`\n--- ${STEP.iii74} ---`);
-        const lostReason = await opportunityPage.getLostReasonValueViaTextContent();
-        printVerifyBlock([{ check: '7.4 Lost Reason', expected: '"Duplicate"', actual: `"${lostReason}"`, pass: lostReason === 'Duplicate' }]);
-        expect(lostReason).toBe('Duplicate');
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.iii7, [
+      { label: STEP.iii71, kind: 'leadFormBe', expected: `Investment: ID-${investmentId2OnURL}`, meaning: 'another ID would mean an Investment was transferred' },
+      { label: STEP.iii72, kind: 'activeFalse', meaning: 'TRUE would mean the Source Opp was not archived by a merge' },
+      { label: STEP.iii73, kind: 'isWon', expected: 'Lost' },
+      { label: STEP.iii74, kind: 'lostReason', expected: 'Duplicate' },
+    ], () => opportunityPage.clickCRMDeveloperTab());
 
-    await test.step(STEP.iii8, async () => {
-      console.log(`\n--- ${STEP.iii8} ---`);
-      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long);
-      await test.step(STEP.iii81, async () => {
-        console.log(`\n--- ${STEP.iii81} ---`);
-        const hasMergeMessage = await opportunityPage.hasTargetLeadMergeMessage(csvData1.contactName);
-        printVerifyBlock([{ check: '8.1 Log merge message (Opp 1)', expected: 'present', actual: hasMergeMessage ? 'present' : 'absent', pass: hasMergeMessage }]);
-        expect(hasMergeMessage).toBeTruthy();
-      });
-    });
+    await verifyStep(page, testInfo, vlog, opportunityPage, STEP.iii8, [
+      { label: STEP.iii81, kind: 'targetMergeMsg', expected: csvData1.contactName, meaning: 'NOT FOUND means Opp 2 was not merged into Opp 1' },
+    ], () => homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long));
 
     await test.step(STEP.iii9, async () => {
       console.log(`\n--- ${STEP.iii9} ---`);
       await homePage.returnToHome();
       console.log('  OK - Navigated back to Home page');
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Source Opp verified');
+    });
+
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
+      vlog.print('Opp 2 merged into Opp 1 - each Opp keeps its own Investment (Lead form), fields and both log notes as in the baseline');
     });
   });
 });

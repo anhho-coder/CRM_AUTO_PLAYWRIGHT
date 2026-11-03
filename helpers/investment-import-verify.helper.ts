@@ -113,10 +113,11 @@ export async function readOpportunity(
  */
 export async function readMergeOutcome(
   page: Page,
-  opts: { readInvestmentOnForm: boolean },
+  opts: { readInvestmentOnForm: boolean; reader?: OpportunityPage },
 ): Promise<OpportunityView> {
-  // The caller has opened the Opportunity (openFromAllLeadsByName).
-  const opp = new OpportunityPage(page);
+  // The caller has opened the Opportunity (openFromAllLeadsByName). crm-mig passes OpportunityPageMig: its
+  // CRM Developer tab sits in the notebook "More" overflow.
+  const opp = opts.reader ?? new OpportunityPage(page);
   const t0 = Date.now();
   // Each read is capped: a widget the archived form does not render yields '(timeout)' - a visible FAIL in the
   // VERIFY block - instead of an unbounded wait (this repo sets no actionTimeout).
@@ -298,23 +299,29 @@ const show = (v: unknown) => (typeof v === 'string' ? v || '(blank)' : JSON.stri
 
 /** Prints the VERIFY block (Expected / Actual / Result per check + OVERALL) and returns the lines. */
 export function printVerify(checks: VerifyCheck[], outcome: string): { allPass: boolean; lines: string[] } {
+  // Evidence banner: one label per line, so a long Expected / Actual is not cut off the image.
   const lines: string[] = [];
+  const failures: string[] = [];
   let allPass = true;
-  checks.forEach((c, i) => {
-    const pass = JSON.stringify(c.actual) === JSON.stringify(c.expected);
-    allPass = allPass && pass;
-    lines.push(`Verify #${i + 1} - ${c.label}: Expected ${show(c.expected)} | Actual ${show(c.actual)} | ${pass ? 'PASS' : 'FAIL'}`);
-  });
   console.log('\n==================== VERIFY ====================');
   checks.forEach((c, i) => {
     const pass = JSON.stringify(c.actual) === JSON.stringify(c.expected);
+    const difference = `expected ${show(c.expected)}, got ${show(c.actual)}`;
+    allPass = allPass && pass;
+    lines.push(`${pass ? 'PASS' : 'FAIL'} Verify #${i + 1} - ${c.label}`);
+    lines.push(`  expected: ${show(c.expected)}`);
+    lines.push(`  actual  : ${show(c.actual)}`);
     console.log(`  Verify #${i + 1} - ${c.label}:`);
     console.log(`     Expected : ${show(c.expected)}`);
     console.log(`     Actual   : ${show(c.actual)}`);
     console.log(`     Result   : ${pass ? 'PASS' : 'FAIL'}`);
+    if (!pass) {
+      console.log(`     Difference : ${difference}`);
+      failures.push(`Verify #${i + 1}: ${difference}`);
+    }
   });
   console.log('===============================================');
-  console.log(`OVERALL: ${allPass ? 'PASS' : 'FAIL'} - ${outcome}`);
+  console.log(allPass ? `OVERALL: PASS - ${outcome}` : `OVERALL: FAIL - ${failures.join(' | ')}`);
   return { allPass, lines };
 }
 

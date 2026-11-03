@@ -8,6 +8,7 @@ import { CommonUtils } from '@helpers/common.utils';
 import { baselineDetailsFrom, BaselineTestDetails } from '@helpers/baseline-traceability';
 import { CRM12370_LEAD_MERGING_BASELINE_MAP } from '@helpers/lead-merging-mig.baseline-map';
 import { registerMigRecord, teardownMigRecords } from '@helpers/o12ce-main-business.helper';
+import { recordMergeForDeferredVerify, migCleanupHandedOff } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * ============================================================================================
@@ -267,9 +268,15 @@ function minutesSince(start: number): string {
   return ((Date.now() - start) / 60000).toFixed(1);
 }
 
+/** Which form a record URL opens - the crm-mig round-2 reads it with the matching Mig page object. */
+function formOf(reader: LeadPageMig | OpportunityPageMig): 'lead' | 'opportunity' {
+  return reader instanceof OpportunityPageMig ? 'opportunity' : 'lead';
+}
+
 /**
  * MERGE expected: reload the SOURCE record until its log reads "This lead has been merged into <target>", for up to
  * waitTimes.leadMergeMigWindow. Returns whether it was seen - the spec's own verification steps assert the result.
+ * Not seen -> a deferred checkpoint (Jenkins round-1 only, DEFERRED_MERGE_MANIFEST): round-2 re-checks ~90 min later.
  */
 export async function pollForMergeOnMig(
   page: Page,
@@ -293,6 +300,41 @@ export async function pollForMergeOnMig(
     await page.waitForTimeout(CommonUtils.waitTimes.leadMergeMigPoll);
   }
   console.log(`  - Merge NOT seen within ${minutesSince(start)} min`);
+  recordMergeForDeferredVerify(page, {
+    role: 'source', counterpartName: targetName, expected: 'merged', merged: false, leadUrl: source.url, form: formOf(reader),
+  });
+  return false;
+}
+
+/**
+ * MERGE expected, read on the TARGET side: reload the target record until its log reads "<source>, has been merged into
+ * this lead", for up to waitTimes.leadMergeMigWindow. For steps that open the survivor first (CRM-12370_9.7.1 part II).
+ */
+export async function pollForMergeIntoTargetOnMig(
+  page: Page,
+  reader: LeadPageMig | OpportunityPageMig,
+  target: { url: string; name: string },
+  sourceName: string,
+): Promise<boolean> {
+  const start = Date.now();
+  const deadline = start + CommonUtils.waitTimes.leadMergeMigWindow;
+  console.log(`  - Polling     : ${target.name} for "${sourceName}, has been merged into this lead."`);
+  console.log(`  - Budget      : ${CommonUtils.waitTimes.leadMergeMigWindow / 60000} min, every ${CommonUtils.waitTimes.leadMergeMigPoll / 1000} s`);
+  for (let attempt = 1; ; attempt++) {
+    await openRecordByUrl(page, reader, target.url);
+    await reader.waitForChatterMessagesMig();
+    if (await reader.hasSourceLeadMergeMessage(sourceName)) {
+      console.log(`  - Merge seen  : after ${minutesSince(start)} min (attempt ${attempt})`);
+      return true;
+    }
+    if (Date.now() + CommonUtils.waitTimes.leadMergeMigPoll > deadline) break;
+    console.log(`    attempt ${attempt}: not merged yet (${minutesSince(start)} min)`);
+    await page.waitForTimeout(CommonUtils.waitTimes.leadMergeMigPoll);
+  }
+  console.log(`  - Merge NOT seen within ${minutesSince(start)} min`);
+  recordMergeForDeferredVerify(page, {
+    role: 'target', counterpartName: sourceName, expected: 'merged', merged: false, leadUrl: target.url, form: formOf(reader),
+  });
   return false;
 }
 
@@ -324,6 +366,13 @@ export async function watchNoMergeWindowOnMig(
     await page.waitForTimeout(CommonUtils.waitTimes.leadMergeMigPoll);
   }
   console.log(`  - No merge during the ${minutesSince(start)}-min window`);
+  // Deferred checkpoint per record (Jenkins round-1 only): round-2 confirms ~90 min later that still no merge happened.
+  for (const r of records) {
+    const others = records.filter((o) => o !== r).map((o) => o.name).join(' | ');
+    recordMergeForDeferredVerify(page, {
+      role: 'any', counterpartName: others, expected: 'not_merged', merged: false, leadUrl: r.url, form: 'lead',
+    });
+  }
   return null;
 }
 
@@ -743,6 +792,10 @@ export async function sweepLeadMergingRunsAfterAll(browser: Browser, skip: boole
     await loginPage.login(users.admin_crm_mig.username, users.admin_crm_mig.password);
     const platform = new MigPlatformPage(page);
     for (const run of runsInThisWorker) {
+      if (migCleanupHandedOff(run.tc)) {
+        console.log(`[mig-sweep] "${run.marker}": teardown handed to the round-2 re-verify - its records are left for it to delete`);
+        continue;
+      }
       const { leads, partners } = await findRunRecords(platform, run);
       console.log(`[mig-sweep] marker "${run.marker}": crm.lead=${leads.length} res.partner=${partners.length}`);
       if (leads.length > MAX_ROWS_PER_RUN || partners.length > MAX_ROWS_PER_RUN) {

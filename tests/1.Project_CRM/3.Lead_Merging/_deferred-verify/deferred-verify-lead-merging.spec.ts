@@ -5,6 +5,7 @@ import { users, baseUrl } from '@config/users.config';
 import { config } from '@config/test.config';
 import { LoginPage, LeadPage } from '@pages';
 import { CommonUtils } from '@helpers/common.utils';
+import { isMigRecordUrl } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Deferred re-verify - Lead Merging (ROUND 2, authoritative)
@@ -82,6 +83,9 @@ function loadRecords(): MergeDeferredRecord[] {
     } catch {
       continue;
     }
+    // crm-mig checkpoints and their teardown hand-off lines belong to the crm-mig round-2
+    // (deferred-verify-lead-merging-mig.spec.ts) - this pre-production pass never opens or deletes them.
+    if ((rec as { kind?: string }).kind || isMigRecordUrl(rec.leadUrl ?? '')) continue;
     const key = `${rec.specFile || rec.tcId}::${rec.leadUrl}::${rec.role}`;
     byKey.set(key, rec);
   }

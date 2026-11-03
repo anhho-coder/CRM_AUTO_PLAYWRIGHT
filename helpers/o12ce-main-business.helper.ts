@@ -3,6 +3,7 @@ import { OpportunityPage, DealElementPage, QuotationPage, InvoicePage, LicensePa
 import { LoginPageMig, HomePageMig, MigPlatformPage } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
 import { CommonUtils } from '@helpers/common.utils';
+import { handOffMigCleanupToRound2 } from '@helpers/deferred-verify-merge.helper';
 
 /**
  * Shared main-business chain for the O12 CE Migration server (crm-mig.nakivo.site) - section II
@@ -992,6 +993,15 @@ async function unlinkMigRecords(
 }
 
 /**
+ * Round-2 deferred re-verify: delete a deletion list a round-1 test handed over (handOffMigCleanupToRound2), in the
+ * order it was written - the same order-and-cancel rules as the teardown. Returns what it could not remove.
+ */
+export async function deleteHandedOffMigRecords(page: Page, records: MigCreatedRecord[]): Promise<MigCreatedRecord[]> {
+  if (records.length === 0) return [];
+  return unlinkMigRecords(new MigPlatformPage(page), records);
+}
+
+/**
  * Delete everything the chain registered on crm-mig, newest first (License -> Invoice ->
  * Quotation/Sale Order -> Deal Element -> Opportunity), so a child never blocks its parent.
  *
@@ -1014,6 +1024,13 @@ export async function cleanupMigRecordsOnO12CE(page: Page): Promise<MigCreatedRe
       `\n[mig-cleanup] SKIPPED by SKIP_CLEANUP_MIG=1 - ${queued.length} record(s) LEFT on crm-mig:\n` +
       queued.map((r) => `  kept ${r.model}#${r.id} (${r.label})`).join('\n'),
     );
+    resetMigCreatedRecords();
+    return [];
+  }
+
+  // A merge checkpoint written this test (Jenkins round-1) needs these records until the round-2 re-verify
+  // (~90 min later); round-2 deletes exactly this list after its re-check.
+  if (handOffMigCleanupToRound2(queued)) {
     resetMigCreatedRecords();
     return [];
   }

@@ -1,10 +1,12 @@
-import { test, expect, Browser } from '@playwright/test';
+import { test, expect, Browser, Page, TestInfo } from '@playwright/test';
 import * as fs from 'fs';
 import { config } from '@config/test.config';
 import { users, baseUrl_mig } from '@config/users.config';
-import { LoginPageMig, HomePageMig } from '@pages/mig';
+import { LoginPageMig, HomePageMig, OpportunityPageMig } from '@pages/mig';
 import { InvestmentPageMig } from '@pages/mig/InvestmentPageMig';
-import { LeadPage, OpportunityPage } from '@pages';
+import { LeadPage, BasePage } from '@pages';
+import { openNotebookTabMig } from '@pages/mig/MigNotebook';
+import { openRecordByUrl } from '@helpers/lead-merging-mig.helper';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   resetMigCreatedRecords,
@@ -21,6 +23,7 @@ import {
   rescanMergeChecks,
   openFromAllLeadsByName,
   printVerify,
+  VerifyCheck,
 } from '@helpers/investment-import-verify.helper';
 
 /**
@@ -29,8 +32,8 @@ import {
  *                    Source has no link (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.7.2
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-19
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-03
  *  Run as          : Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *
@@ -93,8 +96,14 @@ import {
  *  - Pre-condition 2 "Steps 1-2" (Home > Investments, then Investment) folded into one navigation step.
  *  - Tear-down steps of the source (delete Investment#2, open URL_Investment#1 and delete it, delete
  *    both CSVs) are replaced by the afterEach ledger teardown (RPC, deny-list) and the file removal.
- *  - OpportunityPage is the pre-production page object (Edit / CRM Developer / Lead form / Save).
- *    It has no crm-mig variant yet (see report); it is called as written.
+ *  - Refactored 2026-11-03:
+ *      - OpportunityPageMig replaces the pre-production OpportunityPage: on crm-mig the "CRM Developer" tab
+ *        sits in the notebook "More" overflow, and the 2026-11-02 run timed out (180 s) at I. Step 7 looking
+ *        for it as a plain tab;
+ *      - verify-point evidence per OWNING screen: Verification 1/2 outline the CRM list they counted;
+ *        Verification 3 is split - the Archive > All list (row count), then each Opportunity re-opened by
+ *        its URL with its own checks: main sheet (Tags, Investment) and CRM Developer tab (Active, Lost
+ *        Reason), each field outlined green (PASS) / red (FAIL). Expected values are unchanged.
  *
  * --------------------------------------------------------------------------------------------
  *  Source manual TC
@@ -166,6 +175,35 @@ const TC = 'CRM-12370_9.7.2';
 
 /** Polls of the CRM list while waiting for the re-scan cron (every 20 min) to merge the two Opportunities. */
 const MERGE_POLLS = 15;
+
+/** What the Verification checks read on the Opportunity main sheet - outlined in the evidence. */
+const TAGS_FIELD = '.o_form_view [name="tag_ids"]';
+const INVESTMENT_FIELD = '.o_form_view [name="activity_id"]';
+
+/** The CRM list a count is read from - Odoo draws .o_view_nocontent instead of .o_list_view when no row matches. */
+const listShown = (rows: number): string => (rows > 0 ? '.o_list_view' : '.o_view_nocontent');
+
+/** A verification point plus the element it is read from (outlined in the colour of ITS verdict). */
+type OwnedCheck = VerifyCheck & { outline?: string };
+
+/**
+ * VERIFY block + ONE verify-point capture of the screen that owns `checks`: an element read by several checks is
+ * green only while all of them pass. The caller asserts after every capture of its step.
+ */
+async function captureOwned(page: Page, testInfo: TestInfo, name: string, outcome: string, checks: OwnedCheck[]): Promise<void> {
+  const { allPass, lines } = printVerify(checks, outcome);
+  const outlines = new Map<string, boolean>();
+  for (const c of checks) {
+    if (c.outline) outlines.set(c.outline, (outlines.get(c.outline) ?? true) && JSON.stringify(c.actual) === JSON.stringify(c.expected));
+  }
+  await CommonUtils.captureVerifyEvidence(page, testInfo, {
+    name,
+    passed: allPass,
+    outlines: [...outlines].map(([selector, passed]) => ({ selector, passed })),
+    lines,
+    corner: 'bottom-right',
+  }).catch(() => {});
+}
 
 /** Investment master data - crm-mig substitutions are documented in the header. */
 const INVESTMENT_DATA = {
@@ -303,7 +341,7 @@ test.describe(`${TC} - Verify the value of "Investment" field from a Source Lead
     const loginPage = new LoginPageMig(page);
     const homePage = new HomePageMig(page);
     const investmentPage = new InvestmentPageMig(page);
-    const opportunityPage = new OpportunityPage(page);
+    const opportunityPage = new OpportunityPageMig(page);
 
     let urlInvestment1 = '';
     let urlOpp1 = '';
@@ -583,47 +621,85 @@ test.describe(`${TC} - Verify the value of "Investment" field from a Source Lead
       await new LeadPage(page).waitForNoMergeConfirmation();
       await investmentPage.openCrmPipeline();
       const rows = await searchOpportunitiesByEmail(page, csvData1.emailContact1);
-      const checks = [{ label: 'Opportunities for Email_Contact#1 in the default list (active only) - both Active', expected: 2, actual: rows }];
-      const { allPass, lines } = printVerify(checks, 'the import did not merge the two Opportunities');
-      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - right after the import`, passed: allPass, lines }).catch(() => {});
+      const checks: OwnedCheck[] = [{ label: 'Opportunities for Email_Contact#1 in the default list (active only) - both Active', expected: 2, actual: rows, outline: listShown(rows) }];
+      await captureOwned(page, testInfo, `${TC} - V1 right after the import`, 'the import did not merge the two Opportunities', checks);
       for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
     });
 
     await test.step(STEP.v2, async () => {
       console.log(`\n--- ${STEP.v2} ---`);
       const r = await waitForActiveOpportunityCount(page, csvData1.emailContact1, 1, MERGE_POLLS, () => investmentPage.openCrmPipeline());
-      const checks = [{ label: `Active Opportunities for Email_Contact#1 after the re-scan (waited ${r.waitedMin} min, ${r.pollsUsed} polls)`, expected: 1, actual: r.rows }];
-      const { allPass, lines } = printVerify(checks, 'the re-scan cron merged the two Opportunities');
-      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - after the re-scan`, passed: allPass, lines }).catch(() => {});
+      const checks: OwnedCheck[] = [{ label: `Active Opportunities for Email_Contact#1 after the re-scan (waited ${r.waitedMin} min, ${r.pollsUsed} polls)`, expected: 1, actual: r.rows, outline: listShown(r.rows) }];
+      await captureOwned(page, testInfo, `${TC} - V2 after the re-scan`, 'the re-scan cron merged the two Opportunities', checks);
       for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
     });
 
     await test.step(STEP.v3, async () => {
       console.log(`\n--- ${STEP.v3} ---`);
+      const outcome = 'merged by the re-scan, exactly 1 survivor, no Investment transferred';
+      const scored: OwnedCheck[] = [];
+
+      // (a) Archive > All, search Email_Contact#1 - captured on the list the count is read from.
       await investmentPage.openCrmPipeline();
       const allRows = await searchAllOpportunitiesByEmail(page, csvData1.emailContact1);
+      const listChecks: OwnedCheck[] = [{ label: 'Opportunities for Email_Contact#1 incl. archived (Archive > All)', expected: 2, actual: allRows, outline: listShown(allRows) }];
+      await captureOwned(page, testInfo, `${TC} - V3 Archive > All`, outcome, listChecks);
+      scored.push(...listChecks);
+
+      // (b) Each Opportunity is opened by its own name (unique per run) - never by the first row of an email search -
+      //     and read once, NOT scored, to learn which one survived (both directions were observed).
       await investmentPage.openCrmPipeline();
       const rows1 = await openFromAllLeadsByName(page, csvData1.contactName);
-      const opp1 = await readMergeOutcome(page, { readInvestmentOnForm: true });
+      const opp1 = await readMergeOutcome(page, { readInvestmentOnForm: true, reader: opportunityPage });
       logMergeOutcome('Opp of CSV-Audience-copy1 read on screen:', opp1);
       await investmentPage.openCrmPipeline();
       const rows2 = await openFromAllLeadsByName(page, csvData2.contactName);
-      const opp2 = await readMergeOutcome(page, { readInvestmentOnForm: true });
+      const opp2 = await readMergeOutcome(page, { readInvestmentOnForm: true, reader: opportunityPage });
       logMergeOutcome('Opp of CSV-Audience-copy2 read on screen:', opp2);
-      // Each Opportunity is opened by its own name (unique per run) - never by the first row of an email search.
       const { checks: mergeChecks, survivor } = rescanMergeChecks(allRows, opp1, opp2, {
         investment1OnForm: `${investmentID1} - ${investmentName1}`,
         investment2OnForm: `${investmentID2} - ${investmentName2}`,
       });
-      const checks = [
-        { label: 'Opp of CSV-Audience-copy1 found by its name in Archive > All', expected: 1, actual: rows1 },
-        { label: 'Opp of CSV-Audience-copy2 found by its name in Archive > All', expected: 1, actual: rows2 },
-        ...mergeChecks,
-      ];
       console.log(`  Observation (not scored) - surviving Opp : ${survivor.opportunity} (${survivor === opp1 ? 'CSV-Audience-copy1' : 'CSV-Audience-copy2'})`);
-      const { allPass, lines } = printVerify(checks, 'merged by the re-scan, exactly 1 survivor, no Investment transferred');
-      await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - merge outcome`, passed: allPass, lines }).catch(() => {});
-      for (const c of checks) expect(c.actual, c.label).toEqual(c.expected);
+
+      // (c) Scored on each Opportunity's own screens: main sheet (Tags, Investment), then CRM Developer tab (Active,
+      //     Lost Reason, read only where shown) - one capture per screen state, every field in its own verdict colour.
+      const activeShown: Array<boolean | null> = [];
+      for (const [copy, view, rows] of [['CSV-Audience-copy1', opp1, rows1], ['CSV-Audience-copy2', opp2, rows2]] as const) {
+        const surviving = view === survivor;
+        const role = surviving ? 'Surviving Opp' : 'Merged Opp';
+        await openRecordByUrl(page, opportunityPage, view.url);
+        const sheet: OwnedCheck[] = [
+          { label: `Opp of ${copy} found by its name in Archive > All`, expected: 1, actual: rows },
+          ...mergeChecks.filter((c) => c.label.startsWith(`Opp of ${copy} keeps`)).map((c) => ({ ...c, outline: INVESTMENT_FIELD })),
+          ...(surviving ? mergeChecks.filter((c) => c.label.startsWith('Surviving Opp - Tags')).map((c) => ({ ...c, outline: TAGS_FIELD })) : []),
+        ];
+        await captureOwned(page, testInfo, `${TC} - V3 ${copy} (${role}) - main sheet`, outcome, sheet);
+
+        await opportunityPage.clickCRMDeveloperTab();
+        let active = await opportunityPage.readVisibleFormRow('Active', 'active', null);
+        if (active.where.startsWith('not visible')) {
+          // Active / Lost Reason live only in the LAST "CRM Developer" tab (BasePage.readVisibleFormRow)
+          await openNotebookTabMig(page, 'CRM Developer', 'last');
+          active = await opportunityPage.readVisibleFormRow('Active', 'active', null);
+        }
+        const lost = await opportunityPage.readVisibleFormRow('Lost Reason', 'lost-reason', null);
+        activeShown.push(active.checked);
+        const dev: OwnedCheck[] = [
+          { label: `${role} (${copy}) - Active [read on: ${active.where}]`, expected: surviving, actual: active.checked, outline: BasePage.verifyRow('active') },
+          { label: `${role} (${copy}) - Lost Reason [read on: ${lost.where}]`, expected: surviving ? '' : 'Duplicate', actual: lost.value, outline: BasePage.verifyRow('lost-reason') },
+        ];
+        await captureOwned(page, testInfo, `${TC} - V3 ${copy} (${role}) - CRM Developer tab`, outcome, dev);
+        scored.push(...sheet, ...dev);
+      }
+
+      // (d) Cross-record, computed from the two CRM Developer captures above (data-side - no screen of its own).
+      const crossChecks: OwnedCheck[] = [{ label: 'Exactly 1 of the 2 Opportunities is Active', expected: 1, actual: activeShown.filter((a) => a === true).length }];
+      printVerify(crossChecks, outcome);
+      scored.push(...crossChecks);
+
+      // Asserted only after every capture of the step, so each screen keeps its evidence on a FAIL too.
+      for (const c of scored) expect(c.actual, c.label).toEqual(c.expected);
     });
   });
 });

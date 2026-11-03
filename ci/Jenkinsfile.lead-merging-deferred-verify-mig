@@ -1,0 +1,222 @@
+// Lead-Merging DEFERRED RE-VERIFY on crm-mig (round 2, authoritative) - crm-mig twin of
+// ci/Jenkinsfile.lead-merging-deferred-verify (pre-production).
+//
+//   Job name: CRM-SETUP-CRM-12127-9-Leads-Merging-DeferredVerify
+//   Pipeline -> Script Path: ci/Jenkinsfile.lead-merging-deferred-verify-mig
+//
+// Round-1 = CRM-SETUP-CRM-12127-9-Leads-Merging (root Jenkinsfile, DEFERRED_MERGE_MANIFEST set): a crm-mig merge the
+// 35-min in-test window did not see, and every NO-merge case, writes a checkpoint (helpers/lead-merging-mig.helper.ts);
+// a test that wrote one hands its teardown to this job instead of deleting (tester's decision 2026-11-03), so the
+// leads still exist ~90 min later. The root Jenkinsfile stashes the manifest to
+// C:\deferred-verify-merge\<yyyy-MM-dd>\CRM-SETUP-CRM-12127-9-Leads-Merging-<BUILD>.jsonl.
+//
+// WHAT THIS JOB DOES: 90 min after round-1 finishes (upstream() trigger + quietPeriod 5400), it gathers the crm-mig
+// round-1 manifests not yet processed (today + yesterday, so a run crossing midnight is still found), re-opens every
+// checkpoint on crm-mig, records the verdict with a verify-point capture, then deletes exactly the ids round-1 handed
+// over. Processed manifests move to <day>\mig-done\ only after the delete step ran, so nothing is re-deleted and a
+// build that died early is picked up by the next one. The pre-production round-2 skips every crm-mig line.
+//
+// No pre-production route gate: crm-mig is not behind that route (and its MIG_UP probe gave false DOWNs, 03-11).
+pipeline {
+    agent any
+
+    tools {
+        nodejs 'NodeJS-20'
+    }
+
+    parameters {
+        string(
+            name: 'DAY',
+            defaultValue: 'today',
+            description: '"today" (default) = the crm-mig round-1 manifests of today AND yesterday not processed yet; or an exact date e.g. 2026-11-03 (that day only).'
+        )
+        string(
+            name: 'TIMEOUT_MIN',
+            defaultValue: '90',
+            description: 'Build timeout in minutes (each checkpoint re-open ~1 min, each hand-off delete a few seconds).'
+        )
+    }
+
+    // EVENT-DRIVEN: fires when the crm-mig round-1 job completes (any real result - a round-1 FAILURE is exactly
+    // what needs re-verifying); quietPeriod(5400) holds it 90 min in the queue. Manual runs: ?delay=0sec.
+    triggers {
+        upstream(
+            upstreamProjects: 'CRM-SETUP-CRM-12127-9-Leads-Merging',
+            threshold: hudson.model.Result.FAILURE
+        )
+    }
+
+    environment {
+        CI = 'true'
+        PLAYWRIGHT_BROWSERS_PATH = 'C:\\pw-browsers'
+        DEFERRED_MERGE_VERIFY_RUN = '1'
+        DEFERRED_MERGE_MANIFEST = 'deferred-verify/gathered.jsonl'
+    }
+
+    options {
+        quietPeriod(5400)
+        timeout(time: 180, unit: 'MINUTES')   // absolute backstop above the param-driven run timeout
+        buildDiscarder(logRotator(numToKeepStr: '20'))
+        disableConcurrentBuilds()
+        skipDefaultCheckout(true)
+    }
+
+    stages {
+        stage('Checkout (long-path safe)') {
+            steps {
+                bat 'git config --global core.longpaths true'
+                checkout scm
+            }
+        }
+
+        stage('Install dependencies') {
+            steps {
+                bat 'npm ci'
+            }
+        }
+
+        stage('Verify Google Chrome present') {
+            steps {
+                bat 'if exist "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" (echo Chrome present: OK) else (echo ERROR: Google Chrome not found on agent & exit /b 1)'
+            }
+        }
+
+        stage('Ensure ffmpeg present (for video recording)') {
+            steps {
+                bat '''@echo off
+setlocal enabledelayedexpansion
+set "FF=C:\\pw-browsers\\ffmpeg-1011"
+if not exist "%FF%\\INSTALLATION_COMPLETE" (
+  echo Placing ffmpeg from repo - CDN extraction stalls on this agent
+  if not exist "%FF%" mkdir "%FF%"
+  copy /Y "ci\\ffmpeg\\ffmpeg-1011\\*" "%FF%"
+) else (
+  echo ffmpeg already present - skipping copy
+)
+if not exist "%FF%\\ffmpeg-win64.exe" (echo ERROR: ffmpeg missing after copy & exit /b 1)
+set OK=0
+for /L %%i in (1,1,15) do (
+  if !OK!==0 (
+    "%FF%\\ffmpeg-win64.exe" -version >nul 2>&1
+    if !errorlevel!==0 (set OK=1& echo ffmpeg executable verified on attempt %%i) else (echo ffmpeg not runnable yet - attempt %%i - waiting for AV scan... & ping -n 4 127.0.0.1 >nul)
+  )
+)
+if !OK!==0 (echo ERROR: ffmpeg present but not executable after retries - add a Windows Defender exclusion for C:\\pw-browsers on the agent & exit /b 1)
+echo ffmpeg OK
+'''
+            }
+        }
+
+        stage('Gather crm-mig round-1 manifests') {
+            steps {
+                bat 'if exist deferred-verify rmdir /s /q deferred-verify'
+                bat 'mkdir deferred-verify'
+                withEnv(["DAY_PARAM=${params.DAY?.trim() ?: 'today'}"]) {
+                    powershell '''
+                      $ErrorActionPreference = 'Stop'
+                      $p = $env:DAY_PARAM
+                      if ($p.ToLower() -eq 'today') {
+                        $days = @((Get-Date).ToString('yyyy-MM-dd'), (Get-Date).AddDays(-1).ToString('yyyy-MM-dd'))
+                      } else { $days = @($p) }
+                      $out = 'deferred-verify/gathered.jsonl'
+                      $files = @()
+                      foreach ($d in $days) {
+                        $src = "C:\\deferred-verify-merge\\$d"
+                        if (Test-Path -LiteralPath $src) {
+                          # only the crm-mig round-1 job's manifests, top level only (processed ones live in mig-done\)
+                          $files += @(Get-ChildItem -LiteralPath $src -Filter 'CRM-SETUP-CRM-12127-*.jsonl' -File)
+                        }
+                      }
+                      Set-Content -LiteralPath 'deferred-verify/day.txt' -Value $days[0] -Encoding utf8 -NoNewline
+                      if ($files.Count -gt 0) {
+                        Get-Content -LiteralPath $files.FullName | Set-Content -LiteralPath $out -Encoding utf8
+                        Set-Content -LiteralPath 'deferred-verify/sources.txt' -Value ($files.FullName -join "`n") -Encoding utf8
+                        $n = (Get-Content -LiteralPath $out | Where-Object { $_.Trim() -ne '' } | Measure-Object).Count
+                        Write-Host "Gathered $($files.Count) crm-mig manifest file(s), $n line(s) -> $out"
+                        $files | ForEach-Object { Write-Host "  + $($_.FullName)" }
+                      } else {
+                        Write-Host "No unprocessed crm-mig round-1 manifest for $($days -join ', ') - writing an empty one (round-2 will skip)."
+                        New-Item -ItemType File -Path $out -Force | Out-Null
+                      }
+                    '''
+                }
+            }
+        }
+
+        stage('Re-verify + delete handed-over records (round 2)') {
+            steps {
+                script {
+                    bat 'if exist playwright-report rmdir /s /q playwright-report'
+                    bat 'if exist test-results rmdir /s /q test-results'
+                    bat 'if exist pw-report rmdir /s /q pw-report'
+                    bat 'if exist allure-results rmdir /s /q allure-results'
+                    def runTimeout = (params.TIMEOUT_MIN ?: '90').toInteger()
+                    timeout(time: runTimeout, unit: 'MINUTES') {
+                        bat 'npx playwright test "tests/1.Project_CRM/3.Lead_Merging/_deferred-verify/deferred-verify-lead-merging-mig.spec.ts" --project=chrome-headless'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            powershell '''
+              $ErrorActionPreference = 'Stop'
+              try {
+                if (Test-Path playwright-report) {
+                  $latest = Get-ChildItem -LiteralPath playwright-report -Directory | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                  if ($latest) {
+                    if (Test-Path pw-report) { Remove-Item -LiteralPath pw-report -Recurse -Force }
+                    New-Item -ItemType Directory -Path pw-report | Out-Null
+                    Get-ChildItem -LiteralPath $latest.FullName -Force | ForEach-Object {
+                      Copy-Item -LiteralPath $_.FullName -Destination pw-report -Recurse -Force
+                    }
+                    Write-Host "Published Playwright report from $($latest.Name)"
+                  } else { Write-Host 'No per-run report folder found to publish.' }
+                } else { Write-Host 'No playwright-report directory found.' }
+              } catch {
+                Write-Host "WARNING: could not flatten Playwright report: $($_.Exception.Message)"
+              }
+            '''
+            publishHTML([
+                allowMissing: true,
+                alwaysLinkToLastBuild: true,
+                keepAll: true,
+                reportDir: 'pw-report',
+                reportFiles: 'index.html',
+                reportName: 'Playwright Report'
+            ])
+            junit testResults: 'playwright-report/**/junit-results.xml', allowEmptyResults: true
+            powershell '''
+              try {
+                $day = if (Test-Path 'deferred-verify/day.txt') { (Get-Content -LiteralPath 'deferred-verify/day.txt' -Raw).Trim() } else { (Get-Date).ToString('yyyy-MM-dd') }
+                if (Test-Path 'deferred-verify/verdicts.json') {
+                  $dir = "C:\\deferred-verify-merge\\$day"
+                  New-Item -ItemType Directory -Path $dir -Force | Out-Null
+                  $dest = Join-Path $dir "verdict-$($env:JOB_BASE_NAME)-$($env:BUILD_NUMBER).json"
+                  Copy-Item -LiteralPath 'deferred-verify/verdicts.json' -Destination $dest -Force
+                  Write-Host "Stashed round-2 crm-mig merge verdicts -> $dest"
+                }
+                # Processed = the delete step ran (mig-cleanup-done.txt). Otherwise leave them for the next build.
+                if ((Test-Path 'deferred-verify/mig-cleanup-done.txt') -and (Test-Path 'deferred-verify/sources.txt')) {
+                  foreach ($f in (Get-Content -LiteralPath 'deferred-verify/sources.txt' | Where-Object { $_.Trim() -ne '' })) {
+                    $done = Join-Path (Split-Path -Parent $f) 'mig-done'
+                    New-Item -ItemType Directory -Path $done -Force | Out-Null
+                    Move-Item -LiteralPath $f -Destination $done -Force
+                    Write-Host "Processed -> $done"
+                  }
+                  Get-Content -LiteralPath 'deferred-verify/mig-cleanup-done.txt' | ForEach-Object { Write-Host "  $_" }
+                } elseif (Test-Path 'deferred-verify/sources.txt') {
+                  Write-Host 'Delete step did not complete - manifests left in place for the next round-2 build.'
+                }
+              } catch {
+                Write-Host "WARNING: could not stash verdicts / move processed manifests: $($_.Exception.Message)"
+              }
+            '''
+            archiveArtifacts artifacts: 'playwright-report/**, test-results/**, deferred-verify/gathered.jsonl, deferred-verify/verdicts.json, deferred-verify/mig-cleanup-done.txt', allowEmptyArchive: true
+        }
+        success { echo 'crm-mig deferred re-verify complete - every checkpoint matched its expected merge state; handed-over records deleted.' }
+        failure { echo 'crm-mig deferred re-verify: a checkpoint did not match its expected merge state ~90 min after round-1, or a handed-over record could not be deleted - see the Playwright report.' }
+    }
+}

@@ -24,7 +24,8 @@ import { dirname, isAbsolute, resolve } from 'path';
  * non-CI runs, and never throws (a manifest write must not fail an otherwise-passing test).
  */
 
-export type MergeRole = 'source' | 'target';
+/** 'any' (crm-mig negatives) = no "has been merged into" line in either direction - round-2 reads the whole log. */
+export type MergeRole = 'source' | 'target' | 'any';
 export type MergeExpected = 'merged' | 'not_merged';
 
 export interface MergeDeferredRecord {
@@ -45,6 +46,34 @@ export interface MergeDeferredRecord {
   runAtIso: string;
   /** Spec FILE path - round-2's dedup key (collapses retries of one spec). */
   specFile?: string;
+  /** crm-mig only: which form the URL opens, so round-2 reads it with the matching Mig page object. */
+  form?: 'lead' | 'opportunity';
+}
+
+/** One deletion of the crm-mig teardown ledger, in the order the teardown would have run it. */
+export interface MigCleanupEntry {
+  model: string;
+  id: number;
+  label: string;
+  deleteLast?: boolean;
+}
+
+/**
+ * crm-mig teardown handed to round-2: written INSTEAD of deleting when the test left a merge checkpoint, because
+ * round-2 must still find the leads ~90 min later. Round-2 deletes exactly these ids (this run's own) after its re-check.
+ */
+export interface MigCleanupRecord {
+  kind: 'mig-cleanup';
+  tcId: string;
+  title: string;
+  specFile: string;
+  runAtIso: string;
+  records: MigCleanupEntry[];
+}
+
+/** True for a crm-mig record URL - the pre-production round-2 leaves these to the crm-mig round-2. */
+export function isMigRecordUrl(url: string): boolean {
+  return /\/\/crm-mig\.nakivo\.site\//.test(url);
 }
 
 /**
@@ -129,6 +158,21 @@ export interface RecordMergeOptions {
   merged: boolean;
   /** Defaults to page.url() (the lead the round-1 wait was polling). Pass explicitly for the OTHER lead. */
   leadUrl?: string;
+  /** crm-mig only - see MergeDeferredRecord.form. */
+  form?: 'lead' | 'opportunity';
+}
+
+/** Tests (testId) of this worker that wrote a crm-mig checkpoint - their teardown goes to round-2. */
+const migCheckpointTests = new Set<string>();
+/** TC ids whose crm-mig teardown was handed to round-2 - their afterAll sweep must leave the records alone. */
+const migHandedOffTcIds = new Set<string>();
+
+function safeTestId(): string {
+  try {
+    return test.info().testId;
+  } catch {
+    return '';
+  }
 }
 
 /**
@@ -156,10 +200,12 @@ export function recordMergeForDeferredVerify(page: Page, opts: RecordMergeOption
     counterpartName: opts.counterpartName,
     firstRunActual: opts.merged ? 'merged' : 'not_merged',
     runAtIso: new Date().toISOString(),
+    ...(opts.form ? { form: opts.form } : {}),
   };
 
   try {
     appendRecords(path, [record]);
+    if (isMigRecordUrl(leadUrl)) migCheckpointTests.add(safeTestId());
     console.log(
       `  [deferred-verify-merge] recorded ${record.tcId} ` +
       `(role=${opts.role}, expected=${opts.expected}, counterpart="${opts.counterpartName}") -> ${path}`,
@@ -199,4 +245,45 @@ export function recordNoMergeForDeferredVerify(
   counterpartName: string,
 ): void {
   recordMergeForDeferredVerify(page, { role, counterpartName, expected: 'not_merged', merged: false, leadUrl });
+}
+
+/**
+ * crm-mig teardown hand-off (tester's decision 2026-11-03): when the CURRENT test wrote a crm-mig merge checkpoint,
+ * round-2 must still find its leads ~90 min later, so instead of deleting, the teardown appends the deletion list -
+ * the ids THIS run registered, already in deletion order - to the manifest, and round-2 deletes exactly those ids
+ * after its re-check. Returns true when handed off (the caller then deletes nothing); false = delete now as usual
+ * (no manifest, no checkpoint this test, or the write failed). Never throws.
+ */
+export function handOffMigCleanupToRound2(queued: MigCleanupEntry[]): boolean {
+  const path = manifestPath();
+  const testId = safeTestId();
+  if (!path || !testId || !migCheckpointTests.has(testId) || queued.length === 0) return false;
+  const line: MigCleanupRecord = {
+    kind: 'mig-cleanup',
+    tcId: extractTcId(),
+    title: safeTitle(),
+    specFile: safeFile(),
+    runAtIso: new Date().toISOString(),
+    records: queued.map((r) => ({ model: r.model, id: r.id, label: r.label, ...(r.deleteLast ? { deleteLast: true } : {}) })),
+  };
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    appendFileSync(path, JSON.stringify(line) + '\n', 'utf8');
+  } catch (err) {
+    console.log(`  [deferred-verify-merge] WARNING: could not hand the teardown to round-2 (${err instanceof Error ? err.message : String(err)}) - deleting now`);
+    return false;
+  }
+  migCheckpointTests.delete(testId);
+  migHandedOffTcIds.add(line.tcId);
+  console.log(
+    `\n[mig-cleanup] HANDED TO ROUND-2 - ${queued.length} record(s) kept on crm-mig until the deferred re-verify ` +
+    `(~90 min) re-checks the merge and deletes them -> ${path}\n` +
+    queued.map((r) => `  deferred ${r.model}#${r.id} (${r.label})`).join('\n'),
+  );
+  return true;
+}
+
+/** True when this worker handed `tcId`'s crm-mig teardown to round-2 - an afterAll sweep must then leave its records. */
+export function migCleanupHandedOff(tcId: string): boolean {
+  return migHandedOffTcIds.has(tcId);
 }
