@@ -2713,7 +2713,7 @@ ${wlDataScript}
   // 1·(Create P4) + 3·(Verified P1/2) + 2·(Verified P3) + 1·(Verified P4) +
   // 1·(Executed TC) + 1·(Maintenance/Created TC). Executed Automation TC comes
   // from the Allure monthly report (Section 1); every other cell is the team's
-  // saved Jira JQL. Figures below are the Jun-2026 snapshot.
+  // saved Jira JQL. Figures below are the Oct-2026 snapshot.
   const rkStyle = `<style>
   .rkwrap{overflow-x:auto}
   .rk{width:100%;border-collapse:collapse;font-size:13px;min-width:820px;margin:4px 0}
@@ -2747,36 +2747,37 @@ ${rkStyle}
 </div>
 <div class="wrap">
   ${sourceBanner(data.sources)}
-  <div class="sub muted" style="margin:4px 0 2px">Monthly ranking · Period: <b>Jun 01 – 30, 2026</b></div>
+  <div class="sub muted" style="margin:4px 0 2px">Monthly ranking · Period: <b>Oct 01 – 31, 2026</b></div>
   <div class="wlnote" tabindex="0">JQL for each metric <span class="wlnote-hint">(for the selected range — hover)</span>
     <span class="wlnote-pop">
       <div class="wlnote-h">Query</div>
       <div class="mn">Create Valid bugs — manual</div>
       <pre>type in ("Bug [uncategorised]", "Bug [Maintenance]", Bug, Sub-Bug, "Post-EA - Support Ticket")
-AND created &gt;= 2026-06-01 AND created &lt;= 2026-06-30 AND reporter in (&lt;user&gt;)
+AND created &gt;= 2026-10-01 AND created &lt;= 2026-10-31 AND reporter in (&lt;user&gt;)
 AND (status in (Open, Reopened, "In Progress")
      OR resolution changed to (Fixed, Done, "Won't fix", Unresolved, "Won't Do"))</pre>
       <div class="mn">Verified bugs — manual</div>
       <pre>issuetype in ("Bug [uncategorised]", Bug, "Bug [Maintenance]", Sub-Bug, improvement, "Post-EA - Support Ticket", "Post-EA - Task")
-AND status changed to (reopened, closed) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY (&lt;user&gt;)
+AND status changed to (reopened, closed) DURING ("2026-10-01 00:00", "2026-10-31 21:00") BY (&lt;user&gt;)
 AND priority not in ("Blocker (P1)", "Critical (P2)")</pre>
       <div class="mn">Executed Test cases — manual</div>
       <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND worklogAuthor in (&lt;user&gt;)
-AND worklogDate &gt;= 2026-06-01 AND worklogDate &lt;= 2026-06-30</pre>
+AND worklogDate &gt;= 2026-10-01 AND worklogDate &lt;= 2026-10-31</pre>
       <div class="mn">Maintenance / Created Test cases — manual</div>
       <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND reporter = &lt;user&gt;
-AND createdDate &gt;= "2026-06-01 00:00" AND createdDate &lt;= "2026-06-30 21:00"</pre>
+AND createdDate &gt;= "2026-10-01 00:00" AND createdDate &lt;= "2026-10-31 21:00"</pre>
       <div class="mn">Create / Verified bugs — automation</div>
       <pre>labels in (QA-CRM_Automation) AND ...  (same as manual, plus the QA-CRM_Automation label)</pre>
       <div class="mn">Maintenance / Created Automation TC</div>
       <pre>"Automation scope" = yes
-AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY &lt;user&gt;</pre>
+AND status changed to (resolved) DURING ("2026-10-01 00:00", "2026-10-31 21:00") BY &lt;user&gt;</pre>
       <div class="wlnote-h">Notes</div>
       <ul>
         <li>Per tester: bugs by <b>reporter</b> (create) / <b>actor</b> of the status change (verify); TCs by <b>worklogAuthor</b> (executed) / <b>reporter</b> (created).</li>
         <li>Verified headline count uses <b>priority not in (P1,P2)</b>; the P1/2 &amp; P3 columns are the full priority breakdown.</li>
         <li>Date bounds follow the sheet convention (<b>&le; "…21:00"</b>) — entries after 21:00 on the last day are dropped; use 23:59 for the full day.</li>
         <li><b>Executed Automation TC</b> is not a Jira metric — read from the Allure monthly report (Section 1) of the reported month.</li>
+        <li><b>Trivial (P5)</b> bugs count in the Valid / Total columns but carry no weight in the score.</li>
       </ul>
     </span>
   </div>
@@ -2785,8 +2786,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <h2>CRM Manual <a class="anchor" href="#m-ranking-manual" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Test cases')}
       <tbody>
-        <tr><td class="nm">Thuat Phung</td><td>17</td><td>15</td><td class="dim">0</td><td class="val">32</td><td class="dv">31</td><td>18</td><td class="dim">0</td><td class="val">49</td><td class="dv">219</td><td>143</td><td class="sc dv">572</td><td><span class="rk1">1</span></td></tr>
-        <tr><td class="nm">Anh Ho</td><td>5</td><td class="dim">0</td><td class="dim">0</td><td class="val">5</td><td class="dv">5</td><td>3</td><td class="dim">0</td><td class="val">8</td><td class="dv">27</td><td>179</td><td class="sc dv">242</td><td><span class="rk2">2</span></td></tr>
+        <tr><td class="nm">Thuat Phung</td><td>40</td><td>39</td><td>2</td><td class="val">81</td><td class="dv">51</td><td>49</td><td>6</td><td class="val">107</td><td class="dv">157</td><td>84</td><td class="sc dv">698</td><td><span class="rk1">1</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>12</td><td>7</td><td class="dim">0</td><td class="val">19</td><td class="dv">28</td><td>18</td><td>2</td><td class="val">48</td><td class="dv">60</td><td>399</td><td class="sc dv">631</td><td><span class="rk2">2</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -2795,8 +2796,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <h2>CRM Automation <a class="anchor" href="#m-ranking-automation" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Automation TC')}
       <tbody>
-        <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">0</td><td><span class="rk2">2</span></td></tr>
-        <tr><td class="nm">Anh Ho</td><td>2</td><td class="dim">0</td><td class="dim">0</td><td class="val">2</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv">530</td><td>145</td><td class="sc dv">681</td><td><span class="rk1">1</span></td></tr>
+        <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td>1</td><td class="dim">0</td><td class="val">1</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">2</td><td><span class="rk2">2</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>12</td><td>5</td><td class="dim">0</td><td class="val">17</td><td class="dv">27</td><td>10</td><td>2</td><td class="val">39</td><td class="dv">2130</td><td>313</td><td class="sc dv">2592</td><td><span class="rk1">1</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -2806,10 +2807,10 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <div class="rkeq">SCORE = <b>3</b>·(Create P1/2) + <b>2</b>·(Create P3) + <b>1</b>·(Create P4)
       + <b>3</b>·(Verified P1/2) + <b>2</b>·(Verified P3) + <b>1</b>·(Verified P4)
       + <b>1</b>·(Executed TC) + <b>1</b>·(Maintenance/Created TC)</div>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">Check: Thuat manual 81+129+219+143=572 · Anh manual 15+21+27+179=242 · Anh automation 6+0+530+145=681.</p>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Check: Thuat manual 200+257+157+84=698 · Anh manual 50+122+60+399=631 · Thuat automation 0+2+0+0=2 · Anh automation 46+103+2130+313=2592.</p>
   </section>
 
-  <div class="foot">Bug &amp; test-case counts from Jira (team JQL, hover above) · Executed Automation TC from the Allure monthly report · Jun-2026 snapshot · self-contained page.</div>
+  <div class="foot">Bug &amp; test-case counts from Jira (team JQL, hover above) · Executed Automation TC from the Allure monthly report · Oct-2026 snapshot · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;
