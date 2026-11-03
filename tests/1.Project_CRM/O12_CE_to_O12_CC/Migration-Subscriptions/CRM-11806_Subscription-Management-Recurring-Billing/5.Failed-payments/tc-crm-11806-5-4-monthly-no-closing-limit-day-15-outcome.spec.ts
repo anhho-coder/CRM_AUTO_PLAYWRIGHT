@@ -7,7 +7,6 @@ import { SubscriptionPageEmbed as SubscriptionPage } from '@pages/mig';
 import { HomePageMig as HomePage, LoginPageMig as LoginPage } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import { logVerify } from '@helpers/crm-11806-subscription.helper';
-import { logObservation } from '@helpers/crm-11806-mig-subscription.helper';
 
 /**
  * ============================================================================================
@@ -30,23 +29,24 @@ import { logObservation } from '@helpers/crm-11806-mig-subscription.helper';
  *                   https://confluence.nakivo.com/pages/viewpage.action?pageId=222538152 (v5, 2026-11-02)
  *                   It SUPERSEDES the FRD (pageId 222528736); do not key assertions to the FRD.
  *
- *  INVERTED 2026-11-02. Aiva answered CRM-13832: the target is today's Production behaviour, so a
- *  Monthly subscription IS closed after 15 days unpaid. This case used to assert that it is NEVER
- *  closed and that no termination notice is sent. Every expected result below is now the opposite.
- *  The Xray case CRM-13613 was rewritten the same day; this spec must follow it before it is run.
-
- *  WHY IT IS STILL SKIPPED (@blocked-embed-port)
- *  Measured 2026-10-20: SubscriptionPageEmbed.openSubscriptionTemplatesList() is NOT ported to
- *  the crm-mig embed yet, and throws by name rather than returning something empty. Port that
- *  method and this case can run - it is no longer blocked on mail or on the product flag.
- *  Jira:            CRM-11806 (feature)
+ *  INVERTED 2026-11-02, BODY REWRITTEN 2026-11-03. Aiva answered CRM-13832: the target is today's
+ *  Production behaviour, so a Monthly subscription IS closed after 15 days unpaid. This case used
+ *  to assert that it is NEVER closed and that no termination notice is sent, and it recorded VP3
+ *  as an unscored observation because the old spec and the delivered behaviour disagreed. Spec v5
+ *  settles that disagreement, so VP3 and VP4 are now ASSERTED, not observed. The Xray case
+ *  CRM-13613 was rewritten on 2026-11-02 and the steps below mirror it.
+ *
+ *  Jira:            CRM-11806 (feature) / CRM-13832 (the spec question that inverted it)
  *  Automation-Type: ported
- *  Automation-Date: 2026-10-08
+ *  Automation-Date: 2026-10-08 (body realigned to spec v5 on 2026-11-03)
  * --------------------------------------------------------------------------------------------
  *  PORT - this spec is the crm-mig twin of a pre-production baseline case.
  *  Baseline twin   : tests/1.Project_CRM/9.CRM_Module/8.Subscriptions/5.Failed-payments/tc-subscription-5-4-monthly-no-closing-limit-day-15-outcome.spec.ts
- *  Baseline TC ID  : subscription-5.4  (assertions below are the baseline's, copied verbatim)
- *  QA card         : SC-21 (DO NOT SCORE - spec vs delivered)  - "Subscription Test Cases" (CRM-12140, Nathan)
+ *  Baseline TC ID  : subscription-5.4
+ *  QA card         : SC-21  - "Subscription Test Cases" (CRM-12140, Nathan)
+ *                    The baseline's "DO NOT SCORE - spec vs delivered" caveat is GONE: it existed
+ *                    only because the spec contradicted the delivered behaviour. Spec v5 adopted
+ *                    the delivered behaviour, so there is a single expected result to score again.
  *  Runs on         : CRM https://crm-mig.nakivo.site (Odoo 12 CE)
  *                    Subscription service https://subscription-crm-mig.nakivo.site (Odoo 19)
  *                    Customer portal https://subscription-crm-mig.nakivo.site/my
@@ -55,100 +55,101 @@ import { logObservation } from '@helpers/crm-11806-mig-subscription.helper';
  *    - users.admin_crm    -> users.admin_crm_mig
  *    - LoginPage/HomePage -> LoginPageMig/HomePageMig (the sidebar theme hides the navbar)
  *    - TC id / file name  -> CRM-11806_x.y.z
- *  No expected value, count or string was changed. Where crm-mig behaves differently the
- *  assertion is meant to go RED - that red is the migration finding.
+ *  Beyond those, the EXPECTED RESULTS were changed on 2026-11-03 - and only because the spec they
+ *  are keyed to changed. Where crm-mig behaves differently the assertion is meant to go RED.
  * --------------------------------------------------------------------------------------------
- *  BLOCKED on crm-mig - B1 cleared 2026-10-08; B2 still open, so this spec stays skipped:
- *   B1. Rights   : CLEARED 2026-10-08. res.groups 115 "Subscriptions / See Subscriptions" and 116
- *                  "Subscriptions / Manage Subscriptions" now both hold uid 9685
- *                  (anh.ho@nakivo.com), and all ten Subscriptions menus render for it
- *                  (1436 root, 1475/1437/1476/1477, 1478/1479/1480/1481/1482).
- *                  Still denied to that account even so: nakivo.subscription.config (992) and
- *                  nakivo.embed.host (991) - assert through the UI or the Odoo 19 service, never
- *                  on the embed plumbing.
- *   B2. Platform : crm-mig carries NO sale.subscription model (ir.model holds only nakivo.subscription.config and nakivo.subscription.client; sale_subscription is state=uninstallable). The subscription itself lives on the Odoo 19 service subscription-crm-mig.nakivo.site and the CRM renders its screens as an EMBED, so the baseline's "Subscriptions > CREATE a subscription" path does not exist here - on crm-mig a subscription is born only by confirming a quotation that carries a Subscriptionable product.
- *                  -> the creation steps need a SubscriptionPageMig that drives the order path
- *                     on the CRM and reads the Odoo 19 service over its own authenticated
- *                     JSON-RPC (the MigPreSalePage pattern). The Subscriptions screens ARE now
- *                     reachable for that exploration since B1 was cleared.
- * --------------------------------------------------------------------------------------------
- *  BLOCKED ON TEST DATA & MANUAL STEPS.
+ *  ⛔ STILL SKIPPED - three blockers, none of them a defect in this case:
  *
- *  This case depends on:
- *  1. Customer registering a declining Stripe test card (4000 0000 0000 0341) - customer login required
- *  2. Development team running scheduled billing jobs at specific dates (day 0, 3, 7, 14, 15)
- *     counted from "Date of Next Invoice"
+ *   1. CRM-13828 - crm-mig has no daily billing run. This case needs the scheduled action
+ *      "Subscriptions management" executed once per simulated day from day 0 to day 16. The
+ *      "=> Generate Invoice" link is NOT a stand-in: it bills one cycle on demand and never
+ *      re-attempts a declined collection, which is the whole subject of steps 2 and 4.
+ *   2. CRM-13821 - the picked card is cleared from "Payment Token" on save, so the pre-condition
+ *      cannot leave S holding the always-declining test card.
+ *   3. Two SubscriptionPageEmbed methods step 1 and step 4 need are NOT ported to the embed and
+ *      throw by name (measured 2026-10-20): openSubscriptionTemplatesList() and
+ *      getContentText(). searchInList() / clearSearchFacets() were ported on 2026-11-03.
  *
- *  The test spec body is complete and runnable for step 1, 3, and 4 once the dev team has run
- *  the billing jobs. To unblock: ask the development team to run the billing dates for a named
- *  subscription Reference, note the date they ran each cycle on, and then run this test with
- *  the READY_FOR_VERIFICATION flag set to true and the target subscription reference provided.
+ *  AND ONE MEASUREMENT GAP, recorded rather than papered over: "Auto Pay?" (the second half of
+ *  VP1) is not exposed by SubscriptionTemplatePage.getSettings(), which returns recurrence,
+ *  repeatEvery, paymentMode, closingLimit and invoiceMailTemplate. Payment Mode is a different
+ *  control, not a rename of Auto Pay, so step 1 asserts the closing limit only and logs the gap.
+ *
+ *  TO UNBLOCK: close CRM-13821 and CRM-13828, port openSubscriptionTemplatesList() and
+ *  getContentText(), add an Auto Pay reader, then set READY_FOR_VERIFICATION = true with the
+ *  Reference Dev ran the days for, and change `test.skip(` to `test(`.
  * --------------------------------------------------------------------------------------------
- *  Source manual TC (mirrors the manual steps - same order, same content):
+ *  Source manual TC (mirrors CRM-13613 - same order, same content):
  *
  *  Pre-conditions:
- *    Login as Subscription staff with the "Manage Subscriptions" right (e.g. Anh Ho) on the CRM (crm-mig.nakivo.site)
- *    Create a new Contact in Contacts with a customer user account:
- *      - Name = "Cust-Day15-<unique>"
- *    Create a new subscription in Subscriptions > Subscriptions for that customer with:
- *      - Subscription Template = "Monthly Subscription" (card charged)
- *      - Start date = today
- *      - one Subscription Line, Product = "[CP-NC-O365] Office 365 for CSP - No Commitment", Quantity = 1
- *    As the customer user, register the declining Stripe test card 4000 0000 0000 0341
- *    Ask the development team to run days 0, 3 and 7 counted from "Date of Next Invoice", in order and once each
+ *    Login to the CRM (https://crm-mig.nakivo.site) as Subscription staff Ho Quoc Anh (admin_crm_mig)
+ *    Open CRM > Pipeline and create an Opportunity:
+ *      - Opportunity = "AUTO-CRM-11806_5.4-<yyyyMMddHHmm>"
+ *      - Customer    = "QA Test CRM-12548 Customer" (owner of the Stripe test card
+ *                      "XXXXXXXXXXXX0341 (QA decline)", which the provider always declines)
+ *    Click "Deal Element", set Pricelist = "Public Pricelist_USD (USD)" and add one Order Line:
+ *      - Product     = "[CP-NC-O365] Office 365 for CSP - No Commitment" (Subscriptionable)
+ *      - Ordered Qty = 10
+ *    Click "SAVE", then "New quotation", then "CONFIRM"
+ *    Click the "SUBxxxxx Subscription" smart button on the order (subscription S), click "EDIT":
+ *      - Subscription Template = "Monthly Subscription"
+ *      - Date of Next Invoice  = today
+ *      - "Settings" tab > Payment Token = "XXXXXXXXXXXX0341 (QA decline)"
+ *    Click "SAVE". Write down the Recurring Price as P (expected $ 7.00).
+ *    This case runs through the DAILY BILLING RUN ("Subscriptions management"), NOT the
+ *    "=> Generate Invoice" link.
  *
  *  Steps to reproduce:
- *   1. Open Subscriptions > Configuration > Subscription Templates, open "Monthly Subscription" and read its closing limit
- *   2. Ask the development team to run day 14, then day 15, counted from "Date of Next Invoice", in that order and once each
- *   3. Reopen the subscription and read the stage bar and the chatter
- *   4. Open Settings > Technical > Email > Emails on the CRM (crm-mig.nakivo.site) (developer mode on) and search the subscription Reference
+ *   1. Open Subscriptions > Configuration > Subscription Templates > "Monthly Subscription" and
+ *      read "Automatic closing limit" and "Auto Pay?"
+ *   2. Have the daily billing run process S once (day 0), then have Dev run it for S each day up
+ *      to day 16 - more than 15 days after the first declined attempt
+ *   3. Open S and read the stage bar, "Date of Next Invoice" and the chatter
+ *   4. Read the message history (chatter) of S and of its invoice
  *
  *  Verification Points:
- *   VP1. "Monthly Subscription" sets no closing limit
- *   VP3. Record what day 15 produced: whether the stage bar reads "Closed", and whether the chatter carries "Automatic payment failed after multiple attempts. Subscription closed automatically."
- *   VP4. Record whether a mail with subject "Termination of subscription <reference>" was queued
- *   NOTE: DO NOT SCORE this case. The specification says Monthly "shall not be terminated automatically", while the template sets no limit so the run applies the 15-day fallback. Report the observed outcome to the specification owner (PM)
+ *   VP1. "Automatic closing limit" = 0 (no limit configured) and "Auto Pay?" = checked. A limit of
+ *        0 does NOT exempt the subscription: IS-CRM-FUNC-0196 terminates it after 15 days unpaid
+ *        all the same, as on Production
+ *   VP2. Each run declines the charge (as in CRM-11806_5.1) and re-attempts collection once a day
+ *        (IS-CRM-FUNC-0154), reusing the same draft invoice (IS-CRM-FUNC-0147)
+ *   VP3. S IS closed for non-payment, exactly as a Quarterly or Yearly subscription would be
+ *        (IS-CRM-FUNC-0196): Stage = Closed, and the chatter records that S was closed
+ *        automatically after the failed payments
+ *   VP4. A termination notice was sent to the customer (template "Invoice - AutoPay Failed")
+ *        - IS-CRM-FUNC-0155, IS-CRM-FUNC-0196; the draft invoice of the unpaid cycle is Cancelled
+ *        (IS-CRM-FUNC-0197); and reminder e-mails went out on days 1, 4, 8 and 15 of failed
+ *        collection and on no other day (IS-CRM-FUNC-0153)
  *
- *  Command to run:
- *    npx playwright test --grep "CRM-11806_5\.4:" --project=chromium
+ *  Command to run (once unblocked):
+ *    npx playwright test --grep "CRM-11806_5\.4:" --project=O12
  * ============================================================================================
  */
 
-/**
- * NOTE 2026-10-12 - the "blocked-create" tag was REMOVED. It is no longer a blocker.
- *
- * The baseline's `Subscriptions > CREATE` does not exist on crm-mig, but the tester's instruction
- * is to use **Subscriptions > New** instead, and that stand-in is built and proven:
- * `createSubscriptionViaEmbed()` in helpers/crm-11806-mig-subscription.helper.ts drives
- * New -> fill -> cloud save, green in CRM-11806_11.2 and CRM-11806_11.1.
- * Whatever still keeps this spec skipped is named in its remaining @blocked-* tag, if any.
- */
 const TC_ID = 'CRM-11806_5.4';
 const ADMIN = users.admin_crm_mig;
 const TEMPLATE_NAME = 'Monthly Subscription';
-const PRODUCT_SKU = 'CP-NC-O365';
-const QUANTITY = 1;
 
-/** Set to true only after the development team has run days 0-15 for a subscription. */
+/** Set to true only after Dev has run the daily billing run for days 0-16 on a subscription. */
 const READY_FOR_VERIFICATION = false;
 
-/** The subscription Reference to verify after billing runs are complete. Set when READY_FOR_VERIFICATION is true. */
+/** The subscription Reference Dev ran those days for. Required when READY_FOR_VERIFICATION is true. */
 const TARGET_SUBSCRIPTION_REFERENCE = '';
 
+/** Spec v5: the reminder goes out on these days of failed collection and on NO other day (0153). */
+const REMINDER_DAYS = [1, 4, 8, 15];
+
+/** Spec v5, IS-CRM-FUNC-0196: terminated once it has been unpaid for this many days. */
+const TERMINATION_DAY = 15;
+
 const STEP = {
-  pre1: 'Pre-condition 1: Login as Subscription staff with the "Manage Subscriptions" right (e.g. Anh Ho) on the CRM (crm-mig.nakivo.site) (crm-mig.nakivo.site)',
-  pre2: 'Pre-condition 2: Create a new Contact in Contacts with a customer user account: Name = "Cust-Day15-<unique>"',
-  pre3: 'Pre-condition 3: Create a new subscription in Subscriptions > Subscriptions for that customer with: Subscription Template = "Monthly Subscription" (card charged), Start date = today, one Subscription Line, Product = "[CP-NC-O365] Office 365 for CSP - No Commitment", Quantity = 1',
-  pre4: 'Pre-condition 4: As the customer user, register the declining Stripe test card 4000 0000 0000 0341',
-  pre5: 'Pre-condition 5: Ask the development team to run days 0, 3 and 7 counted from "Date of Next Invoice", in order and once each',
-  s1: 'Step 1: Open Subscriptions > Configuration > Subscription Templates, open "Monthly Subscription" and read its closing limit',
-  s2: 'Step 2: Ask the development team to run day 14, then day 15, counted from "Date of Next Invoice", in that order and once each',
-  s3: 'Step 3: Reopen the subscription and read the stage bar and the chatter',
-  s4: 'Step 4: Open Settings > Technical > Email > Emails on the CRM (crm-mig.nakivo.site) (developer mode on) and search the subscription Reference',
-  verify: 'Verification'
+  s1: 'Step 1: Open Subscriptions > Configuration > Subscription Templates > "Monthly Subscription" and read "Automatic closing limit" and "Auto Pay?"',
+  s2: 'Step 2: Have the daily billing run process S once (day 0), then have Dev run it for S each day up to day 16',
+  s3: 'Step 3: Open S and read the stage bar, "Date of Next Invoice" and the chatter',
+  s4: 'Step 4: Read the message history (chatter) of S and of its invoice',
 } as const;
 
-test.describe(`${TC_ID} - Record what day 15 produces on a Monthly Subscription with no closing limit`, () => {
+test.describe(`${TC_ID} - A Monthly subscription with no closing limit is still terminated after 15 days unpaid`, () => {
   test.beforeEach(async ({ context, page }) => {
     await context.clearCookies();
     await context.grantPermissions([]);
@@ -158,177 +159,157 @@ test.describe(`${TC_ID} - Record what day 15 produces on a Monthly Subscription 
   test.afterEach(async ({ page }, testInfo) => {
     if (testInfo.status === 'failed' || testInfo.status === 'timedOut') {
       console.log(`❌ TEST FAILED - reason: ${testInfo.error?.message ?? 'unknown'}`);
-      const homePage = new HomePage(page);
-      await homePage.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+      await new HomePage(page).waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
     }
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
-  // DO NOT un-skip without rewriting the body: since spec v5 (2026-11-02) the expected results
-  // below are INVERTED - see the header. The Xray case CRM-13613 already carries the new ones.
-  test.skip(`${TC_ID}: A Monthly subscription with no closing limit is still terminated after 15 days unpaid @blocked-embed-port @body-not-rewritten-for-spec-v5`, async ({ page }, testInfo) => {
+  test.skip(`${TC_ID}: A Monthly subscription with no closing limit is still terminated after 15 days unpaid @blocked-devrun @blocked-embed-port`, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
+
+    // Without a Reference this case verifies nothing - fail before reading anything, never pass.
+    expect(
+      READY_FOR_VERIFICATION,
+      'READY_FOR_VERIFICATION must be true: Dev has to run days 0-16 before this case means anything',
+    ).toBe(true);
+    expect(
+      TARGET_SUBSCRIPTION_REFERENCE,
+      'TARGET_SUBSCRIPTION_REFERENCE must name the subscription Dev ran days 0-16 for',
+    ).not.toBe('');
 
     const loginPage = new LoginPage(page);
     const subscriptionPage = new SubscriptionPage(page);
     const templatePage = new SubscriptionTemplatePage(page);
 
-    const unique = CommonUtils.generateUniqueId();
-    const customerName = `Cust-Day15-${unique}`;
-
-    let templateClosingLimit = '';
-    let subscriptionStageBar = '';
+    let closingLimit = '';
+    let autoPay = false;
+    let stageBar = '';
     let chatterText = '';
-    let terminationMailFound = false;
+    let invoiceStatus = '';
 
-    // ===================== Pre-conditions =====================
-    await test.step(STEP.pre1, async () => {
-      console.log(`\n--- ${STEP.pre1} ---`);
-      console.log(`Logging in as ${ADMIN.username}`);
+    await test.step('Pre-condition: log in to the CRM as Subscription staff', async () => {
       await loginPage.navigateTo(baseUrl);
       await loginPage.login(ADMIN.username, ADMIN.password, CommonUtils.waitTimes.login);
-      console.log('✓ Logged in');
+      console.log(`✓ Logged in as ${ADMIN.username}`);
     });
 
-    await test.step(STEP.pre2, async () => {
-      console.log(`\n--- ${STEP.pre2} ---`);
-      console.log(`Creating customer: ${customerName}`);
-      // Note: Creating the contact is done manually per the precondition.
-      // For full automation, the contact creation step would be implemented here.
-      console.log('✓ Customer created with account (done manually)');
-    });
-
-    await test.step(STEP.pre3, async () => {
-      console.log(`\n--- ${STEP.pre3} ---`);
-      console.log('Creating subscription with Monthly Subscription template');
-      // Note: Creating the subscription is done manually per the precondition.
-      // Automation would proceed once the subscription reference is known.
-      console.log('✓ Subscription created (done manually)');
-    });
-
-    await test.step(STEP.pre4, async () => {
-      console.log(`\n--- ${STEP.pre4} ---`);
-      console.log('Customer must register declining card 4000 0000 0000 0341 from their portal login');
-    });
-
-    await test.step(STEP.pre5, async () => {
-      console.log(`\n--- ${STEP.pre5} ---`);
-      console.log('Development team to run days 0, 3, 7 (done manually)');
-    });
-
-    // ===================== Steps to reproduce =====================
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
       await subscriptionPage.openSubscriptionTemplatesList();
       await templatePage.openByName(TEMPLATE_NAME);
       const settings = await templatePage.getSettings();
-      templateClosingLimit = settings.closingLimit ? String(settings.closingLimit) : '(not set)';
-      console.log(`✓ Template settings read: closing limit = "${templateClosingLimit}"`);
+      closingLimit = settings.closingLimit === undefined || settings.closingLimit === null
+        ? '' : String(settings.closingLimit);
+      // `closingLimit` is parsed with a -1 sentinel when the field is empty - both readings mean
+      // "no limit configured" for VP1.
+      const limitIsZero = closingLimit === '' || closingLimit === '0' || closingLimit === '-1';
+
+      // "Auto Pay?" IS NOT READ HERE. SubscriptionTemplatePage.getSettings() returns recurrence,
+      // repeatEvery, paymentMode, closingLimit and invoiceMailTemplate - there is no Auto Pay
+      // field on it, and the Payment Mode radio is a different control, not a rename of it.
+      // Asserting one as the other would publish a verdict on a field this spec never looked at.
+      // The half of VP1 that can be read is asserted; the other half is named as a gap.
+      console.log('  - "Auto Pay?" NOT CHECKED HERE: SubscriptionTemplatePage exposes no Auto Pay');
+      console.log(`  - Payment Mode read instead (for the record, NOT as Auto Pay): "${settings.paymentMode}"`);
+      autoPay = false;
 
       logVerify(
-        'VP1',
-        '"Monthly Subscription" sets no closing limit',
-        `Closing limit = "${templateClosingLimit}"`,
-        !templateClosingLimit || templateClosingLimit === '0' || /no.*limit/i.test(templateClosingLimit)
+        'VP1 (closing limit half)',
+        '"Automatic closing limit" = 0 (no limit configured) - a limit of 0 does NOT exempt the subscription from the 15-day termination (IS-CRM-FUNC-0196)',
+        `"Automatic closing limit" = "${closingLimit || '(empty)'}"`,
+        limitIsZero,
       );
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - Subscription Template settings').catch(() => {});
+      expect(limitIsZero, `VP1: "${TEMPLATE_NAME}" should set no closing limit (0), read "${closingLimit}"`).toBe(true);
+
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - Monthly Subscription template settings').catch(() => {});
     });
 
     await test.step(STEP.s2, async () => {
       console.log(`\n--- ${STEP.s2} ---`);
-      console.log('Development team to run day 14, then day 15 (done manually)');
-      console.log('Waiting for billing runs to complete...');
+      console.log(`Dev runs "Subscriptions management" for ${TARGET_SUBSCRIPTION_REFERENCE} once per simulated day, day 0 -> day 16.`);
+
+      await subscriptionPage.openSubscriptionsList();
+      await subscriptionPage.clearSearchFacets();
+      const hits = await subscriptionPage.searchInList(TARGET_SUBSCRIPTION_REFERENCE);
+      expect(hits, `VP2: the Subscriptions list should hold exactly 1 subscription "${TARGET_SUBSCRIPTION_REFERENCE}"`).toBe(1);
+
+      const invoiceCount = await subscriptionPage.getInvoiceCount();
+      logVerify(
+        'VP2',
+        'Each run declines the charge and re-attempts collection once a day (IS-CRM-FUNC-0154), reusing the SAME draft invoice (IS-CRM-FUNC-0147) - so the whole dunning period leaves exactly 1 invoice',
+        `"Invoices" smart button = ${invoiceCount} after ${TERMINATION_DAY + 1} daily runs`,
+        invoiceCount === 1,
+      );
+      expect(invoiceCount, 'VP2: the retries must reuse one invoice, not raise one per day').toBe(1);
+
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 2 - after the daily runs').catch(() => {});
     });
 
     await test.step(STEP.s3, async () => {
       console.log(`\n--- ${STEP.s3} ---`);
-      await subscriptionPage.openSubscriptionsList();
-      await subscriptionPage.searchInList(TARGET_SUBSCRIPTION_REFERENCE);
-      // Open the subscription (assuming search returns it in the list)
-      console.log(`Opening subscription ${TARGET_SUBSCRIPTION_REFERENCE}`);
-
-      subscriptionStageBar = await subscriptionPage.getState();
+      stageBar = await subscriptionPage.getState();
+      const nextInvoice = await subscriptionPage.getDateOfNextInvoice();
       chatterText = await subscriptionPage.getChatterText();
+      const closedAutomatically = /closed\s+automatically|automatic\s+payment\s+failed/i.test(chatterText);
 
-      console.log(`✓ Subscription stage bar: "${subscriptionStageBar}"`);
-      console.log(`✓ Chatter contains: "${chatterText.substring(0, 100)}..."`);
-
-      const hasFailureMessage = chatterText.includes('Automatic payment failed after multiple attempts. Subscription closed automatically.');
+      console.log(`  - Stage bar            : "${stageBar}"`);
+      console.log(`  - Date of Next Invoice : "${nextInvoice}"`);
 
       logVerify(
         'VP3',
-        'Record what day 15 produced: stage bar = "Closed", chatter carries "Automatic payment failed after multiple attempts. Subscription closed automatically."',
-        `Stage bar = "${subscriptionStageBar}"; failure message present = ${hasFailureMessage}`,
-        subscriptionStageBar === 'Closed' && hasFailureMessage
+        `S IS closed for non-payment after ${TERMINATION_DAY} days unpaid, exactly as a Quarterly or Yearly subscription would be (IS-CRM-FUNC-0196): Stage = "Closed" and the chatter records the automatic closure`,
+        `Stage = "${stageBar}"; automatic-closure line in the chatter = ${closedAutomatically}`,
+        stageBar === 'Closed' && closedAutomatically,
       );
 
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - subscription after day 15 billing run').catch(() => {});
+      // ASSERTED since spec v5 - this was an unscored observation while 0156 said Monthly is never
+      // closed. 0156 is retired; 0196 requires exactly this.
+      expect(stageBar, 'VP3: a Monthly subscription unpaid for 15 days should be Closed (IS-CRM-FUNC-0196)').toBe('Closed');
+      expect(closedAutomatically, 'VP3: the chatter should record that S was closed automatically after the failed payments').toBe(true);
+
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 3 - subscription after day 16').catch(() => {});
     });
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
-      console.log('[MANUAL ONLY - developer mode and email search must be done manually]');
-      console.log(`Search in Settings > Technical > Email > Emails for subject starting with "Termination of subscription ${TARGET_SUBSCRIPTION_REFERENCE}"`);
-      console.log('This step verifies whether a termination email was queued by the dunning process');
 
-      // Note: Reading emails from the Odoo email queue requires specific page methods
-      // that may require developer mode. This is marked as manual for QA.
-      terminationMailFound = false; // Placeholder - would be read from the email page
-
+      const terminationNotice = /autopay\s*failed|termination\s+of\s+subscription|payment\s+failed/i.test(chatterText);
       logVerify(
-        'VP4',
-        `A mail with subject "Termination of subscription ${TARGET_SUBSCRIPTION_REFERENCE}" was queued`,
-        `Termination mail found = ${terminationMailFound}`,
-        terminationMailFound
+        'VP4a',
+        'A termination notice was sent to the customer (template "Invoice - AutoPay Failed") - IS-CRM-FUNC-0155, IS-CRM-FUNC-0196',
+        `termination notice in the chatter = ${terminationNotice}`,
+        terminationNotice,
       );
-    });
+      expect(terminationNotice, 'VP4: a termination notice should have been sent to the customer').toBe(true);
 
-    // ===================== Verification =====================
-    await test.step(STEP.verify, async () => {
-      console.log(`\n==================== ${STEP.verify} ====================`);
-      console.log(`  Verify #1 - Template closing limit:`);
-      console.log(`     Expected : "Monthly Subscription" sets no closing limit`);
-      console.log(`     Actual   : Closing limit = "${templateClosingLimit}"`);
-      console.log(`     Result   : ${!templateClosingLimit || templateClosingLimit === '0' ? 'PASS' : 'FAIL'}`);
-      console.log('');
-      console.log(`  Verify #2 - Day 15 dunning outcome:`);
-      console.log(`     Expected : Stage bar = "Closed"; Chatter carries automatic failure message`);
-      console.log(`     Actual   : Stage bar = "${subscriptionStageBar}"; Message found = ${chatterText.includes('Automatic payment failed')}`);
-      console.log(`     Result   : ${subscriptionStageBar === 'Closed' && chatterText.includes('Automatic payment failed') ? 'PASS' : 'FAIL'}`);
-      console.log('');
-      console.log(`  Verify #3 - Termination email:`);
-      console.log(`     Expected : A termination email was queued`);
-      console.log(`     Actual   : Termination mail found = ${terminationMailFound}`);
-      console.log(`     Result   : ${terminationMailFound ? 'PASS' : 'FAIL (email search is manual)'}`);
-      console.log(`===============================================`);
-      console.log(`OVERALL: MIXED - Template verified (VP1). Day 15 outcome depends on billing runs. Email search is manual.`);
-      console.log('');
-      console.log('INTERPRETATION NOTE:');
-      console.log('The specification states "Monthly shall not be terminated automatically", but the template sets');
-      console.log('no closing limit, so the system applies a 15-day fallback. This test records the OBSERVED outcome');
-      console.log('(whether the subscription was closed and the failure message appeared) for comparison against the');
-      console.log('spec requirement. Report any discrepancy to the PM (specification owner).');
-
-      // The PRE-CONDITION is still a hard assertion: without a reference this case verified nothing.
-      expect(TARGET_SUBSCRIPTION_REFERENCE, 'TARGET_SUBSCRIPTION_REFERENCE must be set when READY_FOR_VERIFICATION is true').not.toBe('');
-
-      // VP3 IS NOT SCORED (changed 2026-10-16, at the tester's direction).
-      // SC-21 carries an explicit "DO NOT SCORE THIS CARD - record the outcome for the PM", and
-      // VP3 is exactly its subject. These were two `expect()`s:
-      //     expect(subscriptionStageBar).toBe('Closed')
-      //     expect(chatterText).toContain('Automatic payment failed after multiple attempts...')
-      // Either verdict would have been wrong to publish. A PASS certifies that a Monthly
-      // subscription closes automatically - which the specification says it "shall not" do. A FAIL
-      // reports a defect against delivered behaviour nobody has ruled on yet. The reading is
-      // recorded instead, and the ruling is open with the PM on CRM-11806.
-      logObservation(
-        'VP3 - day 15 on a Monthly subscription with no closing limit',
-        'the specification says a Monthly subscription "shall not be terminated automatically"',
-        `stage bar = "${subscriptionStageBar}"; the automatic-closure chatter line was ` +
-        `${chatterText.includes('Automatic payment failed after multiple attempts. Subscription closed automatically.') ? 'PRESENT' : 'ABSENT'}`,
+      await subscriptionPage.openInvoices();
+      invoiceStatus = await subscriptionPage.getContentText();
+      const invoiceCancelled = /cancel+ed/i.test(invoiceStatus);
+      logVerify(
+        'VP4b',
+        'The draft invoice of the unpaid cycle is Cancelled on termination (IS-CRM-FUNC-0197)',
+        `invoice status reads "${invoiceStatus.replace(/\s+/g, ' ').slice(0, 120)}"`,
+        invoiceCancelled,
       );
+      expect(invoiceCancelled, 'VP4: on termination the unpaid cycle\'s draft invoice should be Cancelled (IS-CRM-FUNC-0197)').toBe(true);
+
+      // Reminder days - counted from the billing date, NOT from the termination date.
+      const reminderMatches = chatterText.match(/Invoice\s*-\s*AutoPay\s*To\s*Retry/gi) || [];
+      logVerify(
+        'VP4c',
+        `Reminder e-mails went out on days ${REMINDER_DAYS.join(', ')} of failed collection and on NO other day (IS-CRM-FUNC-0153) - ${REMINDER_DAYS.length} in total`,
+        `${reminderMatches.length} reminder e-mail(s) in the chatter`,
+        reminderMatches.length === REMINDER_DAYS.length,
+      );
+      expect(
+        reminderMatches.length,
+        `VP4: exactly ${REMINDER_DAYS.length} reminders are due (days ${REMINDER_DAYS.join(', ')}); the per-day dates are checked in CRM-11806_5.7`,
+      ).toBe(REMINDER_DAYS.length);
+
+      console.log(`✅ ${TC_ID}: the Monthly subscription was terminated after ${TERMINATION_DAY} days unpaid, its draft invoice cancelled, and ${REMINDER_DAYS.length} reminders were sent`);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 4 - chatter and invoice after termination').catch(() => {});
     });
   });
 });

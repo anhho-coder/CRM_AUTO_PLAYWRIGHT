@@ -605,13 +605,97 @@ export class SubscriptionPageEmbed {
     await this.selectMany2OneByExactLabel('pricelist_id', searchText, exactLabel);
   }
 
+  // ---------------------------------------------------------------- list search (ported 2026-11-03)
+  // Measured by tests/_explore/subs-mig-embed-list-count-dom-20261103.explore.spec.ts against the
+  // live list (frame https://pre-sales-crm-mig.nakivo.site/odoo/sale.subscription):
+  //   .o_kanban_record:not(.o_kanban_ghost)  97   default view, GROUPED (o_kanban_grouped, 5 groups)
+  //   .o_data_row                            97   after clicking button.o_switch_view.o_list
+  //   .o_searchview_facet                     1   a default "My Subscriptions" facet
+  //   .o_facet_remove                         1   removing all of them took 3 passes: 2 -> 1 -> 0
+  //   searching "SUB00117"                    1   row, facets become ["My Subscriptions","NameSUB00117"]
+  //   clearing every facet                  161   rows - so the default facet HIDES most records
+  //
+  // THREE TRAPS, each one measured, each one able to produce a confident wrong number:
+  //  1. THE PAGER COUNTS GROUPS, NOT RECORDS. With 97 rows on screen the pager read "1-5 / 5" -
+  //     five GROUPS. Never read a record total off it.
+  //  2. A FOLDED GROUP'S ROWS ARE NOT IN THE DOM. The list and the kanban are both grouped, and a
+  //     folded group contributes nothing to `.o_data_row`. Counting through one would silently
+  //     undercount, so this throws instead of returning a number it cannot stand behind.
+  //  3. THE DEFAULT "My Subscriptions" FACET HIDES RECORDS - 97 of 161 here. Any count that is
+  //     meant to be absolute must clearSearchFacets() FIRST.
+
+  /** Rows on whichever view is showing - list rows, else kanban cards. */
+  private async countVisibleRecords(fr: Frame): Promise<number> {
+    const listRows = await fr.locator('.o_data_row').count().catch(() => 0);
+    if (listRows > 0) return listRows;
+    if (await fr.locator('.o_list_view').count().catch(() => 0)) return 0; // list view, genuinely empty
+    return await fr.locator('.o_kanban_record:not(.o_kanban_ghost)').count().catch(() => 0);
+  }
+
+  /** Trap 2: refuse to count through a folded group rather than undercount in silence. */
+  private async assertNoFoldedGroup(fr: Frame, where: string): Promise<void> {
+    const folded = await fr.locator('.o_column_folded, .o_group_header.o_group_has_content:not(.o_group_open)')
+      .count().catch(() => 0);
+    if (folded > 0) {
+      throw new Error(
+        `SubscriptionPageEmbed.${where}: the Subscriptions list is grouped and ${folded} group(s) are ` +
+        'FOLDED. A folded group keeps its rows out of the DOM, so any count here would be too low. ' +
+        'Expand the groups (or remove the grouping) before counting.',
+      );
+    }
+  }
+
+  /**
+   * Remove every facet in the search bar, including the default "My Subscriptions" one.
+   *
+   * Measured: three passes (2 -> 1 -> 0). The frame is re-resolved each pass because removing a
+   * facet can detach the handle - that detach is what made the first measurement attempt report
+   * -1 for every later count.
+   */
+  async clearSearchFacets(): Promise<void> {
+    for (let i = 0; i < 6; i++) {
+      const fr = await this.f();
+      const n = await fr.locator('.o_facet_remove').count().catch(() => -1);
+      if (n <= 0) break;
+      await fr.locator('.o_facet_remove').first().click({ timeout: CommonUtils.waitTimes.long }).catch(() => {});
+      await this.page.waitForTimeout(CommonUtils.waitTimes.long);
+    }
+    this.frame = null; // force a fresh handle for whatever reads next
+  }
+
+  /**
+   * Type `term` into the list search box, press Enter, and return the number of MATCHING RECORDS.
+   *
+   * Enter takes the default option, which this list spells "Name<term>" - measured, the
+   * autocomplete returned no options of its own. An empty `term` just counts what is on screen.
+   */
+  async searchInList(term: string): Promise<number> {
+    await this.openSubscriptionsList();
+    const fr = await this.f();
+    const input = fr.locator('input.o_searchview_input').or(fr.locator('.o_searchview input')).first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+
+    if (term) {
+      await input.click();
+      await this.page.keyboard.type(term, { delay: 20 });
+      await this.page.waitForTimeout(CommonUtils.waitTimes.short);
+      await this.page.keyboard.press('Enter');
+      await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 3);
+    }
+
+    const live = await this.f();
+    await this.assertNoFoldedGroup(live, 'searchInList');
+    const n = await this.countVisibleRecords(live);
+    const facets = await live.locator('.o_searchview_facet').allTextContents().catch(() => []);
+    console.log(`  - searchInList("${term}") = ${n} record(s); facets ${JSON.stringify(facets.map((s) => s.replace(/\s+/g, ' ').trim()))}`);
+    return n;
+  }
+
   // ------------------------------------------------- NOT PORTED - fail, never fake
   // Each of these drives a native pre-production control with no measured embed equivalent. The
   // 2026-10-21 dump covered an In Progress subscription's form; these were not on it.
   async getEndDate(..._args: any[]): Promise<any> { return this.notPorted('getEndDate'); }
   async setPaymentToken(..._args: any[]): Promise<any> { return this.notPorted('setPaymentToken'); }
-  async searchInList(..._args: any[]): Promise<any> { return this.notPorted('searchInList'); }
-  async clearSearchFacets(..._args: any[]): Promise<any> { return this.notPorted('clearSearchFacets'); }
   async getContentText(..._args: any[]): Promise<any> { return this.notPorted('getContentText'); }
   async openSubscriptionTemplatesList(..._args: any[]): Promise<any> { return this.notPorted('openSubscriptionTemplatesList'); }
 }
