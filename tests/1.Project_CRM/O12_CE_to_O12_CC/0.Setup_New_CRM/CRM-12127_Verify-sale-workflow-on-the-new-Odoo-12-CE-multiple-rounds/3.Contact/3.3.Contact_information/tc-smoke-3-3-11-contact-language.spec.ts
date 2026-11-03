@@ -174,7 +174,16 @@ test.describe(`${TC} - Language`, () => {
         expect(actual, 'the Language a newly created Contact starts on').toBe(expected);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Language`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Language`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="lang"]', passed: actual === expected },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Language a newly created Contact starts on', expected: `"${expected}"`, actual: actual, ok: actual === expected },
+          ]),
+        }).catch(() => {});
       }
     });
   });

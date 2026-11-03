@@ -202,7 +202,17 @@ test.describe(`${TC} - Notebook tabs`, () => {
         expect(actual, 'the notebook tab NAMES and their ORDER').toEqual(EXPECTED);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Notebook tabs`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Notebook tabs`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_notebook .nav-link', passed: JSON.stringify(actual) === JSON.stringify(EXPECTED) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of notebook tabs on the Contact form', expected: `${EXPECTED.length}`, actual: actual.length, ok: actual.length === EXPECTED.length },
+            { what: 'the notebook tab NAMES and their ORDER', expected: EXPECTED.join(' | '), actual: actual.join(' | '), ok: JSON.stringify(actual) === JSON.stringify(EXPECTED), difference: CommonUtils.listDifference(EXPECTED, actual) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

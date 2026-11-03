@@ -189,7 +189,20 @@ test.describe(`${TC} - Tags`, () => {
         expect(note as string, 'the log note must name the tag').toContain('New: Trial download');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tags`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage('Tags CREATE changed', 'chatter-tags');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Tags`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="tag_ids"]', passed: JSON.stringify(tags) === JSON.stringify(['Trial download']) },
+            { selector: note ? LeadPage.verifyRow('chatter-tags') : '.o_mail_thread', passed: note !== null && note.includes('New: Trial download') },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lead must carry exactly the one selected tag', expected: '["Trial download"]', actual: tags, ok: JSON.stringify(tags) === JSON.stringify(['Trial download']) },
+            { what: 'the chatter must log the tag', expected: 'a "Tags CREATE changed" note', actual: note, ok: note !== null },
+            { what: 'the log note must name the tag', expected: 'contains "New: Trial download"', actual: note, ok: (note ?? '').includes('New: Trial download') },
+          ]),
+        }).catch(() => {});
       }
     });
   });

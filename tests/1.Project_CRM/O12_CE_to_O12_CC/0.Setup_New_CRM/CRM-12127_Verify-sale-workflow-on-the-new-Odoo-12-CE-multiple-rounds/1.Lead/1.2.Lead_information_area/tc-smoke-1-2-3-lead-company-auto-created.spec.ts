@@ -175,6 +175,16 @@ test.describe(`${TC} - Customer created automatically`, () => {
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
       const companyNameBefore = await leadPage.readFieldValue('partner_name');
+      // Shot where the value is read: once the Customer is linked the form switches layout and hides the Company
+      // Name rows (run 2026-11-03: none of the 3 partner_name copies was visible at the end of the step).
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - Company Name right after save`,
+        passed: companyNameBefore === DATA.companyName,
+        outlines: [{ selector: '.o_form_view [name="partner_name"]', passed: companyNameBefore === DATA.companyName }],
+        lines: CommonUtils.evidenceLines(`${STEP.s5} (read right after save, before the Customer link)`, [
+          { what: 'Company Name must hold the entered value right after save', expected: `"${DATA.companyName}"`, actual: companyNameBefore, ok: companyNameBefore === DATA.companyName },
+        ]),
+      }).catch(() => {});
       const partner = await leadPage.waitForCompanyPartner();
       // Cleanup only (not an assertion): register the Customer this run created so teardown removes
       // it. When O12 CE does not expose the link, the afterAll sweep still finds it by name marker.
@@ -199,7 +209,19 @@ test.describe(`${TC} - Customer created automatically`, () => {
         );
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Customer created automatically`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Customer created automatically`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view a[name="partner_id"]', passed: partner.partnerId !== '' && partner.href.includes('model=res.partner') && partner.name === DATA.companyName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Company Name must hold the entered value right after save', expected: `"${DATA.companyName}"`, actual: companyNameBefore, ok: companyNameBefore === DATA.companyName },
+            { what: 'the Lead must be linked to a Customer record', expected: 'a res.partner id', actual: partner.partnerId, ok: partner.partnerId !== '' },
+            { what: 'the Company link must open a res.partner', expected: 'contains "model=res.partner"', actual: partner.href, ok: partner.href.includes('model=res.partner') },
+            { what: 'the created Customer must carry the entered Company Name', expected: `"${DATA.companyName}"`, actual: partner.name, ok: partner.name === DATA.companyName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

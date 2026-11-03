@@ -203,7 +203,19 @@ test.describe(`${TC} - Invalid e-mail refused (manual path)`, () => {
         expect(stillEditable, 'the form must stay in edit mode').toBeGreaterThan(0);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Invalid e-mail refused (manual path)`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Invalid e-mail refused (manual path)`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.modal.show .modal-content', passed: dialogText.includes('The email is invalid!') },
+            { selector: '.o_form_view [name="email_from"]', passed: dialogText.includes('The email is invalid!') },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the save must raise the e-mail Validation Error', expected: 'contains "The email is invalid!"', actual: dialogText, ok: dialogText.includes('The email is invalid!') },
+            { what: 'no Lead record must be created', expected: 'no record id in the URL', actual: savedId ? savedId[1] : null, ok: savedId === null },
+            { what: 'the form must stay in edit mode', expected: 'an editable form (.o_form_editable)', actual: stillEditable, ok: stillEditable > 0 },
+          ]),
+        }).catch(() => {});
       }
     });
   });

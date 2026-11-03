@@ -187,7 +187,20 @@ test.describe(`${TC} - Address`, () => {
         expect(country, 'Country must keep the entered value').toBe(DATA.country);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Address`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Address`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="street"]', passed: street === DATA.street },
+            { selector: '.o_form_view [name="state_id"]', passed: state === 'Texas (US)' },
+            { selector: '.o_form_view [name="country_id"]', passed: country === DATA.country },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Street must keep the entered value', expected: `"${DATA.street}"`, actual: street, ok: street === DATA.street },
+            { what: 'State must keep the entered value', expected: '"Texas (US)"', actual: state, ok: state === 'Texas (US)' },
+            { what: 'Country must keep the entered value', expected: `"${DATA.country}"`, actual: country, ok: country === DATA.country },
+          ]),
+        }).catch(() => {});
       }
     });
   });

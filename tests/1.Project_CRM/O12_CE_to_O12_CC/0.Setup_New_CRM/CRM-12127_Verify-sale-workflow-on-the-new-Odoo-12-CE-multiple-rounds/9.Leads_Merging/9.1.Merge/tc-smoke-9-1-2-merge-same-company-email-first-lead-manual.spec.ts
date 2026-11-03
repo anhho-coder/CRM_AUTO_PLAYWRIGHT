@@ -17,6 +17,7 @@ import {
  *  Baseline        : CRM-2178_1.1.2.1 (Jira CRM-9153) - assertions ported unchanged
  *                    tests/1.Project_CRM/3.Lead_Merging/CRM-2178_Lead_merging_rules_update_Sept-23/1.Leads_are_qualified_to_be_merged/1.1.Multiple-leads-with-the-same-company-email/1.1.2.Leads-with-same-priority-if/tc-crm-2178-1-1-2-1-merge-leads-same-company-email-first-lead-is-manual.spec.ts
  *  Source version  : CRM-9153 updated 2026-03-20T05:34+0200 - re-check before trusting this spec
+ *  Bug (SKIPPED)   : CRM-14070 - skipped on the tester's request 2026-11-03; un-skip when CRM-14070 is fixed.
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -29,6 +30,7 @@ import {
  *  Command to run
  * --------------------------------------------------------------------------------------------
  *  npx playwright test --grep "CRM-12370_9\.1\.2:" --project=MigSmoke --workers=1
+ *  npx playwright test --grep "CRM-14070" --project=MigSmoke --workers=1
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - the assertions are the baseline's)
@@ -197,7 +199,9 @@ test.describe(`${TC} - Lead Merging: Same Company Email with Same Priority`, () 
     await sweepLeadMergingRunsAfterAll(browser, SKIP_CLEANUP_MIG);
   });
 
-  test(`${TC}: Verify merging leads with same company email and same priority`, baselineDetails(TC), async ({ page }, testInfo) => {
+  // Skipped due to bug CRM-14070 - declaration-level skip, so no browser starts and no record is created;
+  // un-skip when CRM-14070 is fixed.
+  test.skip(`${TC}: Verify merging leads with same company email and same priority [CRM-14070]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const leadPage = new LeadPageMig(page);

@@ -193,7 +193,19 @@ test.describe(`${TC} - Log note - number, order and author`, () => {
           messages.map(() => users.admin_crm_mig.createdByName));
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - number, order and author`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Log note - number, order and author`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_mail_thread', passed: __verifyPassed },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of log notes a newly created Contact carries', expected: '2', actual: messages.length, ok: messages.length === 2 },
+            { what: 'the OLDEST log note of a newly created Contact', expected: '"Contact created"', actual: messages[messages.length - 1], ok: messages[messages.length - 1] === 'Contact created' },
+            { what: 'the NEWEST log note of a newly created Contact', expected: 'contains "Email:"', actual: messages[0], ok: (messages[0] ?? '').includes('Email:') },
+            { what: 'the author of every log note of a newly created Contact', expected: `${users.admin_crm_mig.createdByName} on every note`, actual: authors.join(' | '), ok: authors.every((a) => a === users.admin_crm_mig.createdByName) && authors.length === messages.length },
+          ]),
+        }).catch(() => {});
       }
     });
   });

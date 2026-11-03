@@ -188,7 +188,19 @@ test.describe(`${TC} - EDIT button`, () => {
         expect(cpAfter, 'the control-panel buttons offered in edit mode').toEqual(EXPECTED_CP);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - EDIT button`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - EDIT button`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_control_panel', passed: JSON.stringify(cpAfter) === JSON.stringify(EXPECTED_CP) },
+            { selector: '.o_form_view', passed: editableAfter === true },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the saved Contact form opens in READ mode', expected: 'false', actual: editableBefore, ok: editableBefore === false },
+            { what: 'the EDIT button puts the Contact form in EDIT mode', expected: 'true', actual: editableAfter, ok: editableAfter === true },
+            { what: 'the control-panel buttons offered in edit mode', expected: EXPECTED_CP.join(' | '), actual: cpAfter.join(' | '), ok: JSON.stringify(cpAfter) === JSON.stringify(EXPECTED_CP) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

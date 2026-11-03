@@ -198,6 +198,13 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Blank Opportunity form`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.breadcrumb li', passed: (CHECKS.find((c) => c.what === 'The breadcrumb ends on a new record')?.pass ?? false) },
+            { selector: '.o_control_panel', passed: (CHECKS.find((c) => c.what === 'Control-panel buttons of the blank form')?.pass ?? false) },
+            { selector: '.o_form_sheet [name="name"]', passed: (CHECKS.find((c) => c.what === 'The Opportunity name of the blank form is empty')?.pass ?? false) },
+            { selector: '.o_form_sheet [name="partner_address_email"]', passed: (CHECKS.find((c) => c.what === 'The Email of the blank form is empty')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });

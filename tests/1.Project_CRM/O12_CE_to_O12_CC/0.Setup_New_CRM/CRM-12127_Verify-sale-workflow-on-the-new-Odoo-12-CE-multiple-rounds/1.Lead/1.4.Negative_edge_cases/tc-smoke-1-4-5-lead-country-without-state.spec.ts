@@ -185,7 +185,22 @@ test.describe(`${TC} - Country without State`, () => {
         expect(state, 'no State must be auto-filled').toBe('');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Country without State`, passed: __verifyPassed }).catch(() => {});
+        // An empty State is not drawn at all (2 state_id copies in the DOM, none visible - run 2026-11-03), so the
+        // "no State" check outlines the shown Address row, which then carries no state.
+        await leadPage.readVisibleFormRow('Address', 'address', null).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Country without State`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="country_id"]', passed: country === DATA.country },
+            { selector: LeadPage.verifyRow('address'), passed: state === '' },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lead must be saved', expected: 'a URL carrying id=<n>', actual: leadUrl, ok: /[?#&]id=\d+/.test(leadUrl) },
+            { what: 'Country must keep the selected value', expected: `"${DATA.country}"`, actual: country, ok: country === DATA.country },
+            { what: 'no State must be auto-filled', expected: 'BLANK', actual: state, ok: state === '' },
+          ]),
+        }).catch(() => {});
       }
     });
   });

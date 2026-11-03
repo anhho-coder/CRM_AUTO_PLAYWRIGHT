@@ -17,6 +17,7 @@ import {
  *  Baseline        : CRM-9059_7.3.1 (Jira CRM-11434) - assertions ported unchanged
  *                    tests/1.Project_CRM/3.Lead_Merging/CRM-9059_(Rule7)_Lead.Salesteam-or-Lead.Salesperson-is-not-empty-for-both-leads-not-be-merged/C.Combined/tc-crm-9059-7-3-1-sameteam-diff-salesperson-NO-merge.spec.ts
  *  Source version  : CRM-11434 updated 2026-07-07T13:35+0300 - re-check before trusting this spec
+ *  Bug (SKIPPED)   : CRM-14069 - skipped on the tester's request 2026-11-03; un-skip when CRM-14069 is fixed.
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -28,6 +29,7 @@ import {
  *  Command to run
  * --------------------------------------------------------------------------------------------
  *  npx playwright test --grep "CRM-12370_9\.4\.3:" --project=MigSmoke --workers=1
+ *  npx playwright test --grep "CRM-14069" --project=MigSmoke --workers=1
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - the assertions are the baseline's)
@@ -178,7 +180,9 @@ test.describe(`${TC} - Lead Merging Rule 7: same Sales Team, different Salespers
     await sweepLeadMergingRunsAfterAll(browser, SKIP_CLEANUP_MIG);
   });
 
-  test(`${TC}: [CRM-9059] Verify leads do NOT merge with same Sales Team but DIFFERENT Salesperson`, baselineDetails(TC), async ({ page }, testInfo) => {
+  // Skipped due to bug CRM-14069 - declaration-level skip, so no browser starts and no record is created;
+  // un-skip when CRM-14069 is fixed.
+  test.skip(`${TC}: [CRM-9059] Verify leads do NOT merge with same Sales Team but DIFFERENT Salesperson [CRM-14069]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const leadPage = new LeadPageMig(page);

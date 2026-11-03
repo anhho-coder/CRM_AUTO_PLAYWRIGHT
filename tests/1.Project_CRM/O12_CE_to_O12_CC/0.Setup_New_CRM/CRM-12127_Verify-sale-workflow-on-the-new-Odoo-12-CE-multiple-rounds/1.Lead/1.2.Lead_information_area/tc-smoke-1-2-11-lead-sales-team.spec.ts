@@ -188,7 +188,16 @@ test.describe(`${TC} - Sales Team`, () => {
         expect(salesTeam, 'Sales Team must be filled by the assignment job').not.toBe('');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sales Team`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Sales Team`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="team_id"]', passed: salesTeam !== '' },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Sales Team must be filled by the assignment job', expected: 'not BLANK', actual: salesTeam, ok: salesTeam !== '' },
+          ]),
+        }).catch(() => {});
       }
     });
   });

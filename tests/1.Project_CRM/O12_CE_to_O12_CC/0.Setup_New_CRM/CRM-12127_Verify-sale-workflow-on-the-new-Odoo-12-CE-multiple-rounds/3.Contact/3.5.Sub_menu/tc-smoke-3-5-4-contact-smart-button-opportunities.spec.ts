@@ -192,7 +192,19 @@ test.describe(`${TC} - Sub-menu "Opportunities"`, () => {
         expect(breadcrumb, 'the breadcrumb of the view the Opportunities button opens ends on Opportunities').toContain('Opportunities');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu "Opportunities"`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Sub-menu "Opportunities"`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.breadcrumb li', passed: breadcrumb.includes(DATA.name) && breadcrumb.includes('Opportunities') },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Opportunities counter of a newly created Contact', expected: '0', actual: countBefore, ok: countBefore === 0 },
+            { what: 'the Opportunities sub-menu button opens a crm.lead view', expected: 'true', actual: opensCrmLead, ok: opensCrmLead === true },
+            { what: 'the breadcrumb names the Contact', expected: `contains "${DATA.name}"`, actual: breadcrumb.join(' > '), ok: breadcrumb.includes(DATA.name) },
+            { what: 'the breadcrumb ends on Opportunities', expected: 'contains "Opportunities"', actual: breadcrumb.join(' > '), ok: breadcrumb.includes('Opportunities') },
+          ]),
+        }).catch(() => {});
       }
     });
   });

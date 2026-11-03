@@ -157,6 +157,12 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.o_form_sheet [name="first_name"]', passed: (CHECKS.find((c) => c.what === 'First Name is the first word of the Contact Name')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="middle_name"]', passed: (CHECKS.find((c) => c.what === 'Middle Name is the second word of the Contact Name')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="last_name"]', passed: (CHECKS.find((c) => c.what === 'Last Name is the last word of the Contact Name')?.pass ?? false) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(first, 'the First Name split from the Contact Name').toBe(parts[0]);

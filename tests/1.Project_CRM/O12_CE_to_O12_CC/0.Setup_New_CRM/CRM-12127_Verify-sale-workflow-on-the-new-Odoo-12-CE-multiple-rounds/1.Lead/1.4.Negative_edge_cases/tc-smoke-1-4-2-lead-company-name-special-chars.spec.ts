@@ -182,7 +182,16 @@ test.describe(`${TC} - Company Name - special characters`, () => {
         expect(companyName, 'every special character must survive the save').toBe(DATA.companyName);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name - special characters`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Company Name - special characters`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="partner_name"]', passed: companyName === DATA.companyName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'every special character must survive the save', expected: `"${DATA.companyName}"`, actual: companyName, ok: companyName === DATA.companyName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

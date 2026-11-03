@@ -183,7 +183,16 @@ test.describe(`${TC} - Contact Name`, () => {
         expect(contactName, 'Contact Name must keep the entered value').toBe(DATA.contactName);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contact Name`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Contact Name`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="contact_name"]', passed: contactName === DATA.contactName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Contact Name must keep the entered value', expected: `"${DATA.contactName}"`, actual: contactName, ok: contactName === DATA.contactName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

@@ -191,7 +191,18 @@ test.describe(`${TC} - CREATE OPPORTUNITY button`, () => {
         expect(breadcrumb, 'the breadcrumb of the Opportunity that opens names the Contact it was created from').toContain(DATA.name);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - CREATE OPPORTUNITY button`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - CREATE OPPORTUNITY button`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.breadcrumb li', passed: breadcrumb.includes(DATA.name) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Opportunities count of a freshly created Contact', expected: '0', actual: oppsBefore, ok: oppsBefore === 0 },
+            { what: 'CREATE OPPORTUNITY opens a crm.lead record (URL carries model=crm.lead)', expected: 'true', actual: opensCrmLead, ok: opensCrmLead === true },
+            { what: 'the breadcrumb of the Opportunity that opens names the Contact it was created from', expected: `contains "${DATA.name}"`, actual: breadcrumb.join(' > '), ok: breadcrumb.includes(DATA.name) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

@@ -231,7 +231,17 @@ test.describe(`${TC} - Field names and order - right column`, () => {
         );
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Field names and order - right column`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Field names and order - right column`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: LeadPage.verifyRow('info-row-right'), passed: __verifyPassed },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the right column field NAMES and their ORDER', expected: `${EXPECTED.length}: ${EXPECTED.map((e) => e.label).join(', ')}`, actual: actual.map((r) => r.label), ok: JSON.stringify(actual.map((r) => r.label)) === JSON.stringify(EXPECTED.map((e) => e.label)), difference: CommonUtils.listDifference(EXPECTED.map((e) => e.label), actual.map((r) => r.label)) },
+            { what: 'the right column field TECHNICAL names and their ORDER', expected: `${EXPECTED.length}: ${EXPECTED.map((e) => e.field).join(', ')}`, actual: actual.map((r) => r.field), ok: JSON.stringify(actual.map((r) => r.field)) === JSON.stringify(EXPECTED.map((e) => e.field)), difference: CommonUtils.listDifference(EXPECTED.map((e) => e.field), actual.map((r) => r.field)) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

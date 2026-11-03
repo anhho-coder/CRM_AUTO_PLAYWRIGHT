@@ -199,7 +199,22 @@ test.describe(`${TC} - Log note - Customer created`, () => {
         expect(systemNote, 'the automatic contact creation must log its system note').not.toBeNull();
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Customer created`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage(/^Customer:/, 'chatter-customer');
+        await leadPage.markChatterMessage('_contact_automatic_creation CREATE', 'chatter-system');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Log note - Customer created`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: LeadPage.verifyRow('chatter-customer'), passed: customer.fields['Customer'] === DATA.companyName && customer.fields['Partner Contact Email'] === DATA.email && customer.fields['Pricelist'] !== '' },
+            { selector: systemNote ? LeadPage.verifyRow('chatter-system') : '.o_mail_thread', passed: systemNote !== null },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Customer in the note', expected: `"${DATA.companyName}"`, actual: customer.fields['Customer'], ok: customer.fields['Customer'] === DATA.companyName },
+            { what: 'Partner Contact Email in the note', expected: `"${DATA.email}"`, actual: customer.fields['Partner Contact Email'], ok: customer.fields['Partner Contact Email'] === DATA.email },
+            { what: 'Pricelist in the note must be filled', expected: 'not BLANK', actual: customer.fields['Pricelist'], ok: customer.fields['Pricelist'] !== '' },
+            { what: 'the automatic contact creation must log its system note', expected: 'a "_contact_automatic_creation CREATE" note', actual: systemNote, ok: systemNote !== null },
+          ]),
+        }).catch(() => {});
       }
     });
   });

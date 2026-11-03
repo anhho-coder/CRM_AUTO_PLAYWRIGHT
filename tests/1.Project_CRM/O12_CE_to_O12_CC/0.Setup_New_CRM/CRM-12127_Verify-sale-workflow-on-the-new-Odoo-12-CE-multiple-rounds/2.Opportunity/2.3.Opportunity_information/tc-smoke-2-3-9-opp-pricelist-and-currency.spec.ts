@@ -155,6 +155,11 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.o_form_sheet [name="pricelist_id"]', passed: (CHECKS.find((c) => c.what === 'The Pricelist of a new Opportunity')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="currency_id"]', passed: (CHECKS.find((c) => c.what === 'The Pricelist Currency of a new Opportunity')?.pass ?? false) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(pricelist, 'the Pricelist of a new Opportunity').toBe(EXPECTED_PRICELIST);

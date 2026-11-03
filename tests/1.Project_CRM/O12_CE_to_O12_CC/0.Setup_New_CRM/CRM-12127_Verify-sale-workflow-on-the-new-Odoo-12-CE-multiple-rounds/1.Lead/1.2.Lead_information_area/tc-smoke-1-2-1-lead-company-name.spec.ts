@@ -183,7 +183,16 @@ test.describe(`${TC} - Company Name`, () => {
         expect(companyName, 'Company Name must keep the entered value').toBe(DATA.companyName);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Company Name`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="partner_name"]', passed: companyName === DATA.companyName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Company Name must keep the entered value', expected: `"${DATA.companyName}"`, actual: companyName, ok: companyName === DATA.companyName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

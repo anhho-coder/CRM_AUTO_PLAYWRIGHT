@@ -156,6 +156,12 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.o_form_sheet [name="street"]', passed: (CHECKS.find((c) => c.what === 'The Street on the saved form')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="state_id"]', passed: (CHECKS.find((c) => c.what === 'The Address block carries the State')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="country_id"]', passed: (CHECKS.find((c) => c.what === 'The Address block carries the Country')?.pass ?? false) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(street, 'the Street on the saved form').toBe(STREET);

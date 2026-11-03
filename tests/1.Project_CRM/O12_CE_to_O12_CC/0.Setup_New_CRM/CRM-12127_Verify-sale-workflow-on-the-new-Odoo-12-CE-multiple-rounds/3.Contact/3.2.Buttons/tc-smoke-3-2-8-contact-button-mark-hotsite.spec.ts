@@ -158,6 +158,7 @@ test.describe(`${TC} - MARK HOTSITE button`, () => {
 
     await test.step(STEP.s5, async () => {
       let __verifyPassed = false;
+      let headerAfter: string[] | null = null; // read after CANCEL; null = never reached
       try {
         console.log(`\n--- ${STEP.s5} ---`);
         await contactPage.clickStatusbarButtonByName('action_enable_hot_site_concept');
@@ -179,17 +180,40 @@ test.describe(`${TC} - MARK HOTSITE button`, () => {
         console.log('===============================================');
         console.log('OVERALL: MARK HOTSITE asks for confirmation before it changes anything');
 
+        // Shoot the dialog while it is still open - before the expects and before CANCEL (skill 3b).
+        const titleOk = title === 'Confirmation';
+        const buttonsOk = JSON.stringify(buttons) === JSON.stringify(EXPECTED_BUTTONS);
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - MARK HOTSITE confirmation dialog`,
+          passed: titleOk && buttonsOk,
+          outlines: [{ selector: '.modal.show .modal-content', passed: titleOk && buttonsOk }],
+          lines: CommonUtils.evidenceLines(`${STEP.s5} - the dialog, before CANCEL`, [
+            { what: 'the title of the dialog MARK HOTSITE opens', expected: '"Confirmation"', actual: title, ok: titleOk },
+            { what: 'the buttons of the MARK HOTSITE confirmation dialog', expected: EXPECTED_BUTTONS.join(' | '), actual: buttons.join(' | '), ok: buttonsOk },
+          ]),
+        }).catch(() => {});
+
         expect(title, 'the title of the dialog MARK HOTSITE opens').toBe('Confirmation');
         expect(buttons, 'the buttons of the MARK HOTSITE confirmation dialog').toEqual(EXPECTED_BUTTONS);
 
         // Leave the Contact exactly as it was found - the dialog is dismissed, never confirmed.
         await contactPage.cancelDialog();
-        const headerAfter = await contactPage.getStatusbarButtons();
+        headerAfter = await contactPage.getStatusbarButtons();
         console.log(`  After CANCEL the header still offers: ${headerAfter.join(' | ')}`);
         expect(headerAfter, 'the header buttons after the confirmation is dismissed').toContain('MARK HOTSITE');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - MARK HOTSITE button`, passed: __verifyPassed }).catch(() => {});
+        if (headerAfter !== null) {
+          const header = headerAfter;
+          await CommonUtils.captureVerifyEvidence(page, testInfo, {
+            name: `${TC} - MARK HOTSITE button`,
+            passed: __verifyPassed,
+            outlines: [{ selector: '.o_statusbar_buttons', passed: header.includes('MARK HOTSITE') }],
+            lines: CommonUtils.evidenceLines(`${STEP.s5} - after CANCEL`, [
+              { what: 'the header buttons after the confirmation is dismissed', expected: 'contains "MARK HOTSITE"', actual: header.join(' | '), ok: header.includes('MARK HOTSITE') },
+            ]),
+          }).catch(() => {});
+        }
       }
     });
   });

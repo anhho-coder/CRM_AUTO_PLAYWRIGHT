@@ -180,7 +180,16 @@ test.describe(`${TC} - Sub-menu counters`, () => {
           COUNTERS.map((caption) => ({ caption, count: 0 })));
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Sub-menu counters`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Sub-menu counters`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.oe_button_box button', passed: actual.every((a) => a.count === 0) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the sub-menu counters of a newly created Contact', expected: COUNTERS.map((c) => `${c} 0`).join(' | '), actual: actual.map((a) => `${a.caption} ${a.count}`).join(' | '), ok: JSON.stringify(actual) === JSON.stringify(COUNTERS.map((caption) => ({ caption, count: 0 }))) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

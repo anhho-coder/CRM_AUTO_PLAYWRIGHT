@@ -187,7 +187,18 @@ test.describe(`${TC} - Address`, () => {
         expect(address, 'the Address block carries the Country that was selected').toContain(DATA.country);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Address`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Address`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: ContactPage.labelRow('Address'), passed: hasStreet && hasState && hasCountry },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Address block carries the Street that was entered', expected: `contains "${DATA.street}"`, actual: address, ok: hasStreet },
+            { what: 'the Address block carries the State that was selected', expected: `contains "${DATA.state}"`, actual: address, ok: hasState },
+            { what: 'the Address block carries the Country that was selected', expected: `contains "${DATA.country}"`, actual: address, ok: hasCountry },
+          ]),
+        }).catch(() => {});
       }
     });
   });

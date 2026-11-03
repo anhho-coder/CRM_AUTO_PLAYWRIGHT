@@ -191,7 +191,22 @@ test.describe(`${TC} - CREATE button`, () => {
         expect(cp, 'the control-panel buttons of the blank CREATE form').toEqual(EXPECTED_CP);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - CREATE button`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - CREATE button`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view', passed: editable === true },
+            { selector: '.o_form_sheet [name="name"]', passed: nameOnForm === '' },
+            { selector: '.o_form_sheet [name="email"]', passed: emailOnForm === '' },
+            { selector: '.o_control_panel', passed: JSON.stringify(cp) === JSON.stringify(EXPECTED_CP) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the CREATE button opens the Contact form in EDIT mode', expected: 'true', actual: editable, ok: editable === true },
+            { what: 'the Name field of the blank CREATE form', expected: 'BLANK', actual: nameOnForm, ok: nameOnForm === '' },
+            { what: 'the Email field of the blank CREATE form', expected: 'BLANK', actual: emailOnForm, ok: emailOnForm === '' },
+            { what: 'the control-panel buttons of the blank CREATE form', expected: EXPECTED_CP.join(' | '), actual: cp.join(' | '), ok: JSON.stringify(cp) === JSON.stringify(EXPECTED_CP) },
+          ]),
+        }).catch(() => {});
       }
     });
   });
