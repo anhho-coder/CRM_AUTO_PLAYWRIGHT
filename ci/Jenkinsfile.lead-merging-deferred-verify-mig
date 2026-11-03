@@ -152,7 +152,11 @@ echo ffmpeg OK
                     bat 'if exist allure-results rmdir /s /q allure-results'
                     def runTimeout = (params.TIMEOUT_MIN ?: '90').toInteger()
                     timeout(time: runTimeout, unit: 'MINUTES') {
-                        bat 'npx playwright test "tests/1.Project_CRM/3.Lead_Merging/_deferred-verify/deferred-verify-lead-merging-mig.spec.ts" --project=chrome-headless'
+                        // Passwords come from the Jenkins "Secret file" credential crm-users-secrets (same binding as
+                        // the root Jenkinsfile) - config/users.config.ts reads CRM_SECRETS_FILE.
+                        withCredentials([file(credentialsId: 'crm-users-secrets', variable: 'CRM_SECRETS_FILE')]) {
+                            bat 'npx playwright test "tests/1.Project_CRM/3.Lead_Merging/_deferred-verify/deferred-verify-lead-merging-mig.spec.ts" --project=chrome-headless'
+                        }
                     }
                 }
             }
