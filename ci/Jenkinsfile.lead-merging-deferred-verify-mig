@@ -123,7 +123,7 @@ echo ffmpeg OK
                       foreach ($d in $days) {
                         $src = "C:\\deferred-verify-merge\\$d"
                         if (Test-Path -LiteralPath $src) {
-                          # only the crm-mig round-1 job's manifests, top level only (processed ones live in mig-done\)
+                          # only the crm-mig round-1 job's manifests, top level only (processed ones live in the mig-done subfolder)
                           $files += @(Get-ChildItem -LiteralPath $src -Filter 'CRM-SETUP-CRM-12127-*.jsonl' -File)
                         }
                       }
