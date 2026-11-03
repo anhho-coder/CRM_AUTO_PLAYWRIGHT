@@ -156,9 +156,14 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       record('Partner Contact Email reported by the log note', opp.email, fields['Partner Contact Email'] ?? '(missing)');
       record('Pricelist reported by the log note', EXPECTED_PRICELIST, fields['Pricelist'] ?? '(missing)');
       printVerify();
+      await opportunityPage.markChatterMessage(/^Customer: /, 'chatter-customer');
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: note ? '[data-pw-verify="chatter-customer"]' : '.o_mail_thread', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(note, 'the chatter must carry a customer-creation log note').not.toBeNull();

@@ -148,6 +148,20 @@ test.describe(`${TC} - Priority default on the CREATE form`, () => {
       await leadPage.clearSalesperson();
       await leadPage.uncheckCreatedManually();
       formDefaultPriority = await leadPage.getPriority();
+      // Verify-evidence on the screen that OWNS the value - the unsaved CREATE form, right where it is read. Step 5
+      // asserts the same three values; a shot there would show the SAVED form, whose Priority the system may raise.
+      const p = formDefaultPriority;
+      const ok = { label: p.label === 'Low', filled: p.filledStars === 0, total: p.totalStars === 4 };
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - Priority default on the CREATE form`,
+        passed: ok.label && ok.filled && ok.total,
+        outlines: [{ selector: '.o_form_view div.o_priority[name="priority_new"]', passed: ok.label && ok.filled && ok.total }],
+        lines: CommonUtils.evidenceLines(`${STEP.s5} (read on the unsaved CREATE form)`, [
+          { what: 'a new Lead form must start at Low', expected: '"Low"', actual: p.label, ok: ok.label },
+          { what: 'Low must fill no star', expected: '0', actual: p.filledStars, ok: ok.filled },
+          { what: 'the Priority widget must offer 4 stars', expected: '4', actual: p.totalStars, ok: ok.total },
+        ]),
+      }).catch(() => {});
       await leadPage.clickCRMDeveloperTab();
       await leadPage.fillLeadForm(DATA.leadForm);
       await leadPage.clickMainTabToExitCRMDeveloper();
@@ -178,15 +192,10 @@ test.describe(`${TC} - Priority default on the CREATE form`, () => {
       console.log(`  label        : expected "Low" | actual "${formDefaultPriority.label}"`);
       console.log(`  filled stars : expected 0 | actual ${formDefaultPriority.filledStars} of ${formDefaultPriority.totalStars}`);
       console.log('===============================================');
-      let __verifyPassed = false;
-      try {
-        expect(formDefaultPriority.label, 'a new Lead form must start at Low').toBe('Low');
-        expect(formDefaultPriority.filledStars, 'Low must fill no star').toBe(0);
-        expect(formDefaultPriority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
-        __verifyPassed = true;
-      } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Priority default on the CREATE form`, passed: __verifyPassed }).catch(() => {});
-      }
+      // the verify-evidence shot was taken in Step 3, on the CREATE form these values were read from
+      expect(formDefaultPriority.label, 'a new Lead form must start at Low').toBe('Low');
+      expect(formDefaultPriority.filledStars, 'Low must fill no star').toBe(0);
+      expect(formDefaultPriority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
     });
   });
 });

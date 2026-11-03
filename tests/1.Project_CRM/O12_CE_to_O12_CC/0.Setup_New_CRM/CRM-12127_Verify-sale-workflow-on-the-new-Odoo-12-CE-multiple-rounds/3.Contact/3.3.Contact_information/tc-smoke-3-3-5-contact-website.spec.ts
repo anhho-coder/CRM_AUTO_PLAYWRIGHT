@@ -176,7 +176,16 @@ test.describe(`${TC} - Website`, () => {
         expect(actual, 'the Website on the saved form matches the entered value').toContain(expected);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Website`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Website`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="website"]', passed: actual.includes(expected) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Website on the saved form matches the entered value', expected: `contains "${expected}"`, actual: actual, ok: actual.includes(expected) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

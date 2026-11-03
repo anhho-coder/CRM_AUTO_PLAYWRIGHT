@@ -192,6 +192,10 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '[data-pw-verify="opp-label-right"]', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(actual.length, 'the NUMBER of fields in the right column').toBe(EXPECTED.length);

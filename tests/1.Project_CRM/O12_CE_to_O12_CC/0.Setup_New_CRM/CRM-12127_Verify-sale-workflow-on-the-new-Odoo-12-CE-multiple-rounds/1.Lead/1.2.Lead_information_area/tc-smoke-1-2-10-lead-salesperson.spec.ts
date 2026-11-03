@@ -191,7 +191,19 @@ test.describe(`${TC} - Salesperson`, () => {
         expect(jobNote, 'the chatter must carry the assignment job note').not.toBeNull();
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Salesperson`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage('call_job_assign_leads_to_salesmen_for_specific_lead', 'chatter-job');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Salesperson`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="user_id"]', passed: salesperson !== '' },
+            { selector: jobNote ? LeadPage.verifyRow('chatter-job') : '.o_mail_thread', passed: jobNote !== null },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Salesperson must be filled by the assignment job', expected: 'not BLANK', actual: salesperson, ok: salesperson !== '' },
+            { what: 'the chatter must carry the assignment job note', expected: 'a "call_job_assign_leads_to_salesmen_for_specific_lead" note', actual: jobNote, ok: jobNote !== null },
+          ]),
+        }).catch(() => {});
       }
     });
   });

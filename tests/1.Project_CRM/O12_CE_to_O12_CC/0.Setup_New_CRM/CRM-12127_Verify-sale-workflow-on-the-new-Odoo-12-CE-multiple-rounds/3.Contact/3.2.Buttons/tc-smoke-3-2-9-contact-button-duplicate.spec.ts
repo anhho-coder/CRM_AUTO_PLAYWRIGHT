@@ -192,7 +192,19 @@ test.describe(`${TC} - Action > Duplicate`, () => {
         expect(nameOnCopy, 'the Name the duplicated Contact carries').toContain(DATA.name);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Action > Duplicate`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Action > Duplicate`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view', passed: editable === true },
+            { selector: '.o_form_sheet [name="name"]', passed: nameOnCopy.includes(DATA.name) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Action menu of a saved Contact offers Duplicate', expected: 'contains "Duplicate"', actual: menuItems.join(' | '), ok: menuItems.includes('Duplicate') },
+            { what: 'Duplicate opens the copy in EDIT mode', expected: 'true', actual: editable, ok: editable === true },
+            { what: 'the Name the duplicated Contact carries', expected: `contains "${DATA.name}"`, actual: nameOnCopy, ok: nameOnCopy.includes(DATA.name) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

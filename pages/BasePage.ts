@@ -267,6 +267,29 @@ await newPage.close();
     return `[data-pw-verify="${key}"]`;
   }
 
+  /**
+   * Verify-evidence hook: tag the FIRST chatter message whose text matches `pattern` (the one the chatter readers
+   * return - messages in DOM order, newest first) as `BasePage.verifyRow(key)`, so the shot outlines that message
+   * rather than the whole thread. Returns false when none matches - outline `.o_mail_thread` for an "absent" check.
+   */
+  async markChatterMessage(pattern: string | RegExp, key: string = 'chatter-message'): Promise<boolean> {
+    const source = typeof pattern === 'string' ? null : { re: pattern.source, flags: pattern.flags };
+    const text = typeof pattern === 'string' ? pattern : null;
+    return await this.page.evaluate(({ source, text, key }) => {
+      document.querySelectorAll(`[data-pw-verify="${key}"]`).forEach((n) => n.removeAttribute('data-pw-verify'));
+      const re = source ? new RegExp(source.re, source.flags) : null;
+      for (const msg of Array.from(document.querySelectorAll('.o_thread_message'))) {
+        const content = msg.querySelector('.o_thread_message_content') as HTMLElement | null;
+        const t = content ? content.innerText.replace(/ /g, ' ').trim() : '';   // as the chatter readers read it
+        if (t && (re ? re.test(t) : t.includes(text as string))) {
+          msg.setAttribute('data-pw-verify', key);
+          return true;
+        }
+      }
+      return false;
+    }, { source, text, key }).catch(() => false);
+  }
+
   /** Every form row with a cell holding `label` - readVisibleFormRow() keeps the shown ones whose LABEL cell is `label`. */
   private readonly formRowsHolding_basePage = (label: string) =>
     this.page.locator(`xpath=//div[contains(@class,"o_form_view")]//tr[td[contains(normalize-space(),"${label}")]]`)

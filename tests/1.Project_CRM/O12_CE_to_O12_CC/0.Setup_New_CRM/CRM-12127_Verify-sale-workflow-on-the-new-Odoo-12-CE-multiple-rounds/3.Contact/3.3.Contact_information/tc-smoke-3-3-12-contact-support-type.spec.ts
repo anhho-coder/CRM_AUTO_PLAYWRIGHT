@@ -179,7 +179,18 @@ test.describe(`${TC} - Support Type`, () => {
         expect(promoDays, 'the 24/7 support promotion days remaining on a new Contact').toBe(0);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Support Type`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Support Type`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="support_type"]', passed: supportType === 'Standard' },
+            { selector: '.o_form_sheet [name="support_promotion_days_remain_247"]', passed: promoDays === 0 },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Support Type a newly created Contact starts on', expected: '"Standard"', actual: supportType, ok: supportType === 'Standard' },
+            { what: 'the 24/7 support promotion days remaining on a new Contact', expected: '0', actual: promoDays, ok: promoDays === 0 },
+          ]),
+        }).catch(() => {});
       }
     });
   });

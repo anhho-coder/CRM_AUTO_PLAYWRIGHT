@@ -188,7 +188,21 @@ test.describe(`${TC} - Contact Name - left empty`, () => {
         expect(email, 'Email must keep the entered value').toBe(DATA.email);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contact Name - left empty`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Contact Name - left empty`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="contact_name"]', passed: contactName === '' },
+            { selector: '.o_form_view [name="partner_name"]', passed: companyName === DATA.companyName },
+            { selector: '.o_form_view [name="email_from"]', passed: email === DATA.email },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lead must be saved', expected: 'a URL carrying id=<n>', actual: leadUrl, ok: /[?#&]id=\d+/.test(leadUrl) },
+            { what: 'Contact Name must stay empty', expected: 'BLANK', actual: contactName, ok: contactName === '' },
+            { what: 'Company Name must keep the entered value', expected: `"${DATA.companyName}"`, actual: companyName, ok: companyName === DATA.companyName },
+            { what: 'Email must keep the entered value', expected: `"${DATA.email}"`, actual: email, ok: email === DATA.email },
+          ]),
+        }).catch(() => {});
       }
     });
   });

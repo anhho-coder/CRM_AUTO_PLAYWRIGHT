@@ -171,7 +171,7 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
     await test.step(STEP.s8, async () => {
       console.log(`\n--- ${STEP.s8} ---`);
 
-      const actual = await opportunityPage.getControlPanelMenuItems('Action');
+      const actual = await opportunityPage.getControlPanelMenuItems('Action', { keepOpen: true });
       actual.forEach((item, i) => console.log(`  Action entry #${i + 1}: ${item}`));
       record('Number of Action entries', EXPECTED.length, actual.length);
       EXPECTED.forEach((expectedItem, i) => {
@@ -188,7 +188,12 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Action menu`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.dropdown-menu.show', passed: verifyPassed },
+          ],
+          lines: CommonUtils.checksLines(STEP.s8, CHECKS),
         }).catch(() => {});
+        await opportunityPage.closeControlPanelMenu();
       }
     });
   });

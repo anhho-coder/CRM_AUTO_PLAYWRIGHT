@@ -196,7 +196,23 @@ test.describe(`${TC} - Lead Source - Partner`, () => {
         ).toBeNull();
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Source - Partner`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage(/^Lead Source:/, 'chatter-source');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Lead Source - Partner`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="team_id"]', passed: salesTeam === OWNER.team },
+            { selector: '.o_form_view [name="user_id"]', passed: salesperson === OWNER.salesperson },
+            { selector: '.o_form_view [name="lead_source"]', passed: leadSource === 'Partner' },
+            { selector: sourceNote ? LeadPage.verifyRow('chatter-source') : '.o_mail_thread', passed: sourceNote === null },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Sales Team entered at creation must be kept', expected: `"${OWNER.team}"`, actual: salesTeam, ok: salesTeam === OWNER.team },
+            { what: 'the Salesperson entered at creation must be kept', expected: `"${OWNER.salesperson}"`, actual: salesperson, ok: salesperson === OWNER.salesperson },
+            { what: 'a Lead created with an owner must be classified Partner', expected: '"Partner"', actual: leadSource, ok: leadSource === 'Partner' },
+            { what: 'the value is derived at creation, so no Lead Source change may be logged', expected: 'no "Lead Source:" note', actual: sourceNote, ok: sourceNote === null },
+          ]),
+        }).catch(() => {});
       }
     });
   });

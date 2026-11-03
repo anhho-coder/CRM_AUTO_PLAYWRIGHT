@@ -183,7 +183,16 @@ test.describe(`${TC} - Create manually`, () => {
         expect(createManually, 'Create manually must stay unchecked after save').toBe(false);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Create manually`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Create manually`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="is_create_manual"]', passed: createManually === false },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Create manually must stay unchecked after save', expected: 'false (unchecked)', actual: createManually, ok: createManually === false },
+          ]),
+        }).catch(() => {});
       }
     });
   });

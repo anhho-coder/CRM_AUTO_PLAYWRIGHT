@@ -188,6 +188,11 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - New Deal Element`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.breadcrumb li', passed: (CHECKS.find((c) => c.what === 'The breadcrumb keeps the Opportunity and ends on a new record')?.pass ?? false) },
+            { selector: '.o_form_view', passed: (CHECKS.find((c) => c.what === 'The new Deal Element opens in EDIT mode')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });

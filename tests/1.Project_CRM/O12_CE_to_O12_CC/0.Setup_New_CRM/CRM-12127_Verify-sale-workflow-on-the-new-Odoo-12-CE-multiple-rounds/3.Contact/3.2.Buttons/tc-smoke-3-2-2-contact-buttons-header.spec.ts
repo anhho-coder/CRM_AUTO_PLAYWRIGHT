@@ -184,7 +184,18 @@ test.describe(`${TC} - Header buttons`, () => {
         expect(actual.map((e) => e.name), 'the Odoo action each header button calls').toEqual(EXPECTED.map((e) => e.name));
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Header buttons`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Header buttons`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_statusbar_buttons', passed: JSON.stringify(actual.map((e) => e.label)) === JSON.stringify(EXPECTED.map((e) => e.label)) && JSON.stringify(actual.map((e) => e.name)) === JSON.stringify(EXPECTED.map((e) => e.name)) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of header buttons on a saved Contact', expected: `${EXPECTED.length}`, actual: actual.length, ok: actual.length === EXPECTED.length },
+            { what: 'the header button NAMES and their ORDER', expected: EXPECTED.map((e) => e.label).join(' | '), actual: actual.map((e) => e.label).join(' | '), ok: JSON.stringify(actual.map((e) => e.label)) === JSON.stringify(EXPECTED.map((e) => e.label)), difference: CommonUtils.listDifference(EXPECTED.map((e) => e.label), actual.map((e) => e.label)) },
+            { what: 'the Odoo action each header button calls', expected: EXPECTED.map((e) => e.name).join(' | '), actual: actual.map((e) => e.name).join(' | '), ok: JSON.stringify(actual.map((e) => e.name)) === JSON.stringify(EXPECTED.map((e) => e.name)), difference: CommonUtils.listDifference(EXPECTED.map((e) => e.name), actual.map((e) => e.name)) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

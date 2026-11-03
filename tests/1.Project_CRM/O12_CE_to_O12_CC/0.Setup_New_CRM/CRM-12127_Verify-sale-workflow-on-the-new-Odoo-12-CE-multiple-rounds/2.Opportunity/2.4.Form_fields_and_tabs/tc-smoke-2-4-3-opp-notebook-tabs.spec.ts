@@ -173,6 +173,10 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.o_notebook .nav-link', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(actual.length, 'the NUMBER of notebook tabs').toBe(EXPECTED.length);

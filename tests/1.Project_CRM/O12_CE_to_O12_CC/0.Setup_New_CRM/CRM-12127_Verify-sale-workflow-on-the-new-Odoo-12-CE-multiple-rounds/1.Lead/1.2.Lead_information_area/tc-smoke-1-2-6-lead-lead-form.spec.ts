@@ -187,7 +187,16 @@ test.describe(`${TC} - Lead Form`, () => {
         expect(leadForm, 'Lead Form must keep the selected value').toBe(DATA.leadForm);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Form`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Lead Form`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="lead_form"]', passed: leadForm === DATA.leadForm },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Lead Form must keep the selected value', expected: `"${DATA.leadForm}"`, actual: leadForm, ok: leadForm === DATA.leadForm },
+          ]),
+        }).catch(() => {});
       }
     });
   });

@@ -226,7 +226,20 @@ test.describe(`${TC} - Timezone derived from the Address`, () => {
         expect(timezoneSaved, 'the Address wins over the Timezone picked on the form').not.toBe(DATA.timezonePicked);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Timezone derived from the Address`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Timezone derived from the Address`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: ContactPage.labelRow('Address'), passed: addressCarriesState && addressCarriesCountry },
+            { selector: '.o_form_sheet [name="tz"]', passed: TIMEZONE_ACCEPTED.includes(timezoneSaved) && timezoneSaved !== DATA.timezonePicked },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Address block carries the State the Timezone is derived from', expected: `contains "${DATA.state}"`, actual: addressBlock, ok: addressCarriesState },
+            { what: 'the Address block carries the Country the Timezone is derived from', expected: `contains "${DATA.country}"`, actual: addressBlock, ok: addressCarriesCountry },
+            { what: 'the Timezone is one of the accepted values', expected: TIMEZONE_ACCEPTED.join(' | '), actual: timezoneSaved, ok: TIMEZONE_ACCEPTED.includes(timezoneSaved) },
+            { what: 'the Address wins over the Timezone picked on the form', expected: `not "${DATA.timezonePicked}"`, actual: timezoneSaved, ok: timezoneSaved !== DATA.timezonePicked },
+          ]),
+        }).catch(() => {});
       }
     });
   });

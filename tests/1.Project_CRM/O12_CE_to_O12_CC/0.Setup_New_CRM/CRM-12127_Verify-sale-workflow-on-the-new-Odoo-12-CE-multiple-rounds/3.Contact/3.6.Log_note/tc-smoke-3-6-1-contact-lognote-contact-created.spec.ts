@@ -174,7 +174,18 @@ test.describe(`${TC} - Log note - Contact created`, () => {
         expect((note || '').trim(), 'the text of the creation log note').toBe('Contact created');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Contact created`, passed: __verifyPassed }).catch(() => {});
+        await contactPage.markChatterMessage(/^Contact created$/, 'chatter-created');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Log note - Contact created`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: note ? '[data-pw-verify="chatter-created"]' : '.o_mail_thread', passed: (note || '').trim() === 'Contact created' },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Log note reports "Contact created" when the Contact is created', expected: 'a "Contact created" note', actual: note, ok: note !== null },
+            { what: 'the text of the creation log note', expected: '"Contact created"', actual: (note || '').trim(), ok: (note || '').trim() === 'Contact created' },
+          ]),
+        }).catch(() => {});
       }
     });
   });

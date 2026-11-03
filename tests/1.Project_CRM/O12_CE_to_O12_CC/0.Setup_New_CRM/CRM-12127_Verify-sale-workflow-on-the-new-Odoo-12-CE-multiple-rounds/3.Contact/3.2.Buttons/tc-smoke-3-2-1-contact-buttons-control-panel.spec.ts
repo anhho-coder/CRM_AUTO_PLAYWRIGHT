@@ -184,7 +184,17 @@ test.describe(`${TC} - Control-panel buttons`, () => {
         expect(actual, 'the control-panel button NAMES and their ORDER').toEqual(EXPECTED);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Control-panel buttons`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Control-panel buttons`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_control_panel', passed: JSON.stringify(actual) === JSON.stringify(EXPECTED) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of control-panel buttons on a saved Contact', expected: `${EXPECTED.length}`, actual: actual.length, ok: actual.length === EXPECTED.length },
+            { what: 'the control-panel button NAMES and their ORDER', expected: EXPECTED.join(' | '), actual: actual.join(' | '), ok: JSON.stringify(actual) === JSON.stringify(EXPECTED), difference: CommonUtils.listDifference(EXPECTED, actual) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

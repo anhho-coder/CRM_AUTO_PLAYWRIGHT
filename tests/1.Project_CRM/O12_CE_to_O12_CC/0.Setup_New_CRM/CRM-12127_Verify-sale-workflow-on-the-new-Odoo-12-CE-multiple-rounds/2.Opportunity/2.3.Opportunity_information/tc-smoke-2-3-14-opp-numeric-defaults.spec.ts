@@ -159,6 +159,10 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          ...EXPECTED_NUMBERS.map((item) => ({ selector: `.o_form_sheet [name="${item.field}"]`, passed: (CHECKS.find((c) => c.what === `${item.label} of a newly created Opportunity`)?.pass ?? false) })),
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       for (const item of EXPECTED_NUMBERS) {

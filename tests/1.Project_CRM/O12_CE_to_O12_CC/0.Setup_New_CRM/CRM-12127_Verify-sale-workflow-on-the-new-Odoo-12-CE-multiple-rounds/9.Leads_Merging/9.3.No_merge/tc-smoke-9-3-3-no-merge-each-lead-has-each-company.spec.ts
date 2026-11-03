@@ -12,7 +12,7 @@ import {
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.3.3
  *  Automation-Type : refactored
- *  Automation-Date : 2026-11-02
+ *  Automation-Date : 2026-11-03
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-542_2.2.1 (Jira CRM-8903) - assertions ported unchanged
@@ -42,6 +42,11 @@ import {
  *    replaced by that full-window watch.
  *  - Run marker: every e-mail carries company1-/company2-crm12370-9-3-3-<runId>, record names "... CRM-12370_9.3.3 <runId>".
  *  - Each verification point is a soft assertion (one 55-min run reports every difference); values unchanged.
+ *    Steps 3/4/5/7/8/9 each attach one verify-evidence shot (verifyStep); Step 1's watch result is printed in the
+ *    VERIFY block as an Observation (not scored) - the manual step states no expected result.
+ *  - LM-b1 2026-11-02 stopped in Condition III: "More (10)" raised "record has been modified" twice and the CRM
+ *    Developer tab never opened, so no verification step ran. Since 2026-11-03 MigNotebook shows the folded tab by a
+ *    click on its Bootstrap tab anchor when More does not open twice.
  *  - Clean-up: afterEach deletes the records this run created and the partners carrying the run marker;
  *    afterAll sweeps the run marker (deny-list, counted first).
  *  - Company contacts are created with ContactPageMig.createCompanyContactMig() (field-by-name): the pre-production
@@ -372,7 +377,9 @@ test.describe(`${TC} - NO MERGE: Different Emails and Different Companies`, () =
 
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
-      await watchNoMergeWindowOnMig(page, leadPage, [{ url: lead1.url, name: lead1Name }, { url: lead2.url, name: lead2Name }]);
+      const mergedOn = await watchNoMergeWindowOnMig(page, leadPage, [{ url: lead1.url, name: lead1Name }, { url: lead2.url, name: lead2Name }]);
+      // the manual step states no expected result - shown, not scored; steps 4/5/8/9 assert the no-merge
+      vlog.add({ what: STEP.s1, expected: '', actual: mergedOn ? `merge note seen on ${mergedOn}` : 'no merge note during the window', result: 'OBSERVED' });
     });
 
     await test.step(STEP.s2, async () => {

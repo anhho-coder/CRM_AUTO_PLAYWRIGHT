@@ -176,7 +176,16 @@ test.describe(`${TC} - VAT`, () => {
         expect(actual, 'the VAT on the saved form matches the entered value').toContain(expected);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - VAT`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - VAT`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: ContactPage.labelRow('VAT'), passed: actual.includes(expected) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the VAT on the saved form matches the entered value', expected: `contains "${expected}"`, actual: actual, ok: actual.includes(expected) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

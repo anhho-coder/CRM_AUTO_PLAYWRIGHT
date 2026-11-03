@@ -186,6 +186,12 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
       record('The dialog title', EXPECTED_TITLE, title);
       record('The dialog fields and their order', EXPECTED_FIELDS.join(' | '), labels.join(' | '));
       record('The dialog buttons', EXPECTED_BUTTONS.join(' | '), buttons.join(' | '));
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - LOG CALL dialog (read before CANCEL)`,
+        passed: CHECKS.every((c) => c.pass),
+        outlines: [{ selector: '.modal.show .modal-content', passed: CHECKS.every((c) => c.pass) }],
+        lines: CommonUtils.checksLines(`${STEP.s9} - the dialog, before CANCEL`, CHECKS),
+      }).catch(() => {});
       await opportunityPage.cancelDialog();
       await page.waitForTimeout(CommonUtils.waitTimes.long);
       const stage = await opportunityPage.getActiveStatusBarStage();
@@ -203,6 +209,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - LOG CALL dialog`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_statusbar_status', passed: (CHECKS.find((c) => c.what === 'The Opportunity keeps its stage after CANCEL')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });
