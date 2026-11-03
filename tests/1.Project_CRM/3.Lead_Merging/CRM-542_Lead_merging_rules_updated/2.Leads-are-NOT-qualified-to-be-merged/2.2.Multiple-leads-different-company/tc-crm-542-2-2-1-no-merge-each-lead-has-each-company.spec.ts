@@ -9,7 +9,7 @@ import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.h
  * Lead Merging Test - NO MERGE: Different Emails and Different Companies
  * Test Case ID: CRM-542_2.2.1
  * Automation-Type: refactored
- * Automation-Date: 2026-08-05
+ * Automation-Date: 2026-11-02
  *
  * Summary: Verify that the merging leads do NOT happens when the leads from different emails and 2 leads have 2 different companies
  * 
@@ -18,6 +18,7 @@ import { recordNoMergeForDeferredVerify } from '@helpers/deferred-verify-merge.h
  * npx playwright test --grep "CRM-8930" --project=chromium
  *
  * NOTE: Skipped due to known defect CRM-8930 (declaration-level test.skip).
+ * NOTE: Steps 5 and 9 (Log area) added 2026-11-02 to match the manual TC CRM-8903 (9 steps); not run yet.
  *
  * Pre-condition:
  * 1. After login successful as admin_crm
@@ -710,6 +711,20 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
       });
     });
 
+    // Step 5: Verify Log area on Lead #1
+    await test.step('Step 5: On the Log area, verify the following', async () => {
+      console.log('\n=== STEP 5: VERIFY LOG AREA (LEAD #1) ===\n');
+      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, CommonUtils.waitTimes.abnormalWait);
+
+      // Step 5.1: NO "[LEAD 2], has been merged into this lead."
+      await test.step('Step 5.1: Verify NO "[LEAD 2], has been merged into this lead." message', async () => {
+        const hasMergeMessage = await leadPage.hasSourceLeadMergeMessage(lead2Name);
+        await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Step 5 - Lead #1 Log area (ID: ${lead1Id})`);
+        expect(hasMergeMessage).toBeFalsy();
+        console.log(`  ✓ Step 5.1: NO log message "${lead2Name}, has been merged into this lead."`);
+      });
+    });
+
     // Step 6: Open the Lead 2 using URL_Lead#2
     await test.step('Step 6: Open the Lead 2 using URL_Lead#2', async () => {
       console.log('\n=== STEP 6: OPEN LEAD #2 ===');
@@ -831,6 +846,20 @@ test.describe('CRM-542_2.2.1 - NO MERGE: Different Emails and Different Companie
         const lostReasonValue = await leadPage.getLostReasonValueViaTextContent();
         expect(lostReasonValue).toBe('');
         console.log(`  ✓ Step 8.4: Lost Reason = BLANK`);
+      });
+    });
+
+    // Step 9: Verify Log area on Lead #2
+    await test.step('Step 9: On the Log area, verify the following', async () => {
+      console.log('\n=== STEP 9: VERIFY LOG AREA (LEAD #2) ===\n');
+      await homePage.waitForPageFullyLoaded(CommonUtils.waitTimes.long, CommonUtils.waitTimes.abnormalWait);
+
+      // Step 9.1: NO "This lead has been merged into [LEAD 1]."
+      await test.step('Step 9.1: Verify NO "This lead has been merged into [LEAD 1]." message', async () => {
+        const hasMergeMessage = await leadPage.hasTargetLeadMergeMessage(lead1Name);
+        await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Step 9 - Lead #2 Log area (ID: ${lead2Id})`);
+        expect(hasMergeMessage).toBeFalsy();
+        console.log(`  ✓ Step 9.1: NO log message "This lead has been merged into ${lead1Name}."`);
       });
     });
 
