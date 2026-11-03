@@ -44,8 +44,8 @@
  *   P95_MS   per-level sequence p95 gate ms    (default 4000; pure compute, no cron)
  *   VERIFY_NOSAVE  1=assert 0 rows persisted   (default 1)
  *
- * Run locally (VPN required):  k6 run -e RUN_ID=local1 perf/k6/create-lead-nosave.js
- *                              k6 run -e LEVELS=5,10 perf/k6/create-lead-nosave.js
+ * Run locally (VPN required):  k6 run -e RUN_ID=local1 1.Performance_testing/k6/create-lead-nosave.js
+ *                              k6 run -e LEVELS=5,10 1.Performance_testing/k6/create-lead-nosave.js
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -372,8 +372,8 @@ export function handleSummary(data) {
   text += `Verdict: ${allPass ? 'ALL PASS' : 'SOME FAIL'}  (no crm.lead written)\n`;
 
   return {
-    'perf/k6/report/index.html': html,
-    'perf/k6/report/summary.json': JSON.stringify(data, null, 2),
+    '1.Performance_testing/k6/report/index.html': html,
+    '1.Performance_testing/k6/report/summary.json': JSON.stringify(data, null, 2),
     stdout: text,
   };
 }

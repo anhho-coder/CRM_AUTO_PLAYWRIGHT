@@ -2,7 +2,7 @@
   Native Windows install of the k6 aggregate-report stack: InfluxDB 1.8 + Grafana,
   each as a Windows service (via NSSM). No Docker / WSL required.
 
-  Runs ON the Jenkins server (built-in node) via perf/Jenkinsfile.k6-monitoring-deploy,
+  Runs ON the Jenkins server (built-in node) via 1.Performance_testing/Jenkinsfile.k6-monitoring-deploy,
   or manually in an elevated PowerShell. Idempotent + re-runnable.
 
   Config via env (all optional; defaults shown):
@@ -13,7 +13,7 @@
     NSSM_VER          2.24
     GF_ADMIN_PASSWORD nakivo-k6
     INFLUX_DB         k6
-    REPO_MONITORING   <cwd>\perf\monitoring   (source of the Grafana dashboard JSON)
+    REPO_MONITORING   <cwd>\1.Performance_testing\monitoring   (source of the Grafana dashboard JSON)
 
   Services created:  k6-influxdb (:8086)   k6-grafana (:3000)
 #>
@@ -28,7 +28,7 @@ $GrafVer   = if ($env:GRAFANA_VER)       { $env:GRAFANA_VER }       else { '11.2
 $NssmVer   = if ($env:NSSM_VER)          { $env:NSSM_VER }          else { '2.24' }
 $GfPass    = if ($env:GF_ADMIN_PASSWORD) { $env:GF_ADMIN_PASSWORD } else { 'nakivo-k6' }
 $InfluxDb  = if ($env:INFLUX_DB)         { $env:INFLUX_DB }         else { 'k6' }
-$RepoMon   = if ($env:REPO_MONITORING)   { $env:REPO_MONITORING }   else { (Join-Path (Get-Location) 'perf\monitoring') }
+$RepoMon   = if ($env:REPO_MONITORING)   { $env:REPO_MONITORING }   else { (Join-Path (Get-Location) '1.Performance_testing\monitoring') }
 
 $Downloads = Join-Path $InstallDir 'downloads'
 $InfluxDir = Join-Path $InstallDir 'influxdb'

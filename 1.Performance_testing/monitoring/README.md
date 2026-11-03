@@ -40,8 +40,8 @@ Docker host). The images (`influxdb:1.8`, `grafana/grafana-oss`) are Linux image
 `docker version` — if `OSType: windows`, switch to Linux containers first.
 
 ```powershell
-# 1. Get this folder onto the server (git pull the repo, or copy perf\monitoring\).
-cd <repo>\perf\monitoring
+# 1. Get this folder onto the server (git pull the repo, or copy 1.Performance_testing\monitoring\).
+cd <repo>\1.Performance_testing\monitoring
 
 # 2. (optional) set the Grafana admin password; default is nakivo-k6
 $env:GF_ADMIN_PASSWORD = "choose-a-password"

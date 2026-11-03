@@ -4,7 +4,7 @@
 # InfluxDB over :8086; the team views trends in Grafana on :3000.
 #
 # Bring up (at the server console, via RDP - see README.md):
-#   cd perf\monitoring
+#   cd 1.Performance_testing\monitoring
 #   docker compose up -d
 #
 # Requires Docker with LINUX containers (Docker Desktop/WSL2 backend, or a Linux

@@ -19,8 +19,8 @@
  *   MAP_IP    host->IP map (mirror HOST_RESOLVER) (default 10.220.222.100; blank to disable)
  *   P95_MS    per-level p95 gate ms               (default 5000)
  *
- * Run locally (VPN required):  k6 run perf/k6/login-scale.js
- *   k6 run -e LEVELS=10,30,50,100 -e GAP_S=30 perf/k6/login-scale.js
+ * Run locally (VPN required):  k6 run 1.Performance_testing/k6/login-scale.js
+ *   k6 run -e LEVELS=10,30,50,100 -e GAP_S=30 1.Performance_testing/k6/login-scale.js
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -249,8 +249,8 @@ export function handleSummary(data) {
   text += `Verdict: ${allPass ? 'ALL PASS' : 'SOME FAIL'}\n`;
 
   return {
-    'perf/k6/report/index.html': html,
-    'perf/k6/report/summary.json': JSON.stringify(data, null, 2),
+    '1.Performance_testing/k6/report/index.html': html,
+    '1.Performance_testing/k6/report/summary.json': JSON.stringify(data, null, 2),
     stdout: text,
   };
 }

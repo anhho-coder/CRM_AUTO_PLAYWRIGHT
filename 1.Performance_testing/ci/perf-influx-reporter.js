@@ -5,7 +5,7 @@
  *
  * Non-invasive: it parses each perf spec's own "(MEASURED)  X.XXs" console line (the spec
  * already prints it) - no spec edits. Load it by absolute path on the CLI, e.g.:
- *   npx playwright test <spec> --reporter=line,D:\Automation_CRM\_wt_performance\perf\ci\perf-influx-reporter.js
+ *   npx playwright test <spec> --reporter=line,D:\Automation_CRM\_wt_performance\1.Performance_testing\ci\perf-influx-reporter.js
  *
  * Env:
  *   INFLUX_WRITE_URL  default http://10.8.81.44:8086/write?db=k6

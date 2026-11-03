@@ -183,5 +183,5 @@ ${trs}</table>
     text += String(r.n).padStart(5) + num(r.att).padStart(9) + (num(sp, 2) + '%').padStart(10) + num(r.avg).padStart(7) + num(r.p90).padStart(7) + num(r.p95).padStart(7) + num(r.mx).padStart(7) + '  ' + gate + '\n';
   });
   text += `Verdict: ${allPass ? 'ALL PASS' : 'SOME FAIL'}\n`;
-  return { 'perf/k6/report/index.html': html, 'perf/k6/report/summary.json': JSON.stringify(data, null, 2), stdout: text };
+  return { '1.Performance_testing/k6/report/index.html': html, '1.Performance_testing/k6/report/summary.json': JSON.stringify(data, null, 2), stdout: text };
 }

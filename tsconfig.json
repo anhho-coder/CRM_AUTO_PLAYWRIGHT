@@ -24,6 +24,7 @@
   },
   "include": [
     "tests/**/*.ts",
+    "2.Reliability_testing/**/*.ts",
     "config/**/*.ts",
     "helpers/**/*.ts",
     "pages/**/*.ts",

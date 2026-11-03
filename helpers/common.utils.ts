@@ -665,6 +665,21 @@ export class CommonUtils {
     migUnlinkRecheck: 120000,
     /** crm-mig teardown - 10 seconds between those re-reads */
     migUnlinkRecheckInterval: 10000,
+    /** 2.Reliability_testing - the form collector (B) stops waiting for the CRM's answer after 0.3 s = a lost
+     *  acknowledgement. A Lead create takes ~3 s on pre-prod (measured 2026-11-03), so B always gives up first. */
+    reliabilityAckGiveUp: 300,
+    /** 2.Reliability_testing - per-call budget for a send / read over the external API - 60 seconds */
+    reliabilityCallTimeout: 60000,
+    /** 2.Reliability_testing - "Wait 15 seconds" after a send before counting the Leads (manual TC wording) */
+    reliabilitySettleWait: 15000,
+    /** 2.Reliability_testing teardown - 5 minutes to delete the run's Leads: queue jobs lock a fresh Lead, so an
+     *  unlink can be refused or hang until they finish (k6 CreateLead-Scale saw ~100 s) */
+    reliabilityTeardown: 300000,
+    /** 2.Reliability_testing teardown - 15 seconds between unlink retries */
+    reliabilityTeardownRetry: 15000,
+    /** 2.Reliability_testing per-test budget - 25 minutes: the scenario takes ~1 min, the teardown waits up to
+     *  5 min for CRM to finish creating the Customers, then deletes Leads and Customers one lock at a time */
+    reliabilityTestTimeout: 1500000,
   };
 
   /**

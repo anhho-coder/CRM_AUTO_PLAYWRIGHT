@@ -1,8 +1,8 @@
 // Jenkins pipeline: Track B - Playwright single-user perf timing for the guarded sales chain.
 // Runs the 1.SalesReport_Performance perf specs (each self-seeds Opp -> Deal Element -> Quotation
-// -> ... and times ONE action), with perf/ci/perf-influx-reporter.js streaming each (MEASURED)
+// -> ... and times ONE action), with 1.Performance_testing/ci/perf-influx-reporter.js streaming each (MEASURED)
 // timing to InfluxDB (pw_perf) -> the "Track B" Grafana row. Windows agent, needs pre-prod VPN.
-// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.pw-sales-chain.
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: 1.Performance_testing/Jenkinsfile.pw-sales-chain.
 pipeline {
     agent any
     tools { nodejs 'NodeJS-20' }
@@ -56,7 +56,7 @@ pipeline {
                     env.EFF_PROJECT = (params.PROJECT?.trim()) ?: 'chrome-headless'
                     // reporter streams to InfluxDB only when a URL is set
                     env.EFF_INFLUX = (params.INFLUX_URL != null && params.INFLUX_URL.trim()) ? params.INFLUX_URL.trim() : 'http://10.8.81.44:8086/write?db=k6'
-                    env.RPT = env.EFF_INFLUX ? 'line,perf/ci/perf-influx-reporter.js' : 'line'
+                    env.RPT = env.EFF_INFLUX ? 'line,1.Performance_testing/ci/perf-influx-reporter.js' : 'line'
                     echo "PROJECT=${env.EFF_PROJECT} | Reporter=${env.RPT} | INFLUX_WRITE_URL=${env.EFF_INFLUX ?: '(none)'} | build tag=${env.BUILD_NUMBER}"
                     echo "SPECS=${env.EFF_SPECS}"
                 }

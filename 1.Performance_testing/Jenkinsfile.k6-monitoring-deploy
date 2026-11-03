@@ -2,8 +2,8 @@
 // NATIVE Windows services ON the Jenkins server itself. Pinned to the built-in node so
 // InfluxDB/Grafana land on 10.8.81.44 (the host k6 agents push to). No Docker/WSL.
 //
-// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.k6-monitoring-deploy.
-// The heavy lifting is in perf/monitoring/native/install-windows.ps1 (idempotent).
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: 1.Performance_testing/Jenkinsfile.k6-monitoring-deploy.
+// The heavy lifting is in 1.Performance_testing/monitoring/native/install-windows.ps1 (idempotent).
 pipeline {
     agent { label 'built-in' }   // MUST be the server; do not run on the 'probe' agent
 
@@ -41,8 +41,8 @@ pipeline {
         }
         stage('Deploy monitoring stack') {
             steps {
-                script { env.REPO_MONITORING = "${env.WORKSPACE}\\perf\\monitoring" }
-                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\monitoring\\native\\install-windows.ps1'
+                script { env.REPO_MONITORING = "${env.WORKSPACE}\\1.Performance_testing\\monitoring" }
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File 1.Performance_testing\\monitoring\\native\\install-windows.ps1'
             }
         }
     }
