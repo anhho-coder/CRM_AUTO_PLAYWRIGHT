@@ -251,6 +251,65 @@ export class SubscriptionPageEmbed {
     await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 3);
   }
 
+  /**
+   * Open the cycle's invoice as a FRESHLY LOADED CRM form, and return its id.
+   *
+   * WHY THIS EXISTS, measured 2026-11-03 - and the cause is still only half known:
+   * after openInvoices() the page does land on a clean invoice form (one `.o_form_view`, one
+   * statusbar, one VISIBLE Validate button - there are no duplicate forms, contrary to what I
+   * first reported). Yet VALIDATE and Cancel clicked on that SPA-routed form did nothing, three
+   * runs in a row, with the invoice staying `draft` in the database. The same invoice opened by
+   * a plain `#id=<id>&model=account.invoice&view_type=form` URL posted on the first click
+   * (100001695: draft -> open, CE-INV/2026/10214).
+   *
+   * So this re-opens the form at that proven URL shape. Note the shape matters: a `page.reload()`
+   * on the SPA's own URL (which carries `action=262&menu_id=430`) rendered an EMPTY page, so do
+   * not "simplify" this to a reload.
+   *
+   * The underlying reason the SPA-routed form ignores the clicks is still NOT established ON
+   * CRM-MIG. There is now a strong candidate, measured on PRE-PRODUCTION on 2026-11-03: a Cancel
+   * there was refused by a transient notification reading "The following fields are invalid: End
+   * User Payment Terms", and the invoice stayed Draft. Every crm-mig probe dismissed its dialogs
+   * without reading them, so the same thing could have been on screen each time. That is a lead to
+   * check, NOT a cause to cite - nobody has read a crm-mig notification yet.
+   *
+   * That quoted message names TWO fields - `partner_end_user_id` ("End User") and
+   * `payment_term_id` ("Payment Terms") - whose labels Odoo prints with nothing between them. It
+   * is not a field called "End User Payment Terms", and the first write-up of this said it was.
+   */
+  async openInvoiceFormOnCrm(): Promise<number> {
+    await this.openInvoices();
+
+    // The smart button navigates the TOP-LEVEL page, and that navigation outlives openInvoices()'s
+    // own fixed wait. Measured 2026-11-03 (subs-mig-open-invoices-lands-where): straight after
+    // openInvoices() the page was still on the embed URL with 0 `.o_form_view`; one settle later it
+    // was on `#id=100001696&action=262&model=account.invoice&view_type=form` with exactly one form,
+    // one statusbar and one VISIBLE Validate. Reading the URL once therefore loses a race that it
+    // wins only sometimes - which is exactly what happened: the 12:29 run got through, the three
+    // runs after it all threw here. So POLL for the id instead of reading once.
+    let url = this.page.url();
+    let m = url.match(/[#&]id=(\d+)/);
+    for (let i = 0; i < 12 && !m; i++) {
+      await this.page.waitForTimeout(CommonUtils.waitTimes.standard);
+      url = this.page.url();
+      m = url.match(/[#&]id=(\d+)/);
+    }
+    if (!m) {
+      throw new Error(
+        `SubscriptionPageEmbed.openInvoiceFormOnCrm(): the "Invoices" smart button did not land on ` +
+        `an invoice form - the page is still at "${url}" after waiting. Do not carry on against ` +
+        `whatever is on screen.`,
+      );
+    }
+    const id = Number(m[1]);
+    const base = url.split('/web#')[0];
+    await this.page.goto(`${base}/web#id=${id}&model=account.invoice&view_type=form`,
+      { waitUntil: 'domcontentloaded' });
+    await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 4);
+    console.log(`  - invoice ${id} re-opened as a fresh CRM form`);
+    return id;
+  }
+
   /** The "Sales" smart button - measured as `action_open_source_order`, labelled "1 Sales". */
   async getSalesCount(): Promise<number> {
     const fr = await this.f();
@@ -624,6 +683,23 @@ export class SubscriptionPageEmbed {
   //  3. THE DEFAULT "My Subscriptions" FACET HIDES RECORDS - 97 of 161 here. Any count that is
   //     meant to be absolute must clearSearchFacets() FIRST.
 
+  /**
+   * Re-resolve the embed frame handle WITHOUT navigating.
+   *
+   * `f()` is the wrong tool inside a click loop: when `this.frame` is null it falls through to
+   * `openSubscriptionsEmbed()`, which RE-OPENS the list from scratch - resetting the view back to
+   * kanban and re-applying the default facet. The first version of prepareCountableView() nulled
+   * the frame after every click and called `f()`, so each group it expanded was immediately
+   * undone by a fresh list load, and the guard kept reporting the same two folded groups however
+   * many passes it made. Measured 2026-11-03: the groups were genuinely folded (`.o_data_row`
+   * 97 with two folded, 80 after folding a third), so the guard was right and the expansion was
+   * the broken half.
+   */
+  private liveFrame(): Frame | null {
+    return this.page.frames().find((f) =>
+      /pre-sales-crm-mig/.test(f.url()) && f.url() !== 'about:blank' && !f.isDetached()) ?? null;
+  }
+
   /** Rows on whichever view is showing - list rows, else kanban cards. */
   private async countVisibleRecords(fr: Frame): Promise<number> {
     const listRows = await fr.locator('.o_data_row').count().catch(() => 0);
@@ -632,15 +708,44 @@ export class SubscriptionPageEmbed {
     return await fr.locator('.o_kanban_record:not(.o_kanban_ghost)').count().catch(() => 0);
   }
 
-  /** Trap 2: refuse to count through a folded group rather than undercount in silence. */
+  /**
+   * Trap 2, handled rather than merely reported.
+   *
+   * The first real run of searchInList() (2026-11-03) threw here: the default KANBAN view ships
+   * grouped with at least one column folded (a "None" column), so the guard fired on every call
+   * and the method was unusable. Refusing to count was right; refusing to do anything about it
+   * was not. So: switch to the LIST view, where the measured search returned its rows
+   * ungrouped-enough to count, then expand anything still folded, and only THEN give up if a
+   * folded group remains - because a count taken through one would be too low.
+   */
+  private async prepareCountableView(fr: Frame): Promise<Frame> {
+    const listBtn = fr.locator('button.o_switch_view.o_list').or(fr.locator('[data-tooltip="List"]')).first();
+    if (await listBtn.count().catch(() => 0) && !(await fr.locator('.o_list_view').count().catch(() => 0))) {
+      await listBtn.click({ timeout: CommonUtils.waitTimes.long }).catch(() => {});
+      await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 2);
+      fr = this.liveFrame() ?? fr;
+    }
+    // Expand folded groups - a few passes, since expanding one can reveal another.
+    for (let i = 0; i < 8; i++) {
+      const folded = fr.locator('.o_group_header:not(.o_group_open), .o_column_folded');
+      const n = await folded.count().catch(() => 0);
+      if (!n) break;
+      await folded.first().click({ timeout: CommonUtils.waitTimes.long }).catch(() => {});
+      await this.page.waitForTimeout(CommonUtils.waitTimes.long);
+      fr = this.liveFrame() ?? fr;
+    }
+    return fr;
+  }
+
+  /** Last line of defence: never return a count taken through a folded group. */
   private async assertNoFoldedGroup(fr: Frame, where: string): Promise<void> {
-    const folded = await fr.locator('.o_column_folded, .o_group_header.o_group_has_content:not(.o_group_open)')
+    const folded = await fr.locator('.o_group_header:not(.o_group_open), .o_column_folded')
       .count().catch(() => 0);
     if (folded > 0) {
       throw new Error(
-        `SubscriptionPageEmbed.${where}: the Subscriptions list is grouped and ${folded} group(s) are ` +
-        'FOLDED. A folded group keeps its rows out of the DOM, so any count here would be too low. ' +
-        'Expand the groups (or remove the grouping) before counting.',
+        `SubscriptionPageEmbed.${where}: ${folded} group(s) are still FOLDED after trying to expand ` +
+        'them. A folded group keeps its rows out of the DOM, so this count would be too low. ' +
+        'Remove the grouping from the Subscriptions action, or expand them by hand first.',
       );
     }
   }
@@ -659,8 +764,10 @@ export class SubscriptionPageEmbed {
       if (n <= 0) break;
       await fr.locator('.o_facet_remove').first().click({ timeout: CommonUtils.waitTimes.long }).catch(() => {});
       await this.page.waitForTimeout(CommonUtils.waitTimes.long);
+      // Re-resolve WITHOUT navigating - see liveFrame(). Nulling this.frame here would send the
+      // next f() back through openSubscriptionsEmbed() and re-apply the facet just removed.
+      this.frame = this.liveFrame();
     }
-    this.frame = null; // force a fresh handle for whatever reads next
   }
 
   /**
@@ -670,7 +777,14 @@ export class SubscriptionPageEmbed {
    * autocomplete returned no options of its own. An empty `term` just counts what is on screen.
    */
   async searchInList(term: string): Promise<number> {
-    await this.openSubscriptionsList();
+    // Only navigate if the list is not already on screen. Re-opening it would re-apply the
+    // default "My Subscriptions" facet - which silently undid the clearSearchFacets() that every
+    // caller performs immediately before this (5.4, 5.5, 5.6, 5.7, 9.3, 7.2 all write that pair).
+    const onList = this.liveFrame();
+    const alreadyListing = onList
+      ? await onList.locator('.o_list_view, .o_kanban_view').count().catch(() => 0) > 0
+      : false;
+    if (!alreadyListing) await this.openSubscriptionsList();
     const fr = await this.f();
     const input = fr.locator('input.o_searchview_input').or(fr.locator('.o_searchview input')).first();
     await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
@@ -683,7 +797,8 @@ export class SubscriptionPageEmbed {
       await this.page.waitForTimeout(CommonUtils.waitTimes.standard * 3);
     }
 
-    const live = await this.f();
+    let live = await this.f();
+    live = await this.prepareCountableView(live);
     await this.assertNoFoldedGroup(live, 'searchInList');
     const n = await this.countVisibleRecords(live);
     const facets = await live.locator('.o_searchview_facet').allTextContents().catch(() => []);

@@ -342,7 +342,7 @@ export class InvoicePage extends BasePage {
     await saveButton.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Found "SAVE" button');
     
-    await saveButton.click();
+    await saveButton.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     console.log('  - Clicked "SAVE" button (performance timer started)');
     
     // Wait for save to complete - Edit button should appear again
@@ -3173,4 +3173,80 @@ export class InvoicePage extends BasePage {
     await this.page.reload({ waitUntil: 'load', timeout });
     await this.editButtonLoc().waitFor({ state: 'visible', timeout });
   }
+
+  /**
+   * Set a many2one field on the invoice form by its TECHNICAL name, and return the value chosen.
+   *
+   * Addressed by `name` rather than by label on purpose. On a subscription invoice two required
+   * many2one fields sit side by side - `partner_end_user_id` (label "End User") and
+   * `payment_term_id` (label "Payment Terms") - and when a save is refused Odoo concatenates the
+   * two labels into "The following fields are invalid: End User Payment Terms", which reads like
+   * one field named "End User Payment Terms". There is no such field. Measured on pre-production
+   * 2026-11-03: four `o_field_invalid` nodes, two labels and two widgets, both widgets empty and
+   * required. A label-based locator cannot tell those two apart; a name-based one can.
+   *
+   * Pass `value` to pick a named option; omit it to take whatever the dropdown offers first (used
+   * when the test only needs the field to be filled, not to carry a particular value). When a
+   * value is given but no option carries it, the first real option is taken instead and the log
+   * says so - a field left empty is what Odoo refuses, and silently returning '' hid that.
+   *
+   * Two things measured on pre-production invoice 208803, 2026-11-04, drive this implementation:
+   *
+   *  - A plain CLICK opens the list; `ArrowDown` on an empty many2one does not. An earlier version
+   *    pressed ArrowDown when no value was given and reported "the dropdown offered nothing" for
+   *    `payment_term_id`, which has 7 options (Immediate Payment / 15 Days / 30 Net Days /
+   *    45 Days / 2 Months / Prianto Ltd / Technical).
+   *  - The list must be scoped to the autocomplete that is actually OPEN. Odoo appends each
+   *    many2one's `ul.ui-autocomplete` to the body and leaves the previous one behind, so a global
+   *    `.ui-menu-item` locator reads the LAST field's menu as this one's: after touching the two
+   *    fields in a row, a global read returned 16 options - the 7 of `payment_term_id` plus the 9
+   *    left over from `partner_end_user_id`.
+   */
+  async setMany2OneByName(fieldName: string, value?: string,
+                          timeout: number = CommonUtils.waitTimes.abnormalWait): Promise<string> {
+    const input = this.page.locator(
+      `xpath=//div[@name='${fieldName}']//input | //td[@name='${fieldName}']//input | //input[@name='${fieldName}']`,
+    ).first();
+    // count() resolves at once and never waits; waitFor() on a field that is on a notebook tab the
+    // form is not showing would otherwise burn the full timeout before admitting it is not there.
+    if ((await input.count().catch(() => 0)) === 0) {
+      console.log(`  - ${fieldName}: not rendered on the visible part of the form`);
+      return '';
+    }
+    const editable = await input.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false);
+    if (!editable) {
+      console.log(`  - ${fieldName}: present but not visible (is it in edit mode? another tab?)`);
+      return '';
+    }
+    await input.click();
+    if (value) await input.fill(value);
+    await this.wait(CommonUtils.waitTimes.standard);
+
+    const menu = this.page.locator('ul.ui-autocomplete:visible').last();
+    const opened = await menu.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.savingPage })
+      .then(() => true).catch(() => false);
+    if (!opened) {
+      console.log(`  - ${fieldName}: the dropdown did not open`);
+      return '';
+    }
+    // "Search More..." and "Create and Edit..." are commands, not values.
+    const options = menu.locator('li').filter({ hasNotText: /Search More|Create and Edit/ });
+    const matched = value ? options.filter({ hasText: value }).first() : options.first();
+    let wanted = matched;
+    if ((await matched.count().catch(() => 0)) === 0) {
+      const offered = await options.allInnerTexts().catch(() => []);
+      if (offered.length === 0) {
+        console.log(`  - ${fieldName}: the dropdown opened but offered no value (only commands)`);
+        return '';
+      }
+      console.log(`  - ${fieldName}: no option carries "${value}" - offered ${JSON.stringify(offered)}; taking the first`);
+      wanted = options.first();
+    }
+    const chosen = ((await wanted.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    await wanted.click();
+    await this.wait(CommonUtils.waitTimes.standard);
+    console.log(`  - ${fieldName} = "${chosen}"`);
+    return chosen;
+  }
+
 }

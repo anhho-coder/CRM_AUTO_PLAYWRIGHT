@@ -189,3 +189,66 @@ export function logVerify(label: string, expected: string, actual: string, pass:
   console.log(`  Actual  : ${actual}`);
   console.log(`  Result  : ${pass ? 'PASS' : 'FAIL'}`);
 }
+
+/** One scored check of a verification step. */
+export interface VerifyCheck {
+  /** What is checked, in the manual TC's own words. */
+  what: string;
+  expected: string;
+  actual: string;
+  pass: boolean;
+  /** FAIL only - describes the mismatch. Never a cause, never a fix. */
+  difference?: string;
+}
+
+/**
+ * Print the house VERIFY block on stdout AND return the same strings for
+ * `CommonUtils.captureVerifyEvidence`'s `lines`, so the banner burned into the screenshot and the
+ * log can never disagree.
+ *
+ * Call it BEFORE the `expect()`s - it must print on a failure too - and pass its return value
+ * straight into the evidence capture, which also has to happen before the assertions
+ * (a capture placed after a throwing `expect` is never taken).
+ *
+ * `logVerify` above prints the older one-check form and is left alone: the rest of the
+ * CRM-11806 suite still calls it.
+ */
+export function logVerifyBlock(checks: VerifyCheck[], outcome: string): string[] {
+  console.log('\n==================== VERIFY ====================');
+  const failures: string[] = [];
+  checks.forEach((c, i) => {
+    const n = i + 1;
+    const diff = c.difference ?? `expected ${c.expected}, got "${c.actual}"`;
+    console.log(`  Verify #${n} - ${c.what}:`);
+    console.log(`     Expected : ${c.expected}`);
+    console.log(`     Actual   : ${c.actual}`);
+    console.log(`     Result   : ${c.pass ? 'PASS' : 'FAIL'}`);
+    if (!c.pass) {
+      console.log(`     Difference : ${diff}`);
+      failures.push(`Verify #${n}: ${diff}`);
+    }
+  });
+  console.log('================================================');
+  console.log(failures.length === 0 ? `OVERALL: PASS - ${outcome}` : `OVERALL: FAIL - ${failures.join(' | ')}`);
+  return CommonUtils.checksLines(outcome, checks);
+}
+
+/**
+ * Read any Odoo notification / dialog currently on screen, and return '' when there is none.
+ *
+ * BOUNDED ON PURPOSE. `playwright.config.ts` sets no `actionTimeout`, so `innerText()` on a
+ * locator that never resolves waits FOREVER - a `.catch(() => '')` around it is not a fallback,
+ * it is a trap. Measured 2026-11-03: a bare
+ * `page.locator('.o_notification, ...').first().innerText().catch(() => '')` added to CRM-11806_3.9
+ * and subscription-3.9 turned two runs that previously reached their verification into 15-minute
+ * timeouts at the step that read it.
+ *
+ * So: `count()` first - it resolves at once and never waits - and only then a short, explicit
+ * timeout for the text of an element we already know exists.
+ */
+export async function readOdooNotice(page: Page, timeoutMs = 3000): Promise<string> {
+  const notice = page.locator('.o_notification, .o_notification_content, .o_error_dialog, .modal.show').first();
+  if ((await notice.count().catch(() => 0)) === 0) return '';
+  const text = (await notice.innerText({ timeout: timeoutMs }).catch(() => '')) || '';
+  return text.replace(/\s+/g, ' ').trim();
+}
