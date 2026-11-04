@@ -32,6 +32,17 @@ pipeline {
         cron('H 7 * * 1-5')
     }
 
+    parameters {
+        // Empty (the default, and what the daily cron always runs with) = every shard.
+        // A comma list, e.g. "manual-heavy,manual-light" for the Manual test page, collects
+        // only those shards: merge.js serves every other unit from its last-known-good part
+        // (kept in QA_REPORT_CACHE_DIR, outside the wiped workspace), marked 'stale' — so a
+        // partial build publishes a full report but turns UNSTABLE, which is the honest colour.
+        // Jenkins registers this parameter only after one build has run this Jenkinsfile.
+        string(name: 'ONLY_GROUPS', defaultValue: '',
+            description: 'Empty = all shards. Or a comma list of: manual-heavy, manual-light, automation, worklog, jira-dashboard, frd, support, odoo-kpi (Manual test page = manual-heavy,manual-light).')
+    }
+
     environment {
         ODOO_URL = 'https://crm.nakivo.com'
         ODOO_DB  = 'Nakivo01'
@@ -113,8 +124,23 @@ pipeline {
                         // the other way round — merge.js finds no part for its units and marks them
                         // 'missing', which names them in failed-sources.txt and turns the build
                         // UNSTABLE. Neither mistake can pass silently.
+                        // ONLY_GROUPS (see parameters): an unknown name fails the build up front
+                        // rather than silently collecting nothing.
+                        def only = []
+                        for (s in (params.ONLY_GROUPS ?: '').split(',')) {
+                            if (s.trim()) only << s.trim()
+                        }
+                        for (s in only) {
+                            if (!SHARD_JIRA_CONCURRENCY.containsKey(s)) {
+                                error "ONLY_GROUPS: unknown shard '${s}'. Valid: ${SHARD_JIRA_CONCURRENCY.keySet().join(', ')}"
+                            }
+                        }
                         def branches = [:]
                         for (g in SHARD_JIRA_CONCURRENCY.keySet()) {
+                            if (only && !only.contains(g)) {
+                                echo "Shard '${g}' skipped (ONLY_GROUPS=${params.ONLY_GROUPS}) — merge serves its last-known-good part."
+                                continue
+                            }
                             def gg = g  // capture the loop var for use in the closure
                             def cc = SHARD_JIRA_CONCURRENCY[gg]
                             branches[gg] = {
