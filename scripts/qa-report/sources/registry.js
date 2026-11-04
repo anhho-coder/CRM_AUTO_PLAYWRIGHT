@@ -5,7 +5,7 @@
  * The monolithic collect.js (18 try/catch blocks, 45 min runtime) is being split into
  * independent SHARDS — each a unit that fetches one logical collection group (odoo-kpi,
  * jira metrics, allure, worklog, etc.) and emits a part file. This registry defines the
- * 19 units and groups them so the Jenkins pipeline can run shards in parallel, then merge
+ * 20 units and groups them so the Jenkins pipeline can run shards in parallel, then merge
  * the part files back into the exact same latest.json.
  *
  * Each unit.run(ctx) is a faithful transcription of its corresponding try/catch block in
@@ -21,6 +21,7 @@ const { collectUniqueMetrics } = require('./unique-testexec');
 const { collectFrdMetrics } = require('./frd');
 const { collectFeatureExec } = require('./feature-exec');
 const { collectBugByPriority } = require('./bug-by-priority');
+const { collectMigrationBugs } = require('./migration-bugs');
 const { collectSupportClassification } = require('./support-classification');
 const { collectExecEffortDaily, buildExecutedPerDay, holidaySetForYears } = require('./executed-per-day');
 const { collectTransitionMetrics } = require('./automation-tc');
@@ -311,6 +312,24 @@ const UNITS = [
       // as a table on the Manual test page ("By range").
       patch.bugByPriority = await collectBugByPriority(ranges);
       patch.sources.jiraBugByPriority = { status: 'ok', source: 'jira valid bugs reported by priority' };
+
+      return patch;
+    }
+  },
+  {
+    id: 'jiraMigrationBugs',
+    group: 'manual-light',
+    sourceKeys: ['jiraMigrationBugs'],
+    async run(ctx) {
+      const { cfg } = ctx;
+      const patch = { migrationBugs: null, sources: {} };
+
+      // Jira MIGRATION BUGS: the bugs linked to any sub-task of the CRM-13900 migration
+      // features, per feature × status. A POINT-IN-TIME snapshot (NOT ranged); every
+      // cell's JQL is regenerated from a live sub-task scan. Rendered as a table on the
+      // Manual test page ("By range").
+      patch.migrationBugs = await collectMigrationBugs(cfg.MIGRATION_BUGS);
+      patch.sources.jiraMigrationBugs = { status: 'ok', source: 'jira bugs linked to migration feature sub-tasks' };
 
       return patch;
     }

@@ -236,6 +236,11 @@ async function main() {
     const ac = data.automationCoverageMigration;
     console.log(`[collect]   Automation coverage (Migration): ${ac.automationTcs}/${ac.totalTcs} = ${ac.coverage}% (remaining ${ac.remaining})`);
   }
+  if (data.migrationBugs) {
+    const t = data.migrationBugs.total;
+    console.log(`[collect]   Migration bugs: ${t.cells.bugs} on ${t.withBugs.length}/${t.subtasks} sub-tasks (open ${t.cells.open}, resolved ${t.cells.resolved}, closed ${t.cells.closed})` +
+      (t.scanMismatch ? ` — SCAN MISMATCH: scan saw ${t.scanBugs}` : ''));
+  }
   if (data.supportClassification) {
     const tq = data.supportClassification.ranges.thisQuarter;
     if (tq) console.log(`[collect]   Classified Support ticket (this quarter): ${tq.total.tickets} = ` +
