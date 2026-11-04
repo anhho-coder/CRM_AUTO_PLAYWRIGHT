@@ -3,29 +3,32 @@ import { users } from '@config/users.config';
 import { config } from '@config/test.config';
 import { DiscountProgramEditorPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
-import { Check, recordChecksMig, printVerifyAndAssertMig } from '@helpers/discount-mig.helper';
+import { Check, recordChecksMig, printVerifyAndAssertMig, DISCOUNT_MIG } from '@helpers/discount-mig.helper';
 
 /**
  * ================================================================================================
  *  CRM-12144_5.3 - Look for the Reseller / Distributor eligibility condition in the Program editor   (READ-ONLY)
  * ================================================================================================
  * Test Case ID     : CRM-12144_5.3
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 57, Jira link empty)
+ * Jira             : CRM-12297 (master "Migration - Discount" row 57)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-26
  * Revised          : 2026-10-27 - Kanban > program page instead of Graph > Edit Table; program = AUTO-CRM-13822-CLONE-1;
  *                    Reseller / Distributor check = the two rows are there (tester decisions, see Automation notes)
- * Known bug        : CRM-13850 - no "Based on Customers" condition on the program page - SKIPPED (tester decision
- *                    2026-10-27): the whole describe block is skipped by test.skip(true, KNOWN_BUG); the expected result
- *                    is unchanged. Remove the skip when CRM-13850 is fixed and re-run - last run 2026-10-27 15:43 = FAIL
- *                    9/10, only the "Based on Customers" check red (report 2026-10-27-154336_CRM-12144_5.3_[Worker-1]_Failed).
+ *                    2026-11-03 - spec v7 re-sync (CRM-13848 A1 / CRM-13850, Aiva 2026-11-03): the customer condition is the
+ *                    program page's "Advanced" section (IS-CRM-FUNC-0074-02), not a "Based on Customers" row; skip lifted
+ *                    2026-11-04 - card AUTO-CRM-13822-CLONE-1 deleted from the rule (audit v2 point #1 "QA: remove the
+ *                    row", tester 2026-11-04, rule v65 -> v66); the spec now opens PROG1 (Deal registration)
+ * Former skip     : CRM-13850 (no "Based on Customers" row) - lifted 2026-11-03: Aiva on CRM-13850, "Per spec v7,
+ *                    IS-CRM-FUNC-0074-02 is met through the Program editor's "Advanced" condition on the customer record,
+ *                    so the Program page does not need a "Based on Customers" row"
  * Baseline         : none - no pre-production baseline (REQUIREMENT #8: written from the manual TC; not in
  *                    helpers/discount-mig.baseline-map.ts)
- * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0087
+ * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0087 (customer: IS-CRM-FUNC-0074-02)
  * Source           : master "Migration - Discount" row 57 - steps reworded to the Kanban path and Expected Result updated
  *                    on 2026-10-27 (first written from NEW_AND_UNSPECCED_TCS.md v2, section "CRM-12144_5.3", sha256
  *                    76232bfc9ba0 - that file now differs from the master and is no longer the source)
- * Source version   : master row 57 as read 2026-10-27 after the rewording - re-check before trusting this spec
+ * Source version   : Jira CRM-12297 / master row 57 as re-synced to spec v7 on 2026-11-03 - re-check before trusting this spec
  * Host             : Program editor of crm-mig = Discount Service (https://discount-crm-mig.nakivo.site)
  * Run as           : QA's named Program editor account anh.ho@nakivo.com (users.admin_discount_mig) - Nathan Do,
  *                    CRM-12467 2026-10-20, answer 4: "please uses your account and saves nothing". ASSERTED in
@@ -37,9 +40,9 @@ import { Check, recordChecksMig, printVerifyAndAssertMig } from '@helpers/discou
  *
  * Summary
  * -------
- * On Discount Programs (Kanban view, active version) the program AUTO-CRM-13822-CLONE-1 is opened and the rows under "When
- * it applies" are read: "For reseller" + "For distributor" (ticked or not), the generic conditions, and - as on
- * pre-production - "Based on Customers" must be there.
+ * On Discount Programs (Kanban view, active version) the program PROG1 (Deal registration) is opened and the rows under "When
+ * it applies" are read: "For reseller" + "For distributor" (ticked or not) and the generic conditions; the customer
+ * condition must be the page's "Advanced" section (spec v7 IS-CRM-FUNC-0074-02).
  *
  * Command to run
  * --------------
@@ -59,8 +62,8 @@ import { Check, recordChecksMig, printVerifyAndAssertMig } from '@helpers/discou
  *    2. Read the rows under "When it applies" on the program page
  *  Expected Results
  *    2. The Reseller / Distributor condition is the two rows "For reseller" and "For distributor", ticked or not; the
- *       generic conditions (validity, products, minimum quantity, minimum amount) are present; the "Based on
- *       Customers" condition is present, as on pre-production
+ *       generic conditions (validity, products, minimum quantity, minimum amount) are present; the customer
+ *       condition is the "Advanced" section of the program page (IS-CRM-FUNC-0074-02)
  *
  *  Automation notes
  *    - Revised 2026-10-27 (tester, review of report 2026-10-27-125254): the first version read Graph > Edit Table - the
@@ -68,28 +71,29 @@ import { Check, recordChecksMig, printVerifyAndAssertMig } from '@helpers/discou
  *      about. The spec now stays on Discount Programs (Kanban view), opens ONE program card and reads the program page.
  *    - How the screen maps to the steps (page read 2026-10-27, rule Version 32 / active):
  *        Step 1 (master reworded 2026-10-27: the Kanban view of the active version) = Discount Programs, top bar
- *               "Version N / active"; the program opened = card AUTO-CRM-13822-CLONE-1 "AUTO-CRM-13822-CLONE Deal
- *               registration promotion, 10% on Product, Support Services do not qualify" (tester's choice 2026-10-27).
- *               That program is QA test data (a copy of PROG1 published in rule v32 for CRM-13822): when it is removed
- *               from the rule, the Step 1 guard goes red - pick another card then.
+ *               "Version N / active"; the program opened = card PROG1 "Deal registration promotion, 10% on Product,
+ *               Support Services do not qualify" - the one operating program (audit v2). Until 2026-11-04 the card was
+ *               AUTO-CRM-13822-CLONE-1 (tester's choice 2026-10-27), a QA copy of PROG1 published in rule v32 for
+ *               CRM-13822; it was deleted from the rule on 2026-11-04 (audit v2 point #1, rule v66).
  *        Step 2 the rows under "When it applies" on that program page (read 2026-10-27): Status, Validity,
  *               For reseller, For distributor, Minimum amount, Minimum quantity, Products.
- *    - Tester decision 2026-10-27 on the Reseller / Distributor half of the expected result: "có 2 ô đó là được rồi. Cho
- *      phép không tick" - the two rows "For reseller" and "For distributor" ARE expected on the program page, and an
+ *    - Tester decision 2026-10-27 on the Reseller / Distributor half of the expected result (translated): "having those
+ *      two boxes is enough; unticked is allowed" - the two rows "For reseller" and "For distributor" ARE expected on the program page, and an
  *      unticked box is allowed. Scored: both rows present; their tick state is printed, not scored. Master row 57
  *      carries it since 2026-10-27 (its Expected Result was updated on the master that day).
- *    - Tester review 2026-10-27 (report 2026-10-27-152715) on the customer: "TC 5.3 sai ở expectation về 'Based on
- *      customer'. Trên Pre-pro có nhưng Discount service không có. Chứ lỗi về generic condition là không đúng" - the
- *      customer is checked as pre-production's "Based on Customers" condition (Promotion Program > Conditions), NOT as
- *      a failing generic condition. Its evidence outlines the "When it applies" heading (the row is absent); the generic
- *      rows are no longer painted red.
+ *    - Tester review 2026-10-27 (report 2026-10-27-152715) on the customer (translated): "TC 5.3 is wrong in its
+ *      expectation on 'Based on customer'. Pre-production has it but the Discount Service does not. Reporting it as a
+ *      generic-condition failure is not right" - the customer was then checked as pre-production's "Based on
+ *      Customers" condition, NOT as a failing generic condition (bug CRM-13850).
+ *    - 2026-11-03 (spec v7, Aiva on CRM-13848 / CRM-13850): the customer is set with the Program editor's "Advanced"
+ *      condition, so the check reads that section (present = PASS; its content is printed, not scored - the Active card
+ *      may or may not limit its customers).
  *    - Matching, on the row LABEL: validity = "Validity"; products = "Products"; minimum quantity = "Minimum quantity";
- *      minimum amount = "Minimum amount"; Based on Customers = a row whose label names the customers.
+ *      minimum amount = "Minimum amount"; the customer condition = the "Advanced" section (div.advanced-body).
  *    - Step 1 has NO expected result in the source (REQUIREMENT #1b.4 - reported to the TC author): guards only - the
  *      top bar names an active version, and the card opens the program page of that name.
- *    - The "Advanced" section of the program page is printed as an observation (not scored).
- *    - EXPECTED RED, not weakened: no "Based on Customers" row - bug CRM-13850 (pre-production's Promotion Program has
- *      it under Conditions); the same gap was asked to the PM in CRM-13848.
+ *    - Until 2026-11-03 this spec was skipped by CRM-13850 (no "Based on Customers" row); the PM answered in CRM-13848
+ *      with spec v7 - the Advanced section is the customer condition.
  * ================================================================================================
  */
 
@@ -98,20 +102,14 @@ const TC = 'CRM-12144_5.3';
 /** Step labels - one source of truth for the test.step() label AND the stdout banner. */
 const STEP = {
   pre1: 'Pre-condition 1: Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team) [QA\'s named account anh.ho@nakivo.com, per Nathan Do CRM-12467 2026-10-20; "Signed in as" is read and must name it]',
-  s1: 'Step 1: Open Discount Programs (Kanban view) of the active version (top bar: Version N / active) and open a program card in the Active column [in the Program editor: the card AUTO-CRM-13822-CLONE-1 - read only]',
-  s2: 'Step 2: Read the rows under "When it applies" on the program page [of AUTO-CRM-13822-CLONE-1]',
+  s1: 'Step 1: Open Discount Programs (Kanban view) of the active version (top bar: Version N / active) and open a program card in the Active column [in the Program editor: the card PROG1 (Deal registration) - read only]',
+  s2: 'Step 2: Read the rows under "When it applies" on the program page [of PROG1]',
   verify: 'Verification',
 } as const;
 
-const KNOWN_BUG =
-  'The Discount Service program page has no "Based on Customers" condition (pre-production\'s Promotion Program has it); expected result kept, see header - known bug CRM-13850';
-
 const EDITOR_ACCOUNT = users.admin_discount_mig;
-/** The program opened in Step 1 (tester's choice 2026-10-27): the CRM-13822 clone of Deal registration, Active column. */
-const PROGRAM = {
-  code: 'AUTO-CRM-13822-CLONE-1',
-  name: 'AUTO-CRM-13822-CLONE Deal registration promotion, 10% on Product, Support Services do not qualify',
-};
+/** The program opened in Step 1: Deal registration (PROG1), Active column - the CRM-13822 clone was deleted on 2026-11-04. */
+const PROGRAM = { code: 'PROG1', name: DISCOUNT_MIG.dealRegistration };
 /** Tester decision 2026-10-27: both rows are expected on the program page; an unticked box is allowed. */
 const PARTNER_ROWS = ['For reseller', 'For distributor'];
 /** The generic conditions (tester review 2026-10-27: the customer is NOT scored as one of them), matched on the row label. */
@@ -121,8 +119,6 @@ const GENERIC_CONDITIONS: Array<{ holds: string; expected: string; match: RegExp
   { holds: 'the minimum quantity', expected: 'a "Minimum quantity" row', match: /^Minimum quantity$/i },
   { holds: 'the minimum amount', expected: 'a "Minimum amount" row', match: /^Minimum amount$/i },
 ];
-/** Pre-production's "Based on Customers" - a row whose label names the customers counts (bug CRM-13850: none today). */
-const CUSTOMER_CONDITION = /customer/i;
 const PARTNER_CONDITION = /reseller|distributor/i;
 
 /** The page's arrows / chevrons as ASCII, for stdout and the evidence banner. */
@@ -131,15 +127,12 @@ const ascii = (s: string): string => s.replace(/\u2192/g, '->').replace(/\u203a/
 test.use({ ignoreHTTPSErrors: true, actionTimeout: CommonUtils.waitTimes.abnormalWait * 3 }); // the Discount Service certificate chain is self-signed
 
 test.describe(`${TC} - Reseller / Distributor eligibility condition in the Program editor (crm-mig, read-only)`, () => {
-  // Known bug CRM-13850: no "Based on Customers" condition on the program page - remove when it is fixed
-  test.skip(true, KNOWN_BUG); // CRM-13850 (Open)
-
-  test(`${TC}: Look for the Reseller / Distributor eligibility condition in the Program editor [CRM-13850]`, {
+  test(`${TC}: Look for the Reseller / Distributor eligibility condition in the Program editor`, {
     tag: ['@no-preprod-baseline'],
     annotation: [
       { type: 'manual-tc', description: `${TC} (master "Migration - Discount" row 57, reworded 2026-10-27)` },
       { type: 'requirement', description: 'IS-CRM-FUNC-0087' },
-      { type: 'issue', description: 'CRM-13850 - no "Based on Customers" condition on the program page (that Verify red until fixed)' },
+      { type: 'requirement', description: 'IS-CRM-FUNC-0074-02 (spec v7: the customer is set with the "Advanced" condition)' },
     ],
   }, async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
@@ -240,22 +233,19 @@ test.describe(`${TC} - Reseller / Distributor eligibility condition in the Progr
       ], `${TC} - Step 2 generic conditions present`,
       present.some((p) => !p.row) ? allRows : present.map((p) => rowSel(p.row!.label)), 'bottom-right');
 
-      // (c) "Based on Customers" - ABSENT, so it has no row to outline: the section heading is outlined instead, and the
-      // generic rows are NOT painted red (tester review 2026-10-27: the red rows read as a generic-condition failure)
-      const customerRows = rows.filter((r) => CUSTOMER_CONDITION.test(r.label));
+      // (c) the customer condition - spec v7 IS-CRM-FUNC-0074-02: the "Advanced" section, owned by that section
       await recordChecksMig(page, testInfo, checks, [
         {
-          what: 'Step 2 - the "Based on Customers" condition is present, as on pre-production',
-          expected: 'a row under "When it applies" whose label names the customers, as pre-production\'s Promotion Program has "Based on Customers" (Match all records) under Conditions (none is a FAIL - the Discount Service cannot limit a program to customers; bug CRM-13850)',
-          actual: customerRows.length ? customerRows.map((r) => `"${r.label}"`).join(', ') : `no such row - the ${rows.length} rows are: ${labels.join(', ')}`,
-          passed: customerRows.length > 0,
+          what: 'Step 2 - the customer condition is the "Advanced" section of the program page (spec v7 IS-CRM-FUNC-0074-02)',
+          expected: 'an "Advanced" section on the program page (no section is a FAIL - there would be no place to limit a program to customers)',
+          actual: read.advancedFound ? `"Advanced" section = "${ascii(read.advanced) || '(empty)'}"` : '(no "Advanced" section on the page)',
+          passed: read.advancedFound,
         },
-      ], `${TC} - Step 2 Based on Customers`,
-      customerRows.length ? customerRows.map((r) => rowSel(r.label)) : [DiscountProgramEditorPageMig.PROGRAM_CONDITIONS_HEADING], 'bottom-right');
+      ], `${TC} - Step 2 Advanced (customer condition)`,
+      read.advancedFound ? [DiscountProgramEditorPageMig.PROGRAM_ADVANCED] : [DiscountProgramEditorPageMig.PROGRAM_CONDITIONS_HEADING], 'bottom-right');
 
-      const others = labels.filter((l) => !PARTNER_CONDITION.test(l) && !CUSTOMER_CONDITION.test(l) && !GENERIC_CONDITIONS.some((g) => g.match.test(l)));
+      const others = labels.filter((l) => !PARTNER_CONDITION.test(l) && !GENERIC_CONDITIONS.some((g) => g.match.test(l)));
       console.log(`  Observation (not scored) - condition rows the TC does not name: ${others.length ? others.join(', ') : '(none)'}`);
-      console.log(`  Observation (not scored) - "Advanced" section of ${PROGRAM.code}: ${read.advanced || '(empty)'}`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, `Step 2 - condition rows of ${PROGRAM.code} read`);
     });
 

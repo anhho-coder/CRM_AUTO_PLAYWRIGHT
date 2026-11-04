@@ -15,11 +15,11 @@ import {
   signInMig,
   createEndCustomerCompanyMig,
   createOpportunityForCompanyMig,
+  openCrmMigWebClient,
   openDealElementFromOpportunity,
   teardownDiscountRunMig,
   sweepDiscountRunsMig,
   MIG_ACTION_TIMEOUT,
-  PROGRAM_EDITOR_MANUAL_REASON,
   baselineDetails,
 } from '@helpers/discount-mig.helper';
 
@@ -28,30 +28,28 @@ import {
  *  CRM-12144_1.4 - Offer a program limited to one customer on orders of two customers   (crm-mig)
  * ================================================================================================
  * Test Case ID     : CRM-12144_1.4
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 21, Jira link empty)
+ * Jira             : CRM-12280 (master "Migration - Discount" row 21)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
  * Revised          : 2026-10-27 - program-editor steps reworded to the Kanban path (New program > Save; card >
  *                    Delete), master row 21 updated the same day - the CRM-12144_5.3 standard (tester 2026-10-27)
+ *                    2026-11-03 - spec v7 re-sync (CRM-13848 / CRM-13850, Aiva 2026-11-03): IS-CRM-FUNC-0074-02 now says the
+ *                    customer is set with the Program editor's "Advanced" condition - the master's Advanced line names the
+ *                    rule (Payer > Name is ...); UN-SKIPPED (tester 2026-11-03) under the 2026-10-27 rule "QA may create a
+ *                    test Discount program (then teardown); never edit an existing program"
  * Baseline         : Discount_1.4 (Jira CRM-13767; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-4-one-customer-program-two-customers.spec.ts) - assertions ported unchanged
- * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-02
- * Source version   : master row CRM-12144_1.4 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
+ * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-02
+ * Source version   : Jira CRM-12280 / master row 21 as re-synced to spec v7 on 2026-11-03 - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
  *
- * MANUAL ONLY - chỉ run manual (tester, 2026-10-22). Program-table edits belong to the development team: QI p.3 + p.28
- *   (TC-14 to TC-18 at QA's request); Nathan, CRM-12467 2026-10-20: QA runs only TC-13 and TC-19.
- *   The whole describe block is skipped by test.skip(true, PROGRAM_EDITOR_MANUAL_REASON) at
- *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
- *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
- *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
- *     - Pre-condition 5 : create the program QA-Disc-<timestamp> (Kanban: New program) (customer = Disc-CustA) and Save
- *     - Step 5          : Clean-up - Delete the program QA-Disc-<timestamp> on its Kanban card and confirm
- *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
- *           development team's: QI p.3 (except TC-13) and p.28 (TC-14 to TC-18 at QA's request); Nathan,
- *           CRM-12467 2026-10-20: QA runs only TC-13 and TC-19"
+ * Program-editor writes: the run creates ONE program of its own, QA-Disc-<timestamp> (Pre-condition 5), and deletes it
+ *   at Step 5 - or in afterEach / afterAll when the run stops earlier (deny-list: only the name this run created).
+ *   Rule (tester 2026-10-27): QA may create a test Discount program and must delete it; an existing program is never
+ *   edited (DiscountProgramEditorPageMig refuses any name that does not start with QA-Disc-). Each Save / Delete
+ *   publishes a new rule version (versions are permanent history).
  *
  * Summary
  * -------
@@ -60,7 +58,7 @@ import {
  *
  * Command to run
  * --------------
- *   npx playwright test --grep "CRM-12144_1\.4:" --project=chromium   (always skipped - chỉ run manual)
+ *   npx playwright test --grep "CRM-12144_1\.4:" --project=chromium
  *
  * ------------------------------------------------------------------------------------------------
  *  Source manual TC (CRM-12144_1.4, master "Migration - Discount" row 21) - verbatim, ASCII
@@ -86,7 +84,7 @@ import {
  *  _ Reward = 5.0 %
  *  _ Applies to = Whole order
  *  _ For = (empty - the For field shows only for Specific products)
- *  _ Advanced (customer condition) = customer name is Disc-CustA-<timestamp>
+ *  _ Advanced (customer condition, IS-CRM-FUNC-0074-02) = Add a rule: Payer > Name is Disc-CustA-<timestamp> (the Program editor calls the order's customer "Payer")
  *  Click Save and confirm the new version is the active one (top bar: Version N / active)
  *  Create a new opportunity in CRM > Pipeline with:
  *  _ Name = Disc-OppA-<timestamp>
@@ -126,14 +124,14 @@ const STEP = {
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-CustA-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
   pre4: 'Pre-condition 4: On crm-mig, create a new company in Contacts with: Name = Disc-CustB-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre5: 'Pre-condition 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-CustA-<timestamp>; Click Save and confirm the new version is the active one (top bar: Version N / active)',
+  pre5: 'Pre-condition 5: In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition, IS-CRM-FUNC-0074-02) = Add a rule: Payer > Name is Disc-CustA-<timestamp> (the Program editor calls the order\'s customer "Payer"); Click Save and confirm the new version is the active one (top bar: Version N / active)',
   pre6: 'Pre-condition 6: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-OppA-<timestamp>, Customer = Disc-CustA-<timestamp>',
   pre7: 'Pre-condition 7: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-OppB-<timestamp>, Customer = Disc-CustB-<timestamp>',
   s1: 'Step 1: Open Disc-OppA-<timestamp> and click DEAL ELEMENT; add A2160B with Ordered Qty 1 [if Payment Terms is empty, Payment Terms = Immediate Payment is set first]',
   s2: 'Step 2: Open the Promotion list',
   s3: 'Step 3: Open Disc-OppB-<timestamp> and click DEAL ELEMENT; add A2160B with Ordered Qty 1',
   s4: 'Step 4: Open the Promotion list',
-  s5: 'Step 5: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
+  s5: 'Step 5: Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
 
@@ -161,8 +159,6 @@ async function removeEditorRows(page: Page): Promise<void> {
 }
 
 test.describe(`${TC} - Offer a program limited to one customer on orders of two customers (crm-mig)`, () => {
-  test.skip(true, PROGRAM_EDITOR_MANUAL_REASON); // chỉ run manual
-
   let run: DiscountRun; // customer A (the program's customer)
 
   test.beforeEach(async ({ context, page }) => {
@@ -240,18 +236,15 @@ test.describe(`${TC} - Offer a program limited to one customer on orders of two 
 
     await test.step(STEP.pre5, async () => {
       console.log(`\n--- ${STEP.pre5} ---`);
-      // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
-      const versionBefore = await editor.getActiveVersionNumber(); // Kanban top bar, before Save
-      await editor.createProgramOnKanban({
-        'Promo code': promoCode,
+      // the run's OWN program (QA-Disc-<timestamp>); For stays empty - the form shows it only for Specific products
+      const { versionBefore, versionAfter } = await editor.createProgramOnKanban({
         'Program name': programName,
         Reward: '5.0',
         'Applies to': 'Whole order',
-        For: '', // "(empty)" in the master row - the For field shows only for Specific products
+        'Promo code': promoCode,
         Advanced: `customer name is ${run.company}`,
       });
       editorRows.push(programName);
-      const versionAfter = await editor.getActiveVersionNumber(); // Kanban top bar "Version N / active"
       await recordChecks(page, testInfo, checks, [
         { what: 'Pre-condition 5 - the new version is the active one (top bar: Version N / active)', expected: `Version ${versionBefore + 1} / active`, actual: Number.isFinite(versionAfter) ? `Version ${versionAfter} / active` : '(not shown)', passed: versionAfter === versionBefore + 1 },
       ], `${TC} - Pre-condition 5 new version active`, [DiscountProgramEditorPageMig.VERSION_CHIP]);
@@ -260,6 +253,7 @@ test.describe(`${TC} - Offer a program limited to one customer on orders of two 
 
     await test.step(STEP.pre6, async () => {
       console.log(`\n--- ${STEP.pre6} ---`);
+      await openCrmMigWebClient(page); // the program was saved on the Program editor - back on crm-mig first
       await createOpportunityForCompanyMig(page, run, SALES);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 6 - opportunity A created');
     });
@@ -307,7 +301,7 @@ test.describe(`${TC} - Offer a program limited to one customer on orders of two 
 
     await test.step(STEP.s5, async () => {
       console.log(`\n--- ${STEP.s5} ---`);
-      // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
+      // the run's OWN program only - DiscountProgramEditorPageMig refuses any other name
       await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
     });

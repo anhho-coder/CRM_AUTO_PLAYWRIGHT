@@ -284,6 +284,16 @@ export async function leaveBorrowedCompanyFormMig(page: Page): Promise<void> {
 }
 
 /**
+ * Back to the crm-mig web client (full page load) after a step on the Program editor: the page is still on
+ * discount-crm-mig, and the Mig menu / JSON-RPC readers call /web/... on the CURRENT origin. CRM-12144_1.4 / 1.6 on
+ * 2026-11-03: the opportunity created right after the program read `roots.length` of undefined in hashFor().
+ */
+export async function openCrmMigWebClient(page: Page): Promise<void> {
+  await page.goto(`${baseUrl_mig}web`, { waitUntil: 'domcontentloaded', timeout: CommonUtils.waitTimes.pageLoad });
+  await new ContactPageMig(page).waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+}
+
+/**
  * "Click New quotation" on a saved Deal Element, crm-mig style. O12 CE creates the quotation in place (~45 s later)
  * and leaves the screen on the Deal Element (grounded 2026-09-21, see pressNewQuotationOnO12CE) - so the quotation
  * is found by its opportunity, its form is opened, and its id is recorded for teardown. Throws when none appears.

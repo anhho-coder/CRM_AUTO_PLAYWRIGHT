@@ -328,6 +328,8 @@ export class DiscountProgramEditorPageMig extends BasePage {
   static readonly PROGRAM_CONDITIONS_HEADING = '[data-pw-verify="program-conditions-heading"]';
   static readonly PROGRAM_REWARD_ROWS = '[data-pw-reward]';
   static readonly PROGRAM_REWARDS_HEADING = '[data-pw-verify="program-rewards-heading"]';
+  /** The program page's "Advanced" section - its heading and its body (tagged by readProgramConditions()). */
+  static readonly PROGRAM_ADVANCED = '[data-pw-verify="program-advanced-heading"], [data-pw-verify="program-advanced"]';
   private static attrSelector(attr: string, value: string): string {
     return `[${attr}="${value.replace(/["\\]/g, '\\$&')}"]`;
   }
@@ -372,6 +374,7 @@ export class DiscountProgramEditorPageMig extends BasePage {
     sectionFound: boolean;
     rows: Array<{ label: string; hint: string; value: string; ticked: boolean | null }>;
     advanced: string;
+    advancedFound: boolean;
   }> {
     await this.programTitle().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     const form = this.page.locator('xpath=//section[contains(@class,"program-form")]').or(this.page.locator('section.program-form')).first();
@@ -398,22 +401,31 @@ export class DiscountProgramEditorPageMig extends BasePage {
         n.setAttribute(a.rowAttr, label);
         rows.push({ label, hint: text(n.querySelector('.form-label > small')), value: value.length > 120 ? `${value.slice(0, 117)}...` : value, ticked: box ? box.checked : null });
       }
-      return { sectionFound: !!start, rows, advanced: text(f.querySelector('.advanced-body')) };
+      // the "Advanced" section (heading "Advanced optional" + div.advanced-body) - TAGGED for a verify-evidence shot
+      const advHead = Array.from(f.querySelectorAll('h2.section-head')).find((h) => text(h).startsWith('Advanced'));
+      const advBody = f.querySelector('.advanced-body');
+      advHead?.setAttribute('data-pw-verify', 'program-advanced-heading');
+      advBody?.setAttribute('data-pw-verify', 'program-advanced');
+      return { sectionFound: !!start, rows, advanced: text(advBody), advancedFound: !!advHead && !!advBody };
     }, { heading, rowAttr, headingTag });
   }
 
   /**
    * The open program page: the rows of its "When it applies" section (the conditions) - label, the grey hint under it,
    * the value as shown, and for a checkbox / switch row whether it is ticked (null when the row has none) - plus the text
-   * of its "Advanced" section. Each row is TAGGED data-pw-condition="<label>" and the heading PROGRAM_CONDITIONS_HEADING.
+   * of its "Advanced" section and whether that section is on the page. Each row is TAGGED data-pw-condition="<label>",
+   * the heading PROGRAM_CONDITIONS_HEADING and the Advanced section PROGRAM_ADVANCED.
    * Page read 2026-10-27 (PROG1): section.program-form > h2.section-head "When it applies" then div.form-row
    * (div.form-label > span + small, div.form-value) up to the next h2 ("Rewards"); "Advanced" = div.advanced-body.
+   * Read 2026-11-03 (rule v55): Advanced reads "No extra rules" on PROG1 and "Payer › Name is <name>" on a program limited
+   * to one customer (NEW2) - the customer condition of spec v7 IS-CRM-FUNC-0074-02.
    * Reads only - every input on this page is disabled.
    */
   async readProgramConditions(): Promise<{
     sectionFound: boolean;
     rows: Array<{ label: string; hint: string; value: string; ticked: boolean | null }>;
     advanced: string;
+    advancedFound: boolean;
   }> {
     return this.readProgramSection('When it applies', 'data-pw-condition', 'program-conditions-heading');
   }
@@ -599,15 +611,48 @@ export class DiscountProgramEditorPageMig extends BasePage {
     return this.programCardsNamed(name).count();
   }
 
+  /** Program form, Products row: Add a rule (Products > Default Code / is any of - the defaults), Pick products, tick each
+   *  code in the "Select products" dialog (search box "Search products", one table row per product, td.code), Apply.
+   *  Read 2026-11-03 (explore discount-mig-editor-product-picker-20261103): the dialog lists "products the CRM sells";
+   *  a row click toggles it (tr.on) and the footer counts "N picked". */
+  private async pickProductsRule(codes: string[]): Promise<void> {
+    await this.programForm().getByRole('button', { name: /^Add a rule$/ }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.programForm().locator('xpath=.//button[contains(@class,"add-products")]').or(this.programForm().locator('button.add-products')).first()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialog = this.page.locator('xpath=//div[contains(@class,"product-dialog") and @role="dialog"]').or(this.page.locator('.product-dialog[role="dialog"]')).first();
+    await dialog.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    for (const code of codes) {
+      await dialog.getByRole('textbox', { name: 'Search products' }).fill(code);
+      const row = dialog.locator(`xpath=.//tr[td[contains(@class,"code") and normalize-space()=${DiscountProgramEditorPageMig.xpathLiteral(code)}]]`).first();
+      await row.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await row.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await dialog.locator(`xpath=.//tr[contains(@class,"on") and td[contains(@class,"code") and normalize-space()=${DiscountProgramEditorPageMig.xpathLiteral(code)}]]`).first()
+        .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    }
+    const picked = ((await dialog.locator('xpath=.//footer//span[contains(normalize-space(),"picked")]').first().textContent().catch(() => '')) || '').trim();
+    if (picked !== `${codes.length} picked`) throw new Error(`Program editor: the product picker reads "${picked}", expected "${codes.length} picked" (${codes.join(', ')})`);
+    await dialog.getByRole('button', { name: 'Apply', exact: true }).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await dialog.waitFor({ state: 'detached', timeout: CommonUtils.waitTimes.abnormalWait });
+  }
+
   /**
    * Kanban path: Discount Programs > New program, fill the program form and Save (= the next version becomes the active
    * one). `fields` keyed on the form's labels: Program name (must start with TEST_PROGRAM_PREFIX), Reward (percent),
-   * Applies to (Whole order | Specific products), Advanced. Advanced accepts "customer name is <name>" only, entered as
-   * the rule Payer > Name is <name> - crm-mig labels the order's customer (partner_id) "Payer", and the rule's code reads
-   * partner_id.name == "<name>" (read 2026-10-27). No Promo code is typed: the app numbers it (NEW<n>).
+   * Applies to (Whole order | Specific products), Promo code (the form pre-fills NEW<n>; typed over when given), Minimum
+   * quantity, Products (default codes - the rule Products > Default Code is any of <codes>, picked in "Select products"),
+   * Advanced. Advanced accepts "customer name is <name>" only, entered as the rule Payer > Name is <name> - crm-mig labels
+   * the order's customer (partner_id) "Payer", and the rule's code reads partner_id.name == "<name>" (read 2026-10-27).
    * @returns the active version before / after the Save and the promo code the new card shows
    */
-  async createProgramOnKanban(fields: { 'Program name': string; Reward: string; 'Applies to'?: 'Whole order' | 'Specific products'; Advanced?: string }): Promise<{ versionBefore: number; versionAfter: number; code: string }> {
+  async createProgramOnKanban(fields: {
+    'Program name': string;
+    Reward: string;
+    'Applies to'?: 'Whole order' | 'Specific products';
+    'Promo code'?: string;
+    'Minimum quantity'?: string;
+    Products?: string[];
+    Advanced?: string;
+  }): Promise<{ versionBefore: number; versionAfter: number; code: string }> {
     const name = fields['Program name'];
     DiscountProgramEditorPageMig.assertTestProgram(name);
     const customer = fields.Advanced === undefined ? undefined : (fields.Advanced.match(/^customer name is (.+)$/i) || [])[1];
@@ -617,8 +662,12 @@ export class DiscountProgramEditorPageMig extends BasePage {
     await this.newProgramButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.programForm().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.programNameInput().fill(name);
+    if (fields['Minimum quantity'] !== undefined) await this.programForm().getByRole('spinbutton', { name: 'Minimum quantity' }).fill(fields['Minimum quantity']);
+    // Products before Advanced: the Products row owns the FIRST "Add a rule", Advanced the last one
+    if (fields.Products?.length) await this.pickProductsRule(fields.Products);
     await this.programForm().getByRole('spinbutton', { name: 'Reward percent' }).fill(fields.Reward);
     if (fields['Applies to']) await this.programForm().getByRole('button', { name: fields['Applies to'], exact: true }).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    if (fields['Promo code'] !== undefined) await this.programForm().getByRole('textbox', { name: 'Promo code' }).fill(fields['Promo code']);
     if (customer) {
       // Advanced is the LAST "Add a rule" of the form (the first one belongs to Products)
       await this.programForm().getByRole('button', { name: /^Add a rule$/ }).last().click({ timeout: CommonUtils.waitTimes.abnormalWait });
@@ -627,8 +676,11 @@ export class DiscountProgramEditorPageMig extends BasePage {
       await this.programForm().getByRole('textbox', { name: 'Value' }).last().fill(customer);
     }
     console.log(`  - Program name        = ${name}`);
+    console.log(`  - Minimum quantity    = ${fields['Minimum quantity'] ?? '(empty)'}`);
+    console.log(`  - Products            = ${fields.Products?.length ? `Products > Default Code is any of ${fields.Products.join(', ')}` : '(any product)'}`);
     console.log(`  - Reward              = ${fields.Reward} %`);
     console.log(`  - Applies to          = ${fields['Applies to'] ?? '(form default)'}`);
+    console.log(`  - Promo code          = ${fields['Promo code'] ?? '(the form\'s NEW<n>)'}`);
     console.log(`  - Advanced            = ${customer ? `Payer > Name is ${customer}` : '(none)'}`);
     await this.saveProgramForm();
     const versionAfter = await this.waitForVersionAbove(versionBefore);

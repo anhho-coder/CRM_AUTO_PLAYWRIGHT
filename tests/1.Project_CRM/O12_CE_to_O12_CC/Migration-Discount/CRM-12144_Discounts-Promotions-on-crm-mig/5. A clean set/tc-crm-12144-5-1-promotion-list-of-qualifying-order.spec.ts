@@ -29,28 +29,28 @@ import {
  *  CRM-12144_5.1 - Open the Promotion list of a qualifying new order   (crm-mig)
  * ================================================================================================
  * Test Case ID     : CRM-12144_5.1
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 51, Jira link empty)
+ * Jira             : CRM-12295 (master "Migration - Discount" row 55)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
+ * Revised          : 2026-11-03 - spec v7 re-sync (CRM-13848 B4, Aiva 2026-11-03): IS-CRM-FUNC-0085 adds "Enabled
+ *                    programs past their validity window are carried over as ended (IS-CRM-FUNC-0086-1)"; the audit is
+ *                    delivered (Discounts Program Audit v2, 29 Oct 2026): the one program it marks as operating is PROG1
+ *                    Deal registration - Step 2's "exactly" is now scored against that set (was BLOCKED)
  * Baseline         : Discount_5.1 (Jira CRM-13793; tests/1.Project_CRM/10.Sales_Module/Discount/5. A clean set/
  *                    tc-discount-5-1-promotion-list-of-qualifying-order.spec.ts) - assertions ported unchanged
- * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0085
- * Source version   : master row CRM-12144_5.1 as read 2026-10-21 - re-check before trusting this spec
+ * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0085, IS-CRM-FUNC-0086-1
+ * Source version   : Jira CRM-12295 / master row 55 as re-synced to spec v7 on 2026-11-03 - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE)
  * Run as           : Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
  *
- * BLOCKED (not scored)
- * --------------------
- *   - Pre-condition 4 "Have the migration audit from the development team (programs kept / retired)" is NOT AVAILABLE:
- *     CRM-12467 row 2.3 is still to come. It is labelled [NOT AVAILABLE] in the steps and logged.
- *   - Step 2 expected "exactly the programs the audit keeps" is printed as BLOCKED (not scored). The Promotion list is
- *     printed for reference only. Every other check of the baseline stays scored (the Deal registration entry is in the
- *     list; the reward is -164.50).
+ * Audit data (Discounts Program Audit v2, 29 Oct 2026, Nathan Do on CRM-12144): "Only one of them still operates: Deal
+ * registration (PROG1). The other 15 keep their records and their history, but their validity windows have ended, so no
+ * new order can qualify for them." - AUDIT_OPERATING below.
  *
  * Summary
  * -------
- * The Promotion list of a new order with A2144B x 5 offers "Deal registration promotion, 10% on Product,
- * Support Services do not qualify"; picking it gives a reward of -164.50 (10 % of the 1,645.00 product line).
+ * The Promotion list of a new order with A2144B x 5 holds exactly "Deal registration promotion, 10% on Product, Support
+ * Services do not qualify" (the audit's one operating program); picking it gives a reward of -164.50.
  *
  * Command to run
  * --------------
@@ -74,17 +74,19 @@ import {
  *    3. Create a new opportunity in CRM > Pipeline with (LIST view - the kanban quick-create card lacks these fields):
  *         - Name        = Disc-Opp-<timestamp>
  *         - Customer    = Disc-Cust-<timestamp>
- *    4. Have the migration audit from the development team (programs kept / retired)   [NOT AVAILABLE - see above]
+ *    4. Have the migration audit from the development team: Discounts Program Audit v2 (29 Oct 2026, attached to CRM-12144)
  *  Executed Steps
  *    1. Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment
  *    2. On Order Lines, add A2144B with Ordered Qty 5 and open the Promotion list
  *    3. Pick Deal registration and click Save
  *  Expected Results
- *    2. The list holds exactly the programs the audit keeps, including "Deal registration promotion, 10% on Product, Support Services do not qualify"
- *       -> "exactly the programs the audit keeps" = BLOCKED (not scored); the Deal registration entry is asserted
+ *    2. The list holds exactly the one program the audit marks as operating, "Deal registration promotion, 10% on Product,
+ *       Support Services do not qualify"; none of the 15 programs the audit carries over as expired is listed
+ *       (IS-CRM-FUNC-0085, IS-CRM-FUNC-0086-1)
  *    3. The reward is 10% of the listed product line (-164.50): the program's configuration is intact
  *
- *  Port notes : accounts *_crm_mig; Mig helpers and Mig order-line reader; pre-condition 4 has no crm-mig equivalent yet.
+ *  Port notes : accounts *_crm_mig; Mig helpers and Mig order-line reader. The baseline's "includes Deal registration"
+ *  check is kept; the "exactly" check is crm-mig's (the audit exists only for the migration).
  * ================================================================================================
  */
 
@@ -95,7 +97,7 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (Thomas Semerich)',
   pre2: 'Pre-condition 2: On crm-mig, create a new company in Contacts: Name = Disc-Cust-<timestamp>, end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
   pre3: 'Pre-condition 3: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields): Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
-  pre4: 'Pre-condition 4: [NOT AVAILABLE - CRM-12467 row 2.3: the migration audit from the development team is still to come] Have the migration audit from the development team (programs kept / retired)',
+  pre4: 'Pre-condition 4: Have the migration audit from the development team: Discounts Program Audit v2 (29 Oct 2026, attached to CRM-12144)',
   s1: 'Step 1: Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment',
   s2: 'Step 2: On Order Lines, add A2144B with Ordered Qty 5 and open the Promotion list',
   s3: 'Step 3: Pick Deal registration and click Save',
@@ -104,6 +106,8 @@ const STEP = {
 
 const SKIP_CLEANUP = false; // true = keep the run's records for debugging (crm-mig rule: never leave it true)
 const SALES = users.sale_ic_thomas_crm_mig;
+/** Discounts Program Audit v2 (29 Oct 2026): the programs a new order can qualify for - "Only one of them still operates". */
+const AUDIT_OPERATING: string[] = [DISCOUNT_MIG.dealRegistration];
 const runs: DiscountRun[] = [];
 
 test.use({ actionTimeout: MIG_ACTION_TIMEOUT }); // a click that never becomes actionable fails here, not at 15 min
@@ -157,8 +161,9 @@ test.describe(`${TC} - Promotion list of a qualifying new order (crm-mig)`, () =
 
     await test.step(STEP.pre4, async () => {
       console.log(`\n--- ${STEP.pre4} ---`);
-      console.log('  - NOT AVAILABLE: the migration audit from the development team (programs kept / retired) is still to come (CRM-12467 row 2.3).');
-      console.log('  - Consequence: "exactly the programs the audit keeps" is BLOCKED (not scored); every other check stays scored.');
+      console.log('  - Source    : "Discounts Program Audit.pdf" v2 (last updated 29 Oct 2026), Nathan Do, attached to CRM-12144 on 2026-10-30');
+      console.log(`  - Operating : ${AUDIT_OPERATING.join(' | ')} (PROG1 - "It is the only program a new order can qualify for")`);
+      console.log('  - Carried over as expired (never offered on a new order): 15 programs, Trade-in Promotion 5% included');
     });
 
     // ================= Steps =================
@@ -173,15 +178,22 @@ test.describe(`${TC} - Promotion list of a qualifying new order (crm-mig)`, () =
       await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '1,645.00');
       await dealElementPage.blurForm();
       const options = await dealElementPage.getPromotionOptions('', { keepOpen: true });
-      console.log('  BLOCKED (not scored) - "exactly the programs the audit keeps": the migration audit is NOT AVAILABLE (CRM-12467 row 2.3, still to come).');
-      console.log(`  Full Promotion list crm-mig offers, printed for reference only (${options.length} entries):`);
+      console.log(`  Promotion list crm-mig offers (${options.length} entries):`);
       options.forEach((o, i) => console.log(`    ${i + 1}. ${o}`));
+      const extra = options.filter((o) => !AUDIT_OPERATING.includes(o));
+      const missing = AUDIT_OPERATING.filter((o) => !options.includes(o));
       await recordChecks(page, testInfo, checks, [
         {
           what: 'Step 2 - the Promotion list includes the Deal registration program',
           expected: DISCOUNT_MIG.dealRegistration,
           actual: options.length ? options.join(' | ') : '(empty list)',
           passed: options.includes(DISCOUNT_MIG.dealRegistration),
+        },
+        {
+          what: 'Step 2 - the Promotion list holds exactly the program(s) the audit marks as operating (IS-CRM-FUNC-0085, IS-CRM-FUNC-0086-1)',
+          expected: `exactly ${AUDIT_OPERATING.length} entry: ${AUDIT_OPERATING.join(' | ')} (any other entry is a FAIL - an expired program carried over as ended must never apply to a new order, and a program the audit does not name is not part of the carried-over set)`,
+          actual: `${options.length} entr${options.length === 1 ? 'y' : 'ies'}: ${options.join(' | ') || '(empty list)'}${extra.length ? ` - not in the audit's operating set: ${extra.join(' | ')}` : ''}${missing.length ? ` - missing: ${missing.join(' | ')}` : ''}`,
+          passed: extra.length === 0 && missing.length === 0,
         },
       ], `${TC} - Step 2 Promotion list`, [DISCOUNT_HIGHLIGHT.promotionField, DISCOUNT_HIGHLIGHT.promotionList]);
       await dealElementPage.closePromotionList();
