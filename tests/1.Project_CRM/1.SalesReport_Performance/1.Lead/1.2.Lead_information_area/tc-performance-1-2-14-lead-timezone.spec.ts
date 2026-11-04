@@ -9,9 +9,13 @@ import { CommonUtils } from '@helpers/common.utils';
  * Test Case ID: TC.Performance.1.2.14
  *
  * Command to run:
- * npx playwright test --grep "TC\\.Performance\\.1\\.1\\.1\\.16:" --project=SalesReport_Performance
+ * npx playwright test --grep "TC\\.Performance\\.1\\.2\\.14:" --project=SalesReport_Performance
  *
  * Objective: Verify the Timezone and the Timezone offset on the saved Lead are filled and consistent
+ *
+ * EXPECTED RESULT CHANGED 2026-11-04 (tester's decision): Timezone offset = UTC +0000 or UCT +0000
+ * (both pass - pre-production renders "UCT +0000", crm-mig renders "UTC +0000"). It replaces the three checks "Timezone filled / Timezone offset filled / offset names the same
+ * Timezone". The crm-mig port CRM-12370_1.2.14 asserts the same value.
  *
  * The spec creates its own fresh Lead on pre-production, marked with the run token
  * <unique> (a timestamp) so the record can always be found again, then re-reads the
@@ -19,6 +23,9 @@ import { CommonUtils } from '@helpers/common.utils';
  */
 
 const TC = 'TC.Performance.1.2.14';
+
+/** Accepted Timezone offsets on the saved Lead (tester's expected result, 2026-11-04). */
+const EXPECTED_TZ_OFFSETS = ['UTC +0000', 'UCT +0000'];
 
 // One source of truth: the stdout banner and the test.step label are the same string.
 const STEP = {
@@ -135,10 +142,9 @@ test.describe(`${TC} - Timezone`, () => {
       const tzOffset = await leadPage.readFieldValue('tz_offset');
       console.log('VERIFY - Timezone on the saved Lead');
       console.log(`  Timezone        : "${tz}"`);
-      console.log(`  Timezone offset : "${tzOffset}"`);
-      expect(tz, 'Timezone must be filled').not.toBe('');
-      expect(tzOffset, 'Timezone offset must be filled').not.toBe('');
-      expect(tzOffset, 'Timezone offset must name the same Timezone').toContain(tz);
+      const expectedText = EXPECTED_TZ_OFFSETS.map((v) => `"${v}"`).join(' or ');
+      console.log(`  Timezone offset : "${tzOffset}"  (expected ${expectedText})`);
+      expect(EXPECTED_TZ_OFFSETS, `Timezone offset "${tzOffset}" must be ${expectedText}`).toContain(tzOffset);
     });
   });
 });

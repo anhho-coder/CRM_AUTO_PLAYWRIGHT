@@ -22,7 +22,11 @@ import {
  * -> O12 CE module field) and the poll durations are adapted. Where O12 CE behaves differently this
  * TC FAILS - that failure IS the migration finding and must never be softened into a pass.
  *
- * Source manual TC (pre-production): TC.Performance.1.1.1.16
+ * EXPECTED RESULT CHANGED 2026-11-04 (tester's decision): Timezone offset = UTC +0000 or UCT +0000
+ * (both pass - pre-production renders "UCT +0000", crm-mig renders "UTC +0000"). It replaces the three checks "Timezone filled / Timezone offset filled / offset names the same
+ * Timezone". The baseline TC.Performance.1.2.14 was changed the same way, so the two stay identical.
+ *
+ * Source manual TC (pre-production): TC.Performance.1.2.14 (CRM-12749)
  * (tests/1.Project_CRM/1.SalesReport_Performance/1.Lead). Section II ports the pre-production
  * Lead data-verification set to the O12 CE Migration server: the same business fact is verified,
  * against the O12 CE form and its own field names.
@@ -31,7 +35,6 @@ import {
  *   - Login as Admin (`users.admin_crm_mig`) - the only account provisioned on the Migration server.
  *   - CRM > Leads is opened by URL hash (HomePageMig) because the Mig sidebar theme hides the navbar.
  *   - "Lead Form" is the O12 CE module field `lead_form` (CRM Developer tab); pre-production uses the Studio field `x_studio_lead_sorce`, which does NOT exist on crm-mig.
- *   - `tz` and `tz_offset` exist on crm.lead on crm-mig but the arch walk of 2026-09-17 did not find them declared in the Lead form view, so this TC is expected to FAIL until they are back on the view - that failure is the finding.
  *
  * Pre-conditions:
  *   The O12 CE Migration server is reachable and the Admin account can log in (CRM-12325_1.1.1).
@@ -47,7 +50,7 @@ import {
  *
  * Verification Points:
  *   1. The Lead is saved.
- *   2. Neither `tz` nor `tz_offset` is rendered on the O12 CE Lead form (parity gap).
+ *   2. Timezone offset = UTC +0000 or UCT +0000.
  *
  * crm-mig house rule: this spec CREATES data and removes it in teardown. Every record it makes
  * carries the marker "TEST CRM-12370_1.2.14 <timestamp>" so the afterAll sweep can find it again even when
@@ -58,6 +61,9 @@ import {
  */
 
 const TC = 'CRM-12370_1.2.14';
+
+/** Accepted Timezone offsets on the saved Lead (tester's expected result, 2026-11-04 - same as the baseline). */
+const EXPECTED_TZ_OFFSETS = ['UTC +0000', 'UCT +0000'];
 
 const SKIP_CLEANUP_LEAD = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
 // Set true ONLY to keep a broken record for hand-debugging - the 16:00 leftover-data check then reports it.
@@ -176,26 +182,23 @@ test.describe(`${TC} - Timezone`, () => {
       const tzOffset = await leadPage.readFieldValue('tz_offset');
       console.log('==================== VERIFY ====================');
       console.log(`  Timezone        : "${tz}"`);
-      console.log(`  Timezone offset : "${tzOffset}"`);
+      const expectedText = EXPECTED_TZ_OFFSETS.map((v) => `"${v}"`).join(' or ');
+      const offsetOk = EXPECTED_TZ_OFFSETS.includes(tzOffset);
+      console.log(`  Timezone offset : "${tzOffset}"  (expected ${expectedText})`);
       console.log('===============================================');
       let __verifyPassed = false;
       try {
-        expect(tz, 'Timezone must be filled').not.toBe('');
-        expect(tzOffset, 'Timezone offset must be filled').not.toBe('');
-        expect(tzOffset, 'Timezone offset must name the same Timezone').toContain(tz);
+        expect(EXPECTED_TZ_OFFSETS, `Timezone offset "${tzOffset}" must be ${expectedText}`).toContain(tzOffset);
         __verifyPassed = true;
       } finally {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Timezone`,
           passed: __verifyPassed,
           outlines: [
-            { selector: '.o_form_view [name="tz"]', passed: tz !== '' },
-            { selector: '.o_form_view [name="tz_offset"]', passed: tzOffset !== '' && tzOffset.includes(tz) },
+            { selector: '.o_form_view [name="tz_offset"]', passed: offsetOk },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [
-            { what: 'Timezone must be filled', expected: 'not BLANK', actual: tz, ok: tz !== '' },
-            { what: 'Timezone offset must be filled', expected: 'not BLANK', actual: tzOffset, ok: tzOffset !== '' },
-            { what: 'Timezone offset must name the same Timezone', expected: `contains "${tz}"`, actual: tzOffset, ok: tzOffset.includes(tz) },
+            { what: 'Timezone offset', expected: expectedText, actual: tzOffset, ok: offsetOk },
           ]),
         }).catch(() => {});
       }
