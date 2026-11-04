@@ -254,11 +254,26 @@ export async function createOpportunityForCompany(
   await opportunityPage.selectCountry('United States');
   await opportunityPage.selectState('Maryland');
   await opportunityPage.selectSalesTeam('BDEU');
-  await opportunityPage.selectSalesperson(salesperson.displayName);
+  // Salesperson defaults to the signed-in user. Re-picking it is skipped when it already reads right: on 2026-11-04 the
+  // autocomplete never offered the typed name, selectSalesperson returned false and left its dropdown open over the
+  // form, and the next clicks waited behind it until the 15-min test timeout (4 runs, Discount_1.5 / 1.6).
+  const salespersonNow = (await page.locator("div[name='user_id'] input").first().inputValue().catch(() => '')).trim();
+  if (salespersonNow === salesperson.displayName) {
+    console.log(`  - Salesperson already ${salespersonNow} (default = the signed-in user) - not re-picked`);
+  } else if (!(await opportunityPage.selectSalesperson(salesperson.displayName))) {
+    throw new Error(`Opportunity ${oppName}: Salesperson "${salesperson.displayName}" was not offered by the autocomplete (field reads "${salespersonNow}")`);
+  }
   await opportunityPage.uncheckCreatedManually().catch(() => {});
   // same CRM Developer > Lead Form the pre-prod suites set before saving an opportunity
   await opportunityPage.clickCRMDeveloperTab().catch(() => {});
-  await opportunityPage.fillLeadForm('Download Free Trial').catch(() => {});
+  // fillLeadForm clicks with no timeout: when the CRM Developer page did not open, its hidden Lead Form input made that
+  // click wait until the 15-min test timeout (Discount_1.5 / 1.6, 2026-11-04) - fill it only once it is on screen.
+  const leadForm = page.locator('xpath=(//input[@name="x_studio_lead_sorce"])[2]');
+  if (await leadForm.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear }).then(() => true, () => false)) {
+    await opportunityPage.fillLeadForm('Download Free Trial').catch(() => {});
+  } else {
+    console.log('  ⚠ Lead Form (CRM Developer page) is not on screen - left empty');
+  }
   await opportunityPage.selectStage('New');
   await opportunityPage.clickSave();
   await opportunityPage.waitForSaveComplete();
@@ -311,6 +326,8 @@ export interface TestProgram {
   customerName?: string;
   /** Min qty (>=) */
   minQty?: number;
+  /** Products condition ("Based on Products"): the product default codes the order must hold */
+  products?: string[];
   /** Valid from / Valid to, 'YYYY-MM-DD HH:mm:ss' UTC */
   validFrom?: string;
   validTo?: string;
@@ -363,6 +380,7 @@ export class ProgramOwner {
       rule_minimum_amount: 0,
       rule_partners_domain: p.customerName ? JSON.stringify([['name', '=', p.customerName]]) : '[]',
     };
+    if (p.products) values.rule_products_domain = JSON.stringify([['default_code', 'in', p.products]]);
     if (p.scope === 'order') values.discount_apply_on = 'on_order';
     else {
       values.discount_apply_on = 'specific_products';
@@ -379,6 +397,7 @@ export class ProgramOwner {
     console.log(`    - Scope                = ${p.scope === 'order' ? 'order' : `specific products ${p.scope.products.join(', ')}`}`);
     console.log(`    - Customer condition   = ${p.customerName ? `customer name is ${p.customerName}` : '(none)'}`);
     console.log(`    - Min qty              = ${p.minQty !== undefined ? `>= ${p.minQty}` : '(none)'}`);
+    console.log(`    - Products condition   = ${p.products ? `Internal Reference in ${p.products.join(', ')}` : '(none)'}`);
     console.log(`    - Valid from / to      = ${p.validFrom ?? '-'} / ${p.validTo ?? '-'}`);
     console.log('    - Promo code           = (none - the reference system offers coded programs only through a code)');
     return id;
