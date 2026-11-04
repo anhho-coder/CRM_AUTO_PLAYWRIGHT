@@ -2,7 +2,7 @@ import { test } from '@playwright/test';
 import { HomePageMig, LeadPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import {
-  baselineDetails, newLeadMergingRun, loginAndOpenLeadsOnMig, MergeVerifyLog, teardownLeadMergingRun, sweepLeadMergingRunsAfterAll, LeadMergingRun, CreatedRecord, createLeadOnMig, openRecordByUrl, pollForMergeOnMig, verifyStep, publicEmail, recordName,
+  baselineDetails, newLeadMergingRun, loginAndOpenLeadsOnMig, MergeVerifyLog, teardownLeadMergingRun, sweepLeadMergingRunsAfterAll, LeadMergingRun, CreatedRecord, createLeadOnMig, createLeadWithDealRegistrationOnMig, openRecordByUrl, pollForMergeOnMig, verifyStep, publicEmail, recordName,
 } from '@helpers/lead-merging-mig.helper';
 
 /**
@@ -10,15 +10,19 @@ import {
  *  CRM-12370_9.2.2 - Lead Merging: Deal registration cloned to the Target Lead (same public email) (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.2.2
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-04
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-1992_1.2.1.1.1 (Jira CRM-9132) - assertions ported unchanged
  *                    tests/1.Project_CRM/3.Lead_Merging/CRM-1992_Lead_merging/1.Deal-registration-will-be-cloned-from-Source-Lead-to-Target-Lead/1.2.Multiple-leads-same-public-email/1.2.1.Leads-with-different-priority-if/1.2.1.1.Lower-priority-lead-is-created-manually-and-has-tag-can_merge-and/tc-crm-1992-1-2-1-1-1-merge-leads-same-public-email-with-download-free-trial.spec.ts
  *  Source version  : CRM-9132 updated 2026-03-20T05:34+0200 - re-check before trusting this spec
- *  Bug (SKIPPED)   : CRM-14065 (Company Name, Verify #2 / #16), CRM-14071 (Deal registration not cloned, Verify #12-#14)
- *                    - skipped on the tester's request 2026-11-02; un-skip when both are fixed.
+ *  Bug             : CRM-14065 (Company Name, Verify #2 / #16) - fixed, Closed 2026-11-02.
+ *                    CRM-14071 (Deal registration not cloned, Verify #12-#14) - resolved Not a bug 2026-11-04 (Khang): Lead #2
+ *                    must be created with the Deal registration already set. Un-skipped and Condition #2 changed on the
+ *                    tester's request 2026-11-04 (see deviations).
+ *  Bug (SKIPPED)   : CRM-14069 - skipped on the tester's request 2026-11-04 (run 2026-11-04: 24/25 PASS, only Verify #16
+ *                    step 7.2 red - merged-away Lead #2 shows "Company Name Lead 2"); un-skip when CRM-14069 is fixed.
  *
  * --------------------------------------------------------------------------------------------
  *  BLOCKED
@@ -37,8 +41,7 @@ import {
  *  Command to run
  * --------------------------------------------------------------------------------------------
  *  npx playwright test --grep "CRM-12370_9\.2\.2:" --project=MigSmoke --workers=1
- *  npx playwright test --grep "CRM-14065" --project=MigSmoke --workers=1
- *  npx playwright test --grep "CRM-14071" --project=MigSmoke --workers=1
+ *  npx playwright test --grep "CRM-14069" --project=MigSmoke --workers=1
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - the assertions are the baseline's)
@@ -51,6 +54,11 @@ import {
  *    (CRM-12621), once the lead is ~10 min old (measured 2026-10-28). The pre-prod deferred no-merge re-check is
  *    replaced by that full-window watch.
  *  - Run marker: every e-mail carries Test-crm12370-9-2-2 (gmail local part)-<runId>, record names "... CRM-12370_9.2.2 <runId>".
+ *  - Condition #2 (CRM-14071, 2026-11-04): Lead #2 is created in ONE create with the Deal registration already set
+ *    (Registered deal = TRUE, start / end date = today) through the logged-in admin session, then opened in the UI
+ *    (createLeadWithDealRegistrationOnMig). On crm-mig the auto-merge runs 2-3 s after the lead is created and the
+ *    Deal registration fields are read-only on the New form, so the baseline's steps 4-7 (SAVE -> EDIT -> Deal
+ *    registration -> SAVE) left nothing to clone. Every other value of Condition #2 and every assertion is the baseline's.
  *  - Each verification point is a soft assertion (one 55-min run reports every difference); values unchanged.
  *  - Clean-up: afterEach deletes the records this run created and the partners carrying the run marker;
  *    afterAll sweeps the run marker (deny-list, counted first).
@@ -149,13 +157,13 @@ import {
  */
 
 const TC = 'CRM-12370_9.2.2';
-const SKIP_CLEANUP_MIG = true; // 2026-11-02: teardown OFF on the tester's request - records kept for investigation; delete them by run marker afterwards
+const SKIP_CLEANUP_MIG = false; // 2026-11-04: teardown back ON with the un-skip (was OFF 2026-11-02 for the investigation)
 
 /** Step labels - one source of truth for the test.step() label AND the stdout banner. */
 const STEP = {
   pre: 'Pre-condition 1-2: After login successful, click at "CRM" button, then select "Leads" item then "Leads" sub-item (crm-mig: opened by URL hash - the sidebar theme hides the top menu)',
   c1: 'Condition #1 (steps 1-5): Create Lead #1 with Deal Registration (Created Manually = TRUE)',
-  c2: 'Condition #2 (steps 1-8): Create Lead #2 with Deal Registration (Created Manually = FALSE, Tag = Can_Merge)',
+  c2: 'Condition #2 (steps 1-8): Create Lead #2 with Deal Registration (Created Manually = FALSE, Tag = Can_Merge) (crm-mig, CRM-14071: created in ONE create with the Deal registration already set - the auto-merge runs 2-3 s after creation and the Deal registration fields are read-only on the New form)',
   s1: 'Step 1: Wait for 1 minute for Lead Merging happened (crm-mig: poll up to 35 min - a merge missed at creation is only made by the 20-min re-scan, once the lead is ~10 min old)',
   s2: 'Step 2: Open the Lead 1 using URL_Lead#1',
   s3: 'Step 3: Verify the following fields on Lead #1',
@@ -207,9 +215,9 @@ test.describe(`${TC} - Lead Merging: Same Public Email with Deal Registration`, 
     await sweepLeadMergingRunsAfterAll(browser, SKIP_CLEANUP_MIG);
   });
 
-  // Skipped due to bugs CRM-14065 and CRM-14071 - declaration-level skip, so no browser starts and no record is
-  // created; un-skip when both are fixed.
-  test.skip(`${TC}: [CRM-8929] [CRM-10787] Verify merging leads with same public email (Created Manually = TRUE, Deal Registration) [CRM-14065] [CRM-14071]`, baselineDetails(TC), async ({ page }, testInfo) => {
+  // Skipped due to bug CRM-14069 - declaration-level skip, so no browser starts and no record is created;
+  // un-skip when CRM-14069 is fixed.
+  test.skip(`${TC}: [CRM-8929] [CRM-10787] Verify merging leads with same public email (Created Manually = TRUE, Deal Registration) [CRM-14069]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const leadPage = new LeadPageMig(page);
@@ -236,7 +244,7 @@ test.describe(`${TC} - Lead Merging: Same Public Email with Deal Registration`, 
 
     await test.step(STEP.c2, async () => {
       console.log(`\n--- ${STEP.c2} ---`);
-      lead2 = await createLeadOnMig(page, testInfo, leadPage, {
+      lead2 = await createLeadWithDealRegistrationOnMig(page, testInfo, leadPage, {
         name: lead2Name, email: sharedEmail, companyName: 'Company Name Lead 2', contactName: 'Contact Name Lead 2', street: '123street', country: 'United States', state: 'Texas', salesTeam: null, salesperson: null, createdManually: false, tags: ['Can_Merge'], leadForm: '', dealRegistration: { start: today, end: today }
       }, 'Condition #2 - Lead #2');
     });

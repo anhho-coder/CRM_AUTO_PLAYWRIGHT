@@ -221,6 +221,72 @@ export async function createLeadOnMig(
   return { id, url };
 }
 
+/**
+ * CRM-14071 (Khang, resolved Not a bug 2026-11-04; tester-approved the same day): on crm-mig the auto-merge runs
+ * 2-3 s after a lead is created, and the Deal registration fields are read-only on the New form - so the baselines'
+ * SAVE -> EDIT -> Deal registration -> SAVE gives the merge nothing to clone. This creates the lead in ONE create
+ * with the Deal registration already set, through the logged-in session (/web/dataset/call_kw - the values the form
+ * would save, every one of them the baseline's), then opens it in the UI for the end-of-section screenshot.
+ * Call it from the CRM > Leads list: the form URL reuses that list's action / menu.
+ */
+export async function createLeadWithDealRegistrationOnMig(
+  page: Page,
+  testInfo: TestInfo,
+  leadPage: LeadPage,
+  input: LeadInput,
+  label: string,
+): Promise<CreatedRecord> {
+  if (!input.dealRegistration) throw new Error(`${label}: no dealRegistration given - use createLeadOnMig`);
+  if (typeof input.salesTeam === 'string' || typeof input.salesperson === 'string') {
+    throw new Error(`${label}: a named Sales Team / Salesperson is not supported here - only cleared (null) or as the form opens`);
+  }
+  logLeadInput(input, 'Lead');
+  console.log('  - Created by          : one create with the Deal registration set (CRM-14071), then opened in the UI');
+  const platform = new MigPlatformPage(page);
+  const listUrl = page.url();
+  type IdRow = { id: number };
+  const country = await platform.callKw<IdRow[]>('res.country', 'search_read', [[['name', '=', input.country]], ['id']], { limit: 2 });
+  if (country.length !== 1) throw new Error(`${label}: country "${input.country}" matched ${country.length} rows`);
+  const state = await platform.callKw<IdRow[]>('res.country.state', 'search_read', [
+    [['country_id', '=', country[0].id], ['name', '=ilike', `${input.state}%`]], ['id'],
+  ], { limit: 2 });
+  if (state.length !== 1) throw new Error(`${label}: state "${input.state}" matched ${state.length} rows`);
+  const tags = input.tags?.length
+    ? await platform.callKw<IdRow[]>('crm.lead.tag', 'search_read', [[['name', 'in', input.tags]], ['id']], { limit: 10 })
+    : [];
+  if (tags.length !== (input.tags?.length ?? 0)) throw new Error(`${label}: tags ${JSON.stringify(input.tags)} matched ${tags.length} rows`);
+
+  const vals: Record<string, unknown> = {
+    type: 'lead',
+    name: input.name,
+    email_from: input.email,
+    partner_name: input.companyName,
+    street: input.street,
+    country_id: country[0].id,
+    state_id: state[0].id,
+    lead_form: input.leadForm === '' ? false : input.leadForm,
+    registered_deal: true,
+    deal_registration_start_date: input.dealRegistration.start,
+    deal_registration_end_date: input.dealRegistration.end,
+  };
+  if (input.contactName !== undefined) vals.contact_name = input.contactName;
+  if (input.salesTeam === null) vals.team_id = false;
+  if (input.salesperson === null) vals.user_id = false;
+  if (input.createdManually !== undefined) vals.is_create_manual = input.createdManually;
+  if (tags.length) vals.tag_ids = [[6, 0, tags.map((t) => t.id)]];
+
+  const id = String(await platform.callKw<number>('crm.lead', 'create', [vals], { context: { default_type: 'lead' } }));
+  registerMigRecord('crm.lead', id, label);
+  const action = /[#&]action=(\d+)/.exec(listUrl)?.[1];
+  const menu = /[#&]menu_id=(\d+)/.exec(listUrl)?.[1];
+  const url = `${new URL(listUrl).origin}/web#id=${id}${action ? `&action=${action}` : ''}&model=crm.lead&view_type=form${menu ? `&menu_id=${menu}` : ''}`;
+  await openRecordByUrl(page, leadPage, url);
+  console.log(`  -> ${label} saved: id ${id}`);
+  console.log(`     URL: ${url}`);
+  await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${label} created (ID: ${id})`);
+  return { id, url };
+}
+
 /** CREATE -> fill -> SAVE one Opportunity from CRM > Pipeline (list view), registered for clean-up. */
 export async function createOpportunityOnMig(
   page: Page,
