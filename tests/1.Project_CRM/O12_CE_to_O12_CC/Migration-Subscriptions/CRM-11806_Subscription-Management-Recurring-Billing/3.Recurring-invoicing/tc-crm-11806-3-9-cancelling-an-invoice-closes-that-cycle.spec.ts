@@ -17,6 +17,8 @@ import {
   createSubscriptionMig,
   deleteSubscriptionOnPeer,
   migRunCustomer,
+  readMigBillingEvents,
+  cancelledCycleEvent,
 } from '@helpers/crm-11806-mig-subscription.helper';
 
 /**
@@ -55,7 +57,23 @@ import {
  *
  *  Two things happened on 2026-11-04, and they are separate:
  *
- *  (1) MEASURED. The pre-production baseline for this case
+ *  CORRECTED 2026-11-04, LATER THE SAME DAY - (1) below was read too generously, and VP4 has been
+ *  extended because of it. The invoice COUNT cannot test IS-CRM-FUNC-0195: "no further invoice for
+ *  THAT cycle" is about one cycle, while the smart button totals all of them. The second invoice
+ *  this case raises is the NEXT period's, not a re-issue - read off `nakivo.billing.event` on the
+ *  peer for SUB00296 / SUB00300 / SUB00302 / SUB00303, where the second event's `period_date` is
+ *  one month after the first. `origin` does not separate them either; it carries the subscription
+ *  reference, not the period.
+ *
+ *  What those four subscriptions DO show is that the cancelled cycle's event goes back to
+ *  `state = "pending"` with its `remote_document_id` cleared and a "Cancelled on the CRM" history
+ *  line - the period is queued to be invoiced again, which is behaviour (A), not the (B) Aiva
+ *  decided. No third invoice appeared during the runs only because the peer's scheduled action did
+ *  not fire in the test window. So CRM-13907 is NOT fixed, and VP4b now asserts that cycle state
+ *  directly instead of inferring it from a count. Expect this case to be RED on VP4b until the
+ *  crm-mig change is made.
+ *
+ *  (1) MEASURED, and now qualified by the paragraph above. The pre-production baseline for this case
  *      (tests/1.Project_CRM/9.CRM_Module/8.Subscriptions/3.Recurring-invoicing/
  *       tc-subscription-3-9-cancelling-an-invoice-closes-that-cycle.spec.ts, run
  *      2026-11-04-100833, subscription SUB1869) produced the SAME four readings as this spec's
@@ -174,8 +192,10 @@ import {
  *   VP2. Invoice N reads Cancelled
  *   VP3. "Date of Next Invoice" is still D2 - cancelling the invoice did NOT move it
  *        (IS-CRM-FUNC-0195)
- *   VP4. The "Invoices" smart button reads 2 - the cancelled invoice is kept on record by design,
- *        and the second billing run is recorded next to it (see the OPEN QUESTION above)
+ *   VP4a. The "Invoices" smart button reads 2 - the cancelled invoice is kept on record by design,
+ *         and the second billing run is recorded next to it (see the OPEN QUESTION above)
+ *   VP4b. The cancelled cycle is CLOSED: its `nakivo.billing.event` on the peer is not back in
+ *         state "pending" (IS-CRM-FUNC-0195). A "pending" here is the defect of CRM-13907
  *   VP5. S is still In Progress, and the cancelled cycle is NOT counted as a skipped cycle under
  *        IS-CRM-FUNC-0146
  *
@@ -403,6 +423,20 @@ test.describe(`${TC_ID} - Cancelling a subscription invoice closes that cycle`, 
       const countAfterSecondRun = await subscriptionPage.getInvoiceCount();
       const expectedCount = countAfterFirstRun + 1;
       const ok = countAfterSecondRun === expectedCount;
+
+      // The count alone cannot test IS-CRM-FUNC-0195 - see readMigBillingEvents() for the four
+      // subscriptions that proved it. The service's own record of the cycle is what carries the
+      // answer, so it is read here rather than inferred from how many invoices exist.
+      // No peer id means the fixture never told us which subscription to read, so the check cannot
+      // run - VP4b then reports "could not be identified", which is a miss, not a pass.
+      const events = peerId ? await readMigBillingEvents(page, peerId) : [];
+      const cancelled = cancelledCycleEvent(events);
+      const cycleClosed = !!cancelled && cancelled.state !== 'pending';
+      const cycleActual = cancelled
+        ? `the cycle of ${cancelled.period_date} is state="${cancelled.state}"` +
+          (cancelled.remote_document_id ? ` (invoice ${cancelled.remote_document_id})` : ' with its invoice reference cleared')
+        : 'no billing event on the peer carries a "Cancelled on the CRM" history line';
+
       const lines = logVerifyBlock(
         [
           {
@@ -414,19 +448,34 @@ test.describe(`${TC_ID} - Cancelling a subscription invoice closes that cycle`, 
               `expected ${expectedCount} invoice(s) after the second billing run, got ${countAfterSecondRun} ` +
               `(${countAfterFirstRun} before the cancel)`,
           },
+          {
+            what: 'the cancelled cycle is CLOSED, not queued to be invoiced again (IS-CRM-FUNC-0195)',
+            expected: 'the billing event of the cancelled cycle is not back in state "pending"',
+            actual: cycleActual,
+            pass: cycleClosed,
+            difference: cancelled
+              ? `the cycle of ${cancelled.period_date} went back to state "${cancelled.state}" - the period is owed again ` +
+                'and the peer will invoice it once its scheduled action runs. This is the defect reported in CRM-13907'
+              : 'the cancelled cycle could not be identified on the peer, so this check proves nothing - treat it as not run',
+          },
         ],
-        'the cancelled invoice is retained and the second billing run is recorded',
+        'the cancelled invoice is retained, the next cycle is billed, and the cancelled cycle is closed',
       );
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
-        name: `${TC_ID} - VP4 - invoice count after re-billing`,
-        passed: ok,
+        name: `${TC_ID} - VP4 - the cancelled cycle after re-billing`,
+        passed: ok && cycleClosed,
         highlight: EMBED,
         lines,
       }).catch(() => {});
       expect(
         countAfterSecondRun,
-        'VP4: the cancelled invoice is kept on record and the second billing run adds one next to it',
+        'VP4a: the cancelled invoice is kept on record and the second billing run adds one next to it',
       ).toBe(expectedCount);
+      expect(
+        cancelled ? cancelled.state : '(no cancelled cycle found on the peer)',
+        'VP4b: the cancelled cycle must be closed, not queued to be invoiced again (IS-CRM-FUNC-0195) - ' +
+          'a "pending" here is CRM-13907',
+      ).not.toBe('pending');
     });
 
     await test.step(STEP.s5, async () => {

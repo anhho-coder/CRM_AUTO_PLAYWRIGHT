@@ -375,3 +375,86 @@ export function logObservation(label: string, specSays: string, observed: string
   console.log(`  Observed     : ${observed}`);
   console.log('  Result       : OBSERVED (not scored - awaiting the PM ruling on CRM-11806)');
 }
+
+/** One row of `nakivo.billing.event` on the peer - the service's own record of a billing cycle. */
+export interface MigBillingEvent {
+  id: number;
+  period_date: string;
+  state: string;
+  remote_document_id: number;
+  document_history: string;
+}
+
+/**
+ * Read the billing events of a subscription straight from the peer, through the embed frame.
+ *
+ * WHY THIS EXISTS - counting invoices cannot test IS-CRM-FUNC-0195.
+ *
+ * "The subscription service shall issue no further invoice for that cycle" is a statement about ONE
+ * cycle, and the "Invoices" smart button is a total over all of them. Measured 2026-11-04 on
+ * SUB00296 / SUB00300 / SUB00302 / SUB00303: after cancelling the first cycle's invoice and billing
+ * again, the button reads 2 - but the second invoice is the NEXT period's, not a re-issue. The two
+ * readings are indistinguishable by count, and `origin` does not separate them either: it carries
+ * the subscription reference, not the period. A claim that "a second invoice was raised for the
+ * cancelled cycle" was published on CRM-13907 on 2026-11-03 on exactly that mistake.
+ *
+ * What DOES carry the cycle is `nakivo.billing.event.period_date`, and what carries the service's
+ * intention is its `state`. On all four subscriptions above the cancelled cycle's event went back to
+ * `state = "pending"` with `remote_document_id` cleared and a history line "Cancelled on the CRM" -
+ * the period is queued to be invoiced again. No third invoice appeared only because the peer's
+ * scheduled action did not run during the test window, not because the cycle was closed.
+ *
+ * The call is made from INSIDE the embed frame on purpose: the model lives on the peer, and
+ * `/web/dataset/call_kw` has to be issued against the peer's own origin and session.
+ */
+export async function readMigBillingEvents(page: Page, peerId: number): Promise<MigBillingEvent[]> {
+  const frame = page.frames().find((fr) => /pre-sales-crm-mig/.test(fr.url()));
+  if (!frame) {
+    console.log('  - billing events: no peer frame is open on this page, nothing read');
+    return [];
+  }
+  const rows = (await frame
+    .evaluate(async (id: number) => {
+      const r = await fetch('/web/dataset/call_kw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'call',
+          params: {
+            model: 'nakivo.billing.event',
+            method: 'search_read',
+            args: [
+              [['subscription_id', '=', id]],
+              ['id', 'period_date', 'state', 'remote_document_id', 'document_history'],
+            ],
+            kwargs: { limit: 20, order: 'period_date asc' },
+          },
+        }),
+      });
+      const j = await r.json();
+      return j && j.result ? j.result : [];
+    }, peerId)
+    .catch((e) => {
+      console.log(`  - billing events: the read failed - ${String(e).replace(/\s+/g, ' ').slice(0, 200)}`);
+      return [] as MigBillingEvent[];
+    })) as MigBillingEvent[];
+
+  console.log(`  - billing events on the peer for subscription ${peerId}: ${rows.length}`);
+  for (const r of rows) {
+    console.log(`      period ${r.period_date}  state="${r.state}"  invoice=${r.remote_document_id || '(none)'}`);
+  }
+  return rows;
+}
+
+/**
+ * The billing event of the cycle whose invoice was cancelled on the CRM.
+ *
+ * Identified by its own history line rather than by position: the peer writes
+ * "Cancelled on the CRM: invoice <id>" into `document_history` when the CRM cancels it. Falling back
+ * to the earliest `period_date` would silently pick the wrong row on a subscription that had more
+ * than one cycle billed, so a miss is reported as a miss.
+ */
+export function cancelledCycleEvent(events: MigBillingEvent[]): MigBillingEvent | undefined {
+  return events.find((e) => /Cancelled on the CRM/i.test(e.document_history || ''));
+}
