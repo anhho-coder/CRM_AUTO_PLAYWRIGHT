@@ -12,8 +12,8 @@ import {
  *  CRM-12370_9.5.1 - Enterprise-account leads are protected from auto-merge (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.5.1
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-04
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-11284_1.1 (Jira CRM-11744) - assertions ported unchanged
@@ -21,15 +21,16 @@ import {
  *  Source version  : CRM-11744 updated 2026-07-15T11:35+0300 - re-check before trusting this spec
  *
  * --------------------------------------------------------------------------------------------
- *  BLOCKED (skipped unless MIG_ENTERPRISE_DOMAIN is set)
+ *  Migrated data touched (tester-approved 2026-11-04)
  * --------------------------------------------------------------------------------------------
  *  The baseline uses the real Enterprise-account domain naval-group.com. On crm-mig that is MIGRATED production data
- *  (read 2026-10-30: 4 company partners, 20+ leads/opps, 2 of them still active - 192942, 159641). Two test leads on
- *  that domain can be merged into those migrated records if the protection under test fails, and crm-mig rules forbid
- *  touching migrated records. No partner field marks a domain as "Enterprise account" (ir.model.fields has none), so
- *  a fresh Enterprise domain cannot be built either. Needs a tester decision: run it with
- *    MIG_ENTERPRISE_DOMAIN=<domain>  [MIG_ENTERPRISE_LOCALPART=<local part>]
- *  only for a domain the tester approves.
+ *  (read 2026-10-30: 4 company partners, 20+ leads/opps, 2 of them still active - 192942, 159641). No partner field
+ *  marks a domain as "Enterprise account" (ir.model.fields has none), so a fresh Enterprise domain cannot be built.
+ *  Run 2026-11-04 09:54: saving Lead #2 made the system (uid 1) write ALL 24 migrated res.partner records on
+ *  naval-group.com (4 companies + 20 contacts) - no lead was written, nothing merged. The tester approved that write
+ *  and un-skipped this spec on 2026-11-04 (it was BLOCKED/skipped unless MIG_ENTERPRISE_DOMAIN was set).
+ *  If the protection under test ever fails, the test leads can merge into the migrated leads above - report the ids.
+ *  Override: MIG_ENTERPRISE_DOMAIN=<domain>  [MIG_ENTERPRISE_LOCALPART=<local part>]
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -40,7 +41,7 @@ import {
  * --------------------------------------------------------------------------------------------
  *  Command to run
  * --------------------------------------------------------------------------------------------
- *  MIG_ENTERPRISE_DOMAIN=<domain> npx playwright test --grep "CRM-12370_9\.5\.1:" --project=MigSmoke --workers=1
+ *  npx playwright test --grep "CRM-12370_9\.5\.1:" --project=MigSmoke --workers=1
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - the assertions are the baseline's)
@@ -72,7 +73,7 @@ import {
 
 const TC = 'CRM-12370_9.5.1';
 const SKIP_CLEANUP_MIG = false;
-const ENTERPRISE_DOMAIN = process.env.MIG_ENTERPRISE_DOMAIN ?? '';
+const ENTERPRISE_DOMAIN = process.env.MIG_ENTERPRISE_DOMAIN || 'naval-group.com';
 const ENTERPRISE_LOCALPART = process.env.MIG_ENTERPRISE_LOCALPART ?? 'matthieu.herry';
 const ENTERPRISE_TAG = 'Enterprise account';
 
@@ -104,9 +105,6 @@ test.describe(`${TC} - Enterprise account lead is protected from auto-merge`, ()
   });
 
   test(`${TC}: Enterprise-account lead is protected - leads on an Enterprise domain do NOT auto-merge and both carry the "Enterprise account" tag`, baselineDetails(TC), async ({ page }, testInfo) => {
-    test.skip(!ENTERPRISE_DOMAIN,
-      'BLOCKED - tester decision needed: the only known Enterprise-account domain (naval-group.com) is migrated production ' +
-      'data on crm-mig, and test leads there can merge into migrated records. Set MIG_ENTERPRISE_DOMAIN to an approved domain.');
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const leadPage = new LeadPageMig(page);

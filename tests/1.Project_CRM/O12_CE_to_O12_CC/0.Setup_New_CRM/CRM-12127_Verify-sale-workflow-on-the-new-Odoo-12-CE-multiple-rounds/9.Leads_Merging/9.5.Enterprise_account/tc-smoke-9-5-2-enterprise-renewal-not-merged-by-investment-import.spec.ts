@@ -15,8 +15,8 @@ import {
  *  CRM-12370_9.5.2 - Enterprise renewal lead not merged by an Investment-import lead (O12 CE Migration server)
  * ============================================================================================
  *  Test Case ID    : CRM-12370_9.5.2
- *  Automation-Type : ported
- *  Automation-Date : 2026-10-30
+ *  Automation-Type : refactored
+ *  Automation-Date : 2026-11-04
  *  Run as          : Odoo Administrator (users.admin_crm_mig - anh.ho@nakivo.com)
  *  Host            : crm-mig.nakivo.site (db nakivoCE)
  *  Baseline        : CRM-11284_1.3 (Jira CRM-11745) - assertions ported unchanged
@@ -24,11 +24,13 @@ import {
  *  Source version  : CRM-11745 updated 2026-07-15T11:37+0300 - re-check before trusting this spec
  *
  * --------------------------------------------------------------------------------------------
- *  BLOCKED (skipped unless MIG_ENTERPRISE_DOMAIN is set)
+ *  Migrated data touched (tester-approved 2026-11-04)
  * --------------------------------------------------------------------------------------------
- *  Same blocker as CRM-12370_9.5.1: the baseline's Enterprise-account domain (naval-group.com) is migrated production
- *  data on crm-mig, a test lead there can merge into migrated records, and no partner field marks a fresh domain as
- *  Enterprise. Run only with MIG_ENTERPRISE_DOMAIN=<domain the tester approves> [MIG_ENTERPRISE_LOCALPART=<local part>].
+ *  Same domain as CRM-12370_9.5.1: the baseline's Enterprise-account domain (naval-group.com) is migrated production
+ *  data on crm-mig and no partner field marks a fresh domain as Enterprise. The tester approved writes to the 24
+ *  migrated res.partner records on that domain and un-skipped this spec on 2026-11-04 (it was BLOCKED/skipped unless
+ *  MIG_ENTERPRISE_DOMAIN was set). If the protection under test ever fails, the test lead can merge into a migrated
+ *  lead - report the ids. Override: MIG_ENTERPRISE_DOMAIN=<domain> [MIG_ENTERPRISE_LOCALPART=<local part>].
  *
  * --------------------------------------------------------------------------------------------
  *  Summary
@@ -39,7 +41,7 @@ import {
  * --------------------------------------------------------------------------------------------
  *  Command to run
  * --------------------------------------------------------------------------------------------
- *  MIG_ENTERPRISE_DOMAIN=<domain> npx playwright test --grep "CRM-12370_9\.5\.2:" --project=MigSmoke --workers=1
+ *  npx playwright test --grep "CRM-12370_9\.5\.2:" --project=MigSmoke --workers=1
  *
  * --------------------------------------------------------------------------------------------
  *  O12 CE deviations (mechanical only - the assertions are the baseline's)
@@ -74,7 +76,7 @@ import {
 
 const TC = 'CRM-12370_9.5.2';
 const SKIP_CLEANUP_MIG = false;
-const ENTERPRISE_DOMAIN = process.env.MIG_ENTERPRISE_DOMAIN ?? '';
+const ENTERPRISE_DOMAIN = process.env.MIG_ENTERPRISE_DOMAIN || 'naval-group.com';
 const ENTERPRISE_LOCALPART = process.env.MIG_ENTERPRISE_LOCALPART ?? 'matthieu.herry';
 const ENTERPRISE_TAG = 'Enterprise account';
 
@@ -121,9 +123,6 @@ test.describe(`${TC} - Enterprise renewal lead not merged by an Investment-impor
   });
 
   test(`${TC}: Enterprise-account renewal lead (IB NC Leads) is not merged by a same-domain lead IMPORTED from the Investment module`, baselineDetails(TC), async ({ page }, testInfo) => {
-    test.skip(!ENTERPRISE_DOMAIN,
-      'BLOCKED - tester decision needed: the only known Enterprise-account domain (naval-group.com) is migrated production ' +
-      'data on crm-mig, and test leads there can merge into migrated records. Set MIG_ENTERPRISE_DOMAIN to an approved domain.');
     test.setTimeout(CommonUtils.waitTimes.leadMergeMigTest);
     run = newLeadMergingRun(TC);
     const runId = run.runId;
