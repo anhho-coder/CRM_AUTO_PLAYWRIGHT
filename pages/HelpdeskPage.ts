@@ -2274,6 +2274,353 @@ export class HelpdeskPage extends BasePage {
 
   /** CSS hook of the list (rows or the empty-list helper) - for captureVerifyEvidence's highlight. */
   static readonly LIST_VIEW = '.o_list_view, .o_view_nocontent';
+
+  // ─── Spec v9 baseline (Confluence 231246777 v9, 2026-11-03): filters together, create form, Customer, meetings ────
+
+  /** CSS hook of the control-panel search box (its facets) - for the verify shot of a filter combination. */
+  static readonly SEARCH_FACETS = '.o_searchview';
+
+  /** In the ticket LIST on screen: CREATE -> the new ticket form in edit mode, nothing typed. */
+  async openCreateTicketForm(): Promise<void> {
+    const create = this.listCreateButton();
+    await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await create.click();
+    await this.waitForFormView(CommonUtils.waitTimes.abnormalWait);
+    await this.subjectField().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - New ticket form open (edit mode)');
+  }
+
+  /**
+   * The open form in EDIT mode: every visible field widget and whether Odoo marks it REQUIRED (class o_required_modifier -
+   * the field Odoo refuses to save empty), with its label (the form label, or the placeholder of a title field such as
+   * Subject). Tags the widgets of `tagNames` (FORM_FIELD) for the verify shot. Reads only.
+   */
+  async getFormFieldMarks(tagNames: string[]): Promise<Array<{ name: string; label: string; required: boolean }>> {
+    return this.page.evaluate((tags) => {
+      document.querySelectorAll('[data-pw-verify="odoo-field"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const out: Array<{ name: string; label: string; required: boolean }> = [];
+      const seen = new Set<string>();
+      document.querySelectorAll<HTMLElement>('.o_form_view .o_field_widget[name]').forEach((w) => {
+        const name = w.getAttribute('name') || '';
+        if (!name || seen.has(name) || w.offsetParent === null) return;
+        seen.add(name);
+        const id = w.getAttribute('id') || w.querySelector('input, textarea, select')?.getAttribute('id') || '';
+        const lab = id ? document.querySelector<HTMLElement>(`.o_form_view label[for="${id}"]`) : null;
+        const label = ((lab?.innerText || '') || w.getAttribute('placeholder') || w.querySelector('input')?.getAttribute('placeholder') || name).replace(/\s+/g, ' ').trim();
+        out.push({ name, label, required: w.classList.contains('o_required_modifier') });
+        if (tags.includes(name)) ((w.closest('tr') as HTMLElement | null) || (w.closest('.oe_title') as HTMLElement | null) || w).setAttribute('data-pw-verify', 'odoo-field');
+      });
+      return out;
+    }, tagNames);
+  }
+
+  /** Discard the open form's edits (a new record is dropped) and confirm Odoo's discard dialog when it raises one. */
+  async discardCreateForm(): Promise<void> {
+    await this.discardTicketEdits();
+    console.log('  - Form discarded - nothing saved');
+  }
+
+  /**
+   * EDIT mode: type `text` into the ticket's Customer (partner_id) and return what its autocomplete OFFERS, top to bottom
+   * ("Search More..." / "Create ..." entries included as drawn). Leaves the dropdown OPEN for the verify shot (AUTOCOMPLETE)
+   * unless `keepOpen` is false; closeAssignedToDropdown() closes any autocomplete. Nothing is chosen.
+   */
+  async getCustomerOptions(text: string, keepOpen = true): Promise<string[]> {
+    const input = this.page.locator("xpath=//div[contains(@class,'o_form_view')]//div[@name='partner_id']//input")
+      .or(this.page.locator('.o_form_view div[name="partner_id"] input')).first();
+    await input.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.click();
+    await input.fill('');
+    await input.pressSequentially(text, { delay: 20 });
+    await this.autocompleteItems().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    const items = (await this.autocompleteItems().allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    if (!keepOpen) await this.closeAssignedToDropdown();
+    return items;
+  }
+
+  /** EDIT mode: set the ticket's Customer (partner_id) to the first autocomplete option containing `name`. Throws when none. */
+  async setCustomerPartner(name: string): Promise<void> {
+    await this.getCustomerOptions(name);
+    const item = this.autocompleteItems().filter({ hasText: name }).first();
+    await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await item.click();
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Customer set to "${name}"`);
+  }
+
+  /**
+   * In the ticket LIST on screen: CREATE, type Subject and - only when given - Customer Email and Customer (partner), SAVE
+   * once. Returns { id } when Odoo saved the ticket, or { id: '', refusal } with the dialog / warning text Odoo raised
+   * instead. Never throws on a refusal - the caller asserts it.
+   */
+  async createTicketExpectingOutcome(data: { subject: string; customerEmail?: string; customer?: string }): Promise<{ id: string; refusal: string }> {
+    await this.openCreateTicketForm();
+    await this.subjectField().fill(data.subject);
+    console.log(`  - Subject        = ${data.subject}`);
+    if (data.customerEmail) await this.setFormInputByName('partner_email', data.customerEmail);
+    console.log(`  - Customer Email = ${data.customerEmail || 'blank'}`);
+    if (data.customer) await this.setCustomerPartner(data.customer);
+    console.log(`  - Customer       = ${data.customer || 'blank'}`);
+    await this.formSaveButton().click();
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    const popup = await this.getBlockingPopupText(CommonUtils.waitTimes.long);
+    if (popup) { console.log(`  - Save refused: ${popup}`); return { id: '', refusal: popup }; }
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.abnormalWait).catch(() => '');
+    if (!/^\d+$/.test(id)) return { id: '', refusal: `no record id after SAVE (url ${this.page.url()})` };
+    console.log(`  - Saved: helpdesk ticket #${id}`);
+    return { id, refusal: '' };
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY: the newest company partner with an e-mail whose domain several partners share - the
+   * Customer this baseline picks (an existing record, nothing is written to it). Throws when none.
+   */
+  async findCompanyPartnerOverRpc(): Promise<{ id: number; name: string; email: string }> {
+    // a real customer, not another spec's probe: the company behind the newest tickets of the Customer Support team (id 1)
+    const tickets = (await this.callKwReadOnly('helpdesk.ticket', 'search_read', [[['team_id', '=', 1], ['partner_id', '!=', false]], ['partner_id']], { limit: 200, order: 'id desc' })) as Array<{ partner_id: [number, string] }>;
+    const ids = Array.from(new Set(tickets.map((t) => t.partner_id[0])));
+    const rows = (await this.callKwReadOnly('res.partner', 'search_read', [[['id', 'in', ids], ['is_company', '=', true], ['email', '=like', '%@%.%'], ['active', '=', true]], ['name', 'email']], { limit: 1, order: 'id desc' })) as Array<Record<string, unknown>>;
+    if (!rows.length) throw new Error('HelpdeskPage.findCompanyPartnerOverRpc: no company with an e-mail behind the newest Customer Support tickets');
+    return { id: Number(rows[0].id), name: String(rows[0].name), email: String(rows[0].email) };
+  }
+
+  /** One JSON-RPC call_kw that WRITES, as the signed-in user - used only by set-up / teardown of the run's own records. */
+  private async callKwWrite(model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}): Promise<unknown> {
+    const res = await this.page.evaluate(async (p) => {
+      const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: p }) });
+      const j = await r.json();
+      if (j.error) return { error: String((j.error.data && j.error.data.message) || j.error.message) };
+      return { result: j.result as unknown };
+    }, { model, method, args, kwargs });
+    if ('error' in res) throw new Error(`HelpdeskPage ${model}.${method}: ${res.error}`);
+    return res.result;
+  }
+
+  /**
+   * [INTERNAL setup, Call API] Schedule, as the signed-in user, ONE activity of type `typeName` on ticket `ticketId`, assigned
+   * to the signed-in user and due on `deadline` (YYYY-MM-DD). Returns the activity id (the run deletes it in teardown).
+   */
+  async scheduleMyActivityOverRpc(ticketId: number | string, typeName: string, deadline: string, summary: string): Promise<number> {
+    const models = (await this.callKwReadOnly('ir.model', 'search_read', [[['model', '=', 'helpdesk.ticket']], ['id']], { limit: 1 })) as Array<{ id: number }>;
+    const types = (await this.callKwReadOnly('mail.activity.type', 'search_read', [[['name', '=', typeName]], ['id']], { limit: 2 })) as Array<{ id: number }>;
+    if (models.length !== 1 || types.length !== 1) throw new Error(`scheduleMyActivityOverRpc: helpdesk.ticket model ${models.length}, activity type "${typeName}" ${types.length} (need 1 each)`);
+    const uid = await this.page.evaluate(async () => {
+      const r = await fetch('/web/session/get_session_info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }) });
+      return Number((await r.json()).result.uid);
+    });
+    const id = Number(await this.callKwWrite('mail.activity', 'create', [{ res_model_id: models[0].id, res_id: Number(ticketId), activity_type_id: types[0].id, user_id: uid, date_deadline: deadline, summary }]));
+    console.log(`  - Activity #${id} "${typeName}" due ${deadline} scheduled on ticket #${ticketId} for uid ${uid}`);
+    return id;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: the signed-in user's time zone (res.users.tz) - the zone Odoo's context_today() uses. */
+  async readMyTzOverRpc(): Promise<string> {
+    const uid = await this.page.evaluate(async () => {
+      const r = await fetch('/web/session/get_session_info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: {} }) });
+      return Number((await r.json()).result.uid);
+    });
+    const rows = (await this.callKwReadOnly('res.users', 'read', [[uid], ['tz']])) as Array<{ tz: string | false }>;
+    return String((rows[0] && rows[0].tz) || 'UTC');
+  }
+
+  /** [INTERNAL teardown, Call API] Delete the activities `ids` - only ids this run scheduled. Returns how many are gone. */
+  async deleteActivitiesOverRpc(ids: number[]): Promise<number> {
+    if (!ids.length) return 0;
+    await this.callKwWrite('mail.activity', 'unlink', [ids]);
+    const left = (await this.callKwReadOnly('mail.activity', 'search_count', [[['id', 'in', ids]]])) as number;
+    return ids.length - Number(left);
+  }
+
+  /**
+   * On the open ticket form: chatter Send message > type `text` > Stage = `stage` > SEND. The NAKIVO composer refuses a
+   * message without a Stage ("Please input stage!" - a <select> in the composer, measured 2026-11-04). THROWS when the
+   * composer is still open after SEND.
+   */
+  async sendMessageWithStage(text: string, stage: string): Promise<void> {
+    await this.page.locator('button.o_chatter_button_new_message').first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const composer = this.page.locator('.o_thread_composer').first();
+    await composer.locator('textarea.o_composer_text_field').first().fill(text, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await composer.locator('select').first().selectOption({ label: stage }, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await composer.locator('.o_composer_button_send').first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    if (await composer.locator('.o_composer_button_send').first().isVisible().catch(() => false)) {
+      throw new Error(`HelpdeskPage.sendMessageWithStage: the composer is still open after SEND: "${((await composer.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').slice(0, 200)}"`);
+    }
+    console.log(`  - Chatter: message sent with Stage = ${stage}`);
+  }
+
+  /** CSS hook of the newest chatter message - tagged by markNewestChatterMessage(). */
+  static readonly CHATTER_MESSAGE = '[data-pw-verify="chatter-message"]';
+
+  /** Tag the newest chatter message (CHATTER_MESSAGE) and return its text (its review buttons included). */
+  async markNewestChatterMessage(): Promise<string> {
+    return this.page.evaluate(() => {
+      const m = document.querySelector<HTMLElement>('.o_thread_message');
+      if (!m) return '';
+      m.setAttribute('data-pw-verify', 'chatter-message');
+      m.scrollIntoView({ block: 'center' });
+      return (m.innerText || '').replace(/\s+/g, ' ').trim();
+    });
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: the message approvals (mail.message.approval) held on ticket `ticketId`. */
+  async readTicketApprovalsOverRpc(ticketId: number | string): Promise<Array<{ id: number; author: string; waitingOn: number }>> {
+    const rows = (await this.callKwReadOnly('mail.message.approval', 'search_read', [[['model', '=', 'helpdesk.ticket'], ['res_id', '=', Number(ticketId)]]], { fields: ['id', 'author_id', 'need_approve_by_users_ids'], limit: 6 })) as Array<{ id: number; author_id: [number, string] | false; need_approve_by_users_ids: number[] }>;
+    if (rows.length > 5) throw new Error(`HelpdeskPage.readTicketApprovalsOverRpc(${ticketId}): 6+ approvals - more than a probe ticket holds`);
+    return rows.map((r) => ({ id: r.id, author: r.author_id ? r.author_id[1] : '', waitingOn: (r.need_approve_by_users_ids || []).length }));
+  }
+
+  /** TEARDOWN: delete the approvals `ids` held on this run's probe ticket (the author may remove them). Returns the number left. */
+  async deleteTicketApprovalsOverRpc(ids: number[]): Promise<number> {
+    if (!ids.length) return 0;
+    await this.callKwWrite('mail.message.approval', 'unlink', [ids]);
+    return Number(await this.callKwReadOnly('mail.message.approval', 'search_count', [[['id', 'in', ids]]]));
+  }
+
+  /**
+   * [INTERNAL check, Call API] READ-ONLY: the newest meeting report (gtm.info) on a ticket that carries feedback - the record
+   * the meeting-report baseline opens. Datetimes come back in UTC. Throws when none.
+   */
+  async findMeetingReportOverRpc(): Promise<Record<string, unknown>> {
+    const rows = (await this.callKwReadOnly('gtm.info', 'search_read', [[['ticket_id', '!=', false], ['feedback', '!=', false]], ['ticket_id', 'start_date', 'end_date', 'type', 'bonus_meeting', 'canceled_meeting', 'feedback']], { limit: 1, order: 'id desc' })) as Array<Record<string, unknown>>;
+    if (!rows.length) throw new Error('HelpdeskPage.findMeetingReportOverRpc: no gtm.info on a ticket with feedback');
+    return rows[0];
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: how many meeting reports (gtm.info) ticket `ticketId` holds. */
+  async countMeetingReportsOverRpc(ticketId: number | string): Promise<number> {
+    return Number(await this.callKwReadOnly('gtm.info', 'search_count', [[['ticket_id', '=', Number(ticketId)]]]));
+  }
+
+  /** CSS hook of the ticket's "Ticket Meetings" smart button (tagged by getTicketMeetingsButtonCount). */
+  static readonly MEETINGS_BUTTON = '[data-pw-verify="meetings-button"]';
+
+  /** The open ticket form: the number its "Ticket Meetings" smart button shows (-1 when the button is absent). Tags it. */
+  async getTicketMeetingsButtonCount(): Promise<number> {
+    await this.page.locator('.o_form_view .oe_button_box').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.page.evaluate(() => {
+      const b = Array.from(document.querySelectorAll<HTMLElement>('.o_form_view .oe_button_box button')).find((e) => /Ticket Meetings/.test(e.innerText || ''));
+      if (!b) return -1;
+      b.setAttribute('data-pw-verify', 'meetings-button');
+      return Number(((b.innerText || '').match(/\d+/) || ['-1'])[0]);
+    });
+  }
+
+  /** Click the open ticket's "Ticket Meetings" smart button and wait for the meeting list it opens. */
+  async openTicketMeetings(): Promise<void> {
+    await this.page.locator("xpath=//div[contains(@class,'oe_button_box')]//button[.//*[normalize-space()='Ticket Meetings'] or contains(normalize-space(.),'Ticket Meetings')]")
+      .or(this.page.locator('.o_form_view .oe_button_box button').filter({ hasText: 'Ticket Meetings' })).first()
+      .click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.listOrEmptyHelper().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - Ticket Meetings list open');
+  }
+
+  /** Number of data rows in the list on screen. */
+  async countListRows(): Promise<number> {
+    return this.listRows().count();
+  }
+
+  /** Open the list row whose cells carry `text` (the first one when `text` is ''), wait for its form and return the record id. */
+  async openListRowAndGetId(text = ''): Promise<string> {
+    const row = text ? this.listRows().filter({ hasText: text }).first() : this.listRows().first();
+    await row.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForFormView(CommonUtils.waitTimes.abnormalWait);
+    const id = await this.waitForIdInUrlAndExtract(CommonUtils.waitTimes.abnormalWait);
+    await this.wait(CommonUtils.waitTimes.long);
+    return id;
+  }
+
+  /** [INTERNAL check, Call API] READ-ONLY: `fields` of meeting report (gtm.info) `id`, datetimes in UTC. Throws when absent. */
+  async readMeetingReportOverRpc(id: number | string, fields: string[]): Promise<Record<string, unknown>> {
+    const rows = (await this.callKwReadOnly('gtm.info', 'read', [[Number(id)], fields])) as Array<Record<string, unknown>>;
+    if (!rows.length) throw new Error(`HelpdeskPage.readMeetingReportOverRpc(${id}): no such record`);
+    return rows[0];
+  }
+
+  /** The open form (read mode): whether each boolean field `names` is ticked, as drawn ("Yes"/"No"; '' when not drawn). Tags them. */
+  async readFormCheckboxes(names: string[]): Promise<Record<string, string>> {
+    return this.page.evaluate((list) => {
+      const out: Record<string, string> = {};
+      for (const n of list) {
+        const w = Array.from(document.querySelectorAll<HTMLElement>(`.o_form_view .o_field_widget[name="${n}"]`)).find((e) => e.offsetParent !== null);
+        const box = w?.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+        out[n] = box ? (box.checked ? 'Yes' : 'No') : '';
+        if (w) ((w.closest('tr') as HTMLElement | null) || w).setAttribute('data-pw-verify', 'odoo-field');
+      }
+      return out;
+    }, names);
+  }
+
+  /**
+   * Helpdesk > Configuration > Support meeting Info - the list of the support meetings engineers scheduled
+   * (support.meeting.info; create_uid = the engineer who scheduled it). Waits for the list and its pager.
+   */
+  async openSupportMeetingInfo(): Promise<void> {
+    await this.navigateToHelpdesk();
+    await this.page.locator('.o_menu_sections > li > a, .o_menu_sections .dropdown-toggle').filter({ hasText: /^\s*Configuration\s*$/ }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('.o_menu_sections .dropdown-menu a, .o_menu_sections .dropdown-item').filter({ hasText: /^\s*Support meeting Info\s*$/ }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator('.o_list_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Helpdesk > Configuration > Support meeting Info open: pager "${await this.getPagerText()}"`);
+  }
+
+  /**
+   * Filters > Add Custom Filter > `field` `operator` <value> > Apply - one facet, AND-ed with the facets already set.
+   * `value.m2o` = the record name to pick in the many2one autocomplete; `value.dates` = the texts typed in the datetime
+   * input(s) in the user's format ('MM/DD/YYYY HH:mm:ss'; two for "is between"). Returns the facets after the apply.
+   */
+  async addCustomFilter(field: string, operator: string, value: { m2o?: string; dates?: string[] }): Promise<string[]> {
+    const menu = this.page.locator('.o_filters_menu').first();
+    const add = menu.locator(':is(a,button)', { hasText: 'Add Custom Filter' }).first();
+    for (let i = 0; i < 4 && !(await add.isVisible().catch(() => false)); i++) {
+      await this.page.locator('.o_search_options button', { hasText: 'Filters' }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.wait(CommonUtils.waitTimes.medium);
+    }
+    await add.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const prop = menu.locator('.o_filter_condition, .o_searchview_extended_prop').last();
+    await prop.locator('.o_searchview_extended_prop_field').selectOption({ label: field });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await prop.locator('.o_searchview_extended_prop_op').selectOption({ label: operator });
+    await this.wait(CommonUtils.waitTimes.medium);
+    if (value.m2o) {
+      const input = prop.locator('.o_searchview_extended_prop_value input').first();
+      await input.fill(value.m2o);
+      const option = this.page.locator('ul.ui-autocomplete:visible li a').filter({ hasText: value.m2o }).first();
+      await option.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+      await option.click();
+    }
+    const inputs = prop.locator('.o_searchview_extended_prop_value input.o_datepicker_input');
+    for (const [i, text] of (value.dates || []).entries()) {
+      await inputs.nth(i).fill(text);
+      await inputs.nth(i).press('Tab').catch(() => {});
+      await this.wait(CommonUtils.waitTimes.short);
+    }
+    await menu.locator('button.o_apply_filter, button', { hasText: 'Apply' }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    if (await add.isVisible().catch(() => false)) await this.page.locator('.o_search_options button', { hasText: 'Filters' }).first().click().catch(() => {});
+    const facets = await this.getSearchFacets();
+    console.log(`  - Add Custom Filter: ${field} ${operator} ${value.m2o ?? (value.dates || []).join(' and ')} -> facets ${JSON.stringify(facets)}, pager "${await this.getPagerText()}"`);
+    return facets;
+  }
+
+  /** Remove the search facet whose text contains `fragment` (its x). THROWS when no facet matches. */
+  async removeSearchFacet(fragment: string): Promise<void> {
+    const facet = this.page.locator('.o_searchview_facet').filter({ hasText: fragment }).first();
+    if (!(await facet.count())) throw new Error(`HelpdeskPage.removeSearchFacet: no facet contains "${fragment}" (facets: ${JSON.stringify(await this.getSearchFacets())})`);
+    await facet.locator('.o_facet_remove').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

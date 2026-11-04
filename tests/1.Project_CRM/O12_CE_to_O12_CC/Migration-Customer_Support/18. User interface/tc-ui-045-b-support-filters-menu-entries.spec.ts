@@ -14,6 +14,9 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *                    helpers/customer-support-mig.baseline-map.ts)
  * Automation-Type  : new            Automation-Date : 2026-10-28
  * Jira             : N/A - not imported to Xray yet (feature CRM-11859)
+ * Requirement      : IS-CRM-UI-0014; updated 2026-11-03 for IS-CRM-UI-0014-2 (Confluence 231246777 v9, answer to CRM-13843):
+ *                    "The ticket list shall not carry today's activity filters (My, Late, Today and Future Activities) or SLA
+ *                    filters (Upcoming SLA Fail, SLA Failed)" - checked explicitly as Verify #2
  * Host / Run as    : support-crm-mig (Frappe Helpdesk, ignoreHTTPSErrors) / L1 agent Giang Le (users.support_l1_giang_support_mig,
  *                    HD Agent Support Level = L1 asserted)
  * Data             : READ ONLY - the menu is opened and closed; nothing is chosen, so the saved list state is untouched
@@ -37,6 +40,9 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *    Unread Messages, Overdue Tickets, My L2, My open, My meeting expectation | Archived; then Favorites with your saved
  *    searches and 'Save current search'.
  *
+ *  Spec v9 (IS-CRM-UI-0014-2): none of My Activities, Late Activities, Today Activities, Future Activities, Upcoming SLA Fail,
+ *  SLA Failed is offered (an activity or SLA entry anywhere in the menu is a FAIL).
+ *
  *  The sections are compared exactly, in order. Favorites: it must be the LAST group, headed "Favorites", and end with
  *  "Save current search"; the saved searches in it belong to the account and are printed, not scored.
  *
@@ -58,6 +64,8 @@ const STEP = {
 } as const;
 
 const AGENT = users.support_l1_giang_support_mig;
+/** IS-CRM-UI-0014-2 (spec v9): the Odoo filters NOT carried to the Support Platform. */
+const NOT_CARRIED = ['My Activities', 'Late Activities', 'Today Activities', 'Future Activities', 'Upcoming SLA Fail', 'SLA Failed'];
 const EXPECTED_SECTIONS = [
   ['My Tickets', 'Unassigned Tickets'],
   ['Open Tickets', 'Closed Tickets'],
@@ -124,6 +132,7 @@ test.describe(`${TC} - Filters menu entries on the Support service`, () => {
       console.log(`  Observation (not scored) - saved searches in Favorites: ${JSON.stringify(favEntries.filter((e) => e !== 'Save current search'))}`);
       await recordChecks(page, testInfo, checks, [
         { what: 'Step 2 the sections and entries in order', expected: EXPECTED_SECTIONS.map((s) => s.join(', ')).join(' | '), actual: sections.map((s) => s.join(', ')).join(' | ') || '(none)', passed: JSON.stringify(sections) === JSON.stringify(EXPECTED_SECTIONS) },
+        { what: 'Step 2 no activity or SLA filter is offered (IS-CRM-UI-0014-2)', expected: `none of ${NOT_CARRIED.join(', ')}`, actual: (() => { const hit = groups.flatMap((g) => g.entries).filter((e) => NOT_CARRIED.includes(e) || /Activit|SLA/i.test(e)); return hit.length ? `offered: ${hit.join(', ')}` : 'none offered'; })(), passed: !groups.flatMap((g) => g.entries).some((e) => NOT_CARRIED.includes(e) || /Activit|SLA/i.test(e)) },
         { what: 'Step 2 Favorites is the last group, with Save current search', expected: 'last group headed "Favorites", ending with "Save current search"', actual: last ? `"${last.heading}": ${last.entries.join(', ')}` : '(no groups)', passed: !!last && /Favorites/i.test(last.heading) && last.entries[last.entries.length - 1] === 'Save current search' },
       ], `${TC} - Step 2 Filters menu`, [SupportDeskPageMig.MENU], 'top-right');
       await desk.closeOpenMenu();
@@ -134,7 +143,7 @@ test.describe(`${TC} - Filters menu entries on the Support service`, () => {
       checks.forEach((c, i) => console.log(`  Verify #${i + 1} - ${c.what}:\n     Expected : ${c.expected}\n     Actual   : ${c.actual}\n     Result   : ${c.passed ? 'PASS' : 'FAIL'}`));
       console.log('===============================================');
       const failed = checks.filter((c) => !c.passed);
-      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => c.what).join('; ')}` : 'OVERALL: PASS - six sections in order, then Favorites with Save current search');
+      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => c.what).join('; ')}` : 'OVERALL: PASS - six sections in order, no activity / SLA filter, then Favorites with Save current search');
       for (const c of checks) expect.soft(c.passed, `${c.what} - expected ${c.expected}, actual ${c.actual}`).toBe(true);
       expect(failed.map((c) => c.what), 'the Filters menu matches').toEqual([]);
     });

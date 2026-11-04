@@ -12,6 +12,8 @@ import { AB_FIELDS_SIDE_A, assertHelpdeskAbSourceInSync } from '@helpers/helpdes
  * Test Case ID     : TC-UI-045_A   (side B = tc-ui-045-b-support-filters-menu-entries.spec.ts)
  * Automation-Type  : refactored     Automation-Date : 2026-10-30
  * Jira             : N/A - not imported to Xray yet (feature CRM-11859)
+ * Requirement      : IS-CRM-UI-0014; note 2026-11-03 - IS-CRM-UI-0014-2 (Confluence 231246777 v9) says the activity and SLA
+ *                    filters listed here are NOT carried to the Support Platform; this side keeps recording Odoo as today
  * Host / Run as    : pre-production Odoo 12 / L1 agent Giang Le (users.support_l1_giang_preprod, Support Team = l1 asserted)
  * Data             : READ ONLY
  * Folder           : "18. User interface" = Confluence 231246777 spec area of IS-CRM-UI-0014 (automation author's mapping)

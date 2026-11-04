@@ -1,4 +1,4 @@
-import { Locator, Page } from '@playwright/test';
+import { Frame, Locator, Page } from '@playwright/test';
 import { BasePage } from '../BasePage';
 import { CommonUtils } from '@helpers/common.utils';
 
@@ -354,7 +354,9 @@ export class SupportDeskPageMig extends BasePage {
     this.page.locator("xpath=//header//button[.//*[contains(@class,'lucide-more-horizontal')]]")
       .or(this.page.locator('header button:has(.lucide-more-horizontal)')).first();
   private readonly headerActionsButton = () =>
-    this.page.locator("xpath=//header//button[@aria-label='Actions']").or(this.page.locator('header button[aria-label="Actions"]')).first();
+    this.page.locator("xpath=//header//button[@aria-label='Actions']").or(this.page.locator('header button[aria-label="Actions"]'))
+      // the ticket header draws "Actions ▾" as a text button without aria-label (measured 2026-11-04, agent Giang)
+      .or(this.page.locator('header button').filter({ hasText: /^\s*Actions\s*$/ })).first();
   private readonly headerAssignToMeButton = () =>
     this.page.locator("xpath=//header//button[@aria-label='Assign to me']").or(this.page.locator('header button[aria-label="Assign to me"]')).first();
   // The dialog Frappe shows (Hibernate ticket wizard, Archive confirmation).
@@ -363,7 +365,9 @@ export class SupportDeskPageMig extends BasePage {
   /** Open the header's Actions button, or its more (…) menu when Actions is no longer drawn, and wait for the menu. */
   async openHeaderActionsMenu(): Promise<void> {
     const btn = this.headerActionsButton();
-    const target = (await btn.count()) ? btn : this.headerMoreMenuButton();
+    // the header re-renders after an action (e.g. Assign to me): wait for "Actions" before falling back to the "..." menu
+    const hasActions = await btn.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.long }).then(() => true).catch(() => false);
+    const target = hasActions ? btn : this.headerMoreMenuButton();
     await target.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await target.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.openMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
@@ -1683,6 +1687,443 @@ export class SupportDeskPageMig extends BasePage {
     }, user);
     if (res.status !== 200) throw new Error(`SupportDeskPageMig.readMyTimeZone: HTTP ${res.status} ${res.body.slice(0, 300)}`);
     return String(((JSON.parse(res.body).message || [])[0] || {}).time_zone || '');
+  }
+
+  // ─── Spec v9 (Confluence 231246777 v9, 2026-11-03): filters together, New Ticket required marks, Customer picker, Meetings ───
+
+  /** CSS hook of the list's "<shown> of <total>" counter, tagged by markListCounter(). */
+  static readonly LIST_COUNTER = '[data-pw-verify="list-counter"]';
+
+  /** Tag the element that draws the list's "<shown> of <total>" counter (LIST_COUNTER); false when none is drawn. */
+  async markListCounter(): Promise<boolean> {
+    return this.page.evaluate(() => {
+      // the counter's numbers and "of" sit in separate spans: take the innermost element whose whole text is "<n> of <m>"
+      const all = Array.from(document.querySelectorAll<HTMLElement>('body *')).filter((e) => e.offsetParent !== null && /^\s*\d[\d,]*\s*of\s*\d[\d,]*\s*$/.test(e.innerText || ''));
+      const el = all.find((e) => !all.some((o) => o !== e && e.contains(o)));
+      if (el) el.setAttribute('data-pw-verify', 'list-counter');
+      return !!el;
+    });
+  }
+
+  /** READ-ONLY, as the signed-in user: the filters of preset view `name` as a list of [field, op, value] (a dict form is converted). */
+  async readHdViewFilterList(name: string): Promise<unknown[][]> {
+    const raw = JSON.parse((await this.readHdViewFilters(name)) || '[]');
+    return Array.isArray(raw) ? raw : Object.entries(raw).map(([k, v]) => [k, '=', v]);
+  }
+
+  /** The preset views the list URL holds now - one `view` parameter per active Filters entry (?view=NK-VIEW-...). Reads only. */
+  async getActiveFilterViews(): Promise<string[]> {
+    return new URL(this.page.url()).searchParams.getAll('view');
+  }
+
+  /**
+   * Open the header Filters menu and return the entries drawn TICKED - FF draws a check mark (span.lucide-check) in the
+   * entry's prefix slot of an active entry (measured 2026-11-03). Leaves the menu OPEN, tagged MENU, for the evidence shot.
+   */
+  async getTickedFiltersMenuEntries(): Promise<string[]> {
+    await this.openFiltersMenuGroups();
+    return this.page.evaluate(() => Array.from(document.querySelectorAll('[role="menu"] [role="menuitem"]'))
+      .filter((i) => !!i.querySelector('[data-slot="item-prefix"] .lucide-check'))
+      .map((i) => ((i as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim()));
+  }
+
+  /** All Tickets header Create -> the New Ticket form (/helpdesk/tickets/new), its Subject input drawn. Nothing is typed. */
+  async openNewTicketForm(): Promise<void> {
+    const create = this.headerButtonByLabel('Create');
+    await create.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await create.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.waitForURL('**/helpdesk/tickets/new', { timeout: CommonUtils.waitTimes.pageLoad });
+    await this.newTicketSubjectInput().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log('  - New Ticket form open');
+  }
+
+  /** CSS hook of the New Ticket field rows tagged by getNewTicketFieldMarks(). */
+  static readonly REQ_ROW = '[data-pw-verify="req-row"]';
+
+  /**
+   * New Ticket form: every labelled field (Subject above the editor, the right-panel rows) and whether its label carries the
+   * red required mark "*" (span.text-ink-red-5 - how FF marks Subject, measured 2026-11-03). Tags the rows of `tagLabels`
+   * (REQ_ROW) for the verify shot. Reads only.
+   */
+  async getNewTicketFieldMarks(tagLabels: string[]): Promise<Array<{ label: string; required: boolean }>> {
+    return this.page.evaluate((tags) => {
+      document.querySelectorAll('[data-pw-verify="req-row"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const out: Array<{ label: string; required: boolean }> = [];
+      const seen = new Set<string>();
+      const add = (labelBox: HTMLElement, row: HTMLElement) => {
+        if (labelBox.getBoundingClientRect().width === 0) return;
+        const star = labelBox.querySelector('.text-ink-red-5');
+        const label = (labelBox.innerText || '').replace(/\*/g, '').replace(/\s+/g, ' ').trim();
+        if (!label || seen.has(label)) return;
+        seen.add(label);
+        out.push({ label, required: !!star && /\*/.test(star.textContent || '') });
+        if (tags.includes(label)) row.setAttribute('data-pw-verify', 'req-row');
+      };
+      // Subject: <span class="block text-sm ...">Subject <span class="text-ink-red-5"> * </span></span> above its input
+      const subj = document.querySelector<HTMLInputElement>('input[placeholder="A short description"]');
+      const subjBox = subj?.closest('.flex.flex-col') as HTMLElement | null;
+      const subjLabel = subjBox?.querySelector<HTMLElement>(':scope > span');
+      if (subjBox && subjLabel) add(subjLabel, subjBox);
+      // right panel: <div class="flex gap-2 ..."><div class="w-[106px] ..."><span>Raised By (Email)</span>[mark]</div><div>control</div></div>
+      document.querySelectorAll<HTMLElement>('span[data-grace-area-trigger]').forEach((cap) => {
+        const labelBox = cap.parentElement as HTMLElement | null;
+        const row = labelBox?.parentElement as HTMLElement | null;
+        if (labelBox && row) add(labelBox, row);
+      });
+      return out;
+    }, tagLabels);
+  }
+
+  /**
+   * New Ticket form: type the given values - Subject, Raised By (Email) and the description; a key that is absent or ''
+   * leaves that field BLANK - and pick `contact` in the "Customer contact" combobox when given. Submits nothing.
+   */
+  async fillNewTicketForm(d: { subject: string; raisedBy?: string; description?: string; contact?: string }): Promise<void> {
+    await this.newTicketSubjectInput().fill(d.subject, { timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log(`  - Subject           = ${d.subject}`);
+    if (d.raisedBy) await this.newTicketRaisedByInput().fill(d.raisedBy, { timeout: CommonUtils.waitTimes.abnormalWait });
+    console.log(`  - Raised By (Email) = ${d.raisedBy || 'blank'}`);
+    if (d.description) {
+      await this.newTicketDescriptionEditor().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await this.page.keyboard.type(d.description);
+    }
+    console.log(`  - Description       = ${d.description || 'blank'}`);
+    if (d.contact) await this.pickNewTicketCombobox('Customer contact', d.contact);
+    console.log(`  - Contact           = ${d.contact || 'blank'}`);
+    await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /** CSS hook of the New Ticket Submit button (tagged by submitNewTicketForm for the verify shot). */
+  static readonly SUBMIT = '[data-pw-verify="submit"]';
+
+  /**
+   * New Ticket form: press Submit and return what happened - `disabled` when FF keeps Submit disabled (nothing is sent),
+   * else the server's answer to hd_ticket.api.new: the new ticket number, or the HTTP status + message of a refusal. Never
+   * throws on a refusal - the caller asserts it. Tags the Submit button (SUBMIT).
+   */
+  async submitNewTicketForm(): Promise<{ disabled: boolean; name: string; status: number; message: string }> {
+    const submit = this.newTicketSubmitButton();
+    await submit.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await submit.evaluate((e) => e.setAttribute('data-pw-verify', 'submit'));
+    if (await submit.isDisabled({ timeout: CommonUtils.waitTimes.abnormalWait })) {
+      console.log('  - Submit is DISABLED - nothing sent');
+      return { disabled: true, name: '', status: -1, message: 'Submit is disabled' };
+    }
+    const answer = this.page.waitForResponse((r) => /hd_ticket\.api\.new/.test(r.url()), { timeout: CommonUtils.waitTimes.pageLoad });
+    await submit.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const resp = await answer;
+    const body = await resp.text().catch(() => '');
+    if (resp.status() !== 200) {
+      const message = serverMessage(body);
+      console.log(`  - Submit refused by the server: HTTP ${resp.status()} "${message}"`);
+      return { disabled: false, name: '', status: resp.status(), message };
+    }
+    const name = String((JSON.parse(body).message || {}).name || '');
+    await this.page.waitForURL(`**/helpdesk/tickets/${name}`, { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Submit accepted: ticket ${name}`);
+    return { disabled: false, name, status: 200, message: '' };
+  }
+
+  /**
+   * New Ticket form > Customer ("Customer company" combobox): type `text` and return the options drawn - the whole text of
+   * each option, top to bottom ([] when none). The option list is LEFT OPEN and tagged MENU; closeOpenMenu() follows.
+   */
+  async searchNewTicketCustomer(text: string): Promise<string[]> {
+    const input = this.page.locator("xpath=//input[@role='combobox' and @placeholder='Customer company']")
+      .or(this.page.locator('input[role="combobox"][placeholder="Customer company"]')).first();
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill(text, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    return this.page.evaluate(() => {
+      const opts = Array.from(document.querySelectorAll<HTMLElement>('[role="option"]')).filter((o) => o.offsetParent !== null);
+      const box = (opts[0]?.closest('[role="listbox"]') as HTMLElement | null) || (opts[0]?.parentElement as HTMLElement | null);
+      if (box) box.setAttribute('data-pw-verify', 'menu');
+      return opts.map((o) => (o.innerText || '').replace(/\s+/g, ' ').trim());
+    });
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: the newest HD Customer whose domain and country are both filled - the company the
+   * Customer-picker case searches for. Throws when none is readable.
+   */
+  async findCustomerWithDomainAndCountry(): Promise<{ name: string; domain: string; country: string }> {
+    const res = await this.page.evaluate(async () => {
+      const q = new URLSearchParams({
+        fields: JSON.stringify(['name', 'domain', 'country']),
+        filters: JSON.stringify([['domain', 'like', '%.%'], ['country', 'is', 'set']]),
+        order_by: 'modified desc', limit_page_length: '1',
+      });
+      const r = await fetch(`/api/resource/HD Customer?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    });
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.findCustomerWithDomainAndCountry: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const row = (JSON.parse(res.body).data || [])[0];
+    if (!row) throw new Error('SupportDeskPageMig.findCustomerWithDomainAndCountry: no HD Customer with a domain and a country');
+    return { name: String(row.name), domain: String(row.domain), country: String(row.country) };
+  }
+
+  /** CSS hook of the Meetings drawer (the frame that holds the NK Meeting Desk pages) - tagged by openMeetingsList(). */
+  static readonly MEETINGS_FRAME = '[data-pw-verify="meetings-frame"]';
+
+  /** The Desk frame of the Meetings drawer (/app/nk-meeting...), nested in the drawer's own frame. */
+  private meetingsFrame(): Frame {
+    const f = this.page.frames().find((fr) => /\/app\/nk-meeting/.test(fr.url()));
+    if (!f) throw new Error('SupportDeskPageMig: the Meetings drawer holds no /app/nk-meeting frame');
+    return f;
+  }
+
+  /**
+   * Sidebar Meetings -> the drawer showing the NK Meeting list - a Desk page loaded in a frame nested in the drawer's frame
+   * (measured 2026-11-03: helpdesk/overview -> nk_overview -> /app/nk-meeting). Waits for its "<n> of <total>" counter and
+   * tags the drawer's frame on the page (MEETINGS_FRAME).
+   */
+  async openMeetingsList(): Promise<void> {
+    await this.sidebarItem('Meetings').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    for (let i = 0; i < 20 && !this.page.frames().some((fr) => /\/app\/nk-meeting/.test(fr.url())); i++) await this.wait(CommonUtils.waitTimes.medium);
+    // a list whose saved filters match nothing draws "No NK Meeting found" and no counter - either one means the list is up
+    await this.meetingsFrame().locator('.list-count:visible, .no-result:visible').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.evaluate(() => {
+      const fr = Array.from(document.querySelectorAll('iframe')).find((e) => (e as HTMLElement).getBoundingClientRect().width > 0);
+      if (fr) fr.setAttribute('data-pw-verify', 'meetings-frame');
+    });
+    console.log(`  - Meetings list open: ${await this.getMeetingsListCount().catch(() => '(no counter - empty list)')}`);
+  }
+
+  /** The Meetings list's counter text ("20 of 1,000+", "0 of 0"). Reads only. */
+  async getMeetingsListCount(): Promise<string> {
+    return ((await this.meetingsFrame().locator('.list-count').first().innerText({ timeout: CommonUtils.waitTimes.abnormalWait })) || '').trim();
+  }
+
+  /**
+   * Meetings list: set the standard filter "Assignee" to `user` (an e-mail) and return the counter and the empty-list message
+   * ('' when rows are listed). The filter is part of this list's own state - clearMeetingsAssigneeFilter() empties it again.
+   */
+  async filterMeetingsByAssignee(user: string): Promise<{ count: string; emptyMessage: string }> {
+    const fr = this.meetingsFrame();
+    const input = fr.locator('.standard-filter-section [data-fieldname="agent"] input').first();
+    await input.fill(user, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const count = await this.getMeetingsListCount();
+    const emptyMessage = ((await fr.locator('.no-result').first().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    console.log(`  - Meetings > Assignee = ${user} -> "${count}"${emptyMessage ? ` | "${emptyMessage}"` : ''}`);
+    return { count, emptyMessage };
+  }
+
+  /**
+   * The Meetings drawer is a frame, out of reach of the page-level verify outline: draw the outline INSIDE that frame round
+   * `selectors` (red on a FAIL, green on a PASS) for the evidence shot; clearMeetingsFrameOutline() removes it.
+   */
+  async outlineInMeetingsFrame(selectors: string[], passed: boolean): Promise<number> {
+    return this.meetingsFrame().evaluate(([sels, ok]) => {
+      let n = 0;
+      for (const s of sels as string[]) document.querySelectorAll<HTMLElement>(s).forEach((e) => {
+        if (e.getBoundingClientRect().width === 0) return;
+        e.setAttribute('data-pw-frame-outline', '1');
+        e.style.outline = `3px solid ${ok ? '#1a9641' : '#e03131'}`; e.style.outlineOffset = '2px'; n++;
+      });
+      return n;
+    }, [selectors, passed] as [string[], boolean]).catch(() => 0);
+  }
+
+  /** Remove the outlines outlineInMeetingsFrame() drew. */
+  async clearMeetingsFrameOutline(): Promise<void> {
+    await this.meetingsFrame().evaluate(() => document.querySelectorAll<HTMLElement>('[data-pw-frame-outline]').forEach((e) => { e.style.outline = ''; e.removeAttribute('data-pw-frame-outline'); })).catch(() => {});
+  }
+
+  /**
+   * Meetings list: REPLACE the list's filters with `filters` ([fieldname, operator, value] - the conditions of the Desk Filter
+   * button, e.g. ['owner', '=', me], ['start_time', 'Between', [day, day]], ['start_time', '<', 'YYYY-MM-DD 00:00:00']) through
+   * the list's own filter area, so the filter pills drawn are the ones a person adds with Filter > + Add a Filter. Returns the
+   * counter, the empty-list message ('' when rows are listed) and the filters the list reports as applied.
+   * The route-option form (?start_time=["Between",...]) breaks the Desk page (measured 2026-11-04) - not used.
+   */
+  async filterMeetingsList(filters: Array<[string, string, unknown]>): Promise<{ count: string; emptyMessage: string; applied: string }> {
+    const fr = this.meetingsFrame();
+    const applied = await fr.evaluate(async (fl) => {
+      const w = window as unknown as { cur_list?: { doctype: string; filter_area: { clear: (refresh?: boolean) => Promise<unknown>; add: (f: unknown[]) => Promise<unknown>; get: () => unknown } } };
+      if (!w.cur_list) throw new Error('the Meetings frame holds no list');
+      await w.cur_list.filter_area.clear(false);
+      await w.cur_list.filter_area.add(fl.map((f) => [w.cur_list!.doctype, ...f]));
+      return JSON.stringify(w.cur_list.filter_area.get());
+    }, filters as unknown[][]);
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const emptyMessage = ((await fr.locator('.no-result:visible').first().innerText({ timeout: CommonUtils.waitTimes.short }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    const count = emptyMessage ? '0 of 0' : await this.getMeetingsListCount();
+    console.log(`  - Meetings > filters ${applied} -> "${count}"${emptyMessage ? ` | "${emptyMessage}"` : ''}`);
+    return { count, emptyMessage, applied };
+  }
+
+  /**
+   * Meetings list: remove every filter and make the empty filter list the user's SAVED list state (Desk reopens a list with
+   * its last filters per user; a reload right after clear() kept the old ones - measured 2026-11-04), then return the
+   * filters the server now holds for this user's NK Meeting list view ('[]' when clean).
+   */
+  async clearMeetingsListFilters(): Promise<string> {
+    return this.meetingsFrame().evaluate(async () => {
+      const w = window as unknown as {
+        cur_list?: { doctype: string; view_name: string; filter_area: { clear: () => Promise<unknown> } };
+        frappe: { model: { user_settings: { save: (dt: string, key: string, v: unknown) => Promise<unknown> } }; xcall: (m: string, a: unknown) => Promise<unknown> };
+      };
+      if (!w.cur_list) return 'no list';
+      await w.cur_list.filter_area.clear();
+      await w.frappe.model.user_settings.save(w.cur_list.doctype, w.cur_list.view_name || 'List', { filters: [] });
+      const stored = (await w.frappe.xcall('frappe.model.utils.user_settings.get', { doctype: w.cur_list.doctype })) as string;
+      const parsed = JSON.parse(stored || '{}') as Record<string, { filters?: unknown }>;
+      return JSON.stringify((parsed[w.cur_list.view_name || 'List'] || {}).filters ?? []);
+    });
+  }
+
+  /** The number in a Meetings counter ("20 of 1.000+" -> 1000, "20 of 57" -> 57, "0 of 0" -> 0); -1 when unreadable. */
+  static meetingsTotal(count: string): number {
+    const m = count.match(/of\s*([\d.,]+)/);
+    return m ? Number(m[1].replace(/[.,]/g, '')) : -1;
+  }
+
+  /** Meetings list: empty the standard filter "Assignee" (restores the list's state for the next case). */
+  async clearMeetingsAssigneeFilter(): Promise<void> {
+    const input = this.meetingsFrame().locator('.standard-filter-section [data-fieldname="agent"] input').first();
+    await input.fill('', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    await this.page.keyboard.press('Escape').catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+  }
+
+  /**
+   * In the Meetings drawer, open the NK Meeting form `name` (/app/nk-meeting/<name>) and return the values its controls
+   * `fieldnames` DRAW (input value, else the shown text, a checkbox as "Yes"/"No"; '' when the control is not drawn). Reads
+   * only - nothing is saved.
+   */
+  async openMeetingAndReadFields(baseUrl: string, name: string, fieldnames: string[]): Promise<Record<string, string>> {
+    const fr = this.meetingsFrame();
+    await fr.goto(`${baseUrl.replace(/\/$/, '')}/app/nk-meeting/${name}`, { waitUntil: 'domcontentloaded' });
+    await fr.locator('.frappe-control[data-fieldname="log_start"]').first().waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const out = await fr.evaluate((names) => {
+      const res: Record<string, string> = {};
+      for (const n of names) {
+        const c = Array.from(document.querySelectorAll<HTMLElement>(`.frappe-control[data-fieldname="${n}"]`)).find((e) => e.offsetParent !== null);
+        if (!c) { res[n] = ''; continue; }
+        const box = c.querySelector('input[type="checkbox"]') as HTMLInputElement | null;
+        if (box) { res[n] = box.checked ? 'Yes' : 'No'; continue; }
+        const input = c.querySelector('input, textarea') as HTMLInputElement | null;
+        const shown = (c.querySelector('.control-value, .like-disabled-input, .ql-editor') as HTMLElement | null)?.innerText || '';
+        res[n] = ((input && input.value) || shown || '').replace(/\s+/g, ' ').trim();
+      }
+      return res;
+    }, fieldnames);
+    console.log(`  - NK Meeting ${name}: ${fieldnames.length} field(s) read`);
+    return out;
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: the newest LOGGED NK Meeting on a ticket whose report carries feedback - its
+   * stored report (log_start, log_end, bonus_meeting, canceled_meeting, log_feedback) and ticket. Throws when none.
+   */
+  async findLoggedMeetingWithReport(): Promise<Record<string, string>> {
+    const res = await this.page.evaluate(async () => {
+      const q = new URLSearchParams({
+        fields: JSON.stringify(['name', 'ticket', 'log_start', 'log_end', 'bonus_meeting', 'canceled_meeting', 'log_feedback', 'log_type']),
+        filters: JSON.stringify([['logged', '=', 1], ['ticket', 'is', 'set'], ['log_feedback', 'is', 'set']]),
+        order_by: 'log_start desc', limit_page_length: '1',
+      });
+      const r = await fetch(`/api/resource/NK Meeting?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    });
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.findLoggedMeetingWithReport: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const row = (JSON.parse(res.body).data || [])[0];
+    if (!row) throw new Error('SupportDeskPageMig.findLoggedMeetingWithReport: no logged NK Meeting with feedback');
+    return Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v === null || v === undefined ? '' : String(v)]));
+  }
+
+  /**
+   * The open ticket page (agent app): what it shows of its meetings - the side-panel "Meetings" row (value, whether it is a
+   * read-only box), whether any element on the page links to NK Meeting `meetingName`, and whether `reportText` (the start of
+   * that meeting's feedback) is drawn anywhere on the page. Tags the "Meetings" row (PANEL_ROW). Reads only.
+   */
+  async readTicketMeetingsShown(meetingName: string, reportText: string): Promise<{ panelValue: string; panelReadOnly: boolean; linksToMeeting: boolean; reportShown: boolean }> {
+    const state = await this.getPanelFieldState('Meetings');
+    // the side-panel row, NOT the sidebar menu item of the same name (it also carries a caption span): the caption whose
+    // box sits in the right-hand panel; scrolled into view for the shot
+    await this.page.evaluate(() => {
+      document.querySelectorAll('[data-pw-verify="panel-row"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const cap = Array.from(document.querySelectorAll<HTMLElement>('span[data-grace-area-trigger]'))
+        .find((c) => (c.textContent || '').trim() === 'Meetings' && c.getBoundingClientRect().left > window.innerWidth / 2);
+      const row = cap?.parentElement?.parentElement as HTMLElement | null;
+      if (row) { row.setAttribute('data-pw-verify', 'panel-row'); row.scrollIntoView({ block: 'center' }); }
+    });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const seen = await this.page.evaluate(([m, t]) => ({
+      link: !!document.querySelector(`a[href*="${m}"]`),
+      report: !!t && (document.body.innerText || '').replace(/\s+/g, ' ').includes(t),
+    }), [meetingName, reportText] as [string, string]);
+    return { panelValue: state.value, panelReadOnly: state.readOnly || state.disabled, linksToMeeting: seen.link, reportShown: seen.report };
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: how many NK Meetings list `email` among the attendees recorded after the meeting
+   * (NK Meeting Log Attendee) - the meetings that engineer took part in. Throws on an HTTP error.
+   */
+  async countMeetingsAttendedBy(email: string): Promise<number> {
+    const res = await this.page.evaluate(async (e) => {
+      const q = new URLSearchParams({ doctype: 'NK Meeting', filters: JSON.stringify([['NK Meeting Log Attendee', 'email', '=', e]]) });
+      const r = await fetch(`/api/method/frappe.client.get_count?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, email);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.countMeetingsAttendedBy: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return Number(JSON.parse(res.body).message);
+  }
+
+  /**
+   * On the open ticket (agent UI): Reply > type `text` > Stage = `stage` > Send. The composer refuses a reply without a stage
+   * ("Please input stage!" - a native <select> in the label "Stage:", measured 2026-11-04) and pre-fills the To / Cc chips.
+   * Returns the composer's own message when it stays open after Send ('' when it closed).
+   */
+  async replyToCustomer(text: string, stage: string): Promise<string> {
+    await this.page.locator('button', { hasText: /^\s*Reply\s*$/ }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    const editor = this.page.locator('.ProseMirror[contenteditable="true"]').last();
+    await editor.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.keyboard.type(text);
+    await this.page.locator('label', { hasText: 'Stage' }).locator('select').first().selectOption(stage, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.medium);
+    const send = this.page.locator('button', { hasText: /^\s*Send\b/ }).last();
+    await send.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    const stillOpen = await send.isVisible().catch(() => false);
+    const msg = stillOpen ? ((await this.page.locator('label', { hasText: 'Stage' }).locator('xpath=..').innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim() : '';
+    console.log(`  - Reply sent to the customer with Stage = ${stage}${stillOpen ? ` - composer still open: "${msg.slice(0, 120)}"` : ''}`);
+    return msg;
+  }
+
+  /** READ-ONLY REST, as the signed-in user: the number of NK Meetings matching Frappe `filters`. Throws on an HTTP error. */
+  async countMeetingsOverRest(filters: unknown[]): Promise<number> {
+    const res = await this.page.evaluate(async (f) => {
+      const q = new URLSearchParams({ doctype: 'NK Meeting', filters: JSON.stringify(f) });
+      const r = await fetch(`/api/method/frappe.client.get_count?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, filters);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.countMeetingsOverRest: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return Number(JSON.parse(res.body).message);
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: the NK Meetings migrated from the Odoo support meetings `odooIds`
+   * (odoo_info_id = support.meeting.info id) with their Created By (owner) and Start (system time zone). At most 1000.
+   */
+  async listMigratedMeetings(odooIds: number[]): Promise<Array<{ name: string; odoo_info_id: number; owner: string; start_time: string }>> {
+    const res = await this.page.evaluate(async (ids) => {
+      const q = new URLSearchParams({ fields: JSON.stringify(['name', 'odoo_info_id', 'owner', 'start_time']), filters: JSON.stringify([['odoo_info_id', 'in', ids]]), limit_page_length: '1001' });
+      const r = await fetch(`/api/resource/NK Meeting?${q.toString()}`, { method: 'GET', headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, odooIds);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.listMigratedMeetings: HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const rows = JSON.parse(res.body).data || [];
+    if (rows.length > 1000) throw new Error('SupportDeskPageMig.listMigratedMeetings: 1000+ rows - more than one page');
+    return rows;
   }
 }
 

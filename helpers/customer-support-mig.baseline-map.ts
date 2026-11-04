@@ -337,4 +337,48 @@ export const CUSTOMER_SUPPORT_BASELINE_MAP: Readonly<Record<string, BaselineLink
     masterRow: 474,
     migJira: '',
   },
+  // ── 2026-11-03: written from Confluence 231246777 v9 (Aiva's answers on CRM-13842/13843/13845/13846) - NO CSV row, so
+  //    masterRow = the row on master tab 'Migration - Customer Support' (written 2026-11-03), keys = the Xray Tests ──
+  'TC-UI-112_B': {
+    baselineTc: 'TC-UI-112_A',
+    baselineJira: 'CRM-14105',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/18. User interface/tc-ui-112-a-preprod-two-filters-together.spec.ts',
+    masterRow: 84,
+    migJira: 'CRM-14106',
+  },
+  'TC-UI-113_B': {
+    baselineTc: 'TC-UI-113_A',
+    baselineJira: 'CRM-14107',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/18. User interface/tc-ui-113-a-preprod-new-ticket-required-marks.spec.ts',
+    masterRow: 85,
+    migJira: 'CRM-14108',
+  },
+  'TC-UI-114_B': {
+    baselineTc: 'TC-UI-114_A',
+    baselineJira: 'CRM-14109',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/18. User interface/tc-ui-114-a-preprod-customer-picker-name-domain.spec.ts',
+    masterRow: 86,
+    migJira: 'CRM-14110',
+  },
+  'TC-FLOW-131_B': {
+    baselineTc: 'TC-FLOW-131_A',
+    baselineJira: 'CRM-14111',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/3. Queue, ownership & team/tc-flow-131-a-preprod-manual-ticket-required-fields.spec.ts',
+    masterRow: 29,
+    migJira: 'CRM-14112',
+  },
+  'TC-CUST-099_B': {
+    baselineTc: 'TC-CUST-099_A',
+    baselineJira: 'CRM-14113',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/11. CRM context & adjacent workflows/tc-cust-099-a-preprod-my-meetings-by-date.spec.ts',
+    masterRow: 54,
+    migJira: 'CRM-14114',
+  },
+  'TC-CUST-100_B': {
+    baselineTc: 'TC-CUST-100_A',
+    baselineJira: 'CRM-14115',
+    baselineSpec: 'tests/1.Project_CRM/6.Helpdesk_Module/Overrall_Helpdesk_Supports_Feature/11. CRM context & adjacent workflows/tc-cust-100-a-preprod-meeting-report-on-ticket.spec.ts',
+    masterRow: 55,
+    migJira: 'CRM-14116',
+  },
 };
