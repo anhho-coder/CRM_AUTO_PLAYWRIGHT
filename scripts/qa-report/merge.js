@@ -135,7 +135,9 @@ async function main() {
           };
         }
 
-        staleUnits.push({ id: unit.id, sourceKey: unit.sourceKeys[0] || unit.id });
+        // asOf kept here, not looked up in data.sources: a unit with no sourceKeys (kpiJql)
+        // has no entry there, and reading `.asOf` off it crashed merge (build #156).
+        staleUnits.push({ id: unit.id, asOf: lkg.generatedAt });
         const ms = Date.now() - partStart;
         console.log(`[merge] ${unit.id}: STALE (served from LKG, ${ms}ms)`);
       } else {
@@ -202,8 +204,7 @@ async function main() {
   if (staleUnits.length > 0) {
     console.log(`[merge]   STALE units (served from LKG):`);
     for (const u of staleUnits) {
-      const src = data.sources[u.sourceKey];
-      console.log(`[merge]     ${u.id} (as of ${src.asOf})`);
+      console.log(`[merge]     ${u.id} (as of ${u.asOf})`);
     }
   }
 
