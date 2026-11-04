@@ -205,7 +205,7 @@ test.describe(`${TC} - Priority applied by the system`, () => {
           name: `${TC} - Priority applied by the system`,
           passed: __verifyPassed,
           outlines: [
-            { selector: LeadPage.verifyRow('chatter-priority'), passed: change.from === 'Low' && change.to === 'Medium High' },
+            { selector: LeadPageMig.verifyRow('chatter-priority'), passed: change.from === 'Low' && change.to === 'Medium High' },
             { selector: '.o_form_view div.o_priority[name="priority_new"]', passed: priority.label === 'Medium High' && priority.filledStars === 2 && priority.totalStars === 4 },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [

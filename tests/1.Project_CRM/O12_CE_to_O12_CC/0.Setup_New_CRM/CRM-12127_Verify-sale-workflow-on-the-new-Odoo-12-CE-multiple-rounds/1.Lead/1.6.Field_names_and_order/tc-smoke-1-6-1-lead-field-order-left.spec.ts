@@ -232,7 +232,7 @@ test.describe(`${TC} - Field names and order - left column`, () => {
           name: `${TC} - Field names and order - left column`,
           passed: __verifyPassed,
           outlines: [
-            { selector: LeadPage.verifyRow('info-row-left'), passed: __verifyPassed },
+            { selector: LeadPageMig.verifyRow('info-row-left'), passed: __verifyPassed },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [
             { what: 'the left column field NAMES and their ORDER', expected: `${EXPECTED.length}: ${EXPECTED.map((e) => e.label).join(', ')}`, actual: actual.map((r) => r.label), ok: JSON.stringify(actual.map((r) => r.label)) === JSON.stringify(EXPECTED.map((e) => e.label)), difference: CommonUtils.listDifference(EXPECTED.map((e) => e.label), actual.map((r) => r.label)) },

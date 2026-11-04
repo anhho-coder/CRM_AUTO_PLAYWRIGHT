@@ -196,7 +196,7 @@ test.describe(`${TC} - Salesperson`, () => {
           passed: __verifyPassed,
           outlines: [
             { selector: '.o_form_view [name="user_id"]', passed: salesperson !== '' },
-            { selector: jobNote ? LeadPage.verifyRow('chatter-job') : '.o_mail_thread', passed: jobNote !== null },
+            { selector: jobNote ? LeadPageMig.verifyRow('chatter-job') : '.o_mail_thread', passed: jobNote !== null },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [
             { what: 'Salesperson must be filled by the assignment job', expected: 'not BLANK', actual: salesperson, ok: salesperson !== '' },

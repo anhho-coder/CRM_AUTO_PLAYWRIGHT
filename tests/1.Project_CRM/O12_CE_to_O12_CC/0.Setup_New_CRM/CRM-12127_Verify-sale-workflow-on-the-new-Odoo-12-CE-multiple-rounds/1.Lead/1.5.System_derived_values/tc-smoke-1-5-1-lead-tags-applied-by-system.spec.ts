@@ -209,7 +209,7 @@ test.describe(`${TC} - Tag applied by the system`, () => {
           name: `${TC} - Tag applied by the system`,
           passed: __verifyPassed,
           outlines: [
-            { selector: note ? LeadPage.verifyRow('chatter-tags') : '.o_mail_thread', passed: note !== null && note.includes('New: Trial download') },
+            { selector: note ? LeadPageMig.verifyRow('chatter-tags') : '.o_mail_thread', passed: note !== null && note.includes('New: Trial download') },
             { selector: '.o_form_view [name="tag_ids"]', passed: JSON.stringify(tags) === JSON.stringify(['Trial download']) },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [

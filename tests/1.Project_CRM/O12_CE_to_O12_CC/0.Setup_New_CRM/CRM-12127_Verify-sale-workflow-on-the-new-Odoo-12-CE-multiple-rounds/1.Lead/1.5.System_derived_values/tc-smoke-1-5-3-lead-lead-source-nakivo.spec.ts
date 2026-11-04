@@ -213,7 +213,7 @@ test.describe(`${TC} - Lead Source - Nakivo (Lead created without an owner)`, ()
             { selector: '.o_form_view [name="team_id"]', passed: salesTeam !== '' },
             { selector: '.o_form_view [name="user_id"]', passed: salesperson !== '' },
             { selector: '.o_form_view [name="lead_source"]', passed: leadSource === 'Nakivo' },
-            { selector: note ? LeadPage.verifyRow('chatter-assign') : '.o_mail_thread', passed: note !== null && loggedSource === 'Nakivo' },
+            { selector: note ? LeadPageMig.verifyRow('chatter-assign') : '.o_mail_thread', passed: note !== null && loggedSource === 'Nakivo' },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [
             { what: 'the assignment job must fill the Sales Team', expected: 'not BLANK', actual: salesTeam, ok: salesTeam !== '' },

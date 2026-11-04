@@ -203,7 +203,7 @@ test.describe(`${TC} - Lead Source - Partner`, () => {
             { selector: '.o_form_view [name="team_id"]', passed: salesTeam === OWNER.team },
             { selector: '.o_form_view [name="user_id"]', passed: salesperson === OWNER.salesperson },
             { selector: '.o_form_view [name="lead_source"]', passed: leadSource === 'Partner' },
-            { selector: sourceNote ? LeadPage.verifyRow('chatter-source') : '.o_mail_thread', passed: sourceNote === null },
+            { selector: sourceNote ? LeadPageMig.verifyRow('chatter-source') : '.o_mail_thread', passed: sourceNote === null },
           ],
           lines: CommonUtils.evidenceLines(STEP.s5, [
             { what: 'the Sales Team entered at creation must be kept', expected: `"${OWNER.team}"`, actual: salesTeam, ok: salesTeam === OWNER.team },
