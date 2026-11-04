@@ -55,6 +55,12 @@ import {
  *    4. The Action menu offers exactly 14 entries, in the baseline order
  *    - No other entry is offered
  *
+ *  BLOCKED by CRM-11858 (tester's decision 2026-11-04)
+ *  ---------------------------------------------------------------------------------------------
+ *  The Integration hub (CRM-11858) is not finished, so the Action menu cannot yet be required to
+ *  offer entry #9 'ActiveCampaign "Stop Automation"'. The TC is test.skip()-ed and tagged
+ *  [CRM-11858] in its title; un-skip and re-run once CRM-11858 is done. EXPECTED is unchanged.
+ *
  *  BASELINE RULE (CLAUDE.md, crm-mig automation)
  *  ---------------------------------------------------------------------------------------------
  *  The expected values below are the PRE-PRODUCTION baseline, byte-identical to TC.Performance.2.2.6.
@@ -125,7 +131,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
     await sweepMigLeftoversAfterAll(browser, TC);
   });
 
-  test(`${TC}: Verify the actions the Action menu of an Opportunity offers`, async ({ page }, testInfo) => {
+  test(`${TC}: [CRM-11858] Verify the actions the Action menu of an Opportunity offers`, async ({ page }, testInfo) => {
+    // Skipped before the setup on purpose: no Opportunity is created on crm-mig while the TC is blocked.
+    test.skip(true, 'Integration hub not finished, so the Action menu cannot yet be required to offer '
+      + '\'ActiveCampaign "Stop Automation"\' - blocked by CRM-11858');
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
