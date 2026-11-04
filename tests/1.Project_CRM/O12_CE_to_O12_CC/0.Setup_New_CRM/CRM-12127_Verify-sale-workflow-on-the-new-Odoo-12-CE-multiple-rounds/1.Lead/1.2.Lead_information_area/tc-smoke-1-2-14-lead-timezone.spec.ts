@@ -185,7 +185,19 @@ test.describe(`${TC} - Timezone`, () => {
         expect(tzOffset, 'Timezone offset must name the same Timezone').toContain(tz);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Timezone`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Timezone`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="tz"]', passed: tz !== '' },
+            { selector: '.o_form_view [name="tz_offset"]', passed: tzOffset !== '' && tzOffset.includes(tz) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Timezone must be filled', expected: 'not BLANK', actual: tz, ok: tz !== '' },
+            { what: 'Timezone offset must be filled', expected: 'not BLANK', actual: tzOffset, ok: tzOffset !== '' },
+            { what: 'Timezone offset must name the same Timezone', expected: `contains "${tz}"`, actual: tzOffset, ok: tzOffset.includes(tz) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

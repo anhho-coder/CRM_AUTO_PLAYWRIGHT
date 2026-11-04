@@ -233,7 +233,21 @@ test.describe(`${TC} - Invalid e-mail accepted (automatic path)`, () => {
         );
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Invalid e-mail accepted (automatic path)`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage(/(^|\n)Customer: /, 'chatter-customer');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Invalid e-mail accepted (automatic path)`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="email_from"]', passed: email === DATA.email },
+            { selector: customerNote ? LeadPage.verifyRow('chatter-customer') : '.o_mail_thread', passed: customerNote !== null && customerName === DATA.companyName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lead must be saved on the automatic path', expected: 'a URL carrying id=<n>', actual: leadUrl, ok: /[?#&]id=\d+/.test(leadUrl) },
+            { what: 'the address is stored on the Lead exactly as entered', expected: `"${DATA.email}"`, actual: email, ok: email === DATA.email },
+            { what: 'a Customer must still be created even though the e-mail is invalid', expected: 'a "Customer:" note', actual: customerNote, ok: customerNote !== null },
+            { what: 'the created Customer must carry the entered Company Name', expected: `"${DATA.companyName}"`, actual: customerName, ok: customerName === DATA.companyName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

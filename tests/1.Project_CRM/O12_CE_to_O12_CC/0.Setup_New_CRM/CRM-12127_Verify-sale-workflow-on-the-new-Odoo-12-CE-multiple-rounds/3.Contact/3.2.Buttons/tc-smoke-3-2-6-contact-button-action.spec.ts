@@ -193,7 +193,7 @@ test.describe(`${TC} - Action menu`, () => {
         'Send MSP certificate',
         'Clear email address',  // CRM-13036: present again since the data step landed (server action 2595).
       ];
-      const actual = await contactPage.getControlPanelMenuItems('Action');
+      const actual = await contactPage.getControlPanelMenuItems('Action', { keepOpen: true });
 
       console.log('==================== VERIFY ====================');
       console.log('  Verify #1 - the entries of the Action menu:');
@@ -219,7 +219,18 @@ test.describe(`${TC} - Action menu`, () => {
         expect(actual, 'the Action menu entries and their ORDER').toEqual(EXPECTED);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Action menu`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Action menu`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.dropdown-menu.show', passed: JSON.stringify(actual) === JSON.stringify(EXPECTED) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of entries in the Action menu', expected: `${EXPECTED.length}`, actual: actual.length, ok: actual.length === EXPECTED.length },
+            { what: 'the Action menu entries and their ORDER', expected: EXPECTED.join(' | '), actual: actual.join(' | '), ok: JSON.stringify(actual) === JSON.stringify(EXPECTED), difference: CommonUtils.listDifference(EXPECTED, actual) },
+          ]),
+        }).catch(() => {});
+        await contactPage.closeControlPanelMenu();
       }
     });
   });

@@ -22,8 +22,8 @@
  * Users are read from ./users.csv (columns: email,password), one distinct user per VU.
  *
  * Run locally (VPN to pre-prod required):
- *   k6 run perf/k6/login-load.js
- *   k6 run -e VUS=10 -e LOOPS=1 perf/k6/login-load.js
+ *   k6 run 1.Performance_testing/k6/login-load.js
+ *   k6 run -e VUS=10 -e LOOPS=1 1.Performance_testing/k6/login-load.js
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -215,8 +215,8 @@ export function handleSummary(data) {
     `Verdict       : ${allPass ? 'PASS' : 'FAIL'}\n`;
 
   return {
-    'perf/k6/report/index.html': html,
-    'perf/k6/report/summary.json': JSON.stringify(data, null, 2),
+    '1.Performance_testing/k6/report/index.html': html,
+    '1.Performance_testing/k6/report/summary.json': JSON.stringify(data, null, 2),
     stdout: text,
   };
 }

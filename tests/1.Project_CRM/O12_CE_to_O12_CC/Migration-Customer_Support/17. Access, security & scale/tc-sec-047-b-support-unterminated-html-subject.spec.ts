@@ -15,8 +15,8 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *                    helpers/customer-support-mig.baseline-map.ts)
  * Automation-Type  : new            Automation-Date : 2026-10-28
  * Jira             : N/A - not imported to Xray yet (feature CRM-11859)
- * Status           : SKIPPED - blocked by CRM-13916 (Verify #1/#3/#5 red on 2026-10-28: the escaped subject is displayed);
- *                    re-run and un-skip when CRM-13916 is resolved
+ * Status           : ACTIVE - CRM-13916 fixed (mig-customer-support 6546efa8b, deployed 2026-10-30); re-run 2026-11-03 PASS 9/9
+ *                    and un-skipped (was red on 2026-10-28, Verify #1/#3/#5: the escaped subject was displayed)
  * Host / Run as    : support-crm-mig (Frappe Helpdesk, ignoreHTTPSErrors) / L1 agent Giang Le (HD Agent Support Level = L1
  *                    asserted); teardown as Administrator over the API
  * Data             : one probe ticket (+ its Contact) per run, DELETED in afterEach (toggles SKIP_CLEANUP_*)
@@ -110,7 +110,6 @@ test.describe(`${TC} - Unterminated HTML subject on the Support service`, () => 
   });
 
   test(`${TC}: Unterminated HTML in a subject is shown as text - B: Frappe Helpdesk shows it literally in every view and stores it escaped [CRM-13916]`, customerSupportBaselineDetails(TC), async ({ page }, testInfo) => {
-    test.skip(true, 'Ticket page, All Tickets and Kanban show the stored escaped subject "Invoice &lt;img ..." instead of the text as typed - blocked by CRM-13916');
     test.setTimeout(config.timeouts.test);
     const desk = new SupportDeskPageMig(page);
     const checks: Check[] = [];
@@ -123,6 +122,8 @@ test.describe(`${TC} - Unterminated HTML subject on the Support service`, () => 
     const viewCheck = async (where: string, highlight: string[]) => {
       const seen = await desk.inspectInjectedMarkup(subject);
       const escaped = (await desk.inspectInjectedMarkup(subject.replace('<', '&lt;'))).textShown;
+      // list / kanban: outline the row or card that draws the subject (as typed, else the escaped form)
+      if (highlight.includes(SupportDeskPageMig.LIST_HIT)) await desk.markListResult(seen.textShown || !escaped ? subject : subject.replace('<', '&lt;'));
       console.log(`  - ${where}: literal subject shown ${seen.textShown} | escaped "&lt;img" text shown ${escaped} | <img src="x"> elements ${seen.injectedImages} | alerts so far ${alerts.length}`);
       await recordChecks(page, testInfo, checks, [
         { what: `Step 2 ${where} - the subject shows literally as typed`, expected: `the text "${subject}"`, actual: seen.textShown ? 'shown literally' : escaped ? 'NOT as typed - the escaped form "Invoice &lt;img ..." is displayed' : 'NOT found as typed', passed: seen.textShown },
@@ -153,11 +154,11 @@ test.describe(`${TC} - Unterminated HTML subject on the Support service`, () => 
       await desk.openTicketByLink(baseUrl_support_mig, ticketName);
       await viewCheck('ticket page', ['header']);
       await desk.openAllTicketsFromSidebar();
-      await viewCheck('All Tickets list', [SupportDeskPageMig.LIST_HEAD]);
+      await viewCheck('All Tickets list', [SupportDeskPageMig.LIST_HIT]);
       await desk.switchToKanbanLayout();
       const shown = await desk.revealKanbanCard(ticketName, 'Open');
       console.log(`  - Kanban card of ${ticketName} drawn: ${shown}`);
-      await viewCheck('kanban', ['main']);
+      await viewCheck('kanban', [SupportDeskPageMig.LIST_HIT]);
       await desk.switchToListLayout();
       await desk.openDeskTicketReportView(baseUrl_support_mig);
       await viewCheck('Desk report view', ['.layout-main-section']);

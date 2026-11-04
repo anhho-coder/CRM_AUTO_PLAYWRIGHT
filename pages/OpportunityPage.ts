@@ -3902,7 +3902,7 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
   }
 
   /** The stages the "MORE" dropdown of the stage bar holds, in order. The menu is closed again. */
-  async getMoreStageItems(): Promise<string[]> {
+  async getMoreStageItems(opts: { keepOpen?: boolean } = {}): Promise<string[]> {
     const more = this.page.locator('.o_statusbar_status button').filter({ hasText: /^\s*MORE\s*$/i }).first();
     if (!(await more.count().catch(() => 0))) return [];
     await more.click().catch(() => {});
@@ -3914,6 +3914,8 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
           .filter((t) => t.length > 0)
       )
       .catch(() => [] as string[]);
+    // keepOpen: leave the dropdown drawn for a verify-evidence shot; the caller closes it (closeControlPanelMenu)
+    if (opts.keepOpen) return items;
     await this.page.keyboard.press('Escape').catch(() => {});
     await this.wait(CommonUtils.waitTimes.medium);
     return items;
@@ -4177,12 +4179,15 @@ private readonly tagsRow = () => this.page.locator('xpath=//tr[td/label[contains
             : '';
         const notebook = el.querySelector('.o_notebook');
         const out: Array<{ label: string; field: string; value: string; column: 'left' | 'right'; y: number }> = [];
+        // verify-evidence hook: every label read is tagged BasePage.verifyRow('opp-label-left' | 'opp-label-right')
+        document.querySelectorAll('[data-pw-verify^="opp-label-"]').forEach((n) => n.removeAttribute('data-pw-verify'));
         Array.from(el.querySelectorAll('label')).forEach((l) => {
           if (notebook && notebook.contains(l)) return;
           if (!((l as HTMLElement).offsetParent || l.getClientRects().length)) return;
           const label = clean(l);
           if (!label) return;
           const rect = l.getBoundingClientRect();
+          l.setAttribute('data-pw-verify', rect.left < splitX ? 'opp-label-left' : 'opp-label-right');
           const row = l.closest('tr');
           const widget = row ? row.querySelector('[name]') : null;
           const valueCell = row ? row.querySelector('td.o_td_label + td') : null;

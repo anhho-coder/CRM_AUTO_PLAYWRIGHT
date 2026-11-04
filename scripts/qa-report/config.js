@@ -366,16 +366,23 @@ const AUTOMATION_COVERAGE = {
 
 // --- Automation coverage — Migration feature (same donut, Migration folders only) --
 // The same point-in-time donut as AUTOMATION_COVERAGE, scoped to the Odoo-migration
-// features' Xray Test Repository folders. The JQL is CRM-13900's "all features" pair:
+// features' Xray Test Repository folders — every "CRM test/Migration - *" folder, empty
+// ones included so their TCs count from the day they are added. The JQL pair (CRM-13900's
+// "all features" pair, widened from its 4 folders to all 9):
 //   totalTcs      = every Test in the folders below and their sub-folders
 //   automationTcs = that set AND "Automation scope" = Yes  (no status filter — as CRM-13900)
-// A feature joins the card by adding its folder here (Discounts has none yet: Jira answers
-// "Folder path … is not valid" for a missing folder, which would fail the whole count).
+// A NEW Migration folder joins the card only by being added here. The name must match Xray
+// exactly: Jira answers "Folder path … is not valid" for a wrong one, failing the whole count.
 const MIGRATION_TC_FOLDERS = [
   'CRM test/Migration - Setup New CRM',
   'CRM test/Migration - Exchange Rates',
   'CRM test/Migration - Pre-sales',
   'CRM test/Migration - Subscriptions',
+  'CRM test/Migration - Lead Routing',
+  'CRM test/Migration - Discount',
+  'CRM test/Migration - FTO, Sick Leave & Procurement',
+  'CRM test/Migration - Customer Support',
+  'CRM test/Migration - Integration Hub',
 ];
 const migrationFolderJql = MIGRATION_TC_FOLDERS
   .map((f) => `issue in testRepositoryFolderTests("CRM", "${f}", "true")`).join(' OR ');
@@ -386,8 +393,8 @@ const AUTOMATION_COVERAGE_MIGRATION = {
   automationJql: `(${migrationFolderJql}) AND "Automation scope" = Yes`,
   notes: [
     'A POINT-IN-TIME snapshot of the Odoo-migration features’ Xray Test Repository folders — NOT limited to a range or a quarter. It reflects the current Jira state each build.',
-    `<b>Total TCs</b> = every Test in these folders and their sub-folders: ${MIGRATION_TC_FOLDERS.join(' · ')}. <b>Automation TCs</b> = the subset whose “Automation scope” = Yes. <b>Remaining</b> = Total − Automation.`,
-    'Coverage % = Automation TCs ÷ Total TCs. Same queries as Jira CRM-13900.',
+    `<b>Total TCs</b> = every Test in these folders and their sub-folders: ${MIGRATION_TC_FOLDERS.map((f) => f.replace(/&/g, '&amp;')).join(' · ')}. <b>Automation TCs</b> = the subset whose “Automation scope” = Yes. <b>Remaining</b> = Total − Automation.`,
+    'Coverage % = Automation TCs ÷ Total TCs. Same query pattern as Jira CRM-13900, over all 9 Migration folders.',
   ],
 };
 
@@ -662,6 +669,44 @@ const BUG_BY_PRIORITY = {
   ],
 };
 
+// --- Migration bugs (Manual test page · "By range") ----------------------------
+// The bugs linked to ANY sub-task of the Odoo-migration features listed in Jira
+// CRM-13900, per feature × status. A POINT-IN-TIME snapshot of the current Jira state
+// each build — the range buttons do not filter it. Built by sources/migration-bugs.js:
+//   1. scan  `parent in (<feature keys>)`  → every sub-task + its issue links
+//   2. per feature, the sub-tasks with ≥ 1 linked issue of a `bugTypes` type
+//   3. every cell is COUNTED by its own JQL, regenerated from that live list:
+//        issuetype in (<bugTypes>) AND (issue in linkedIssues(<sub-task>) OR …) [AND <clause>]
+// This Jira has no ScriptRunner (`issueFunction` does not exist), so no single static JQL
+// can follow sub-tasks that get their first bug later — the per-build scan regenerates it.
+// Stored under data.migrationBugs. A feature joins the table by being added here.
+// Verified live 2026-10-28: 121 sub-tasks, 88 bugs (Setup New CRM 59, Subscriptions 24,
+// Discounts 5) = Open/Reopened 8 + Resolved 29 + Closed 51.
+const MIGRATION_BUGS = {
+  key: 'migrationBugs',
+  label: 'Migration bugs - linked to the features’ sub-tasks',
+  sourceTicket: 'CRM-13900',
+  features: [
+    { key: 'CRM-11854', name: 'Pre Implementation' },
+    { key: 'CRM-11865', name: 'Set up New CRM' },
+    { key: 'CRM-11857', name: 'Exchange Rates (OCA)' },
+    { key: 'CRM-11804', name: 'Pre-Sale' },
+    { key: 'CRM-11806', name: 'Subscriptions' },
+    { key: 'CRM-11855', name: 'Discounts' },
+  ],
+  // The CRM bug issue types (BUG_BY_PRIORITY.types without the support ticket).
+  bugTypes: ['Bug', 'Bug [Maintenance]', 'Bug [uncategorised]', 'Sub-Bug'],
+  // Status columns, AND-ed onto a feature's bug JQL. `clause: null` = every linked bug.
+  // The three status columns partition the Bug column for the CRM bug workflow; any bug
+  // in another status is reported under the table, never dropped silently.
+  columns: [
+    { key: 'bugs', label: 'Bug', clause: null },
+    { key: 'open', label: 'Open / Reopened / In Progress', clause: `status in (Open, Reopened, "In Progress")` },
+    { key: 'resolved', label: 'Resolved', clause: `status = Resolved` },
+    { key: 'closed', label: 'Closed', clause: `status = Closed` },
+  ],
+};
+
 // --- Classified Support ticket (the "Support ticket" page) -------------------
 // The team's quarterly QA review of the CRM support tickets RECEIVED in a range,
 // split into the 5 categories the review reports on. Reproduces the review
@@ -905,7 +950,7 @@ const SHARDS = ['odoo-kpi', 'jira-dashboard', 'frd', 'manual-heavy', 'manual-lig
 
 module.exports = {
   REPO_ROOT, OUT_DIR, DATA_DIR, HISTORY_DIR, CACHE_DIR,
-  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, AUTOMATION_COVERAGE_MIGRATION, FEATURE_EXEC, BUG_BY_PRIORITY, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
+  loadOdoo, loadJira, jiraBaseUrl, MEMBERS, KPI_METRICS, JIRA_METRICS, JIRA_WORKLOG_METRICS, JIRA_UNIQUE_METRICS, JIRA_FRD_METRICS, JIRA_TRANSITION_METRICS, JIRA_SPLIT_METRICS, JIRA_DERIVED_METRICS, JIRA_LIST_METRICS, JIRA_DEFECT_METRICS, ALLURE_PERIOD_METRICS, AUTOMATION_COVERAGE, AUTOMATION_COVERAGE_MIGRATION, FEATURE_EXEC, BUG_BY_PRIORITY, MIGRATION_BUGS, SUPPORT_CLASSIFICATION, WORK_HOURS_PER_DAY, SECTIONS,
   MODEL_KPI, MODEL_QUARTERLY, KPI_GROUP,
   WORKLOG_COLUMNS, WORKLOG_REFRESH_DAYS, WORKLOG_EXCLUDE_LABELS, WORKLOG_COMMENT_RULES,
   MODEL_LEAVE, LEAVE_TYPES,

@@ -181,7 +181,19 @@ test.describe(`${TC} - Log note - field summary`, () => {
         expect(fields['Show on website'], 'the Show on website flag the field-summary log note reports').toBe('true');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - field summary`, passed: __verifyPassed }).catch(() => {});
+        await contactPage.markChatterMessage(/Email:/, 'chatter-summary');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Log note - field summary`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: note ? '[data-pw-verify="chatter-summary"]' : '.o_mail_thread', passed: note !== null && fields['Email'] === DATA.email && fields['Show on website'] === 'true' },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Contact carries a field-summary log note', expected: 'a note with "Email:"', actual: note, ok: note !== null },
+            { what: 'the Email the field-summary log note reports', expected: `"${DATA.email}"`, actual: fields['Email'], ok: fields['Email'] === DATA.email },
+            { what: 'the Show on website flag the field-summary log note reports', expected: '"true"', actual: fields['Show on website'], ok: fields['Show on website'] === 'true' },
+          ]),
+        }).catch(() => {});
       }
     });
   });

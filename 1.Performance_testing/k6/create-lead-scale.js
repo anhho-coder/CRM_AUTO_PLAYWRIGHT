@@ -18,7 +18,7 @@
  *   BASE_URL / MAP_IP                          (default https://pre-production.nakivo.site / 10.220.222.100)
  *   P95_MS   per-level create p95 gate ms      (default 4000)
  *
- * Run locally (VPN required):  k6 run -e RUN_ID=local1 perf/k6/create-lead-scale.js
+ * Run locally (VPN required):  k6 run -e RUN_ID=local1 1.Performance_testing/k6/create-lead-scale.js
  */
 import http from 'k6/http';
 import { check } from 'k6';
@@ -333,8 +333,8 @@ export function handleSummary(data) {
   text += `Verdict: ${allPass ? 'ALL PASS' : 'SOME FAIL'}\n`;
 
   return {
-    'perf/k6/report/index.html': html,
-    'perf/k6/report/summary.json': JSON.stringify(data, null, 2),
+    '1.Performance_testing/k6/report/index.html': html,
+    '1.Performance_testing/k6/report/summary.json': JSON.stringify(data, null, 2),
     stdout: text,
   };
 }

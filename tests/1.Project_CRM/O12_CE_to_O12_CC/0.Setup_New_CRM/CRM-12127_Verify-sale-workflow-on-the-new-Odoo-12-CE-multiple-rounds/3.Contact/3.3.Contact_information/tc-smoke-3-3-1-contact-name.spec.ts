@@ -174,7 +174,16 @@ test.describe(`${TC} - Contact Name`, () => {
         expect(actual, 'the Contact Name on the saved form matches the entered value').toBe(expected);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Contact Name`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Contact Name`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="name"]', passed: actual === expected },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Contact Name on the saved form matches the entered value', expected: `"${expected}"`, actual: actual, ok: actual === expected },
+          ]),
+        }).catch(() => {});
       }
     });
   });

@@ -196,7 +196,23 @@ test.describe(`${TC} - Log note - Lead created`, () => {
         );
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Log note - Lead created`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage(/^Opportunity created/, 'chatter-created');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Log note - Lead created`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: LeadPage.verifyRow('chatter-created'), passed: __verifyPassed },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the note must start with "Opportunity created"', expected: 'true', actual: created.raw.startsWith('Opportunity created'), ok: created.raw.startsWith('Opportunity created') },
+            { what: 'Company Name in the note', expected: `"${DATA.companyName}"`, actual: created.fields['Company Name'], ok: created.fields['Company Name'] === DATA.companyName },
+            { what: 'Contact Name in the note', expected: `"${DATA.contactName}"`, actual: created.fields['Contact Name'], ok: created.fields['Contact Name'] === DATA.contactName },
+            { what: 'Email in the note', expected: `"${DATA.email}"`, actual: created.fields['Email'], ok: created.fields['Email'] === DATA.email },
+            { what: 'Stage in the note', expected: '"New"', actual: created.fields['Stage'], ok: created.fields['Stage'] === 'New' },
+            { what: 'Active in the note', expected: '"true"', actual: created.fields['Active'], ok: created.fields['Active'] === 'true' },
+            { what: 'the note must report the system keys', expected: 'keys include "Priority (System)", "Expected Revenue"', actual: Object.keys(created.fields), ok: ['Priority (System)', 'Expected Revenue'].every((k) => k in created.fields) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

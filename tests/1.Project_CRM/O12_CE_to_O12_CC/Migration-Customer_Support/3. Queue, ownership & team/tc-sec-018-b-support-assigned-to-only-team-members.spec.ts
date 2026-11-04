@@ -12,9 +12,11 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *  TC-SEC-018_B - 'Assigned to' offers only Customer Support team members - side B: Support service (Frappe Helpdesk)
  * ================================================================================================
  * Test Case ID     : TC-SEC-018_B   (side B of the A/B row TC-SEC-018; side A = tc-sec-018-a-preprod-...)
- * Automation-Type  : new
- * Automation-Date  : 2026-10-28
+ * Automation-Type  : refactored
+ * Automation-Date  : 2026-10-30
  * Jira             : N/A - not imported to Xray yet (feature CRM-11859, Customer Support migration)
+ * Status           : ACTIVE - CRM-13929 fixed (d1a98216d + 0cddf1105 + 623aef9f9); re-run 2026-11-03 PASS 5/5 and un-skipped
+ *                    (was red on 2026-10-28 and 2026-10-30, Verify #1: the Assignee picker offered Thomas Semerich)
  * Host             : Support service (https://support-crm-mig.nakivo.site, Frappe Helpdesk - NOT Odoo; ignoreHTTPSErrors)
  * Run as           : L1 agent - Giang Le (giang.le@nakivo.com; HD Agent Support Level = L1, asserted in Pre-condition 1;
  *                    users.support_l1_giang_support_mig). Teardown only: Administrator over the API.
@@ -37,6 +39,7 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  * Command to run
  * --------------
  *   npx playwright test tc-sec-018-b-support --grep "TC-SEC-018_B:" --project=chromium-headless
+ *   npx playwright test --grep "CRM-13929" --project=chromium-headless
  *   (both sides: npx playwright test tc-sec-018- --grep "TC-SEC-018_" --project=chromium-headless; --grep @baseline-preprod)
  *
  * ------------------------------------------------------------------------------------------------
@@ -198,7 +201,7 @@ test.describe(`${TC} - Assigned to offers only team members on the Support servi
     if (cleanupError) throw new Error(`afterEach cleanup: ${cleanupError}`);
   });
 
-  test(`${TC}: 'Assigned to' offers only Customer Support team members - B: Frappe Helpdesk neither offers nor accepts an agent outside the CS team`, customerSupportBaselineDetails(TC), async ({ page }, testInfo) => {
+  test(`${TC}: 'Assigned to' offers only Customer Support team members - B: Frappe Helpdesk neither offers nor accepts an agent outside the CS team [CRM-13929]`, customerSupportBaselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     const desk = new SupportDeskPageMig(page);
     const checks: Check[] = [];

@@ -542,7 +542,11 @@ export class SupportDeskPageMig extends BasePage {
     // Cards of a column are listed by time in the stage, oldest first: a new ticket sits at the foot of its column, and the
     // "On Customer" column holds ~250 tickets (13 pages of 20), so the bound covers the whole column.
     for (let attempt = 1; attempt <= 20; attempt++) {
-      if (await link.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) return true;
+      if (await link.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) {
+        // drawn is not on screen: a card at the foot of a long column sits below the column's scroll area (evidence shot)
+        await link.scrollIntoViewIfNeeded({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+        return true;
+      }
       const more = column.locator('button').filter({ hasText: /^\s*Load more\s*$/ }).first();
       if (!(await more.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false))) return false;
       await more.click({ timeout: CommonUtils.waitTimes.abnormalWait });

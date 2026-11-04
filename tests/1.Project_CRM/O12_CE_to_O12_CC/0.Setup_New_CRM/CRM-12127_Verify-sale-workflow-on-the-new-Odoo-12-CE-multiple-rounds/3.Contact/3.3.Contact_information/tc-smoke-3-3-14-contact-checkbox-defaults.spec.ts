@@ -192,7 +192,16 @@ test.describe(`${TC} - Checkbox defaults`, () => {
           EXPECTED.map((e) => ({ field: e.field, checked: e.checked })));
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Checkbox defaults`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Checkbox defaults`,
+          passed: __verifyPassed,
+          outlines: [
+            ...EXPECTED.map((e, i) => ({ selector: `.o_form_sheet [name="${e.field}"]`, passed: actual[i].checked === e.checked })),
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the checkbox states of a newly created Contact', expected: EXPECTED.map((e) => `${e.label}=${e.checked}`).join(' | '), actual: actual.map((a) => `${a.label}=${a.checked}`).join(' | '), ok: JSON.stringify(actual.map((a) => ({ field: a.field, checked: a.checked }))) === JSON.stringify(EXPECTED.map((e) => ({ field: e.field, checked: e.checked }))) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

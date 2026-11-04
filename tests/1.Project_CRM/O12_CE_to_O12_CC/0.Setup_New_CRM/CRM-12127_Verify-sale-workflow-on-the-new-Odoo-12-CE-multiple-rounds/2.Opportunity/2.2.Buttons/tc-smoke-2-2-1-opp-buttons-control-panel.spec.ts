@@ -177,6 +177,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Control-panel buttons`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_control_panel', passed: verifyPassed },
+          ],
+          lines: CommonUtils.checksLines(STEP.s8, CHECKS),
         }).catch(() => {});
       }
     });

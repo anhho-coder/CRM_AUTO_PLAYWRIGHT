@@ -41,6 +41,7 @@ function buildSkeleton(now) {
     supportClassification: null,
     automationCoverage: null,
     automationCoverageMigration: null,
+    migrationBugs: null,
   };
 }
 

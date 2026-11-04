@@ -2023,6 +2023,11 @@ export class ContactPage extends BasePage {
   /** x of the boundary between the information area's left and right column (grounded: 50 vs 603). */
   private static readonly COLUMN_SPLIT_X = 400;
 
+  /** Verify-evidence hook set by getFieldLabelMap() (and its callers): the form row carrying `label`. */
+  static labelRow(label: string): string {
+    return `.o_form_sheet tr[data-pw-row="${label}"]`;
+  }
+
   /**
    * The control-panel buttons of the form, in screen order.
    * Read mode returns ["EDIT", "CREATE", "Print", "Action"]; edit mode returns ["SAVE", "DISCARD"].
@@ -2305,6 +2310,10 @@ export class ContactPage extends BasePage {
             : '';
         const notebook = el.querySelector('.o_notebook');
         const out: Array<{ label: string; field: string; value: string; column: 'left' | 'right'; y: number }> = [];
+        // verify-evidence hooks: each label read -> BasePage.verifyRow('contact-label-left' | '-right'); its row ->
+        // ContactPage.labelRow(label), so a shot can outline a column, or one labelled row (label + value)
+        document.querySelectorAll('[data-pw-verify^="contact-label-"]').forEach((n) => n.removeAttribute('data-pw-verify'));
+        document.querySelectorAll('[data-pw-row]').forEach((n) => n.removeAttribute('data-pw-row'));
         Array.from(el.querySelectorAll('label')).forEach((l) => {
           if (notebook && notebook.contains(l)) return;
           if (!((l as HTMLElement).offsetParent || l.getClientRects().length)) return;
@@ -2312,6 +2321,8 @@ export class ContactPage extends BasePage {
           if (!label) return;
           const rect = l.getBoundingClientRect();
           const row = l.closest('tr');
+          l.setAttribute('data-pw-verify', rect.left < splitX ? 'contact-label-left' : 'contact-label-right');
+          if (row) row.setAttribute('data-pw-row', label);
           const widget = row ? row.querySelector('[name]') : null;
           const valueCell = row ? row.querySelector('td.o_td_label + td') : null;
           out.push({

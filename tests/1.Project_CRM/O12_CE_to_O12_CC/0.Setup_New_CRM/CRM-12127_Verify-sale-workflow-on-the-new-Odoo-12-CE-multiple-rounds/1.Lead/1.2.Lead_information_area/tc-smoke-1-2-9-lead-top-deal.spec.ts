@@ -187,7 +187,16 @@ test.describe(`${TC} - Top Deal`, () => {
         expect(topDeal, 'Top Deal must stay checked after save').toBe(true);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Top Deal`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Top Deal`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="top_deal"]', passed: topDeal === true },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Top Deal must stay checked after save', expected: 'true (checked)', actual: topDeal, ok: topDeal === true },
+          ]),
+        }).catch(() => {});
       }
     });
   });

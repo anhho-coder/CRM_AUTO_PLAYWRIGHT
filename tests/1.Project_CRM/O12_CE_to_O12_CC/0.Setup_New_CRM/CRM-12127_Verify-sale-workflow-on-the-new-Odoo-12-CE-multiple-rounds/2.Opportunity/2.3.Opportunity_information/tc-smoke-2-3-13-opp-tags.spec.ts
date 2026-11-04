@@ -155,6 +155,10 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.o_form_sheet [name="tag_ids"]', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(tags.length, 'the NUMBER of tags the system applied').toBe(EXPECTED_TAGS.length);

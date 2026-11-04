@@ -204,7 +204,20 @@ test.describe(`${TC} - Tag applied by the system`, () => {
         expect(tags, 'the Lead Form must drive exactly the Trial download tag').toEqual(['Trial download']);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tag applied by the system`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage('Tags CREATE changed', 'chatter-tags');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Tag applied by the system`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: note ? LeadPage.verifyRow('chatter-tags') : '.o_mail_thread', passed: note !== null && note.includes('New: Trial download') },
+            { selector: '.o_form_view [name="tag_ids"]', passed: JSON.stringify(tags) === JSON.stringify(['Trial download']) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the system must log the tag it applies', expected: 'a "Tags CREATE changed" note', actual: note, ok: note !== null },
+            { what: 'the log note must name the applied tag', expected: 'contains "New: Trial download"', actual: note, ok: (note ?? '').includes('New: Trial download') },
+            { what: 'the Lead Form must drive exactly the Trial download tag', expected: '["Trial download"]', actual: tags, ok: JSON.stringify(tags) === JSON.stringify(['Trial download']) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

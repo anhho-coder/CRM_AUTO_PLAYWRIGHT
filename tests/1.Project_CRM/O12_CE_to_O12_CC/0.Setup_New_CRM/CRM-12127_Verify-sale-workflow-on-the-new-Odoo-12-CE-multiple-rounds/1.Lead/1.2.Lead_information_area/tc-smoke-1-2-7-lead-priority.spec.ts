@@ -200,7 +200,22 @@ test.describe(`${TC} - Priority applied by the system`, () => {
         expect(priority.totalStars, 'the Priority widget must offer 4 stars').toBe(4);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Priority applied by the system`, passed: __verifyPassed }).catch(() => {});
+        await leadPage.markChatterMessage(/^Priority \(System\): /, 'chatter-priority');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Priority applied by the system`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: LeadPage.verifyRow('chatter-priority'), passed: change.from === 'Low' && change.to === 'Medium High' },
+            { selector: '.o_form_view div.o_priority[name="priority_new"]', passed: priority.label === 'Medium High' && priority.filledStars === 2 && priority.totalStars === 4 },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lead must start at Low', expected: '"Low"', actual: change.from, ok: change.from === 'Low' },
+            { what: 'the system must raise the Priority to Medium High', expected: '"Medium High"', actual: change.to, ok: change.to === 'Medium High' },
+            { what: 'the star widget must show Medium High', expected: '"Medium High"', actual: priority.label, ok: priority.label === 'Medium High' },
+            { what: 'Medium High must fill 2 of 4 stars', expected: '2', actual: priority.filledStars, ok: priority.filledStars === 2 },
+            { what: 'the Priority widget must offer 4 stars', expected: '4', actual: priority.totalStars, ok: priority.totalStars === 4 },
+          ]),
+        }).catch(() => {});
       }
     });
   });

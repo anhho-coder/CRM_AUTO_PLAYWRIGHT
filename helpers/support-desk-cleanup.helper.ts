@@ -121,7 +121,8 @@ export async function deleteSupportProbeAsAdmin(
         continue;
       }
       const doc = (await g.json()).data || {};
-      if (doc.subject !== probe.subject) throw new Error(`ticket ${name} has subject "${doc.subject}", not this run's "${probe.subject}" - not deleted`);
+      // the text guard (SEC-1) stores every '<' that can open a tag as '&lt;' (CRM-13916) - compare as typed
+      if (String(doc.subject ?? '').replace(/&lt;/g, '<') !== probe.subject) throw new Error(`ticket ${name} has subject "${doc.subject}", not this run's "${probe.subject}" - not deleted`);
       await clearTicketLinkedRows(api, name, log, probe.since);
       await deleteTicketAndLinkedRows(api, name, log);
       const after = (await api.get(`/api/resource/HD Ticket/${name}`)).status();

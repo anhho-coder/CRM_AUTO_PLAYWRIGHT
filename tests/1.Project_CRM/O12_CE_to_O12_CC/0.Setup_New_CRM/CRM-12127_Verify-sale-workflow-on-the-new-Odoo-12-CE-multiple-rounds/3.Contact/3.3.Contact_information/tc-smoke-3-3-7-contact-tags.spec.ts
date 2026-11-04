@@ -180,7 +180,17 @@ test.describe(`${TC} - Tags`, () => {
         expect(tags.length, 'the NUMBER of Tags on the saved Contact').toBe(1);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Tags`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Tags`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="category_id"]', passed: tags.includes(chosenTag) && tags.length === 1 },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Tag selected at creation is saved on the Contact', expected: `contains "${chosenTag}"`, actual: tags.join(' | '), ok: tags.includes(chosenTag) },
+            { what: 'the NUMBER of Tags on the saved Contact', expected: '1', actual: tags.length, ok: tags.length === 1 },
+          ]),
+        }).catch(() => {});
       }
     });
   });

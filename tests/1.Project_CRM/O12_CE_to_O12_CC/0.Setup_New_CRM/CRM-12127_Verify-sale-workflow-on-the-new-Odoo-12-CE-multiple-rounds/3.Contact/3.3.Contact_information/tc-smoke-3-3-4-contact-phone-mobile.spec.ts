@@ -187,7 +187,18 @@ test.describe(`${TC} - Phone and Mobile`, () => {
         expect(mobile, 'the Mobile on the saved form matches the entered value').toBe(DATA.mobile);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Phone and Mobile`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Phone and Mobile`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="phone"]', passed: phone === DATA.phone },
+            { selector: '.o_form_sheet [name="mobile"]', passed: mobile === DATA.mobile },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Phone on the saved form matches the entered value', expected: `"${DATA.phone}"`, actual: phone, ok: phone === DATA.phone },
+            { what: 'the Mobile on the saved form matches the entered value', expected: `"${DATA.mobile}"`, actual: mobile, ok: mobile === DATA.mobile },
+          ]),
+        }).catch(() => {});
       }
     });
   });

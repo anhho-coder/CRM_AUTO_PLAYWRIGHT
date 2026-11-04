@@ -1101,6 +1101,94 @@ function bugByPrioritySection(bp, def) {
   </section>`;
 }
 
+/* ----- Migration bugs - linked to the features' sub-tasks (Manual test) ----- */
+// The bugs linked to any sub-task of the CRM-13900 migration features, per feature ×
+// status. POINT-IN-TIME (one block, not per range — the range buttons leave it alone).
+// Data from sources/migration-bugs.js: migrationBugs = { asOf, scanJql, bugTypes,
+// columns, rows:[{no, key, name, subtasks, withBugs, bugJql, cells, jql, …}], total }.
+// Every count is a LINK to the Jira issue navigator running exactly its JQL (JQL also
+// in the tooltip), and the ℹ️ note above the table lists every query.
+function migrationBugsTable(mb, jiraBase) {
+  const base = String(jiraBase || '').replace(/\/+$/, '');
+  const cols = mb.columns;
+  const cell = (n, jql, title) => (jql
+    ? `<a href="${esc(jqlUrl(base, jql))}" target="_blank" rel="noopener" title="${esc(title)} — open in Jira. JQL: ${esc(jql)}">${fmt(n)}</a>`
+    : `<span title="${esc(title)}">${fmt(n)}</span>`);
+  const head = `<tr><th class="num">#</th><th>Feature</th><th>Jira</th><th class="num">Sub-task</th><th class="num">Sub-task with bug</th>` +
+    cols.map((c) => `<th class="num">${esc(c.label)}</th>`).join('') + `</tr>`;
+  const row = (r, isTotal) => {
+    const name = isTotal ? 'Total' : r.name;
+    const none = r.bugJql ? null : `${name}: none of its ${r.subtasks} sub-tasks has a linked bug`;
+    const statusCell = (c) => (none && c.clause
+      ? `<td class="num mb-n">–</td>`
+      : `<td class="num mb-n${c.clause ? '' : ' mb-bug'}">${cell(r.cells[c.key] || 0, r.jql[c.key], none || `${name}: ${c.label}`)}</td>`);
+    return `<tr${isTotal ? ' class="mb-total"' : ''}>
+      <td class="num">${isTotal ? '' : r.no}</td>
+      <td class="mb-feat">${esc(name)}</td>
+      <td class="skey">${isTotal ? '' : `<a href="${esc(base)}/browse/${esc(r.key)}" target="_blank" rel="noopener">${esc(r.key)}</a>`}</td>
+      <td class="num mb-n">${cell(r.subtasks, r.subtasksJql, `${name}: sub-tasks`)}</td>
+      <td class="num mb-n">${cell(r.withBugs.length, r.withBugsJql, none || `${name}: sub-tasks with a linked bug`)}</td>
+      ${cols.map(statusCell).join('')}
+    </tr>`;
+  };
+  const body = mb.rows.map((r) => row(r, false)).join('') + row(mb.total, true);
+  return `<div class="stuckwrap"><table class="stucktbl mbtbl"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+
+function migrationBugsNote(mb) {
+  const code = (s) => `<code>${esc(s)}</code>`;
+  const types = mb.bugTypes.join(' / ');
+  const perRow = [...mb.rows, { ...mb.total, name: 'Total — all features', key: '' }].map((r) => {
+    const title = `<div style="margin-top:8px"><b>${esc(r.name)}</b>${r.key ? ` · ${esc(r.key)}` : ''}</div>`;
+    if (!r.bugJql) return `${title}<div>No sub-task has a linked bug. Sub-task: ${code(r.subtasksJql)}</div>`;
+    return `${title}<div>Sub-task: ${code(r.subtasksJql)}</div>` +
+      `<div>Sub-task with bug: ${code(r.withBugsJql)}</div>` +
+      `<div>Bug: ${code(r.bugJql)}</div>`;
+  }).join('');
+  const statusLines = mb.columns.filter((c) => c.clause)
+    .map((c) => `<div><b>${esc(c.label)}</b> = the row’s Bug JQL ${code(`AND ${c.clause}`)}</div>`).join('');
+  const notes = [
+    `A <b>point-in-time</b> snapshot of Jira at build time (${esc(String(mb.asOf || '').slice(0, 16).replace('T', ' '))} UTC) — the range buttons above do <b>not</b> filter it.`,
+    `Scope = issues of type ${esc(types)} linked (any link type) to a <b>sub-task</b> of a feature listed in ${esc(mb.sourceTicket)}. A bug linked only to the feature itself is not counted.`,
+    'Every number is a link that runs its JQL in Jira. This Jira has no ScriptRunner, so no single JQL can follow sub-tasks: the Bug JQL lists the sub-tasks that had a linked bug at build time, regenerated from the scan on every build — a bug linked to another sub-task shows after the next build.',
+    'A bug linked to several sub-tasks counts once. The Total row is the distinct bugs across all features.',
+    'The three status columns split the Bug column; a bug in any other status is flagged under the table.',
+  ];
+  return `<div class="wlnote wlnote-jql" tabindex="0">ℹ️ JQL for each metric<span class="wlnote-hint"> (point-in-time, regenerated every build — hover)</span>
+    <div class="wlnote-pop">
+      <div class="wlnote-h">1 · Sub-task scan</div>
+      <div>${code(mb.scanJql)} — reads every sub-task’s Issue Links; a sub-task “has a bug” when it links an issue of type ${esc(types)}.</div>
+      <div class="wlnote-h">2 · Query per feature</div>
+      ${perRow}
+      <div class="wlnote-h">3 · Status columns</div>
+      ${statusLines}
+      <div class="wlnote-h">Notes</div>
+      <ul>${notes.map((x) => `<li>${x}</li>`).join('')}</ul>
+    </div>
+  </div>`;
+}
+
+function migrationBugsSection(mb, jiraBase) {
+  const base = String(jiraBase || '').replace(/\/+$/, '');
+  const t = mb.total;
+  const c = t.cells;
+  const caption = `<div class="fcaption">Total bugs: <b>${fmt(c.bugs || 0)}</b> · Open / Reopened / In Progress: <b>${fmt(c.open || 0)}</b> · Resolved: <b>${fmt(c.resolved || 0)}</b> · Closed: <b>${fmt(c.closed || 0)}</b> · linked to <b>${fmt(t.withBugs.length)}</b> of <b>${fmt(t.subtasks)}</b> sub-tasks</div>`;
+  const flagged = [...mb.rows, { ...t, name: 'Total' }].filter((r) => r.otherStatus || r.scanMismatch);
+  const warn = flagged.length
+    ? `<div class="warn">⚠ ${flagged.map((r) => `<b>${esc(r.name)}</b>: ` + [
+      r.otherStatus ? `${fmt(r.otherStatus)} bug(s) in a status outside the 3 status columns` : '',
+      r.scanMismatch ? `the sub-task scan saw ${fmt(r.scanBugs)} bug(s), the JQL counts ${fmt(r.cells.bugs || 0)}` : '',
+    ].filter(Boolean).join('; ')).join(' · ')}</div>`
+    : '';
+  return `<section class="metric bugpri migbugs">
+    <h2>${esc(mb.label)} <span class="pill">point-in-time</span> <span class="muted">· Bugs linked to any sub-task of the Odoo-migration features in <a href="${esc(base)}/browse/${esc(mb.sourceTicket)}" target="_blank" rel="noopener">${esc(mb.sourceTicket)}</a> · as of ${esc(String(mb.asOf || '').slice(0, 10))}</span></h2>
+    ${migrationBugsNote(mb)}
+    ${migrationBugsTable(mb, base)}
+    ${caption}
+    ${warn}
+  </section>`;
+}
+
 /* --------------- Classified Support ticket (Support ticket page) -------------- */
 // The QA review's split of every CRM support ticket CREATED in the range into the
 // review's 5 categories (A…E) — the review spreadsheet, rendered live. Data per
@@ -1912,6 +2000,15 @@ h2{margin:0 0 12px;font-size:17px}
 .bugpri .bptbl tr.bp-total td{color:#111}
 .bugpri .fcaption{color:#111;font-size:13.75px}
 .bugpri .fcaption b{color:#111}
+/* "Migration bugs - linked to the features' sub-tasks": same black typography as .bugpri;
+   every count is a dotted link to its JQL. */
+.mbtbl{min-width:860px}
+.mbtbl td.mb-feat{font-weight:700;color:#111;white-space:nowrap}
+.mbtbl td.mb-bug{font-weight:800}
+.mbtbl td.mb-n a{color:#111;text-decoration:none;border-bottom:1px dotted #b39ddb}
+.mbtbl td.mb-n a:hover{color:#6a3093;border-bottom-color:#6a3093}
+.mbtbl tr.mb-total td{font-weight:800;color:#111;border-top:2px solid #d9c9ee;background:#faf7ff}
+.migbugs h2 .muted a{color:#6a3093}
 /* "Classified Support ticket" (Support ticket page): the QA review sheet, live. The
    per-row tints are inline (from the config), so only layout/typography lives here.
    Text is black/brand-purple, never grey. */
@@ -2446,6 +2543,10 @@ function main() {
     // (its own data shape), shown in the "By range" view only.
     const bugByPriorityHtml = (navKey === 'manual' && data.bugByPriority && data.bugByPriority.ranges)
       ? withAnchor(data.bugByPriority, bugByPrioritySection(data.bugByPriority, defRange)) : '';
+    // "Migration bugs - linked to the features' sub-tasks" — a point-in-time Manual-test-
+    // page table (its own data shape), shown in the "By range" view under bug-by-priority.
+    const migrationBugsHtml = (navKey === 'manual' && data.migrationBugs && data.migrationBugs.rows)
+      ? withAnchor({ key: 'migrationBugs', label: data.migrationBugs.label }, migrationBugsSection(data.migrationBugs, data.jiraBaseUrl)) : '';
     // "Automation coverage" — an Automation-test-page extra (point-in-time donut, its
     // own data shape), shown at the bottom of the "Quarterly KPI" view only.
     const automationCoverageHtml = (navKey === 'automation' && data.automationCoverage)
@@ -2482,6 +2583,7 @@ function main() {
     ${jqlNote(metrics, data.ranges, defRange, data.kpiJql || {})}
     ${featureExecHtml}
     ${bugByPriorityHtml}
+    ${migrationBugsHtml}
     ${rangeSections || '<p class="muted">No range data available.</p>'}
   </div>
 
@@ -2713,7 +2815,7 @@ ${wlDataScript}
   // 1·(Create P4) + 3·(Verified P1/2) + 2·(Verified P3) + 1·(Verified P4) +
   // 1·(Executed TC) + 1·(Maintenance/Created TC). Executed Automation TC comes
   // from the Allure monthly report (Section 1); every other cell is the team's
-  // saved Jira JQL. Figures below are the Jun-2026 snapshot.
+  // saved Jira JQL. Figures below are the Oct-2026 snapshot.
   const rkStyle = `<style>
   .rkwrap{overflow-x:auto}
   .rk{width:100%;border-collapse:collapse;font-size:13px;min-width:820px;margin:4px 0}
@@ -2747,36 +2849,37 @@ ${rkStyle}
 </div>
 <div class="wrap">
   ${sourceBanner(data.sources)}
-  <div class="sub muted" style="margin:4px 0 2px">Monthly ranking · Period: <b>Jun 01 – 30, 2026</b></div>
+  <div class="sub muted" style="margin:4px 0 2px">Monthly ranking · Period: <b>Oct 01 – 31, 2026</b></div>
   <div class="wlnote" tabindex="0">JQL for each metric <span class="wlnote-hint">(for the selected range — hover)</span>
     <span class="wlnote-pop">
       <div class="wlnote-h">Query</div>
       <div class="mn">Create Valid bugs — manual</div>
       <pre>type in ("Bug [uncategorised]", "Bug [Maintenance]", Bug, Sub-Bug, "Post-EA - Support Ticket")
-AND created &gt;= 2026-06-01 AND created &lt;= 2026-06-30 AND reporter in (&lt;user&gt;)
+AND created &gt;= 2026-10-01 AND created &lt;= 2026-10-31 AND reporter in (&lt;user&gt;)
 AND (status in (Open, Reopened, "In Progress")
      OR resolution changed to (Fixed, Done, "Won't fix", Unresolved, "Won't Do"))</pre>
       <div class="mn">Verified bugs — manual</div>
       <pre>issuetype in ("Bug [uncategorised]", Bug, "Bug [Maintenance]", Sub-Bug, improvement, "Post-EA - Support Ticket", "Post-EA - Task")
-AND status changed to (reopened, closed) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY (&lt;user&gt;)
+AND status changed to (reopened, closed) DURING ("2026-10-01 00:00", "2026-10-31 21:00") BY (&lt;user&gt;)
 AND priority not in ("Blocker (P1)", "Critical (P2)")</pre>
       <div class="mn">Executed Test cases — manual</div>
       <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND worklogAuthor in (&lt;user&gt;)
-AND worklogDate &gt;= 2026-06-01 AND worklogDate &lt;= 2026-06-30</pre>
+AND worklogDate &gt;= 2026-10-01 AND worklogDate &lt;= 2026-10-31</pre>
       <div class="mn">Maintenance / Created Test cases — manual</div>
       <pre>project = CRM AND issuetype = "Post-EA - Test Case" AND reporter = &lt;user&gt;
-AND createdDate &gt;= "2026-06-01 00:00" AND createdDate &lt;= "2026-06-30 21:00"</pre>
+AND createdDate &gt;= "2026-10-01 00:00" AND createdDate &lt;= "2026-10-31 21:00"</pre>
       <div class="mn">Create / Verified bugs — automation</div>
       <pre>labels in (QA-CRM_Automation) AND ...  (same as manual, plus the QA-CRM_Automation label)</pre>
       <div class="mn">Maintenance / Created Automation TC</div>
       <pre>"Automation scope" = yes
-AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00") BY &lt;user&gt;</pre>
+AND status changed to (resolved) DURING ("2026-10-01 00:00", "2026-10-31 21:00") BY &lt;user&gt;</pre>
       <div class="wlnote-h">Notes</div>
       <ul>
         <li>Per tester: bugs by <b>reporter</b> (create) / <b>actor</b> of the status change (verify); TCs by <b>worklogAuthor</b> (executed) / <b>reporter</b> (created).</li>
         <li>Verified headline count uses <b>priority not in (P1,P2)</b>; the P1/2 &amp; P3 columns are the full priority breakdown.</li>
         <li>Date bounds follow the sheet convention (<b>&le; "…21:00"</b>) — entries after 21:00 on the last day are dropped; use 23:59 for the full day.</li>
         <li><b>Executed Automation TC</b> is not a Jira metric — read from the Allure monthly report (Section 1) of the reported month.</li>
+        <li><b>Trivial (P5)</b> bugs count in the Valid / Total columns but carry no weight in the score.</li>
       </ul>
     </span>
   </div>
@@ -2785,8 +2888,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <h2>CRM Manual <a class="anchor" href="#m-ranking-manual" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Test cases')}
       <tbody>
-        <tr><td class="nm">Thuat Phung</td><td>17</td><td>15</td><td class="dim">0</td><td class="val">32</td><td class="dv">31</td><td>18</td><td class="dim">0</td><td class="val">49</td><td class="dv">219</td><td>143</td><td class="sc dv">572</td><td><span class="rk1">1</span></td></tr>
-        <tr><td class="nm">Anh Ho</td><td>5</td><td class="dim">0</td><td class="dim">0</td><td class="val">5</td><td class="dv">5</td><td>3</td><td class="dim">0</td><td class="val">8</td><td class="dv">27</td><td>179</td><td class="sc dv">242</td><td><span class="rk2">2</span></td></tr>
+        <tr><td class="nm">Thuat Phung</td><td>40</td><td>39</td><td>2</td><td class="val">81</td><td class="dv">51</td><td>49</td><td>6</td><td class="val">107</td><td class="dv">157</td><td>84</td><td class="sc dv">698</td><td><span class="rk1">1</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>12</td><td>7</td><td class="dim">0</td><td class="val">19</td><td class="dv">28</td><td>18</td><td>2</td><td class="val">48</td><td class="dv">60</td><td>399</td><td class="sc dv">631</td><td><span class="rk2">2</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -2795,8 +2898,8 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <h2>CRM Automation <a class="anchor" href="#m-ranking-automation" data-anchor title="Copy link to this metric" aria-label="Copy link to this metric">🔗</a> <span class="pill">2 members</span></h2>
     <div class="rkwrap"><table class="rk">${rkHead.replace(/TC_LBL/g, 'Automation TC')}
       <tbody>
-        <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">0</td><td><span class="rk2">2</span></td></tr>
-        <tr><td class="nm">Anh Ho</td><td>2</td><td class="dim">0</td><td class="dim">0</td><td class="val">2</td><td class="dv dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv">530</td><td>145</td><td class="sc dv">681</td><td><span class="rk1">1</span></td></tr>
+        <tr><td class="nm">Thuat Phung</td><td class="dim">0</td><td class="dim">0</td><td class="dim">0</td><td class="val">0</td><td class="dv dim">0</td><td>1</td><td class="dim">0</td><td class="val">1</td><td class="dv dim">0</td><td class="dim">0</td><td class="sc dv">2</td><td><span class="rk2">2</span></td></tr>
+        <tr><td class="nm">Anh Ho</td><td>12</td><td>5</td><td class="dim">0</td><td class="val">17</td><td class="dv">27</td><td>10</td><td>2</td><td class="val">39</td><td class="dv">2130</td><td>313</td><td class="sc dv">2592</td><td><span class="rk1">1</span></td></tr>
       </tbody>
     </table></div>
   </section>
@@ -2806,10 +2909,10 @@ AND status changed to (resolved) DURING ("2026-06-01 00:00", "2026-06-30 21:00")
     <div class="rkeq">SCORE = <b>3</b>·(Create P1/2) + <b>2</b>·(Create P3) + <b>1</b>·(Create P4)
       + <b>3</b>·(Verified P1/2) + <b>2</b>·(Verified P3) + <b>1</b>·(Verified P4)
       + <b>1</b>·(Executed TC) + <b>1</b>·(Maintenance/Created TC)</div>
-    <p class="muted" style="font-size:12px;margin:8px 0 0">Check: Thuat manual 81+129+219+143=572 · Anh manual 15+21+27+179=242 · Anh automation 6+0+530+145=681.</p>
+    <p class="muted" style="font-size:12px;margin:8px 0 0">Check: Thuat manual 200+257+157+84=698 · Anh manual 50+122+60+399=631 · Thuat automation 0+2+0+0=2 · Anh automation 46+103+2130+313=2592.</p>
   </section>
 
-  <div class="foot">Bug &amp; test-case counts from Jira (team JQL, hover above) · Executed Automation TC from the Allure monthly report · Jun-2026 snapshot · self-contained page.</div>
+  <div class="foot">Bug &amp; test-case counts from Jira (team JQL, hover above) · Executed Automation TC from the Allure monthly report · Oct-2026 snapshot · self-contained page.</div>
 </div>
 <script src="app.js"></script>
 </body></html>`;

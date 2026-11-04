@@ -1955,6 +1955,8 @@ export class QuotationPage extends BasePage {
    * Labels inside the notebook (Order Lines / Optional Products / Other Information / Approvals)
    * are excluded, and so are the technical fields Odoo keeps hidden via attrs - the result is
    * exactly what a tester reads on the screen, top-left down then top-right down.
+   * Every label returned is tagged `QuotationPage.verifyRow('quotation-info-label')`, so a verify-evidence
+   * shot can outline exactly the labels this read.
    */
   async getVisibleFieldLabels(): Promise<string[]> {
     const sheet = this.page.locator('.o_form_sheet').first();
@@ -1962,11 +1964,14 @@ export class QuotationPage extends BasePage {
     return await sheet
       .evaluate((el: HTMLElement) => {
         const notebook = el.querySelector('.o_notebook');
-        return Array.from(el.querySelectorAll('label'))
+        document.querySelectorAll('[data-pw-verify="quotation-info-label"]').forEach((n) => n.removeAttribute('data-pw-verify'));
+        const read = Array.from(el.querySelectorAll('label'))
           .filter((l) => !(notebook && notebook.contains(l)))
           .filter((l) => !!((l as HTMLElement).offsetParent || l.getClientRects().length))
-          .map((l) => ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim())
-          .filter((t) => t.length > 0);
+          .map((l) => ({ l, text: ((l as HTMLElement).innerText || '').replace(/​/g, '').replace(/\s+/g, ' ').trim() }))
+          .filter((x) => x.text.length > 0);
+        read.forEach((x) => x.l.setAttribute('data-pw-verify', 'quotation-info-label'));
+        return read.map((x) => x.text);
       })
       .catch(() => [] as string[]);
   }

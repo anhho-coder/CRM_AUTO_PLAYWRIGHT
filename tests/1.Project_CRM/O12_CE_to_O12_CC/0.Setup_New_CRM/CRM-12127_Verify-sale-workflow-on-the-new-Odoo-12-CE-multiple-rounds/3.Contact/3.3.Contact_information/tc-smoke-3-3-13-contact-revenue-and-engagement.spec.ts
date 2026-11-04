@@ -180,7 +180,18 @@ test.describe(`${TC} - Lifetime Revenue and Recent engagement`, () => {
         expect(engagement, 'the Recent engagement (minutes) of a newly created Contact').toBe(0);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lifetime Revenue and Recent engagement`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Lifetime Revenue and Recent engagement`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_sheet [name="lifetime_revenue"]', passed: revenue === 0 },
+            { selector: '.o_form_sheet [name="recent_engagement_score"]', passed: engagement === 0 },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the Lifetime Revenue of a newly created Contact', expected: '0', actual: revenue, ok: revenue === 0 },
+            { what: 'the Recent engagement (minutes) of a newly created Contact', expected: '0', actual: engagement, ok: engagement === 0 },
+          ]),
+        }).catch(() => {});
       }
     });
   });

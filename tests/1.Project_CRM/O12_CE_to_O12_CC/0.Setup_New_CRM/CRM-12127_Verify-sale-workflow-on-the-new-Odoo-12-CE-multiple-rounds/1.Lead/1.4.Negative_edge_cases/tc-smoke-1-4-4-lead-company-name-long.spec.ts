@@ -184,7 +184,18 @@ test.describe(`${TC} - Company Name - 200 characters`, () => {
         expect(companyName, 'the saved value must equal the entered one').toBe(DATA.companyName);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Company Name - 200 characters`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Company Name - 200 characters`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="partner_name"]', passed: companyName.length === 200 && companyName === DATA.companyName },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the test datum must really be 200 characters', expected: '200', actual: DATA.companyName.length, ok: DATA.companyName.length === 200 },
+            { what: 'the saved value must not be truncated', expected: '200 characters', actual: companyName.length, ok: companyName.length === 200 },
+            { what: 'the saved value must equal the entered one', expected: `"${DATA.companyName}"`, actual: companyName, ok: companyName === DATA.companyName },
+          ]),
+        }).catch(() => {});
       }
     });
   });

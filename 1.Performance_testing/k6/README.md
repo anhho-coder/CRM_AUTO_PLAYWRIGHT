@@ -15,9 +15,9 @@ login handling under N simultaneous users, not Chrome. VPN to pre-prod is requir
 ## Run locally
 ```bash
 # VPN up first
-k6 run perf/k6/login-load.js
-k6 run -e VUS=10 -e LOOPS=1 perf/k6/login-load.js
-k6 run -e VUS=25 -e P95_MS=4000 perf/k6/login-load.js
+k6 run 1.Performance_testing/k6/login-load.js
+k6 run -e VUS=10 -e LOOPS=1 1.Performance_testing/k6/login-load.js
+k6 run -e VUS=25 -e P95_MS=4000 1.Performance_testing/k6/login-load.js
 ```
 
 ## Env knobs
@@ -38,7 +38,7 @@ k6 exits non-zero when any threshold fails → the Jenkins build goes red.
 
 ## Jenkins
 Create a **Pipeline** job → *Pipeline script from SCM* → branch `now_code_on_Cursor`,
-Script Path `perf/Jenkinsfile.k6-login`. Report shows under **k6-Login-LoadTest**.
+Script Path `1.Performance_testing/Jenkinsfile.k6-login`. Report shows under **k6-Login-LoadTest**.
 
 ---
 
@@ -59,13 +59,13 @@ polluting pre-prod or fighting the assignment cron that locks freshly-created le
 
 ```bash
 # no-save, local (VPN up):
-k6 run -e RUN_ID=local1 perf/k6/create-lead-nosave.js
-k6 run -e LEVELS=5,10 -e GAP_S=5 perf/k6/create-lead-nosave.js
+k6 run -e RUN_ID=local1 1.Performance_testing/k6/create-lead-nosave.js
+k6 run -e LEVELS=5,10 -e GAP_S=5 1.Performance_testing/k6/create-lead-nosave.js
 ```
 
 Extra env knobs (no-save): `PARTNER_ID` (customer to select in `onchange`; `0`=auto-pick a company),
 `VERIFY_NOSAVE` (`1`=assert nothing persisted, default). Jenkins: **Pipeline from SCM**, branch
-`now_code_on_Cursor`, Script Path `perf/Jenkinsfile.k6-create-lead-nosave` — no credentials required.
+`now_code_on_Cursor`, Script Path `1.Performance_testing/Jenkinsfile.k6-create-lead-nosave` — no credentials required.
 
 ---
 

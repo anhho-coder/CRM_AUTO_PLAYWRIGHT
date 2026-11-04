@@ -204,7 +204,17 @@ test.describe(`${TC} - Field names and order - right column`, () => {
         expect(actual, 'the right column field NAMES and their ORDER').toEqual(EXPECTED);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Field names and order - right column`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Field names and order - right column`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '[data-pw-verify="contact-label-right"]', passed: JSON.stringify(actual) === JSON.stringify(EXPECTED) },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the NUMBER of fields in the right column of the Contact information area', expected: `${EXPECTED.length}`, actual: actual.length, ok: actual.length === EXPECTED.length },
+            { what: 'the right column field NAMES and their ORDER', expected: EXPECTED.join(' | '), actual: actual.join(' | '), ok: JSON.stringify(actual) === JSON.stringify(EXPECTED), difference: CommonUtils.listDifference(EXPECTED, actual) },
+          ]),
+        }).catch(() => {});
       }
     });
   });

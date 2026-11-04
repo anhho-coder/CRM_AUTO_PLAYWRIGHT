@@ -21,8 +21,11 @@ import {
  * =============================================================================
  * Test Case ID   : CRM-12370_5.3.1
  * Jira           : CRM-12325
- * Automation-Type: new
- * Automation-Date: 2026-09-21
+ * Automation-Type: refactored
+ * Automation-Date: 2026-11-03
+ *   (2026-11-03: the verify-evidence shots carried no outline and no banner - the 990dfac bulk conversion passed
+ *    only name/passed. Step 12 now outlines the Quotation form; Verification outlines every label read and
+ *    burns Expected / Actual / Difference into the image. Assertions unchanged.)
  *
  * Summary:
  *   Verify the Quotation information area carries exactly the 17 pre-production fields, in the
@@ -106,6 +109,33 @@ const EXPECTED_FIELD_LABELS = [
   'PO',
 ];
 
+/** REQUIREMENT #4c - the FAIL conclusion of an ordered-list check, built from the asserted values. */
+function listDifference(expected: string[], actual: string[]): string {
+  const parts: string[] = [];
+  const extra = actual.filter((e) => !expected.includes(e));
+  const missing = expected.filter((e) => !actual.includes(e));
+  if (actual.length !== expected.length) parts.push(`count ${actual.length}, expected ${expected.length} (${actual.length > expected.length ? '+' : ''}${actual.length - expected.length})`);
+  if (extra.length) parts.push(`not expected but shown: ${extra.map((e) => { const i = actual.indexOf(e); return `'${e}' (#${i + 1}${i > 0 ? `, after '${actual[i - 1]}'` : ''})`; }).join(', ')}`);
+  if (missing.length) parts.push(`expected but missing: ${missing.map((e) => `'${e}'`).join(', ')}`);
+  const shared = actual.filter((e) => expected.includes(e));
+  const want = expected.filter((e) => actual.includes(e));
+  const k = shared.findIndex((e, i) => e !== want[i]);
+  parts.push(k < 0 ? 'the entries both lists share are in the expected order' : `order differs from '${want[k]}': expected it before '${shared[k]}'`);
+  return extra.length || missing.length || k >= 0 || actual.length !== expected.length ? parts.join('; ') : 'none';
+}
+
+/** A numbered list wrapped for the evidence banner - one long line runs off the image (REQUIREMENT #3b). */
+function bannerList(items: string[]): string[] {
+  const out: string[] = [];
+  let cur = '';
+  items.forEach((t, i) => {
+    const part = `${i + 1}. ${t}`;
+    if (cur && `${cur}, ${part}`.length > 90) { out.push(`    ${cur},`); cur = part; } else cur = cur ? `${cur}, ${part}` : part;
+  });
+  if (cur) out.push(`    ${cur}`);
+  return out;
+}
+
 const SKIP_CLEANUP_OPP = false; // false = delete what this test created (house rule: crm-mig test data must be cleaned up).
 // Set true ONLY to keep a broken chain for hand-debugging - the 16:00 leftover-data check then reports it.
 
@@ -150,15 +180,20 @@ test.describe(`${TC} - Field names and order in the Quotation information area`,
     let labels: string[] = [];
 
     // The VERIFY block printed before the expect()s, so a failing check still reaches stdout.
-    const CHECKS: Array<{ what: string; expected: string; actual: string; pass: boolean }> = [];
+    const CHECKS: Array<{ what: string; expected: string; actual: string; pass: boolean; difference: string }> = [];
     const record = (what: string, expected: unknown, actual: unknown, pass?: boolean) => {
       const expectedText = String(expected);
       const actualText = String(actual);
+      const delta = Number(actualText) - Number(expectedText);
       CHECKS.push({
         what,
         expected: expectedText,
         actual: actualText,
         pass: pass === undefined ? expectedText === actualText : pass,
+        // REQUIREMENT #4c - computed from the recorded values, never a cause
+        difference: Number.isFinite(delta) && typeof expected === 'number'
+          ? `expected ${expectedText}, got ${actualText} (${delta > 0 ? '+' : ''}${delta})`
+          : `expected '${expectedText}', got '${actualText}'`,
       });
     };
     const printVerify = () => {
@@ -168,12 +203,13 @@ test.describe(`${TC} - Field names and order in the Quotation information area`,
         console.log(`     Expected : ${c.expected}`);
         console.log(`     Actual   : ${c.actual}`);
         console.log(`     Result   : ${c.pass ? 'PASS' : 'FAIL'}`);
+        if (!c.pass) console.log(`     Difference : ${c.difference}`);
       });
       console.log('===============================================');
       const passed = CHECKS.filter((c) => c.pass).length;
-      console.log(
-        `OVERALL: ${passed === CHECKS.length ? 'PASS' : 'FAIL'} - ${passed}/${CHECKS.length} checks matched`
-      );
+      console.log(passed === CHECKS.length
+        ? `OVERALL: PASS - ${passed}/${CHECKS.length} checks matched`
+        : `OVERALL: FAIL - ${passed}/${CHECKS.length} checks matched; field list: ${listDifference(EXPECTED_FIELD_LABELS, labels)}`);
     };
 
     // Manual steps 1-5 - the shared O12 CE setup (Step 1 .. Step 11, labelled by the helper).
@@ -188,15 +224,27 @@ test.describe(`${TC} - Field names and order in the Quotation information area`,
       console.log(`  Quotation URL : ${page.url()}`);
       // O12 CE does not navigate on NEW QUOTATION - the helper looks the created Quotation up and
       // puts the form on it. Either route is fine; what this TC needs is to BE on the Quotation.
+      const landed = quotation.landedOnQuotation;
       let __verifyPassed = false;
       try {
         expect(
-          quotation.landedOnQuotation,
+          landed,
           'the Quotation raised by "NEW QUOTATION" must be open on screen before this TC can read it'
         ).toBeTruthy();
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Quotation created`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Quotation created`,
+          passed: __verifyPassed,
+          highlight: '.o_form_sheet',
+          lines: [
+            `${__verifyPassed ? 'PASS' : 'FAIL'} ${STEP.s12}`,
+            '  expected: the Quotation raised by "NEW QUOTATION" is open on screen',
+            `  actual  : ${landed ? 'the Quotation form is open' : 'NOT on the Quotation'}`,
+            `            ${page.url()}`,
+          ],
+          corner: 'bottom-right',
+        }).catch(() => {});
       }
     });
 
@@ -216,7 +264,22 @@ test.describe(`${TC} - Field names and order in the Quotation information area`,
       console.log(`\n--- ${STEP.verify} ---`);
       console.log(`  Opportunity : id=${opp?.oppId} | Company="${opp?.companyValue}"`);
       printVerify();
-      await CommonUtils.captureAndAttachScreenshot(page, testInfo, `${TC} - Quotation information area`);
+      // the same verdict as the toEqual below: same length and every label equal, in order
+      const listPassed = labels.length === EXPECTED_FIELD_LABELS.length && labels.every((l, i) => l === EXPECTED_FIELD_LABELS[i]);
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - Quotation information area`,
+        passed: listPassed,
+        highlight: QuotationPage.verifyRow('quotation-info-label'), // every label getVisibleFieldLabels() read
+        lines: [
+          `${listPassed ? 'PASS' : 'FAIL'} ${STEP.s13}`,
+          `  expected: ${EXPECTED_FIELD_LABELS.length} labelled fields, in this order:`,
+          ...bannerList(EXPECTED_FIELD_LABELS),
+          `  actual  : ${labels.length} labelled fields, in this order:`,
+          ...bannerList(labels),
+          ...(listPassed ? [] : [`  difference: ${listDifference(EXPECTED_FIELD_LABELS, labels)}`]),
+        ],
+        corner: 'bottom-right',
+      }).catch(() => {});
 
       expect(labels, 'the information area must carry exactly the expected fields, in order').toEqual(
         EXPECTED_FIELD_LABELS

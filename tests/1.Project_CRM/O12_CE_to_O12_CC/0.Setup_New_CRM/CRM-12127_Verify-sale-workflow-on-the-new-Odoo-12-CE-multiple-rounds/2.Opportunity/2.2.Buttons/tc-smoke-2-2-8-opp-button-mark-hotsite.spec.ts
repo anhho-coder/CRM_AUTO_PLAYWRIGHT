@@ -180,6 +180,12 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
       record('The dialog title', EXPECTED_TITLE, title);
       record('The dialog message', EXPECTED_BODY, body);
       record('The dialog buttons', EXPECTED_BUTTONS.join(' | '), buttons.join(' | '));
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - MARK HOTSITE dialog (read before CANCEL)`,
+        passed: CHECKS.every((c) => c.pass),
+        outlines: [{ selector: '.modal.show .modal-content', passed: CHECKS.every((c) => c.pass) }],
+        lines: CommonUtils.checksLines(`${STEP.s9} - the dialog, before CANCEL`, CHECKS),
+      }).catch(() => {});
       await opportunityPage.cancelDialog();
       await page.waitForTimeout(CommonUtils.waitTimes.long);
       const stage = await opportunityPage.getActiveStatusBarStage();
@@ -198,6 +204,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - MARK HOTSITE dialog`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_statusbar_status', passed: (CHECKS.find((c) => c.what === 'The Opportunity keeps its stage after CANCEL')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });

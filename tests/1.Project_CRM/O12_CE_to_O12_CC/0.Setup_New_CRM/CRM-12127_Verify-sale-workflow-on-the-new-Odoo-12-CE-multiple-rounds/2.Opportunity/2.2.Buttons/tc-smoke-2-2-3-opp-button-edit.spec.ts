@@ -191,6 +191,11 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Form in edit mode`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_control_panel', passed: (CHECKS.find((c) => c.what === 'Control-panel buttons in edit mode')?.pass ?? false) },
+            { selector: '.o_form_view', passed: (CHECKS.find((c) => c.what === 'The form is in EDIT mode after pressing EDIT')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });

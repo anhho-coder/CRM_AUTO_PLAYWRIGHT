@@ -2,7 +2,7 @@
 // Simulates opening the New Lead form and filling it (default_get + onchange, in-memory ORM) at
 // increasing concurrency (default 10,30,50,100) - but NEVER writes a crm.lead row. So, unlike the
 // sibling create-lead job, there is NO admin cleanup, NO assignment-cron lock, and NO DB drift.
-// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: perf/Jenkinsfile.k6-create-lead-nosave.
+// Pipeline-from-SCM, branch now_code_on_Cursor, Script Path: 1.Performance_testing/Jenkinsfile.k6-create-lead-nosave.
 // Windows agent.
 pipeline {
     agent any
@@ -20,7 +20,7 @@ pipeline {
 
     environment {
         K6_DIR     = 'C:\\tools\\k6'
-        REPORT_DIR = 'perf\\k6\\report'
+        REPORT_DIR = '1.Performance_testing\\k6\\report'
     }
 
     options {
@@ -78,7 +78,7 @@ pipeline {
 
         stage('Ensure k6') {
             steps {
-                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File perf\\k6\\ensure-k6.ps1'
+                bat 'powershell -NoProfile -ExecutionPolicy Bypass -File 1.Performance_testing\\k6\\ensure-k6.ps1'
             }
         }
 
@@ -100,7 +100,7 @@ pipeline {
                         -e RUN_ID=%EFF_RUN_ID% ^
                         --summary-export=%REPORT_DIR%\\summary-export.json ^
                         --out json=%REPORT_DIR%\\raw-metrics.json ^
-                        perf\\k6\\create-lead-nosave.js
+                        1.Performance_testing\\k6\\create-lead-nosave.js
                 '''
             }
         }
@@ -112,11 +112,11 @@ pipeline {
                 allowMissing: true,
                 alwaysLinkToLastBuild: true,
                 keepAll: true,
-                reportDir: 'perf/k6/report',
+                reportDir: '1.Performance_testing/k6/report',
                 reportFiles: 'index.html',
                 reportName: 'k6-CreateLead-NoSave'
             ])
-            archiveArtifacts artifacts: 'perf/k6/report/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: '1.Performance_testing/k6/report/**', allowEmptyArchive: true
         }
     }
 }

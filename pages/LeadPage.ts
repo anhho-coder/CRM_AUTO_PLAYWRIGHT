@@ -1,5 +1,6 @@
 import { Locator, Page } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { openNotebookTabMig } from './mig/MigNotebook';
 import { CommonUtils } from '@helpers/common.utils';
 import { recordAssignmentForDeferredVerify, recordAssignmentNonEmptyForDeferredVerify } from '@helpers/deferred-verify.helper';
 import { recordMergeDeferIfNotMerged } from '@helpers/deferred-verify-merge.helper';
@@ -967,6 +968,16 @@ export class LeadPage extends BasePage {
    */
   async clickCRMDeveloperTab_targetLead() {
     await this.wait(CommonUtils.waitTimes.medium);
+    // crm-mig: the tab is folded into "More (N)" and never becomes visible - open it through the mig notebook
+    // helper (the LAST "CRM Developer", as crmDeveloperTab_targetLead picks). Pre-production draws it inline.
+    const inline = await this.crmDeveloperTab_targetLead()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear })
+      .then(() => true, () => false);
+    if (!inline && (await this.crmDeveloperTab_targetLead().count()) > 0) {
+      await openNotebookTabMig(this.page, 'CRM Developer', 'last');
+      await this.wait(CommonUtils.waitTimes.medium);
+      return;
+    }
     // Bounded wait so a missing "CRM Developer" tab fails fast (abnormalWait) instead of the click
     // auto-waiting up to the 15-min test timeout (root cause of CRM-671_2.1.9's hang).
     await this.crmDeveloperTab_targetLead().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
@@ -1027,7 +1038,14 @@ export class LeadPage extends BasePage {
     // (root cause of CRM-2178_1.1.2.1 / CRM-671_2.1.4 hanging ~900s on an intercepted click).
     await this.dismissErrorDialog();
     await this.waitForLoadingOverlayHidden();
-    await this.clickTabBounded(this.crmDeveloperTab().first(), 'CRM Developer');
+    // crm-mig folds overflow tabs into "More (N)" (NAKIVO header script): the anchor stays in the DOM, hidden, so a
+    // click on it can only time out (CRM-12370_1.2.x, 2026-11-03: all 10 of a batch died here in Step 3). Open it
+    // through the mig notebook helper, as OpportunityPage.clickCRMDeveloperTab() does. Pre-production draws it inline.
+    const inline = await this.crmDeveloperTab().first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.elementAppear })
+      .then(() => true, () => false);
+    if (inline) await this.clickTabBounded(this.crmDeveloperTab().first(), 'CRM Developer');
+    else await openNotebookTabMig(this.page, 'CRM Developer', 'first');
     await this.wait(300);
   }
 
@@ -3082,22 +3100,27 @@ export class LeadPage extends BasePage {
   /**
    * The labelled field rows of the Lead information area (everything above the notebook),
    * split into the left and the right column and kept in the order the form renders them.
-   * Used by the field-name / field-order test cases.
+   * Used by the field-name / field-order test cases. Every row read is tagged
+   * `LeadPage.verifyRow('info-row-left' | 'info-row-right')` so a verify-evidence shot outlines exactly those rows.
    */
   async getInformationAreaRows(
     timeout: number = CommonUtils.waitTimes.elementVisibility
   ): Promise<{ left: Array<{ label: string; field: string }>; right: Array<{ label: string; field: string }> }> {
     await this.page.locator('.o_form_sheet').first().waitFor({ state: 'visible', timeout }).catch(() => {});
-    const rows = await this.page.evaluate(() => {
+    // The sheet is a two-column layout; the right column starts around x = 600px.
+    const split = 400;
+    const rows = await this.page.evaluate((splitX: number) => {
       const shown = (el: Element) =>
         (el as HTMLElement).offsetParent !== null && el.getBoundingClientRect().height > 0;
       const out: Array<{ label: string; field: string; x: number; y: number }> = [];
+      document.querySelectorAll('[data-pw-verify^="info-row-"]').forEach((n) => n.removeAttribute('data-pw-verify'));
       document.querySelectorAll('.o_form_sheet tr').forEach((tr) => {
         if (!shown(tr) || tr.closest('.tab-pane')) return;
         const labelCell = tr.querySelector('td.o_td_label');
         if (!labelCell) return;
         const field = tr.querySelector('td:not(.o_td_label) [name]');
         const r = tr.getBoundingClientRect();
+        tr.setAttribute('data-pw-verify', Math.round(r.left) < splitX ? 'info-row-left' : 'info-row-right');
         out.push({
           label: (labelCell as HTMLElement).innerText.replace(/​/g, '').trim(),
           field: field ? field.getAttribute('name') || '' : '',
@@ -3107,10 +3130,8 @@ export class LeadPage extends BasePage {
       });
       out.sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x));
       return out;
-    }).catch(() => [] as Array<{ label: string; field: string; x: number; y: number }>);
+    }, split).catch(() => [] as Array<{ label: string; field: string; x: number; y: number }>);
 
-    // The sheet is a two-column layout; the right column starts around x = 600px.
-    const split = 400;
     return {
       left: rows.filter((r) => r.x < split).map((r) => ({ label: r.label, field: r.field })),
       right: rows.filter((r) => r.x >= split).map((r) => ({ label: r.label, field: r.field })),
@@ -3154,6 +3175,7 @@ export class LeadPage extends BasePage {
     );
     return hit ?? null;
   }
+
 
   /**
    * Poll the chatter (reloading the form) until a message matches.

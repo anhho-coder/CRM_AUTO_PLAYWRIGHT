@@ -183,7 +183,16 @@ test.describe(`${TC} - Email`, () => {
         expect(email, 'Email must keep the entered value').toBe(DATA.email);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Email`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Email`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="email_from"]', passed: email === DATA.email },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'Email must keep the entered value', expected: `"${DATA.email}"`, actual: email, ok: email === DATA.email },
+          ]),
+        }).catch(() => {});
       }
     });
   });

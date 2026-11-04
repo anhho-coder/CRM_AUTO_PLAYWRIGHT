@@ -202,6 +202,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Header buttons`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_statusbar_buttons', passed: verifyPassed },
+          ],
+          lines: CommonUtils.checksLines(STEP.s8, CHECKS),
         }).catch(() => {});
       }
     });

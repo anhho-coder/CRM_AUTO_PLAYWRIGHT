@@ -197,6 +197,12 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          ...SHOULD_BE_EMPTY.map((item) => ({ selector: `.o_form_sheet [name="${item.field}"]`, passed: (CHECKS.find((c) => c.what === `${item.label} is empty on a new Opportunity`)?.pass ?? false) })),
+          { selector: '.o_form_sheet [name="phone"]', passed: (CHECKS.find((c) => c.what === 'Phone renders the literal string "false" when it was never filled')?.pass ?? false) },
+          { selector: '.o_form_sheet [name="mobile"]', passed: (CHECKS.find((c) => c.what === 'Mobile renders the literal string "false" when it was never filled')?.pass ?? false) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(missing, 'the information-area fields this case checks must all be present on the form').toEqual([]);

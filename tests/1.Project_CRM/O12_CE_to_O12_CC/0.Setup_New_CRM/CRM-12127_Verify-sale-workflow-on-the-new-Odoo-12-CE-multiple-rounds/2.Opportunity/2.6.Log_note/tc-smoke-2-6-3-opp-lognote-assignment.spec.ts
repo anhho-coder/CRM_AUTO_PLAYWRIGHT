@@ -162,9 +162,16 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       record('Lead Source reported by the log note', EXPECTED_SOURCE, teamFields['Lead Source'] ?? '(missing)');
       record('Lead Source Technical reported by the log note', EXPECTED_SOURCE, teamFields['Lead Source Technical'] ?? '(missing)');
       printVerify();
+      await opportunityPage.markChatterMessage(/^Salesperson: /, 'chatter-salesperson');
+      await opportunityPage.markChatterMessage(/^Sales Team: /, 'chatter-team');
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: salespersonNote ? '[data-pw-verify="chatter-salesperson"]' : '.o_mail_thread', passed: (CHECKS.find((c) => c.what === 'The chatter carries a Salesperson log note')?.pass ?? false) && (CHECKS.find((c) => c.what === 'Salesperson reported by the log note')?.pass ?? false) && (CHECKS.find((c) => c.what === 'User Email reported by the log note')?.pass ?? false) },
+          { selector: teamNote ? '[data-pw-verify="chatter-team"]' : '.o_mail_thread', passed: (CHECKS.find((c) => c.what === 'The chatter carries a Sales Team log note')?.pass ?? false) && (CHECKS.find((c) => c.what === 'Sales Team reported by the log note')?.pass ?? false) && (CHECKS.find((c) => c.what === 'Lead Source reported by the log note')?.pass ?? false) && (CHECKS.find((c) => c.what === 'Lead Source Technical reported by the log note')?.pass ?? false) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(salespersonNote, 'the chatter must carry a Salesperson log note').not.toBeNull();

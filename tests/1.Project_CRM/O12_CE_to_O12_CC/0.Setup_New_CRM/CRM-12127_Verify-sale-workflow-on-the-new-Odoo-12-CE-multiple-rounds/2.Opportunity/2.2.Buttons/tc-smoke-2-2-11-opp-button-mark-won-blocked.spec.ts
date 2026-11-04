@@ -174,6 +174,12 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
       record('The product raises a Validation Error', 'contains "Validation Error"', title.includes('Validation Error') ? 'contains "Validation Error"' : title);
       record('The message names the Qualification info tab', 'contains ' + EXPECTED_MESSAGE, body.includes(EXPECTED_MESSAGE) ? 'contains ' + EXPECTED_MESSAGE : body);
       record('The message lists the missing fields', 'contains ' + EXPECTED_FIELDS, body.includes(EXPECTED_FIELDS) ? 'contains ' + EXPECTED_FIELDS : body);
+      await CommonUtils.captureVerifyEvidence(page, testInfo, {
+        name: `${TC} - Refused MARK WON (read before CANCEL)`,
+        passed: CHECKS.every((c) => c.pass),
+        outlines: [{ selector: '.modal.show .modal-content', passed: CHECKS.every((c) => c.pass) }],
+        lines: CommonUtils.checksLines(`${STEP.s9} - the dialog, before CANCEL`, CHECKS),
+      }).catch(() => {});
       await opportunityPage.cancelDialog();
       await page.waitForTimeout(CommonUtils.waitTimes.long);
       const stage = await opportunityPage.waitForActiveStage('NEW', 3);
@@ -192,6 +198,10 @@ test.describe(`${TC} - O12 CE Opportunity Buttons`, () => {
         await CommonUtils.captureVerifyEvidence(page, testInfo, {
           name: `${TC} - Refused MARK WON`,
           passed: verifyPassed,
+          outlines: [
+            { selector: '.o_statusbar_status', passed: (CHECKS.find((c) => c.what === 'The Opportunity stays in the NEW stage')?.pass ?? false) },
+          ],
+          lines: CommonUtils.checksLines(STEP.s9, CHECKS),
         }).catch(() => {});
       }
     });

@@ -216,7 +216,18 @@ test.describe(`${TC} - Total number of smart buttons`, () => {
         ).toBe(EXPECTED_TOTAL);
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Total smart buttons`, passed: __verifyPassed }).catch(() => {});
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Total smart buttons`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.oe_button_box', passed: actualTotal === EXPECTED_TOTAL },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the TOTAL number of smart buttons on the Contact form (main bar plus "More")', expected: `${EXPECTED_TOTAL}`, actual: actualTotal, ok: actualTotal === EXPECTED_TOTAL },
+            { what: 'the main bar', expected: '(listed)', actual: barNames.join(' | '), ok: true },
+            { what: 'the "More" dropdown', expected: '(listed)', actual: moreNames.join(' | '), ok: true },
+          ]),
+        }).catch(() => {});
       }
     });
   });

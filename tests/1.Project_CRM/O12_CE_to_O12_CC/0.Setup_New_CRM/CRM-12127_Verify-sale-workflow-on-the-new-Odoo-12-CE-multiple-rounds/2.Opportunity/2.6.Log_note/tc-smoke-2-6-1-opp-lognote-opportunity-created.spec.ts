@@ -154,9 +154,14 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       record('Priority (System) reported by the log note', 'Low', fields['Priority (System)'] ?? '(missing)');
       record('Expected Revenue reported by the log note', '750', fields['Expected Revenue'] ?? '(missing)');
       printVerify();
+      await opportunityPage.markChatterMessage(/^Opportunity created/, 'chatter-created');
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: note ? '[data-pw-verify="chatter-created"]' : '.o_mail_thread', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       expect(note, 'the chatter must carry an "Opportunity created" log note').not.toBeNull();

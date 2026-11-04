@@ -492,6 +492,73 @@ export class CommonUtils {
   }
 
   /**
+   * The Expected / Actual banner of a verify-evidence shot (skill REQUIREMENT #3b-1) - per check
+   * "PASS|FAIL <what>", "  expected: ...", "  actual  : ..." and, on a FAIL, "  difference: ...".
+   * `ok` is the check's own verdict, computed by the caller with the SAME comparison as its expect();
+   * `actual` is the value that expect() received. Long values are wrapped so they stay on the image.
+   */
+  static evidenceLines(
+    title: string,
+    checks: Array<{ what: string; expected: string; actual: unknown; ok: boolean; difference?: string }>
+  ): string[] {
+    const show = (v: unknown): string =>
+      v === null ? '(none)'
+        : v === undefined ? '(undefined)'
+          : typeof v === 'string' ? (v === '' ? 'BLANK' : `"${v.replace(/\s*\n\s*/g, ' | ')}"`)
+            : JSON.stringify(v);
+    const wrap = (prefix: string, text: string): string[] =>
+      (text.match(/.{1,100}/g) ?? ['']).map((part, i) => (i === 0 ? prefix : ' '.repeat(prefix.length)) + part);
+    return [
+      `${checks.every((c) => c.ok) ? 'PASS' : 'FAIL'} ${title}`,
+      ...checks.flatMap((c) => [
+        `${c.ok ? 'PASS' : 'FAIL'} ${c.what}`,
+        ...wrap('  expected: ', c.expected),
+        ...wrap('  actual  : ', show(c.actual)),
+        ...(c.ok ? [] : wrap('  difference: ', c.difference ?? `expected ${c.expected}, got ${show(c.actual)}`)),
+      ]),
+    ];
+  }
+
+  /**
+   * evidenceLines() for specs that already keep a VERIFY list as `{ what, expected, actual, pass }` (the CHECKS /
+   * record() pattern): the same strings the stdout VERIFY block prints, burned into the evidence image.
+   */
+  static checksLines(
+    title: string,
+    checks: Array<{ what: string; expected: string; actual: string; pass: boolean; difference?: string }>
+  ): string[] {
+    const wrap = (prefix: string, text: string): string[] =>
+      (String(text).match(/.{1,100}/g) ?? ['']).map((part, i) => (i === 0 ? prefix : ' '.repeat(prefix.length)) + part);
+    return [
+      `${checks.every((c) => c.pass) ? 'PASS' : 'FAIL'} ${title}`,
+      ...checks.flatMap((c) => [
+        `${c.pass ? 'PASS' : 'FAIL'} ${c.what}`,
+        ...wrap('  expected: ', c.expected === '' ? 'BLANK' : c.expected),
+        ...wrap('  actual  : ', c.actual === '' ? 'BLANK' : c.actual),
+        ...(c.pass ? [] : wrap('  difference: ', c.difference ?? `expected '${c.expected}', got '${c.actual}'`)),
+      ]),
+    ];
+  }
+
+  /**
+   * The FAIL conclusion of an ordered-list check (skill REQUIREMENT #4c), built from the asserted values: the count
+   * delta, entries shown but not expected (with position), expected entries missing, and the first order break.
+   */
+  static listDifference(expected: string[], actual: string[]): string {
+    const parts: string[] = [];
+    const extra = actual.filter((e) => !expected.includes(e));
+    const missing = expected.filter((e) => !actual.includes(e));
+    if (actual.length !== expected.length) parts.push(`count ${actual.length}, expected ${expected.length} (${actual.length > expected.length ? '+' : ''}${actual.length - expected.length})`);
+    if (extra.length) parts.push(`not expected but shown: ${extra.map((e) => { const i = actual.indexOf(e); return `'${e}' (#${i + 1}${i > 0 ? `, after '${actual[i - 1]}'` : ''})`; }).join(', ')}`);
+    if (missing.length) parts.push(`expected but missing: ${missing.map((e) => `'${e}'`).join(', ')}`);
+    const shared = actual.filter((e) => expected.includes(e));
+    const want = expected.filter((e) => actual.includes(e));
+    const k = shared.findIndex((e, i) => e !== want[i]);
+    parts.push(k < 0 ? 'the entries both lists share are in the expected order' : `order differs from '${want[k]}': expected it before '${shared[k]}'`);
+    return extra.length || missing.length || k >= 0 || actual.length !== expected.length ? parts.join('; ') : 'none';
+  }
+
+  /**
    * Gets current timestamp in ISO format
    * @returns ISO formatted timestamp
    */
@@ -665,6 +732,21 @@ export class CommonUtils {
     migUnlinkRecheck: 120000,
     /** crm-mig teardown - 10 seconds between those re-reads */
     migUnlinkRecheckInterval: 10000,
+    /** 2.Reliability_testing - the form collector (B) stops waiting for the CRM's answer after 0.3 s = a lost
+     *  acknowledgement. A Lead create takes ~3 s on pre-prod (measured 2026-11-03), so B always gives up first. */
+    reliabilityAckGiveUp: 300,
+    /** 2.Reliability_testing - per-call budget for a send / read over the external API - 60 seconds */
+    reliabilityCallTimeout: 60000,
+    /** 2.Reliability_testing - "Wait 15 seconds" after a send before counting the Leads (manual TC wording) */
+    reliabilitySettleWait: 15000,
+    /** 2.Reliability_testing teardown - 5 minutes to delete the run's Leads: queue jobs lock a fresh Lead, so an
+     *  unlink can be refused or hang until they finish (k6 CreateLead-Scale saw ~100 s) */
+    reliabilityTeardown: 300000,
+    /** 2.Reliability_testing teardown - 15 seconds between unlink retries */
+    reliabilityTeardownRetry: 15000,
+    /** 2.Reliability_testing per-test budget - 25 minutes: the scenario takes ~1 min, the teardown waits up to
+     *  5 min for CRM to finish creating the Customers, then deletes Leads and Customers one lock at a time */
+    reliabilityTestTimeout: 1500000,
   };
 
   /**

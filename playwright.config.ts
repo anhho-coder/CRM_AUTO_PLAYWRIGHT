@@ -276,6 +276,14 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },
     },
     {
+      // Reliability testing (outage / reconnect / retry of the lead intake). Lives OUTSIDE ./tests on
+      // purpose, next to 1.Performance_testing/, so no section suite or regression job collects it.
+      // API-only specs on PRE-PRODUCTION - no browser is opened.
+      name: 'Reliability',
+      testDir: './2.Reliability_testing',
+      use: { screenshot: 'off', video: 'off' },
+    },
+    {
       name: 'Leads_Assignment',
       testDir: './tests/1.Project_CRM/2.Leads_Assignment',
       use: { ...devices['Desktop Chrome'], channel: 'chrome', headless: true, video: videoMode },

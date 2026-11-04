@@ -174,14 +174,19 @@ test.describe(`${TC} - Lead Source - Nakivo (Lead created without an owner)`, ()
 
     await test.step(STEP.s5, async () => {
       let __verifyPassed = false;
+      // declared outside the try so the evidence banner in `finally` can print them (they are read inside it)
+      let leadSource = '';
+      let note: string | null = null;
+      let salesTeam = '';
+      let salesperson = '';
       try {
         console.log(`\n--- ${STEP.s5} ---`);
         // Poll duration is the only adaptation (wall-clock): 3 min instead of 8.
         const DERIVATION_POLL_MS = 180000;
-        const leadSource = await leadPage.waitForFieldValue('lead_source', 'Nakivo', DERIVATION_POLL_MS);
-        const note = await leadPage.findChatterMessage(/^Sales Team:/);
-        const salesTeam = await leadPage.readFieldValue('team_id');
-        const salesperson = await leadPage.readFieldValue('user_id');
+        leadSource = await leadPage.waitForFieldValue('lead_source', 'Nakivo', DERIVATION_POLL_MS);
+        note = await leadPage.findChatterMessage(/^Sales Team:/);
+        salesTeam = await leadPage.readFieldValue('team_id');
+        salesperson = await leadPage.readFieldValue('user_id');
         console.log('==================== VERIFY ====================');
         console.log(`  Sales Team assigned  : "${salesTeam}"`);
         console.log(`  Salesperson assigned : "${salesperson}"`);
@@ -199,7 +204,25 @@ test.describe(`${TC} - Lead Source - Nakivo (Lead created without an owner)`, ()
         ).toBe('Nakivo');
         __verifyPassed = true;
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC} - Lead Source - Nakivo (Lead created without an owner)`, passed: __verifyPassed }).catch(() => {});
+        const loggedSource = note ? leadPage.splitTrackedChange(leadPage.parseLogNoteFields(note)['Lead Source'] ?? '').to : '';
+        await leadPage.markChatterMessage(/^Sales Team:/, 'chatter-assign');
+        await CommonUtils.captureVerifyEvidence(page, testInfo, {
+          name: `${TC} - Lead Source - Nakivo (Lead created without an owner)`,
+          passed: __verifyPassed,
+          outlines: [
+            { selector: '.o_form_view [name="team_id"]', passed: salesTeam !== '' },
+            { selector: '.o_form_view [name="user_id"]', passed: salesperson !== '' },
+            { selector: '.o_form_view [name="lead_source"]', passed: leadSource === 'Nakivo' },
+            { selector: note ? LeadPage.verifyRow('chatter-assign') : '.o_mail_thread', passed: note !== null && loggedSource === 'Nakivo' },
+          ],
+          lines: CommonUtils.evidenceLines(STEP.s5, [
+            { what: 'the assignment job must fill the Sales Team', expected: 'not BLANK', actual: salesTeam, ok: salesTeam !== '' },
+            { what: 'the assignment job must fill the Salesperson', expected: 'not BLANK', actual: salesperson, ok: salesperson !== '' },
+            { what: 'an unowned Lead must be classified Nakivo', expected: '"Nakivo"', actual: leadSource, ok: leadSource === 'Nakivo' },
+            { what: 'the assignment job must log what it wrote', expected: 'a "Sales Team:" note', actual: note, ok: note !== null },
+            { what: 'the logged Lead Source must be Nakivo', expected: '"Nakivo"', actual: loggedSource, ok: loggedSource === 'Nakivo' },
+          ]),
+        }).catch(() => {});
       }
     });
   });

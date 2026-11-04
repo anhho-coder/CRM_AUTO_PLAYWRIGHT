@@ -67,26 +67,35 @@ export async function openNotebookTabMig(page: Page, caption: string, pick: 'fir
     const items = page.locator('xpath=//div[contains(@class,"dropdown-menu") and contains(@class,"show")]/a[contains(@class,"dropdown-item")]')
       .or(page.locator('.dropdown-menu.show > a.dropdown-item'))
       .filter({ hasText: exact(caption) });
-    for (let attempt = 1; ; attempt++) {
+    let opened = false;
+    for (let attempt = 1; attempt <= 2 && !opened; attempt++) {
       await more.click({ timeout: CommonUtils.waitTimes.abnormalWait });
-      const opened = await items.first()
+      opened = await items.first()
         .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.migNotebookMoreOpen }).then(() => true, () => false);
       if (opened) break;
-      // CRM-12370_9.4.2 (2026-10-30): on a new Lead in edit mode the More click raised Odoo's "The record has been
-      // modified, your changes will be discarded" warning instead of opening the dropdown (cause not established).
-      // Cancel keeps the unsaved input; then More is clicked once more.
+      // CRM-12370_9.4.2 (2026-10-30) and 9.3.3 (LM-b1, 2026-11-02, twice in a row): on a new Lead in edit mode the More
+      // click raised Odoo's "The record has been modified, your changes will be discarded" warning instead of opening
+      // the dropdown (cause not established; not reproduced on 2026-11-03, 3 of 3 clicks opened it).
+      // Cancel keeps the unsaved input.
       const warning = discardWarning(page);
       if (await warning.isVisible().catch(() => false)) {
-        console.log(`  - Notebook    : More raised the "record has been modified" warning - Cancel (keep the input), retry`);
+        console.log(`  - Notebook    : More raised the "record has been modified" warning - Cancel (keep the input)`);
         await warning.locator('xpath=.//button[normalize-space()="Cancel"]').or(warning.locator('button', { hasText: /^\s*Cancel\s*$/ }))
           .first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
       }
-      if (attempt >= 2) throw new Error(`crm-mig notebook: More did not list "${caption}" after ${attempt} clicks`);
-      await page.waitForTimeout(CommonUtils.waitTimes.long);
+      if (attempt < 2) await page.waitForTimeout(CommonUtils.waitTimes.long);
     }
-    const n = await items.count();
-    await (pick === 'last' ? items.nth(n - 1) : items.first()).click({ timeout: CommonUtils.waitTimes.abnormalWait });
-    console.log(`  - Notebook    : "${caption}" opened via More (${pick})`);
+    if (opened) {
+      const n = await items.count();
+      await (pick === 'last' ? items.nth(n - 1) : items.first()).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      console.log(`  - Notebook    : "${caption}" opened via More (${pick})`);
+    } else {
+      // More did not open twice: the folded anchor is still a Bootstrap tab (data-toggle="tab", href="#notebook_page_N"),
+      // so a click event on it shows the page without the dropdown and without touching the URL hash (measured
+      // 2026-11-03 on a new Lead: tab active, page shown, no hashchange, no warning).
+      await target.dispatchEvent('click');
+      console.log(`  - Notebook    : More did not open twice - "${caption}" (${pick}) shown by a click on its folded tab`);
+    }
   }
   await page.waitForTimeout(CommonUtils.waitTimes.standard);
   const active = await target.evaluate((el) => el.classList.contains('active')).catch(() => false);

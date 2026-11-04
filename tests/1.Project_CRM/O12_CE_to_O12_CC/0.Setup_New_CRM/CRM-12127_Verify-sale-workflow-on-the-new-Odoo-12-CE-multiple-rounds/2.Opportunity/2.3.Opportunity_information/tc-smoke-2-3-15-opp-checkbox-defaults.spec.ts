@@ -166,6 +166,10 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          ...CHECKBOXES.map((item) => ({ selector: `.o_form_sheet [name="${item.field}"]`, passed: (CHECKS.find((c) => c.what === `${item.label} is unticked on a new Opportunity`)?.pass ?? false) })),
+        ],
+        lines: CommonUtils.checksLines(STEP.s8, CHECKS),
       }).catch(() => {});
 
       states.forEach((s) => {

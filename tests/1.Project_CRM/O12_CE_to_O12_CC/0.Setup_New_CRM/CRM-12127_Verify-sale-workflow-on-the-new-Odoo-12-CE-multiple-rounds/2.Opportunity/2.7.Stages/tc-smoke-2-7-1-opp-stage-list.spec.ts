@@ -182,14 +182,19 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
     await test.step(STEP.s9, async () => {
       console.log(`\n--- ${STEP.s9} ---`);
 
-      const more = await opportunityPage.getMoreStageItems();
+      const more = await opportunityPage.getMoreStageItems({ keepOpen: true });
       console.log(`  MORE holds: ${more.join(' | ')}`);
       record('The stages the MORE dropdown holds', EXPECTED_MORE.join(' | '), more.join(' | '));
       printVerify();
       await CommonUtils.captureVerifyEvidence(page, testInfo, {
         name: `${TC} - verification`,
         passed: CHECKS.every((c) => c.pass),
+        outlines: [
+          { selector: '.dropdown-menu.show', passed: CHECKS.every((c) => c.pass) },
+        ],
+        lines: CommonUtils.checksLines(STEP.s9, CHECKS),
       }).catch(() => {});
+      await opportunityPage.closeControlPanelMenu();
 
       expect(actual.length, 'the NUMBER of entries on the stage bar').toBe(EXPECTED.length);
       expect(actual, 'the stage NAMES and their ORDER').toEqual(EXPECTED);
