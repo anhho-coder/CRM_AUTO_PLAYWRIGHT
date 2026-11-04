@@ -25,6 +25,26 @@ function exact(caption: string): RegExp {
 }
 
 /**
+ * Every notebook tab caption in screen order, folded tabs included and "More (N)" itself left out. The pre-production
+ * getNotebookTabs() keeps only drawn anchors, so on crm-mig it returned the 7 inline tabs + "More (10)"
+ * (CRM-12370_3.4.3, 2026-11-03). Tabs Odoo hides (`o_invisible_modifier`) stay out, as on pre-production.
+ */
+export async function readNotebookTabsMig(page: Page): Promise<string[]> {
+  const header = tabsHeader(page).first();
+  await header.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+  return await header
+    .evaluate((ul: HTMLElement) =>
+      Array.from(ul.children)
+        .filter((li) => li.tagName === 'LI' && !li.classList.contains('o_invisible_modifier'))
+        .map((li) => ({ li, a: li.querySelector(':scope > a.nav-link:not(.dropdown-toggle)') as HTMLElement | null }))
+        .filter(({ li, a }) => !!a && (li.hasAttribute('data-nkv-folded') || !!(a.offsetParent || a.getClientRects().length)))
+        .map(({ a }) => (a!.textContent || '').replace(/\s+/g, ' ').trim())
+        .filter((t) => t.length > 0)
+    )
+    .catch(() => [] as string[]);
+}
+
+/**
  * Open the notebook tab `caption` - inline when it is drawn, otherwise through "More (N)". Where the form carries the
  * caption twice (Lead form: two "CRM Developer" pages) `pick` chooses the first or the last, like the pre-production
  * page objects do. Throws when the tab could not be opened, naming the caption.

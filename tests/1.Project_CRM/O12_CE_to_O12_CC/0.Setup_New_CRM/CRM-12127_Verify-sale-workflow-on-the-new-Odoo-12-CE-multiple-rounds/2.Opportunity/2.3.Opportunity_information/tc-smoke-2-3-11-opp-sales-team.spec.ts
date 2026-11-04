@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
-import { OpportunityPage } from '@pages';
-import { HomePageMig } from '@pages/mig';
+import { HomePageMig, OpportunityPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   loginToO12CE,
@@ -103,7 +102,7 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
-    const opportunityPage = new OpportunityPage(page);
+    const opportunityPage = new OpportunityPageMig(page);
     let opp: O12ceOpportunity;
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s

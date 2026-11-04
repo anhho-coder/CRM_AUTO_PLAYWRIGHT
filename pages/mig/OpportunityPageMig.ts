@@ -1,6 +1,6 @@
 import { Page } from '@playwright/test';
 import { OpportunityPage } from '../OpportunityPage';
-import { openNotebookTabMig } from './MigNotebook';
+import { openNotebookTabMig, readNotebookTabsMig } from './MigNotebook';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -21,6 +21,11 @@ export class OpportunityPageMig extends OpportunityPage {
   /** "CRM Developer", inline or under More. */
   async clickCRMDeveloperTab() {
     await openNotebookTabMig(this.page, 'CRM Developer', 'first');
+  }
+
+  /** The notebook tab names, in order - folded ones included (see readNotebookTabsMig). */
+  async getNotebookTabs(): Promise<string[]> {
+    return readNotebookTabsMig(this.page);
   }
 
   /**

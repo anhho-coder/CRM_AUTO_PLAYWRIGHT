@@ -1,5 +1,6 @@
 import { Page, Locator } from '@playwright/test';
 import { ContactPage } from '../ContactPage';
+import { readNotebookTabsMig } from './MigNotebook';
 import { CommonUtils } from '@helpers/common.utils';
 
 /**
@@ -18,6 +19,11 @@ export class ContactPageMig extends ContactPage {
 
   constructor(page: Page) {
     super(page);
+  }
+
+  /** The notebook tab names, in order - folded ones included (see readNotebookTabsMig). */
+  async getNotebookTabs(): Promise<string[]> {
+    return readNotebookTabsMig(this.page);
   }
 
   /** The open company form's "Partner Discount" (field discount_id) as the screen shows it, e.g. "15.0"; '' when absent. */

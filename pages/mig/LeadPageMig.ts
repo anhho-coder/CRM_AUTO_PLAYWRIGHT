@@ -32,6 +32,26 @@ export class LeadPageMig extends LeadPage {
   }
 
   /**
+   * The base reader keeps every info-area row with a height. crm-mig pads each row by 8px, so the rows of fields Odoo
+   * itself hides (label empty, widget `o_invisible_modifier`) keep 8px and were counted as "" rows - CRM-12370_1.6.1 /
+   * 1.6.2 (2026-11-03): +5 left (partner_id, deal_registration_email, prev_created, lead_source_technical, type) and +5
+   * right (is_blacklisted, email_cc, mail_id, type_mail, priority). Pre-production gives those rows no height.
+   * Drops exactly those rows; an unlabelled row whose field IS shown stays in.
+   */
+  async getInformationAreaRows(timeout: number = CommonUtils.waitTimes.elementVisibility) {
+    const rows = await super.getInformationAreaRows(timeout);
+    const hidden = new Set(await this.page.evaluate(() =>
+      Array.from(document.querySelectorAll('.o_form_sheet tr'))
+        .filter((tr) => !tr.closest('.tab-pane') && !((tr.querySelector('td.o_td_label') as HTMLElement | null)?.innerText || '').trim())
+        .map((tr) => tr.querySelector('td:not(.o_td_label) [name]'))
+        .filter((f): f is Element => !!f && f.classList.contains('o_invisible_modifier'))
+        .map((f) => f.getAttribute('name') || '')
+    ).catch(() => [] as string[]));
+    const shown = (r: { label: string; field: string }) => !(r.label === '' && hidden.has(r.field));
+    return { left: rows.left.filter(shown), right: rows.right.filter(shown) };
+  }
+
+  /**
    * Wait until the chatter has rendered its messages (a lead always has at least its creation note). Reading the log
    * right after a reload returned an empty/partial thread on crm-mig: CRM-12370_9.1.1 (2026-10-30) polled 34 min
    * without seeing a merge note that the same page showed once fully loaded.

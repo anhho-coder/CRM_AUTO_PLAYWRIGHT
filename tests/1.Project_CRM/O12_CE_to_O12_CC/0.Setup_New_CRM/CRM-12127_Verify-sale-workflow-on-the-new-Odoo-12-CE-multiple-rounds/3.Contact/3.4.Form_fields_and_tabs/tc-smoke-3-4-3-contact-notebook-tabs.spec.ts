@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
-import { ContactPage } from '@pages';
-import { HomePageMig } from '@pages/mig';
+import { HomePageMig, ContactPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   loginToO12CE,
@@ -105,7 +104,7 @@ test.describe(`${TC} - Notebook tabs`, () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const homePage = new HomePageMig(page);
-    const contactPage = new ContactPage(page);
+    const contactPage = new ContactPageMig(page);
     let contactId = '';
 
     const unique = `${Date.now()}`;

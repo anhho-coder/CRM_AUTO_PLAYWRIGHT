@@ -1,6 +1,6 @@
 import { Browser, BrowserContext, Page, TestInfo, test, expect } from '@playwright/test';
-import { OpportunityPage, DealElementPage, QuotationPage, InvoicePage, LicensePage } from '@pages';
-import { LoginPageMig, HomePageMig, MigPlatformPage } from '@pages/mig';
+import { DealElementPage, QuotationPage, InvoicePage, LicensePage } from '@pages';
+import { LoginPageMig, HomePageMig, MigPlatformPage, OpportunityPageMig } from '@pages/mig';
 import { users, baseUrl_mig } from '@config/users.config';
 import { CommonUtils } from '@helpers/common.utils';
 import { handOffMigCleanupToRound2 } from '@helpers/deferred-verify-merge.helper';
@@ -207,7 +207,7 @@ export async function createOpportunityOnO12CE(
   tcId: string,
   opts: { reseller?: string; distributor?: string; street?: string } = {}
 ): Promise<O12ceOpportunity> {
-  const opportunityPage = new OpportunityPage(page);
+  const opportunityPage = new OpportunityPageMig(page);
   const result: O12ceOpportunity = {
     oppName: '', contactName: '', email: '', oppUrl: '', oppId: '',
     companyValue: '', contactValue: '', leadForm: '',
@@ -341,7 +341,7 @@ export async function addDealElementOnO12CE(
   page: Page,
   opts: { productQty?: number; paymentTerm?: string; pricelist?: string; product?: string } = {}
 ): Promise<{ productName: string; paymentTerm: string }> {
-  const opportunityPage = new OpportunityPage(page);
+  const opportunityPage = new OpportunityPageMig(page);
   const dealElementPage = new DealElementPage(page);
   const paymentTerm = opts.paymentTerm ?? O12CE_DATA.paymentTerm;
   // 2.5.26 needs a foreign-currency Quotation, so it passes the EUR pricelist here.
@@ -463,7 +463,7 @@ export async function pressNewQuotationOnO12CE(
   page: Page,
   opts: { opportunityId?: string } = {}
 ): Promise<O12ceQuotationResult> {
-  const opportunityPage = new OpportunityPage(page);
+  const opportunityPage = new OpportunityPageMig(page);
   const dealElementPage = new DealElementPage(page);
   const quotationPage = new QuotationPage(page);
   const outcome: O12ceQuotationResult = {

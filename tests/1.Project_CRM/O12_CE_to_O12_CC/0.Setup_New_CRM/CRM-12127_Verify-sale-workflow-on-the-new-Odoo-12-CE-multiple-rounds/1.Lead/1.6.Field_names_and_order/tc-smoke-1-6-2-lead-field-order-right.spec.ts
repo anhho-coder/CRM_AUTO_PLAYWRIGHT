@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
-import { LeadPage } from '@pages';
-import { HomePageMig } from '@pages/mig';
+import { HomePageMig, LeadPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   loginToO12CE,
@@ -109,7 +108,7 @@ test.describe(`${TC} - Field names and order - right column`, () => {
     await page.setViewportSize({ width: 1920, height: 1080 });
 
     const homePage = new HomePageMig(page);
-    const leadPage = new LeadPage(page);
+    const leadPage = new LeadPageMig(page);
 
     const unique = `${Date.now()}`;
     const DATA = {

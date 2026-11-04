@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { config } from '@config/test.config';
-import { OpportunityPage } from '@pages';
-import { HomePageMig } from '@pages/mig';
+import { HomePageMig, OpportunityPageMig } from '@pages/mig';
 import { CommonUtils } from '@helpers/common.utils';
 import {
   loginToO12CE,
@@ -66,7 +65,8 @@ const CHECKBOXES = [
   { field: 'targeted', label: 'Targeted' },
   { field: 'is_imported_lead_qualified', label: 'Is imported leadQualified' },
   { field: 'another_offices', label: 'Another Offices' },
-  { field: 'x_studio_top_deal', label: 'Top Deal' },
+  // crm-mig: module field `top_deal` (nakivo_zapier_active_campaign); pre-prod's Studio `x_studio_top_deal` does not exist on O12 CE.
+  { field: 'top_deal', label: 'Top Deal' },
   { field: 'new_address', label: 'New address ?' },
   { field: 'development_required', label: 'Development required' },
   { field: 'is_create_manual', label: 'Create manually' },
@@ -113,7 +113,7 @@ test.describe(`${TC} - O12 CE Opportunity`, () => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
-    const opportunityPage = new OpportunityPage(page);
+    const opportunityPage = new OpportunityPageMig(page);
     let opp: O12ceOpportunity;
 
     // The VERIFY block printed in the last step - filled by record(), printed before the expect()s

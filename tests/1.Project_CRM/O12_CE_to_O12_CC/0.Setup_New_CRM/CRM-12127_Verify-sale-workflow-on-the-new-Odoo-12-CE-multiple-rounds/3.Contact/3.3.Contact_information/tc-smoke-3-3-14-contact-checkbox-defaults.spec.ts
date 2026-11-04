@@ -162,7 +162,8 @@ test.describe(`${TC} - Checkbox defaults`, () => {
         { label: 'Send License Upfront', field: 'send_license_upfront', checked: false },
         { label: 'Is a Nakivo Customer', field: 'nakivo_customer', checked: false },
         { label: 'Certificate Required', field: 'certificate_required', checked: false },
-        { label: 'Active MSP', field: 'x_studio_active_cspsp', checked: false },
+        // crm-mig: module field `active_cspsp` (nakivo_zapier_active_campaign); pre-prod's Studio `x_studio_active_cspsp` does not exist on O12 CE (CRM-13035).
+        { label: 'Active MSP', field: 'active_cspsp', checked: false },
         { label: 'Nakivo Logo On Website', field: 'nakivo_logo_on_website', checked: false },
         { label: 'Is created manually', field: 'is_create_manual', checked: true },
         { label: 'Show on website', field: 'show_on_website', checked: true },

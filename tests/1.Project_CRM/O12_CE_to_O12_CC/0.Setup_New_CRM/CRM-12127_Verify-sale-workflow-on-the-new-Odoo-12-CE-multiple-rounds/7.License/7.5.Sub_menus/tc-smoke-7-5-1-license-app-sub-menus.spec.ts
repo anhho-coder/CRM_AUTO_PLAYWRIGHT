@@ -282,11 +282,11 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
 
     await test.step(STEP.verify, async () => {
       console.log(`\n--- ${STEP.verify} ---`);
-      // O12 CE offers 4 sub-menus, not the 5 pre-production offers: "LM license log" does not exist
-      // on this base. That difference is raised and tracked as CRM-13343; the tester ruled on
-      // 2026-10-08 that this spec follows the O12 CE list so the case reports green, and CRM-13343
-      // remains the record of the difference.
-      const EXPECTED = ['licenses', 'Invoices', 'Settings', 'Product Registration'];
+      // Pre-production baseline (5 sub-menus). 2026-10-08 the tester ruled the spec follow O12 CE's 4
+      // because "LM license log" did not exist on crm-mig (CRM-13343). That premise is gone - the
+      // 2026-11-03 re-run read "licenses | Invoices | Settings | LM license log" - so the tester
+      // restored the baseline on 2026-11-04; "Product Registration" is now the missing one.
+      const EXPECTED = ['licenses', 'Invoices', 'Settings', 'LM license log', 'Product Registration'];
 
       record('The application brand', 'License Management', brand);
       record('Number of sub-menus in the navbar', EXPECTED.length, subMenus.length);
@@ -299,7 +299,7 @@ test.describe(`${TC} - The sub-menus of the license Management application, and 
       // the casing is the DOM text, not a theme rule). The tester ruled the casing difference out of
       // scope on 2026-10-08 and asked for the expectation to follow O12 CE here.
       expect(brand, 'the application brand must read "License Management"').toBe('License Management');
-      expect(subMenus, 'the licence application must offer exactly 4 sub-menus on O12 CE').toHaveLength(EXPECTED.length);
+      expect(subMenus, 'the licence application must offer exactly 5 sub-menus, as on pre-production').toHaveLength(EXPECTED.length);
       expect(subMenus, 'the licence application must offer the "Invoices" sub-menu').toContain('Invoices');
       expect(subMenus, 'the sub-menu names and their order must match the documented list').toEqual(EXPECTED);
     });
