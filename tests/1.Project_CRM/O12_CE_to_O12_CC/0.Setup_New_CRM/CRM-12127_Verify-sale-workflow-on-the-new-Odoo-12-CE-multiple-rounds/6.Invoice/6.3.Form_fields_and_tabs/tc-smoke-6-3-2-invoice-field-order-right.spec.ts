@@ -12,6 +12,9 @@ import {
   pressNewQuotationOnO12CE,
   confirmQuotationOnO12CE,
   createInvoiceOnO12CE,
+  openInvoiceReaderSessionOnO12CE,
+  closeReaderSessionOnO12CE,
+  getMigSessionGroups,
   O12ceOpportunity,
   O12ceQuotationResult,
   teardownMigRecords,
@@ -21,8 +24,8 @@ import {
 /**
  * O12 CE Main-Business Smoke - Invoice screen verification - Field names and order - right column
  * Test Case ID: CRM-12370_6.3.2
- * Automation-Type: ported
- * Automation-Date: 2026-09-22
+ * Automation-Type: refactored
+ * Automation-Date: 2026-11-05
  *
  * Objective: Verify the field names and their order in the right column of the Invoice information area
  *
@@ -39,6 +42,11 @@ import {
  * O12 CE deviations vs the pre-production scenario (MECHANICAL only):
  *   - Login as the sales IC Thomas Semerich (`users.sale_ic_thomas_crm_mig`) - the pre-prod owner of
  *     this chain; CRM > Pipeline opened in list view by helper functions.
+ *   - Step 16 reads the right column in a SECOND browser session as Faye Nguyen
+ *     (`users.accountance_ic_faye_crm_mig`, Billing Manager). The pre-prod baseline runs as admin_crm;
+ *     "Don't send license" and "License Send" render only for Billing Manager, which Thomas does not
+ *     hold on crm-mig or pre-production (CRM-13273, Khang 2026-11-04). Tester ruling 2026-11-05:
+ *     Thomas keeps the chain, the lowest Billing Manager account reads.
  *   - The run marker is "TEST ..." instead of "AUTO ..." so the crm-mig leftover sweep finds the record
  *     again (the sweep matches name LIKE 'TEST' AND name LIKE '<TC id>').
  *   - Test timeout raised to config.timeouts.test (15 min): login + create + save costs ~6 min on crm-mig.
@@ -57,7 +65,8 @@ import {
  *  15. On the "Invoice Order" window, press "CREATE AND VIEW INVOICES" button.
  *
  * Steps run:
- *   16. Read the field labels of the right column of the Invoice information area, top to bottom.
+ *   16. Open another browser, login as Faye Nguyen (Billing Manager), open the Invoice and read the
+ *       field labels of the right column of the Invoice information area, top to bottom.
  *
  * Verification:
  *   - The right column carries exactly 11 fields
@@ -109,7 +118,7 @@ test.describe('CRM-12370_6.3.2 - Invoice field names and order - right column', 
     await sweepMigLeftoversAfterAll(browser, 'CRM-12370_6.3.2');
   });
 
-  test('CRM-12370_6.3.2: Verify the field names and their order in the right column of the Invoice information area', async ({ page }, testInfo) => {
+  test('CRM-12370_6.3.2: Verify the field names and their order in the right column of the Invoice information area', async ({ page, browser }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
 
@@ -189,22 +198,33 @@ test.describe('CRM-12370_6.3.2 - Invoice field names and order - right column', 
         'Postpone Date',
       ];
 
-      const invoicePage = new InvoicePage(page);
-      const columns = await invoicePage.getInformationAreaColumns();
-      const right = columns.right;
-      console.log(`  - Right column: ${right.join(' | ')}`);
-
-      record('Number of fields in the right column', EXPECTED.length, right.length);
-      record('Right column field names and order', EXPECTED.join(' | '), right.join(' | '));
-      printVerify();
-
+      const reader = users.accountance_ic_faye_crm_mig;
+      const session = await openInvoiceReaderSessionOnO12CE(browser, invoice!.invoiceUrl, reader, testInfo);
       let __verifyPassed = false;
       try {
-        expect(right, 'the right column of the Invoice must carry exactly 11 fields').toHaveLength(EXPECTED.length);
-        expect(right, 'the right column field names and their order must match the documented list').toEqual(EXPECTED);
-        __verifyPassed = true;
+        const groups = await getMigSessionGroups(session.readerPage, ['account.group_account_manager']);
+        console.log(`  - Reader account : ${reader.username} (${reader.displayName})`);
+        console.log(`  - Billing Manager: ${groups['account.group_account_manager']}`);
+
+        const invoicePage = new InvoicePage(session.readerPage);
+        const columns = await invoicePage.getInformationAreaColumns();
+        const right = columns.right;
+        console.log(`  - Right column: ${right.join(' | ')}`);
+
+        record('Number of fields in the right column', EXPECTED.length, right.length);
+        record('Right column field names and order', EXPECTED.join(' | '), right.join(' | '));
+        printVerify();
+
+        try {
+          expect(right, 'the right column of the Invoice must carry exactly 11 fields').toHaveLength(EXPECTED.length);
+          expect(right, 'the right column field names and their order must match the documented list').toEqual(EXPECTED);
+          __verifyPassed = true;
+        } finally {
+          await CommonUtils.captureVerifyEvidence(session.readerPage, testInfo, { name: `${TC_ID} - Invoice field order right column`, passed: __verifyPassed }).catch(() => {});
+        }
       } finally {
-        await CommonUtils.captureVerifyEvidence(page, testInfo, { name: `${TC_ID} - Invoice field order right column`, passed: __verifyPassed }).catch(() => {});
+        // Always close the reader browser context (and attach its video), even when verification failed.
+        await closeReaderSessionOnO12CE(session, testInfo);
       }
     });
   });

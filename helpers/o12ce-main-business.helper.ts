@@ -187,6 +187,63 @@ export async function closeApproverSessionOnO12CE(
   }
 }
 
+/**
+ * Open a SECOND browser session as `account` and land it on the Invoice at `invoiceUrl`.
+ *
+ * Added 2026-11-05 for CRM-13273: the right column of the Invoice information area renders
+ * "Don't send license" and "License Send" only for users in Billing Manager
+ * (account.group_account_manager). Thomas owns the create -> quote -> invoice chain but is not in
+ * that group on crm-mig, so the field read runs in this session as a Billing Manager (Faye) while the
+ * main page stays Thomas - the teardown then deletes as the user who created the records.
+ *
+ * `invoiceUrl` must carry the customer-invoice action (the URL createInvoiceOnO12CE captures does):
+ * without it the form opens in the vendor-bill layout.
+ *
+ * The caller owns the returned context and MUST close it with closeReaderSessionOnO12CE.
+ */
+export async function openInvoiceReaderSessionOnO12CE(
+  browser: Browser,
+  invoiceUrl: string,
+  account: O12ceAccount = users.accountance_ic_faye_crm_mig,
+  testInfo?: TestInfo
+): Promise<{ readerPage: Page; readerContext: BrowserContext }> {
+  // Same video wiring as openApproverSessionOnO12CE - a browser.newContext() does not inherit `use.video`.
+  const readerContext = await browser.newContext({
+    viewport: { width: 1920, height: 1080 },
+    ...(testInfo
+      ? { recordVideo: { dir: testInfo.outputPath('reader-session'), size: { width: 800, height: 450 } } }
+      : {}),
+  });
+  const readerPage = await readerContext.newPage();
+
+  console.log(`\n--- Open the reader session (${account.displayName}) ---`);
+  const loginPage = new LoginPageMig(readerPage);
+  await loginPage.navigateTo(baseUrl_mig);
+  await loginPage.login(account.username, account.password);
+  console.log(`  OK - logged in as ${account.displayName}`);
+
+  await readerPage.goto(invoiceUrl);
+  await readerPage.waitForTimeout(CommonUtils.waitTimes.extraLong);
+  const invoicePage = new InvoicePage(readerPage);
+  await invoicePage.waitForPageLoad(CommonUtils.waitTimes.savingPage).catch(() => {});
+  const dismissed = await invoicePage.dismissErrorDialogWithRetry();
+  if (dismissed > 0) {
+    console.log(`  ⚠ crm-mig raised ${dismissed} "Odoo Client Error" popup(s) on the reader's Invoice form - dismissed`);
+  }
+  console.log(`  Invoice opened in the reader session: ${readerPage.url()}`);
+
+  return { readerPage, readerContext };
+}
+
+/** Close the reader session and attach its video - see closeApproverSessionOnO12CE. Never throws. */
+export async function closeReaderSessionOnO12CE(
+  session: { readerPage: Page; readerContext: BrowserContext } | undefined,
+  testInfo?: TestInfo
+): Promise<void> {
+  if (!session) return;
+  await closeApproverSessionOnO12CE({ approverPage: session.readerPage, approverContext: session.readerContext }, testInfo);
+}
+
 /** Step 2 - open CRM and land on the Opportunities LIST view (pre-prod: "click at view list"). */
 export async function openOpportunitiesListOnO12CE(page: Page): Promise<void> {
   await test.step('Step 2: After login successful, open "CRM" and switch to the Opportunities list view', async () => {
