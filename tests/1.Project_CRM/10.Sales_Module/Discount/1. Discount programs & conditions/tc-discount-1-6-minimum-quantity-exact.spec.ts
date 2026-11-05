@@ -96,6 +96,8 @@ const STEP = {
   verify: 'Verification',
 } as const;
 
+// Teardown back ON 2026-11-05: the teardown-off run of 2026-11-05 kept opportunity 1104028 and program 53 as the
+// reference for CRM-14435 (A3); they are removed by hand once the bug is reproduced
 const SKIP_CLEANUP = false; // true = keep the run's records for debugging
 const SALES = users.sale_ic_thomas;
 /** The program's Products condition, and a product outside it (spec v7 IS-CRM-FUNC-0074-04). */
@@ -119,6 +121,7 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (pre-prod base
       openedOwner = undefined;
     }
     if (!SKIP_CLEANUP) await teardownDiscountRun(page, run, testInfo);
+    else console.log(`\n[cleanup] TEARDOWN OFF - KEPT on pre-production: ${JSON.stringify({ company: run.company, partnerId: run.partnerId, opp: run.opp, leadId: run.leadId, urlOpp: run.urlOpp, saleOrderIds: run.saleOrderIds, programIds: run.programIds })}`);
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
   });
 
@@ -223,7 +226,9 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (pre-prod base
 
     await test.step(STEP.s8, async () => {
       console.log(`\n--- ${STEP.s8} ---`);
-      console.log(`  - Program ${programName} and the run's records are removed by the teardown`);
+      console.log(SKIP_CLEANUP
+        ? `  - TEARDOWN OFF (tester 2026-11-05): program ${programName} and the run's records are KEPT`
+        : `  - Program ${programName} and the run's records are removed by the teardown`);
     });
 
     await test.step(STEP.verify, async () => {

@@ -331,6 +331,9 @@ export interface TestProgram {
   /** Valid from / Valid to, 'YYYY-MM-DD HH:mm:ss' UTC */
   validFrom?: string;
   validTo?: string;
+  /** For Reseller / For Distributor (nakivo_sale): the program applies only to orders that carry a reseller / distributor */
+  forReseller?: boolean;
+  forDistributor?: boolean;
 }
 
 /**
@@ -389,9 +392,11 @@ export class ProgramOwner {
     }
     if (p.validFrom) values.rule_date_from = p.validFrom;
     if (p.validTo) values.rule_date_to = p.validTo;
+    if (p.forReseller) values.for_reseller = true;
+    if (p.forDistributor) values.for_distributor = true;
     const id: number = await this.call('sale.coupon.program', 'create', [values]);
     run.programIds.push(id);
-    console.log('  Program created (reference system: Sales > Configuration > Promotion Programs, over JSON-RPC):');
+    console.log('  Program created (reference system: Sales > Products > Promotion Programs, over JSON-RPC):');
     console.log(`    - Name                 = ${p.name}   (id ${id})`);
     console.log(`    - Reward percent       = ${p.percent}`);
     console.log(`    - Scope                = ${p.scope === 'order' ? 'order' : `specific products ${p.scope.products.join(', ')}`}`);
@@ -399,6 +404,7 @@ export class ProgramOwner {
     console.log(`    - Min qty              = ${p.minQty !== undefined ? `>= ${p.minQty}` : '(none)'}`);
     console.log(`    - Products condition   = ${p.products ? `Internal Reference in ${p.products.join(', ')}` : '(none)'}`);
     console.log(`    - Valid from / to      = ${p.validFrom ?? '-'} / ${p.validTo ?? '-'}`);
+    if (p.forReseller || p.forDistributor) console.log(`    - For Reseller / For Distributor = ${p.forReseller ? 'ticked' : '-'} / ${p.forDistributor ? 'ticked' : '-'}`);
     console.log('    - Promo code           = (none - the reference system offers coded programs only through a code)');
     return id;
   }

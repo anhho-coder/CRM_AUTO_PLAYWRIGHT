@@ -33,7 +33,9 @@ import {
  * Revised          : 2026-11-04 - spec v7 IS-CRM-FUNC-0074-03 ("A product qualifies only while it is offered for sale",
  *                    CRM-13848 A2): steps 6-7 read Deal registration's "Based on Products" condition and the Can be
  *                    Sold flag of the products it lets qualify - mirrors CRM-12144_1.5 steps 6-7 (re-synced 2026-11-03)
- * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-03
+ *                    2026-11-05 - step 6 menu path corrected: Promotion Programs sits under Sales > Products, not
+ *                    Sales > Configuration (master row 124 and CRM-13768 corrected the same day)
+ * Spec           : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-03
  * Source version   : master "Sales module" row 124 / Jira CRM-13768 as updated on 2026-11-04 - re-check before trusting this spec
  * Host             : pre-production (http://pre-production.nakivo.site, Odoo 12 EE = the reference system)
  * Run as           : Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas), steps 1-5;
@@ -95,7 +97,7 @@ import {
  *    4. Add A2144B with Ordered Qty 5
  *    5. Open the Promotion list
  *         -> Expected: the list contains "Deal registration promotion, 10% on Product, Support Services do not qualify"
- *    6. As the CRM administrator, open Sales > Configuration > Promotion Programs > "Deal registration promotion, 10% on
+ *    6. As the CRM administrator, open Sales > Products > Promotion Programs > "Deal registration promotion, 10% on
  *       Product, Support Services do not qualify" and read its "Based on Products" condition
  *         -> Expected: "Based on Products" reads "Can be Sold is set" and "Internal Reference in" followed by the
  *            qualifying product codes
@@ -120,7 +122,7 @@ const STEP = {
   s3: 'Step 3: Open the Promotion list',
   s4: 'Step 4: Add A2144B with Ordered Qty 5',
   s5: 'Step 5: Open the Promotion list',
-  s6: 'Step 6: As the CRM administrator, open Sales > Configuration > Promotion Programs > "Deal registration promotion, 10% on Product, Support Services do not qualify" and read its "Based on Products" condition',
+  s6: 'Step 6: As the CRM administrator, open Sales > Products > Promotion Programs > "Deal registration promotion, 10% on Product, Support Services do not qualify" and read its "Based on Products" condition',
   s7: 'Step 7: [INTERNAL check, Call API] Open Sales > Products and look up the products the condition read in step 6 lets qualify: is "Can be Sold" ticked on each?',
   verify: 'Verification',
 } as const;
