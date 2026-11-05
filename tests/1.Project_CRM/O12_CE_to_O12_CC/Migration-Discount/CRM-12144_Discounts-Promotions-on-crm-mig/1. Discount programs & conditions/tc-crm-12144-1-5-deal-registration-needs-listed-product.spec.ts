@@ -37,8 +37,9 @@ import {
  *                    added: Deal registration's Products row is read in the Program editor and each listed product's
  *                    "Can be Sold" is looked up on crm-mig (tester 2026-11-03: check it by reading the Program editor)
  * Baseline         : Discount_1.5 (Jira CRM-13768; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
- *                    tc-discount-1-5-deal-registration-needs-listed-product.spec.ts) - assertions ported unchanged; steps 6-7 exist only on
- *                    crm-mig (the Program editor is crm-mig's)
+ *                    tc-discount-1-5-deal-registration-needs-listed-product.spec.ts) - assertions ported unchanged; steps 6-7 (spec v7, A2)
+ *                    were added to Discount_1.5 on 2026-11-04 as well, read there from Sales > Products > Promotion
+ *                    Programs; here they are read in the Program editor
  * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-03
  * Source version   : Jira CRM-12277 / master row 22 as re-synced to spec v7 on 2026-11-03 - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site, step 6)

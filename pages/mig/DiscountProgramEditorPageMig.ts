@@ -31,10 +31,10 @@ import { users, baseUrl_discount_mig } from '@config/users.config';
  *
  * WRITES (tester, 2026-10-27): "QA có quyền tạo Discount program test (rồi teardown). Ko sửa Discount program có sẵn" -
  * a spec may create its OWN test program (QA-Disc-<timestamp>), change it and delete it in teardown; it never edits an
- * existing program. createProgramOnKanban / editProgramRewardOnKanban / deleteProgramOnKanban enforce that by name
- * (TEST_PROGRAM_PREFIX). Before that rule (QI p.3 + p.28, Nathan's CRM-12467 comment of 2026-10-20: QA runs only TC-13
- * and TC-19) the specs that need a write were skipped as "chỉ run manual" (tester, 2026-10-22); they stay skipped until
- * the tester decides otherwise. archiveProgramOnKanban still refuses to run.
+ * existing program. createProgramOnKanban / editProgramRewardOnKanban / archiveProgramOnKanban / deleteProgramOnKanban
+ * enforce that by name (TEST_PROGRAM_PREFIX). Before that rule (QI p.3 + p.28, Nathan's CRM-12467 comment of 2026-10-20:
+ * QA runs only TC-13 and TC-19) the specs that need a write were skipped as manual-only (tester, 2026-10-22); the tester
+ * un-skipped 1.4 / 1.6 on 2026-11-03 and 1.1 / 1.2 / 1.3 / 1.10 / 1.13 / 2.6 on 2026-11-05.
  * The site's certificate chain is self-signed: a spec that opens it needs test.use({ ignoreHTTPSErrors: true }).
  */
 export class DiscountProgramEditorPageMig extends BasePage {
@@ -636,21 +636,109 @@ export class DiscountProgramEditorPageMig extends BasePage {
   }
 
   /**
+   * Program form, Validity: open the Valid from / Valid to picker (button.date-button, aria-haspopup="dialog") and click
+   * the day. The picker is a month calendar of day buttons keyed data-cell="YYYY-MM-DD" with Previous / Next month,
+   * Clear and Today - it has NO time input (read 2026-11-05, explore discount-mig-editor-date-picker-20261105), so only
+   * the date part of `value` ("YYYY-MM-DD" or an Odoo "YYYY-MM-DD HH:mm:ss") is entered.
+   * @returns the text the button shows after the pick
+   */
+  private async pickValidityDate(which: 'Valid from' | 'Valid to', value: string): Promise<string> {
+    const day = (value.match(/^\d{4}-\d{2}-\d{2}/) || [])[0];
+    if (!day) throw new Error(`Program editor: ${which} "${value}" is not a YYYY-MM-DD date`);
+    const button = this.programForm().getByRole('button', { name: which, exact: true });
+    await button.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const cell = this.page.locator(`button.calendar-day[data-cell="${day}"]:not(.outside)`).first();
+    const months = (12 * Number(day.slice(0, 4)) + Number(day.slice(5, 7))) - (12 * new Date().getFullYear() + new Date().getMonth() + 1);
+    for (let i = 0; i < Math.abs(months) && !(await cell.isVisible().catch(() => false)); i++) {
+      await this.page.getByRole('button', { name: months > 0 ? 'Next month' : 'Previous month', exact: true }).last().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    }
+    await cell.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    // Escape closes a picker left open without leaving the form (2026-11-05)
+    if (await this.page.locator('button.calendar-day').first().isVisible().catch(() => false)) await this.page.keyboard.press('Escape');
+    const shown = ((await button.textContent({ timeout: CommonUtils.waitTimes.elementVisibility }).catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    if (!shown || /^(Any start|No end)$/.test(shown)) throw new Error(`Program editor: ${which} still reads "${shown}" after picking ${day}`);
+    return shown;
+  }
+
+  /** Selector of the program form in edit mode - for verify-point outlines. */
+  static readonly EDITING_FORM = 'section.program-form.editing';
+
+  /**
+   * Kanban path: Discount Programs > New program, then read the form WITHOUT saving: every row label (with the grey hint
+   * under it), every control of the row (button / option / checkbox text, disabled or not) and the form's whole text.
+   * Read only - discardProgramForm() leaves without publishing a version.
+   */
+  async readNewProgramForm(): Promise<{ text: string; rows: Array<{ label: string; hint: string; controls: string[]; disabled: string[] }> }> {
+    await this.openProgramsKanban();
+    await this.newProgramButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.editingProgramForm().first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.editingProgramForm().first().evaluate((form) => {
+      const t = (n: Element | null | undefined) => (n?.textContent || '').replace(/\s+/g, ' ').trim();
+      const rows = Array.from(form.querySelectorAll('div.form-row')).map((row) => {
+        const controls = Array.from(row.querySelectorAll('button, [role="option"], label, input[type="checkbox"]'));
+        return {
+          label: t(row.querySelector('div.form-label > span')),
+          hint: t(row.querySelector('div.form-label > small')),
+          controls: controls.map((c) => t(c) || (c as HTMLInputElement).getAttribute('aria-label') || c.tagName.toLowerCase()).filter(Boolean),
+          disabled: controls.filter((c) => (c as HTMLInputElement).disabled).map((c) => t(c.closest('label') || c) || 'checkbox'),
+        };
+      });
+      return { text: (form as HTMLElement).innerText.replace(/\s+/g, ' ').trim(), rows };
+    });
+  }
+
+  /**
+   * The open program form: try to tick a row's checkbox, then read its state. A disabled box is not clicked through
+   * (the click times out after a few seconds and is reported as not ticked). Read 2026-11-05: For reseller / For
+   * distributor are rendered disabled on New program.
+   */
+  async tryTickConditionRow(label: 'For reseller' | 'For distributor'): Promise<{ found: boolean; disabled: boolean; checked: boolean; text: string }> {
+    const row = this.editingProgramForm().first().locator('div.form-row').filter({ has: this.page.locator('div.form-label > span', { hasText: new RegExp(`^\\s*${label}\\s*$`) }) }).first();
+    const box = row.locator('input[type="checkbox"]').first();
+    if (!(await box.count())) return { found: false, disabled: false, checked: false, text: '' };
+    await box.click({ timeout: CommonUtils.waitTimes.medium * 2 }).catch(() => {});
+    const text = ((await row.locator('div.form-value').first().innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    return { found: true, disabled: await box.isDisabled(), checked: await box.isChecked(), text };
+  }
+
+  /** Discard the open program form (nothing is saved, no version is published). */
+  async discardProgramForm(): Promise<void> {
+    await this.detailButton('Discard').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.editingProgramForm().first().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+  }
+
+  /** Tick the checkbox of a "When it applies" row of the open program form (div.form-row > div.form-label > span). */
+  private async tickConditionRow(label: 'For reseller' | 'For distributor'): Promise<void> {
+    const row = this.programForm().locator('div.form-row').filter({ has: this.page.locator('div.form-label > span', { hasText: new RegExp(`^\\s*${label}\\s*$`) }) }).first();
+    const box = row.locator('input[type="checkbox"]').first();
+    await box.check({ timeout: CommonUtils.waitTimes.abnormalWait });
+    if (!(await box.isChecked())) throw new Error(`Program editor: "${label}" is not ticked after check()`);
+  }
+
+  /**
    * Kanban path: Discount Programs > New program, fill the program form and Save (= the next version becomes the active
    * one). `fields` keyed on the form's labels: Program name (must start with TEST_PROGRAM_PREFIX), Reward (percent),
-   * Applies to (Whole order | Specific products), Promo code (the form pre-fills NEW<n>; typed over when given), Minimum
-   * quantity, Products (default codes - the rule Products > Default Code is any of <codes>, picked in "Select products"),
-   * Advanced. Advanced accepts "customer name is <name>" only, entered as the rule Payer > Name is <name> - crm-mig labels
-   * the order's customer (partner_id) "Payer", and the rule's code reads partner_id.name == "<name>" (read 2026-10-27).
+   * Applies to (Whole order | Specific products), For (accepted EMPTY only - the form shows it only for Specific
+   * products), Promo code (the form pre-fills NEW<n>; typed over when given), Minimum quantity, Products (default codes -
+   * the rule Products > Default Code is any of <codes>, picked in "Select products"), Valid from / Valid to (a day picked
+   * in the calendar - see pickValidityDate), Advanced. Advanced accepts "customer name is <name>" only, entered as the
+   * rule Payer > Name is <name> - crm-mig labels the order's customer (partner_id) "Payer", and the rule's code reads
+   * partner_id.name == "<name>" (read 2026-10-27). For reseller / For distributor tick the row's checkbox ("Only orders
+   * with a reseller / distributor") - spec v7 IS-CRM-FUNC-0087 drops that condition, the form still offers it (2026-11-05).
    * @returns the active version before / after the Save and the promo code the new card shows
    */
   async createProgramOnKanban(fields: {
     'Program name': string;
     Reward: string;
     'Applies to'?: 'Whole order' | 'Specific products';
+    For?: '';
     'Promo code'?: string;
     'Minimum quantity'?: string;
     Products?: string[];
+    'Valid from'?: string;
+    'Valid to'?: string;
+    'For reseller'?: boolean;
+    'For distributor'?: boolean;
     Advanced?: string;
   }): Promise<{ versionBefore: number; versionAfter: number; code: string }> {
     const name = fields['Program name'];
@@ -662,6 +750,10 @@ export class DiscountProgramEditorPageMig extends BasePage {
     await this.newProgramButton().click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.programForm().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.programNameInput().fill(name);
+    const validFrom = fields['Valid from'] ? await this.pickValidityDate('Valid from', fields['Valid from']) : '';
+    const validTo = fields['Valid to'] ? await this.pickValidityDate('Valid to', fields['Valid to']) : '';
+    if (fields['For reseller']) await this.tickConditionRow('For reseller');
+    if (fields['For distributor']) await this.tickConditionRow('For distributor');
     if (fields['Minimum quantity'] !== undefined) await this.programForm().getByRole('spinbutton', { name: 'Minimum quantity' }).fill(fields['Minimum quantity']);
     // Products before Advanced: the Products row owns the FIRST "Add a rule", Advanced the last one
     if (fields.Products?.length) await this.pickProductsRule(fields.Products);
@@ -676,6 +768,12 @@ export class DiscountProgramEditorPageMig extends BasePage {
       await this.programForm().getByRole('textbox', { name: 'Value' }).last().fill(customer);
     }
     console.log(`  - Program name        = ${name}`);
+    console.log(`  - Valid from          = ${fields['Valid from'] ? `${fields['Valid from']} -> picked "${validFrom}" (the picker sets the day only)` : '(Any start)'}`);
+    console.log(`  - Valid to            = ${fields['Valid to'] ? `${fields['Valid to']} -> picked "${validTo}" (the picker sets the day only)` : '(No end)'}`);
+    if (fields['For reseller'] || fields['For distributor']) {
+      console.log(`  - For reseller        = ${fields['For reseller'] ? 'ticked (Only orders with a reseller)' : 'not ticked'}`);
+      console.log(`  - For distributor     = ${fields['For distributor'] ? 'ticked (Only orders with a distributor)' : 'not ticked'}`);
+    }
     console.log(`  - Minimum quantity    = ${fields['Minimum quantity'] ?? '(empty)'}`);
     console.log(`  - Products            = ${fields.Products?.length ? `Products > Default Code is any of ${fields.Products.join(', ')}` : '(any product)'}`);
     console.log(`  - Reward              = ${fields.Reward} %`);
@@ -728,11 +826,25 @@ export class DiscountProgramEditorPageMig extends BasePage {
   }
 
   /**
-   * [NOT AUTHORISED - see MANUAL_REASON] Kanban path: open the program's card, click Delete, then ARCHIVE in the
-   * "Delete program?" dialog - "Archive keeps it in the table but never offers it; you can switch it back on later"
-   * (app script, read 2026-10-27) = IS-CRM-FUNC-0076 "disable-able without deletion". Refuses to run.
+   * Kanban path: open the card of the run's OWN test program, click Delete, then ARCHIVE in the "Delete program?" dialog -
+   * "Archive keeps it in the table but never offers it; you can switch it back on later" = IS-CRM-FUNC-0076 "disable-able
+   * without deletion". Read 2026-11-05 (explore discount-mig-editor-validity-and-archive-20261105): Archive publishes the
+   * next version, the program page shows the badge "Inactive" and the card moves to the Kanban column "Inactive"; the
+   * archived card can still be opened and deleted (its dialog then offers Cancel | Delete only).
+   * @returns the dialog text, the active version before / after, and the Kanban column the card sits in afterwards
    */
-  async archiveProgramOnKanban(_name: string): Promise<never> {
-    throw new Error(DiscountProgramEditorPageMig.MANUAL_REASON);
+  async archiveProgramOnKanban(name: string): Promise<{ dialogText: string; versionBefore: number; versionAfter: number; column: string }> {
+    DiscountProgramEditorPageMig.assertTestProgram(name);
+    await this.openProgramByName(name);
+    const versionBefore = await this.getActiveVersionNumber();
+    await this.detailButton('Delete').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.deleteDialog().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const dialogText = ((await this.deleteDialog().innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    await this.deleteDialog().getByRole('button', { name: 'Archive', exact: true }).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const versionAfter = await this.waitForVersionAbove(versionBefore);
+    await this.openProgramsKanban();
+    const column = (await this.getKanbanCards()).find((c) => c.name === name)?.column ?? '(card not found)';
+    console.log(`  - Archived ${name}    : version ${versionBefore} -> ${versionAfter}, Kanban column "${column}"`);
+    return { dialogText, versionBefore, versionAfter, column };
   }
 }

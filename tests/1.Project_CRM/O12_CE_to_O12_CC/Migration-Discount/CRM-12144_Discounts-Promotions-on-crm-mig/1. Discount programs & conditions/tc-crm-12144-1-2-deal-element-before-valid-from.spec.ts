@@ -14,11 +14,11 @@ import {
   signInMig,
   createEndCustomerCompanyMig,
   createOpportunityForCompanyMig,
+  openCrmMigWebClient,
   openDealElementFromOpportunity,
   teardownDiscountRunMig,
   sweepDiscountRunsMig,
   MIG_ACTION_TIMEOUT,
-  PROGRAM_EDITOR_MANUAL_REASON,
   baselineDetails,
 } from '@helpers/discount-mig.helper';
 
@@ -27,11 +27,13 @@ import {
  *  CRM-12144_1.2 - Open a Deal Element dated before the program's Valid from date   (crm-mig)
  * ================================================================================================
  * Test Case ID     : CRM-12144_1.2
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 19, Jira link empty)
+ * Jira             : CRM-12276 (master "Migration - Discount" row 19)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
  * Revised          : 2026-10-27 - program-editor steps reworded to the Kanban path (New program > Save; card >
  *                    Delete), master row 19 updated the same day - the CRM-12144_5.3 standard (tester 2026-10-27)
+ *                    2026-11-05 - UN-SKIPPED by the tester (2026-11-05) under the 2026-10-27 rule "QA may create a
+ *                    test Discount program (then teardown); never edit an existing program"
  * Baseline         : Discount_1.2 (Jira CRM-13765; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-2-deal-element-before-valid-from.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-01
@@ -40,17 +42,13 @@ import {
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
  *
- * MANUAL ONLY - chỉ run manual (tester, 2026-10-22). Program-table edits belong to the development team: QI p.3 + p.28
- *   (TC-14 to TC-18 at QA's request); Nathan, CRM-12467 2026-10-20: QA runs only TC-13 and TC-19.
- *   The whole describe block is skipped by test.skip(true, PROGRAM_EDITOR_MANUAL_REASON) at
- *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
- *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
- *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
- *     - Pre-condition 4 : create the program QA-Disc-<timestamp> (Kanban: New program) with Valid from = tomorrow 00:00:00 (UTC) and Save
- *     - Step 4          : Clean-up - Delete the program QA-Disc-<timestamp> on its Kanban card and confirm
- *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
- *           development team's: QI p.3 (except TC-13) and p.28 (TC-14 to TC-18 at QA's request); Nathan,
- *           CRM-12467 2026-10-20: QA runs only TC-13 and TC-19"
+ * Program-editor writes: the run creates ONE program of its own, QA-Disc-<timestamp> (Pre-condition 4), and deletes it
+ *   at Step 4 - or in afterEach / afterAll when the run stops earlier (deny-list: only the name this run created).
+ *   Rule (tester 2026-10-27): QA may create a test Discount program and must delete it; an existing program is never
+ *   edited (DiscountProgramEditorPageMig refuses any name that does not start with QA-Disc-). Each Save / Archive /
+ *   Delete publishes a new rule version (versions are permanent history).
+ *   Valid from: the Program editor's date picker sets a DAY only (no time input, read 2026-11-05) - the master's
+ *   "tomorrow 00:00:00 (UTC)" is entered as tomorrow's date; the time part is not typed.
  *
  * Summary
  * -------
@@ -59,7 +57,7 @@ import {
  *
  * Command to run
  * --------------
- *   npx playwright test --grep "CRM-12144_1\.2:" --project=chromium   (always skipped - chỉ run manual)
+ *   npx playwright test --grep "CRM-12144_1\.2:" --project=chromium
  *
  * ------------------------------------------------------------------------------------------------
  *  Source manual TC (CRM-12144_1.2, master "Migration - Discount" row 19) - verbatim, ASCII
@@ -115,12 +113,12 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)',
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-Cust-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre4: 'Pre-condition 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-Cust-<timestamp>, Valid from = tomorrow 00:00:00 (UTC); Click Save and confirm the new version is the active one (top bar: Version N / active)',
+  pre4: 'Pre-condition 4: In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-Cust-<timestamp>, Valid from = tomorrow 00:00:00 (UTC); Click Save and confirm the new version is the active one (top bar: Version N / active)',
   pre5: 'Pre-condition 5: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
   s1: 'Step 1: Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment',
   s2: 'Step 2: On Order Lines, add A2160B with Ordered Qty 1',
   s3: 'Step 3: Open the Promotion list',
-  s4: 'Step 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
+  s4: 'Step 4: Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
 
@@ -156,8 +154,6 @@ function tomorrowStartUtc(): string {
 }
 
 test.describe(`${TC} - Open a Deal Element dated before the program's Valid from date (crm-mig)`, () => {
-  test.skip(true, PROGRAM_EDITOR_MANUAL_REASON); // chỉ run manual
-
   let run: DiscountRun;
 
   test.beforeEach(async ({ context, page }) => {
@@ -226,11 +222,11 @@ test.describe(`${TC} - Open a Deal Element dated before the program's Valid from
 
     await test.step(STEP.pre4, async () => {
       console.log(`\n--- ${STEP.pre4} ---`);
-      // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
+      // Program-editor write: the run's OWN program (QA-Disc-<timestamp>) - DiscountProgramEditorPageMig refuses any other name
       const validFrom = tomorrowStartUtc();
       console.log(`  - Valid from (tomorrow, UTC) : ${validFrom}`);
-      const versionBefore = await editor.getActiveVersionNumber(); // Kanban top bar, before Save
-      await editor.createProgramOnKanban({
+      // versionBefore = the Kanban top bar read by the page object before Save (the page is still on crm-mig here)
+      const { versionBefore } = await editor.createProgramOnKanban({
         'Promo code': promoCode,
         'Program name': programName,
         Reward: '5.0',
@@ -249,6 +245,7 @@ test.describe(`${TC} - Open a Deal Element dated before the program's Valid from
 
     await test.step(STEP.pre5, async () => {
       console.log(`\n--- ${STEP.pre5} ---`);
+      await openCrmMigWebClient(page); // the program was saved on the Program editor - back on crm-mig first
       await createOpportunityForCompanyMig(page, run, SALES);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - opportunity created');
     });
@@ -276,7 +273,7 @@ test.describe(`${TC} - Open a Deal Element dated before the program's Valid from
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
-      // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
+      // Program-editor write: the run's OWN program only
       await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
     });

@@ -37,7 +37,8 @@ import {
  *                    program gets Products = A2160B and the order a line the condition does not list (A2165B x 1, steps 4-5);
  *                    UN-SKIPPED (tester 2026-11-03) under the 2026-10-27 rule "QA may create a test Discount program (then
  *                    teardown); never edit an existing program"
- * Baseline note    : the steps 4-5 check exists only on crm-mig (spec v7); steps 2-3 and 6-7 keep the baseline's checks
+ * Baseline note    : steps 4-5 (spec v7, A3) were added to Discount_1.6 on 2026-11-04 as well - PASS there, FAIL here
+ *                    (CRM-14435); steps 2-3 and 6-7 keep the baseline's checks
  * Baseline         : Discount_1.6 (Jira CRM-13769; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-6-minimum-quantity-exact.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-04
@@ -115,6 +116,8 @@ import {
  */
 
 const TC = 'CRM-12144_1.6';
+// Teardown back ON 2026-11-05: the teardown-off run of 2026-11-05 kept opportunity 100005869 and program
+// QA-Disc-6479628090 for CRM-14435 (A3); they are removed by hand once the bug is reproduced
 const SKIP_CLEANUP = false; // true = keep the run's records for debugging (crm-mig rule: never leave it true)
 const EDITOR_ACCOUNT = users.admin_discount_mig; // QA's named Program editor account (CRM-12467 row 1.7)
 const SALES = users.sale_ic_thomas_crm_mig;
@@ -176,10 +179,12 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (crm-mig)`, ()
 
   test.afterEach(async ({ page }, testInfo) => {
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - start').catch(() => {});
-    try {
-      await removeEditorRows(page);
-    } finally {
-      if (!SKIP_CLEANUP) {
+    if (SKIP_CLEANUP) {
+      for (const r of runs) console.log(`\n[mig-cleanup] TEARDOWN OFF - KEPT on crm-mig: ${JSON.stringify({ company: r.company, partnerId: r.partnerId, opp: r.opp, leadId: r.leadId, urlOpp: r.urlOpp, program: editorRows })}`);
+    } else {
+      try {
+        await removeEditorRows(page);
+      } finally {
         const errors: string[] = [];
         for (const r of runs) await teardownDiscountRunMig(page, r, testInfo).catch((e: Error) => errors.push(e.message));
         if (errors.length) throw new Error(errors.join(' | '));
@@ -190,7 +195,7 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (crm-mig)`, ()
 
   test.afterAll(async ({ browser }) => {
     if (!SKIP_CLEANUP) await sweepDiscountRunsMig(browser, runs);
-    if (editorRows.length) {
+    if (!SKIP_CLEANUP && editorRows.length) {
       const context = await browser.newContext({ viewport: { width: 1920, height: 1080 }, ignoreHTTPSErrors: true });
       try {
         await removeEditorRows(await context.newPage());
@@ -316,6 +321,10 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (crm-mig)`, ()
 
     await test.step(STEP.s8, async () => {
       console.log(`\n--- ${STEP.s8} ---`);
+      if (SKIP_CLEANUP) {
+        console.log(`  - TEARDOWN OFF (tester 2026-11-05): program ${programName} is KEPT on the Program editor`);
+        return;
+      }
       // the run's OWN program only - DiscountProgramEditorPageMig refuses any other name
       await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
