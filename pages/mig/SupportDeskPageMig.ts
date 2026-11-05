@@ -1185,6 +1185,26 @@ export class SupportDeskPageMig extends BasePage {
   }
 
   /**
+   * Click the first hyperlink the side-panel row `label` draws and follow it: a new tab, or this tab. Returns the page it
+   * landed on and its URL (`navigated` false when neither happened in time); null when the row draws no link.
+   */
+  async followSidePanelRowLink(label: string): Promise<{ page: Page; url: string; newTab: boolean; navigated: boolean } | null> {
+    const link = this.sidePanelValueCell(label).locator('a[href]').first();
+    if (!(await link.count())) return null;
+    const before = this.page.url();
+    const t = CommonUtils.waitTimes.abnormalWait;
+    const landed = Promise.race([
+      this.page.waitForEvent('popup', { timeout: t }).then((p) => ({ p: p as Page | null })),
+      this.page.waitForURL((u) => u.toString() !== before, { timeout: t }).then(() => ({ p: null as Page | null })),
+    ]).catch(() => undefined);
+    await link.click({ timeout: t });
+    const hit = await landed;
+    const target = hit?.p || this.page;
+    await target.waitForLoadState('domcontentloaded').catch(() => {});
+    return { page: target, url: target.url(), newTab: !!hit?.p, navigated: hit !== undefined };
+  }
+
+  /**
    * Wait until the side-panel row `label` shows `value` - the ticket document has loaded. Right after a reload FF draws the
    * rows empty and the header without its Actions button for a few seconds (the "..." menu then offers only "Merge Ticket",
    * measured 2026-11-05). Returns the value last read.
@@ -1382,6 +1402,22 @@ export class SupportDeskPageMig extends BasePage {
     }, name);
     if (res.status !== 200) throw new Error(`SupportDeskPageMig.hdCustomerExists("${name}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
     return Number(JSON.parse(res.body).message) > 0;
+  }
+
+  /**
+   * READ-ONLY REST, as the signed-in user: the Odoo Partner ID (custom_odoo_partner_id) of the HD Customer named exactly
+   * `name` - the crm-mig res.partner id of that customer (3/3 names equal on crm-mig, measured 2026-11-05). 0 when the
+   * customer is absent or carries none. Throws on HTTP error.
+   */
+  async getHdCustomerOdooPartnerId(name: string): Promise<number> {
+    const res = await this.page.evaluate(async (n) => {
+      const q = new URLSearchParams({ doctype: 'HD Customer', fields: JSON.stringify(['name', 'custom_odoo_partner_id']), filters: JSON.stringify([['name', '=', n]]), limit_page_length: '1' });
+      const r = await fetch(`/api/method/frappe.client.get_list?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, name);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.getHdCustomerOdooPartnerId("${name}"): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    const row = (JSON.parse(res.body).message || [])[0];
+    return Number(row?.custom_odoo_partner_id) || 0;
   }
 
   /** The open dropdown menu tagged by openFiltersMenuGroups (for the evidence outline). */

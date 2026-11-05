@@ -21,8 +21,8 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  * Data             : READ ONLY on both systems
  * Folder           : "18. User interface" (master divider)
  *
- * Summary: for the same 3 migrated tickets as side A, the FF side panel must show the overview rows, then the sections
- * 'Ticket', 'Customer', 'Classification' with the CSV's rows in order, and every value must equal Odoo's.
+ * Summary: for the same 3 migrated tickets as side A, every value the FF side panel draws must equal Odoo's (the sections /
+ * row-order verify point was removed on 2026-11-05 - printed, not scored).
  *
  * Command to run: npx playwright test tc-ui-015-b-support --grep "TC-UI-015_B:" --project=chromium-headless
  *
@@ -50,14 +50,13 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *    Every value equals Odoo's.
  *
  *  How it is compared (automation author's reading, printed in every run):
- *    - Sections: after the overview, the panel's section headings must be 'Ticket', 'Customer', 'Classification' in that order.
- *      FF draws them as sub-section captions (uppercase) inside "More Details" (measured 2026-11-04); a heading that only wraps
- *      sub-sections and the related-tickets list "Customer Tickets (N)" are printed, not scored.
+ *    - Sections and rows: NOT scored - the "sections and rows" verify point was removed at the tester's request on 2026-11-05.
+ *      The section headings after the overview and the drawn / not-drawn rows are printed per ticket. FF draws the sections as
+ *      sub-section captions (uppercase) inside "More Details" (measured 2026-11-04).
  *    - Rows: the CSV names -> FF captions (Assigned to = "Assignee", legacy Classification = "Classification", Jira key = "JIRA
  *      Key", the counters = Customer Interactions / Support Interactions / Meetings, CC = "Carbon Copy", Country = "Customer
- *      Country", Area = "Classification Area", other names as drawn). The drawn rows must keep the CSV order; a CSV row FF does
- *      not draw is a FAIL unless Odoo's value is empty too (FF hides some empty rows); a control caption such as "Closed By:
- *      add / remove" is printed, not scored.
+ *      Country", Area = "Classification Area", other names as drawn) - used to pair each drawn row with its Odoo field; a
+ *      control caption such as "Closed By: add / remove" is printed, not scored.
  *    - Values: each drawn row with an Odoo counterpart on the Odoo form (side A's reader) must equal it after the drawing
  *      differences are removed - dates MM/DD/YYYY -> DD-MM-YYYY, money "$ 1,234.50" -> 1234.50, lists compared as sets,
  *      Team "Customer Support" = "NAKIVO Customer Support" (the team's FF name, TC-SEC-066_B), Customer = the company part of
@@ -65,7 +64,7 @@ import { customerSupportBaselineDetails } from '@helpers/customer-support-mig.he
  *      to the key Odoo draws; Carbon Copy compared to the e-mails of Odoo's CC partners (pre-production's ".invalid" mask
  *      dropped). Customer Note and Customer Country have no counterpart on the Odoo form head - printed, not scored.
  *
- * Evidence: Pre-condition 1-3 end shots; Step 2 per ticket: sections + rows shot, values shot (panel rows outlined);
+ * Evidence: Pre-condition 1-3 end shots; Step 2 per ticket: values shot (panel rows outlined);
  *           afterEach start + end.
  * ================================================================================================
  */
@@ -114,7 +113,6 @@ const ROWS: Row[] = [
   { csv: 'Area', ff: 'Classification Area', odoo: 'classification_area_id' }, { csv: 'Sub Area', ff: 'Sub Area', odoo: 'classification_sub_area_id' }, { csv: 'Issue Type', ff: 'Issue Type', odoo: 'classification_issue_type' },
   { csv: 'Description', ff: 'Description', odoo: 'classification_description' }, { csv: 'Root cause', ff: 'Root cause', odoo: 'classification_root_cause' }, { csv: 'Resolution', ff: 'Resolution', odoo: 'classification_resolution' },
 ];
-const EMPTYISH = ['', 'No', '0', '00:00:00'];
 
 type Check = { what: string; expected: string; actual: string; passed: boolean; difference?: string };
 type Pair = { id: number; name: string; ff: string; odoo: Record<string, string>; jiraUrl: string; ccMails: string[] };
@@ -261,20 +259,9 @@ test.describe(`${TC} - Side panel fields and values on the Support service`, () 
         const fields = drawn.filter((r) => !/: add \/ remove$/.test(r.label));
         const at = (r: Row) => fields.findIndex((f) => f.label === r.ff);
         const shown = ROWS.filter((r) => at(r) >= 0);
-        const notShown = ROWS.filter((r) => at(r) < 0);
-        const missing = notShown.filter((r) => r.odoo !== null && !EMPTYISH.includes(odooAsFf(r, p)));
-        const inOrder = shown.every((r, k) => k === 0 || at(r) > at(shown[k - 1]));
-        const extra = fields.filter((f) => !ROWS.some((r) => r.ff === f.label)).map((f) => f.label);
-        const firstBad = shown.findIndex((r, k) => k > 0 && at(r) < at(shown[k - 1]));
-        await recordChecks(page, testInfo, checks, [
-          { what: `${who} sections after the overview`, expected: SECTIONS.join(', '), actual: headsAfter.join(', ') || '(none)', passed: JSON.stringify(headsAfter) === JSON.stringify(SECTIONS),
-            difference: `expected headings ${SECTIONS.map((h) => `'${h}'`).join(', ')}, the panel draws ${headsAfter.map((h) => `'${h}'`).join(', ') || 'none'}` },
-          { what: `${who} the CSV rows in order (empty ones may be hidden)`, expected: ROWS.map((r) => r.ff).join(', '),
-            actual: `drawn: ${fields.map((f) => f.label).join(', ')}${notShown.length ? `; not drawn: ${notShown.map((r) => r.ff).join(', ')}` : ''}`,
-            passed: missing.length === 0 && inOrder && extra.length === 0,
-            difference: [missing.length ? `not drawn although Odoo has a value: ${missing.map((r) => `${r.ff} (Odoo "${odooAsFf(r, p)}")`).join(', ')}` : '', extra.length ? `drawn but not in the CSV: ${extra.join(', ')}` : '',
-              inOrder ? '' : `order differs at '${shown[firstBad].ff}': expected after '${shown[firstBad - 1].ff}'`].filter(Boolean).join('; ') },
-        ], `${TC} - Step 2 ticket ${i + 1} sections and rows`, [SupportDeskPageMig.PANEL_SECTION_ROW, '.section-header']);
+        // the "sections and rows" verify point was removed at the tester's request on 2026-11-05 - sections and rows are printed, not scored
+        console.log(`  Observation (not scored) - sections after the overview: ${headsAfter.join(', ') || '(none)'} (CSV: ${SECTIONS.join(', ')})`);
+        console.log(`  Observation (not scored) - rows drawn: ${fields.map((f) => f.label).join(', ')}; CSV rows not drawn: ${ROWS.filter((r) => at(r) < 0).map((r) => r.ff).join(', ') || '(none)'}`);
 
         const compared = shown.filter((r) => r.odoo !== null);
         const diffs: string[] = [];
@@ -296,9 +283,9 @@ test.describe(`${TC} - Side panel fields and values on the Support service`, () 
       checks.forEach((c, i) => console.log(`  Verify #${i + 1} - ${c.what}:\n     Expected : ${c.expected}\n     Actual   : ${c.actual}\n     Result   : ${c.passed ? 'PASS' : 'FAIL'}${!c.passed && c.difference ? `\n     Difference : ${c.difference}` : ''}`));
       console.log('===============================================');
       const failed = checks.filter((c) => !c.passed);
-      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => `Verify #${checks.indexOf(c) + 1}: ${c.difference}`).join(' | ')}` : 'OVERALL: PASS - the panel draws the CSV sections and rows in order with the Odoo values on all 3 tickets');
+      console.log(failed.length ? `OVERALL: FAIL - ${failed.map((c) => `Verify #${checks.indexOf(c) + 1}: ${c.difference}`).join(' | ')}` : 'OVERALL: PASS - every drawn panel row equals the Odoo value on all 3 tickets');
       for (const c of checks) expect.soft(c.passed, `${c.what} - ${c.difference || `expected ${c.expected}, actual ${c.actual}`}`).toBe(true);
-      expect(checks.length, 'checks were recorded for the 3 tickets').toBe(9);
+      expect(checks.length, 'checks were recorded for the 3 tickets').toBe(3);
       expect(failed.map((c) => c.what), 'the side panel matches the CSV and Odoo').toEqual([]);
     });
   });
