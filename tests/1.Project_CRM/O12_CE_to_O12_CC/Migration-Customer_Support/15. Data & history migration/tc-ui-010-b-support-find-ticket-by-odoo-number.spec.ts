@@ -62,6 +62,9 @@ test.use({ ignoreHTTPSErrors: true });
 const TC = 'TC-UI-010_B';
 const SOURCE_ROW = 'TC-UI-010';
 const SOURCE_FINGERPRINT = '32594d76e1fff8aa';
+// true keeps Nam's saved list state as the run left it (no restore; the Pre-condition 3 snapshot is in the log) -
+// teardown OFF on the tester's request, 2026-11-05
+const SKIP_CLEANUP = true;
 
 const STEP = {
   pre1: 'Pre-condition 1: Logged in as L2 engineer Nam Pham on the Support service (Frappe Helpdesk) /login; [INTERNAL check, Call API] HD Agent Support Level = L2',
@@ -108,7 +111,8 @@ test.describe(`${TC} - Find a ticket by its Odoo number on the Support service`,
     await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - start').catch(() => {});
     console.log('\n--- afterEach ---');
     let restored = '';
-    if (desk && savedView) {
+    if (SKIP_CLEANUP && savedView) console.log(`  - SKIP_CLEANUP: Nam's saved list state not restored; snapshot ${JSON.stringify(savedView)}`);
+    else if (desk && savedView) {
       // back to the agent app first - a restore POST from a Desk /app page is refused with 400 CSRF (measured 2026-10-30)
       await page.goto(`${baseUrl_support_mig.replace(/\/$/, '')}/helpdesk/tickets`, { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(CommonUtils.waitTimes.extraLong);

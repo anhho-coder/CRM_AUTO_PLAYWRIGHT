@@ -361,6 +361,7 @@ export class SupportDeskPageMig extends BasePage {
     this.page.locator("xpath=//header//button[@aria-label='Assign to me']").or(this.page.locator('header button[aria-label="Assign to me"]')).first();
   // The dialog Frappe shows (Hibernate ticket wizard, Archive confirmation).
   private readonly shownDialog = () => this.page.locator('[role="dialog"], [role="alertdialog"]').last();
+  private readonly errorOverlayFF = () => this.page.locator('xpath=//div[@id="nkv-err-overlay"]').or(this.page.locator('#nkv-err-overlay')).first();
 
   /** Open the header's Actions button, or its more (…) menu when Actions is no longer drawn, and wait for the menu. */
   async openHeaderActionsMenu(): Promise<void> {
@@ -372,6 +373,14 @@ export class SupportDeskPageMig extends BasePage {
     await target.click({ timeout: CommonUtils.waitTimes.abnormalWait });
     await this.openMenu().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await this.wait(CommonUtils.waitTimes.medium);
+  }
+
+  /**
+   * Wait for the header's "Actions" button (true when drawn). After a reload FF draws it seconds after the side panel; read
+   * too early, openHeaderActionsMenu falls back to the "..." menu, which offers only "Merge Ticket" (measured 2026-11-05).
+   */
+  async waitForHeaderActionsButton(): Promise<boolean> {
+    return this.headerActionsButton().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
   }
 
   /** Items of the open header menu, top to bottom. */
@@ -455,11 +464,25 @@ export class SupportDeskPageMig extends BasePage {
     return '';
   }
 
-  /** The text of the dialog Frappe shows ('' when none). */
+  /**
+   * The text of the dialog Frappe shows ('' when none): a [role=dialog] first, else the NAKIVO error box FF draws for a
+   * refused side panel value ("! <field> <message> OK", a plain div #nkv-err-overlay with no dialog role, measured
+   * 2026-11-05). The box's leading "!" icon is dropped, so the text starts with its title.
+   */
   async getShownDialogTextFF(): Promise<string> {
     const dlg = this.shownDialog();
-    if (!(await dlg.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false))) return '';
-    return ((await dlg.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    if (await dlg.isVisible({ timeout: CommonUtils.waitTimes.medium }).catch(() => false)) return ((await dlg.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim();
+    const box = this.errorOverlayFF();
+    if (!(await box.isVisible().catch(() => false))) return '';
+    return ((await box.innerText().catch(() => '')) || '').replace(/\s+/g, ' ').trim().replace(/^!\s*/, '');
+  }
+
+  /** Press OK on the NAKIVO error box (#nkv-err-overlay), then wait for it to close; no-op when it is not shown. */
+  async dismissErrorOverlayFF(): Promise<void> {
+    const box = this.errorOverlayFF();
+    if (!(await box.isVisible().catch(() => false))) return;
+    await box.locator('button').filter({ hasText: /^\s*OK\s*$/ }).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
   }
 
   /** The Hibernate ticket wizard: the "Hibernate until" date (ISO yyyy-mm-dd as the date input holds it) and the reason box. */
@@ -1143,6 +1166,40 @@ export class SupportDeskPageMig extends BasePage {
     return row ? row.value : '';
   }
 
+  /**
+   * The hyperlinks the side-panel row `label` draws in its value cell (text, href, target), plus what the cell shows and
+   * with which control ('input' / 'textarea' / 'button' / 'text', '' when the row is absent). FF draws Jira reference as an
+   * editable input holding the URL and JIRA Key as text - no link (measured 2026-11-05). Reads only.
+   */
+  async getSidePanelRowLinks(label: string): Promise<{ control: string; shown: string; links: Array<{ text: string; href: string; target: string }> }> {
+    const cell = this.sidePanelValueCell(label);
+    // after a reload the side panel is drawn a few seconds after the page (read too early it is absent, measured 2026-11-05)
+    await cell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    if (!(await cell.count())) return { control: '', shown: '', links: [] };
+    return cell.evaluate((el) => {
+      const ctl = el.querySelector('input, textarea, button') as HTMLInputElement | null;
+      const links = Array.from(el.querySelectorAll('a[href]')).map((a) => ({ text: ((a as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim(), href: a.getAttribute('href') || '', target: a.getAttribute('target') || '' }));
+      const shown = ctl && ctl.tagName !== 'BUTTON' ? ctl.value : ((el as HTMLElement).innerText || '');
+      return { control: ctl ? ctl.tagName.toLowerCase() : 'text', shown: shown.replace(/\s+/g, ' ').trim(), links };
+    });
+  }
+
+  /**
+   * Wait until the side-panel row `label` shows `value` - the ticket document has loaded. Right after a reload FF draws the
+   * rows empty and the header without its Actions button for a few seconds (the "..." menu then offers only "Merge Ticket",
+   * measured 2026-11-05). Returns the value last read.
+   */
+  async waitForSidePanelRowValue(label: string, value: string, attempts: number = 15): Promise<string> {
+    let now = '';
+    for (let i = 0; i < attempts; i++) {
+      now = await this.getSidePanelRowValue(label).catch(() => '');
+      if (now === value) break;
+      await this.wait(CommonUtils.waitTimes.long);
+    }
+    console.log(`  - side panel ${label} = "${now}"${now === value ? '' : ` (waited for "${value}")`}`);
+    return now;
+  }
+
   static readonly PANEL_SECTION_ROW = '[data-pw-verify="panel-section-row"]';
 
   /**
@@ -1766,27 +1823,32 @@ export class SupportDeskPageMig extends BasePage {
   /**
    * Side panel text row `label` (placeholder "Set <label>..."): type `value` with fill() (a click can be swallowed by a toast
    * lying over the panel, measured 2026-11-04) and leave the box with Tab - FF saves on blur. Returns the toasts FF showed and
-   * the value the box holds afterwards. Tags the newest toast for the verify shot - MESSAGE.
+   * the value the box holds afterwards, plus the dialog text when FF refuses the value with its error box (getShownDialogTextFF,
+   * '' when none). Tags the newest toast for the verify shot - MESSAGE.
    */
-  async setSidePanelTextAndBlur(label: string, value: string): Promise<{ toasts: string[]; value: string }> {
+  async setSidePanelTextAndBlur(label: string, value: string): Promise<{ toasts: string[]; value: string; dialog: string }> {
     const box = this.page.getByPlaceholder(`Set ${label}...`).first();
     await box.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
     await box.fill(value, { timeout: CommonUtils.waitTimes.abnormalWait });
     await box.press('Tab');
-    // a toast lives a few seconds: poll for it right after the blur (a fixed wait read it after it had gone, measured 2026-11-04)
+    // a toast lives a few seconds: poll for it right after the blur (a fixed wait read it after it had gone, measured 2026-11-04);
+    // a refused value also draws the error box #nkv-err-overlay, which stays until OK (measured 2026-11-05)
     const toastLoc = this.page.locator('[data-sonner-toast], [role="status"], .toast');
     let toasts: string[] = [];
+    let dialog = '';
     for (let i = 0; i < 20 && !toasts.length; i++) {
       toasts = (await toastLoc.allInnerTexts().catch(() => [] as string[])).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      dialog = await this.getShownDialogTextFF().catch(() => '');
       if (!toasts.length) await this.wait(CommonUtils.waitTimes.short);
     }
+    if (toasts.length && !dialog) dialog = await this.getShownDialogTextFF().catch(() => '');
     await this.page.evaluate(() => document.querySelectorAll('[data-pw-verify="message"]').forEach((e) => e.removeAttribute('data-pw-verify')));
     // tag the DRAWN toast (markVisibleMessage: the visible box enclosing the text) - a screen-reader live region
     // ([role=status], zero size) carries the same text
     if (toasts.length) await this.markVisibleMessage(toasts[toasts.length - 1].slice(0, 40)).catch(() => {});
     const now = (await box.inputValue().catch(() => '')) || '';
-    console.log(`  - ${label} = "${value}" + Tab -> toasts ${JSON.stringify(toasts)}, box now "${now}"`);
-    return { toasts, value: now };
+    console.log(`  - ${label} = "${value}" + Tab -> toasts ${JSON.stringify(toasts)}, dialog "${dialog}", box now "${now}"`);
+    return { toasts, value: now, dialog };
   }
 
   /**

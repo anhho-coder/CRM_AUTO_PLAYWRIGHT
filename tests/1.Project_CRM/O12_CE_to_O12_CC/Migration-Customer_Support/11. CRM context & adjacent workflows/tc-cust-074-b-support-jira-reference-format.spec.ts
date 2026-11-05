@@ -13,12 +13,13 @@ import { createSupportTicketAsAdmin, assignSupportTicketAsAdmin, deleteSupportPr
  * ================================================================================================
  * Test Case ID     : TC-CUST-074_B   (side A = tc-cust-074-a-preprod-jira-reference-format.spec.ts = reference, map in
  *                    helpers/customer-support-mig.baseline-map.ts)
- * Automation-Type  : new            Automation-Date : 2026-11-04
+ * Automation-Type  : refactored     Automation-Date : 2026-11-05
  * Jira             : CRM-14005 (Xray Test, feature CRM-11859)
  * Host / Run as    : support-crm-mig (Frappe Helpdesk, ignoreHTTPSErrors) / L2 engineer Nam Pham (users.support_l2_nam_support_mig,
  *                    HD Agent Support Level = L2 asserted)
- * Data             : one probe ticket of this run (Administrator create + delete, deny-list). The test Jira host
- *                    (jira.example.com) is answered by a stub page of the run, so no Jira call is made
+ * Data             : one probe ticket of this run (Administrator create + delete, deny-list). Jira reference data = the
+ *                    real issue http://jira.nakivo.com/browse/TEST-1427 (project Test) in place of ITSM-123 - tester,
+ *                    2026-11-05. The tab the browser opens on it is answered by a stub page of the run (no Jira call)
  * Folder           : "11. CRM context & adjacent workflows" (master divider)
  *
  * Summary: side panel Jira reference = a bare key or a non-/browse/ URL must be refused with the format message in a dialog
@@ -35,7 +36,7 @@ import { createSupportTicketAsAdmin, assignSupportTicketAsAdmin, deleteSupportPr
  *    2. [INTERNAL setup, Call API] as Administrator, the probe ticket of this run, assigned to Nam Pham:
  *         Subject   = AUTO-CRM-11859-TC-CUST-074_B-<runId>
  *         Raised By = qa.cust074.<runId>@example.com
- *       <test jira host> = jira.example.com (author's choice; the run answers it with a stub page)
+ *       <test jira host> = jira.nakivo.com, key ITSM-123 -> TEST-1427 (tester, 2026-11-05; the browser tab gets a stub page)
  *  Steps to reproduce (ticket page, side panel row "Jira reference" - FF saves it when the box is left with Tab)
  *    1. Set Jira reference = 'ITSM-123' (bare key) and Save.
  *    2. Set Jira reference = 'https://jira.example.com/issues/ITSM-123' and Save.
@@ -47,8 +48,8 @@ import { createSupportTicketAsAdmin, assignSupportTicketAsAdmin, deleteSupportPr
  *
  *  How it is compared: steps 1-2 - two checks each: the message (A's text, whitespace-normalised) is shown and nothing is
  *  stored; the message comes in a dialog titled 'Jira reference'. Step 3 - stored custom_jira_url = the typed URL and
- *  custom_jira_key = ITSM-123. Step 4 - an action named 'Jira ITSM-123' is offered (header Actions menu or any visible
- *  link / button) and its click opens a tab on the stored URL.
+ *  custom_jira_key = ITSM-123. Step 4 - once the ticket has loaded (side panel Jira reference = the stored URL), the header
+ *  Actions menu offers 'Jira <key>' (seen there by the tester, 2026-11-05) and its click opens a tab on the stored URL.
  *
  * Evidence: Pre-condition 1 + 2 end shots; Steps 1-2 verify shots (the message as drawn); Step 3 verify shot (the row);
  *           Step 4 verify shot (the header); afterEach start + end.
@@ -60,22 +61,25 @@ test.use({ ignoreHTTPSErrors: true });
 const TC = 'TC-CUST-074_B';
 const SOURCE_ROW = 'TC-CUST-074';
 const SOURCE_FINGERPRINT = '0a9a563d5b31b4a6';
-const SKIP_CLEANUP = false; // true keeps the probe ticket for inspection
+const SKIP_CLEANUP = true; // true keeps the probe ticket for inspection - teardown OFF on the tester's request, 2026-11-05
 
 const STEP = {
   pre1: 'Pre-condition 1: Logged in as L2 engineer Nam Pham on the Support service (Frappe Helpdesk) /login; [INTERNAL check, Call API] HD Agent Support Level = L2',
-  pre2: 'Pre-condition 2: [INTERNAL setup, Call API] A probe ticket of this run (as Administrator), assigned to Nam Pham; the test Jira host jira.example.com is answered by a stub page (no Jira call)',
-  s1: "Step 1: Set Jira reference = 'ITSM-123' (bare key) and Save. (side panel row Jira reference; FF saves when the box is left with Tab)",
-  s2: "Step 2: Set Jira reference = 'https://jira.example.com/issues/ITSM-123' and Save.",
-  s3: "Step 3: Set Jira reference = 'https://<test jira host>/browse/ITSM-123' and Save. (<test jira host> = jira.example.com)",
-  s4: "Step 4: B: click the ticket action 'Jira ITSM-123'.",
+  pre2: 'Pre-condition 2: [INTERNAL setup, Call API] A probe ticket of this run (as Administrator), assigned to Nam Pham; the tab opened on jira.nakivo.com is answered by a stub page (no Jira call)',
+  s1: "Step 1: Set Jira reference = 'ITSM-123' (bare key) and Save. (data: 'TEST-1427'; side panel row Jira reference; FF saves when the box is left with Tab)",
+  s2: "Step 2: Set Jira reference = 'https://jira.example.com/issues/ITSM-123' and Save. (data: 'http://jira.nakivo.com/issues/TEST-1427')",
+  s3: "Step 3: Set Jira reference = 'https://<test jira host>/browse/ITSM-123' and Save. (data: 'http://jira.nakivo.com/browse/TEST-1427')",
+  s4: "Step 4: B: click the ticket action 'Jira ITSM-123'. (data: 'Jira TEST-1427')",
   verify: 'Verification',
 } as const;
 
 const ENGINEER = users.support_l2_nam_support_mig;
 const ADMIN = users.admin_support_mig;
 const MESSAGE = 'Wrong format, please check url, it must be in format - connection protocol://address:port/browse/target-name.';
-const GOOD = 'https://jira.example.com/browse/ITSM-123';
+// Jira reference data = a real issue of project Test (tester, 2026-11-05) in place of the TC's ITSM-123 / jira.example.com
+const KEY = 'TEST-1427';
+const GOOD = `http://jira.nakivo.com/browse/${KEY}`;
+const BAD = [KEY, `http://jira.nakivo.com/issues/${KEY}`] as const;
 const RUN = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 const SUBJECT = `AUTO-CRM-11859-${TC}-${RUN}`;
 const EMAIL = `qa.cust074.${RUN}@example.com`;
@@ -120,8 +124,8 @@ test.describe(`${TC} - Jira reference format on the Support service`, () => {
 
   test(`${TC}: Jira reference accepts only a /browse/ URL and opens the issue - B: Frappe Helpdesk refuses a bare key and an /issues/ URL, keeps a /browse/ URL, and offers the Jira action`, customerSupportBaselineDetails(TC), async ({ page, context }, testInfo) => {
     test.setTimeout(config.timeouts.test);
-    // the test Jira host answers a stub page from the run itself - no request leaves the browser (no Jira call)
-    await context.route(/jira\.example\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>stub Jira page of the automation run</body></html>' }));
+    // the Jira host answers a stub page from the run itself - no request leaves the browser (no Jira call)
+    await context.route(/jira\.(example|nakivo)\.com/, (r) => r.fulfill({ status: 200, contentType: 'text/html', body: '<html><body>stub Jira page of the automation run</body></html>' }));
     const desk = new SupportDeskPageMig(page);
     const checks: Check[] = [];
 
@@ -151,17 +155,18 @@ test.describe(`${TC} - Jira reference format on the Support service`, () => {
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 2 - probe ticket open');
     });
 
-    for (const [label, value] of [[STEP.s1, 'ITSM-123'], [STEP.s2, 'https://jira.example.com/issues/ITSM-123']] as const) {
+    for (const [label, value] of [[STEP.s1, BAD[0]], [STEP.s2, BAD[1]]] as const) {
       await test.step(label, async () => {
         console.log(`\n--- ${label} ---`);
         const r = await desk.setSidePanelTextAndBlur('Jira reference', value);
-        const shown = r.toasts.map(sp).find((t) => t.includes(MESSAGE)) || '';
+        const shown = [...r.toasts, r.dialog].map(sp).find((t) => t.includes(MESSAGE)) || '';
         const tag = label.split(':')[0];
         // shot at once - a toast fades within seconds
         await recordChecks(page, testInfo, checks, [
           { what: `${tag} "${value}" refused with the format message`, expected: `"${MESSAGE}"`, actual: shown ? `shown "${shown}"` : `not shown (toasts ${JSON.stringify(r.toasts)})`, passed: !!shown, difference: 'the message is not shown' },
         ], `${tag} - message`, [SupportDeskPageMig.MESSAGE]);
-        const dialog = sp(await desk.getShownDialogTextFF().catch(() => ''));
+        // FF draws the message in its error box #nkv-err-overlay ("! Jira reference <message> OK"), not a [role=dialog] (measured 2026-11-05)
+        const dialog = sp(r.dialog || await desk.getShownDialogTextFF().catch(() => ''));
         const stored = (await desk.listTicketsOverRest([['name', '=', probe.name]], ['custom_jira_url', 'custom_jira_key'], 1))[0] || {};
         console.log(`  [INTERNAL check, Call API] stored ${JSON.stringify(stored)}`);
         checks.push({ what: `${tag} [INTERNAL check, Call API] nothing stored`, expected: 'custom_jira_url empty', actual: `custom_jira_url ${JSON.stringify(stored.custom_jira_url ?? null)}`, passed: !stored.custom_jira_url, difference: `stored "${stored.custom_jira_url}"` });
@@ -170,6 +175,8 @@ test.describe(`${TC} - Jira reference format on the Support service`, () => {
           { what: `${tag} the message comes in a dialog 'Jira reference'`, expected: "a dialog titled 'Jira reference'", actual: dialog ? `dialog "${dialog}"` : `no dialog - ${r.toasts.length ? 'a toast' : 'nothing'} drawn`,
             passed: /^Jira reference/.test(dialog), difference: dialog ? `dialog "${dialog}"` : 'shown as a toast, not as a dialog' },
         ], `${tag} - dialog`, [SupportDeskPageMig.PANEL_ROW]);
+        // the box stays until OK - close it so the next step reads its own message, not this one
+        await desk.dismissErrorOverlayFF();
         await page.waitForTimeout(CommonUtils.waitTimes.extraLong);
       });
     }
@@ -181,26 +188,34 @@ test.describe(`${TC} - Jira reference format on the Support service`, () => {
       console.log(`  [INTERNAL check, Call API] stored ${JSON.stringify(stored)}`);
       await desk.markPanelRows(['Jira reference']);
       await recordChecks(page, testInfo, checks, [
-        { what: 'Step 3 saved, key ITSM-123 stored', expected: `custom_jira_url "${GOOD}", custom_jira_key "ITSM-123"`, actual: `custom_jira_url "${stored.custom_jira_url ?? ''}", custom_jira_key "${stored.custom_jira_key ?? ''}" (box "${r.value}", toasts ${JSON.stringify(r.toasts)})`,
-          passed: stored.custom_jira_url === GOOD && stored.custom_jira_key === 'ITSM-123', difference: `stored url "${stored.custom_jira_url ?? ''}", key "${stored.custom_jira_key ?? ''}"` },
+        { what: `Step 3 saved, key ${KEY} stored`, expected: `custom_jira_url "${GOOD}", custom_jira_key "${KEY}"`, actual: `custom_jira_url "${stored.custom_jira_url ?? ''}", custom_jira_key "${stored.custom_jira_key ?? ''}" (box "${r.value}", toasts ${JSON.stringify(r.toasts)})`,
+          passed: stored.custom_jira_url === GOOD && stored.custom_jira_key === KEY, difference: `stored url "${stored.custom_jira_url ?? ''}", key "${stored.custom_jira_key ?? ''}"` },
       ], `${TC} - Step 3 saved`, [SupportDeskPageMig.PANEL_ROW]);
     });
 
     await test.step(STEP.s4, async () => {
       console.log(`\n--- ${STEP.s4} ---`);
       await desk.reloadPage();
-      const action = await desk.findTicketAction('Jira ITSM-123');
-      console.log(`  - header Actions menu: ${JSON.stringify(action.menuItems)}; elements named 'Jira ITSM-123': ${action.found}`);
+      // the ticket must have loaded: read too early the header has no Actions button yet and the "..." menu offers only
+      // "Merge Ticket" (the 2026-11-04 FAIL, measured 2026-11-05)
+      await desk.waitForSidePanelRowValue('Jira reference', GOOD);
+      console.log(`  - header Actions button drawn: ${await desk.waitForHeaderActionsButton()}`);
+      const row = await desk.getSidePanelRowLinks('Jira reference');
+      console.log(`  - side panel (info): Jira reference = ${row.control || '(absent)'} "${row.shown}", links ${JSON.stringify(row.links)}; JIRA Key = "${await desk.getSidePanelRowValue('JIRA Key')}"`);
+      await desk.openHeaderActionsMenu();
+      const menuItems = await desk.getHeaderMenuItems();
+      const offered = menuItems.includes(`Jira ${KEY}`);
+      console.log(`  - header Actions menu: ${JSON.stringify(menuItems)}`);
       await recordChecks(page, testInfo, checks, [
-        { what: "Step 4 the ticket action 'Jira ITSM-123' is offered", expected: "an action 'Jira ITSM-123' (header or Actions menu)", actual: action.found ? `${action.found} found` : `none - Actions menu ${JSON.stringify(action.menuItems)}`,
-          passed: action.found > 0, difference: `no action 'Jira ITSM-123' on the ticket page (Actions menu: ${action.menuItems.join(', ') || 'none'})` },
-      ], `${TC} - Step 4 Jira action`, ['header']);
-      if (action.found) {
-        const opened = await desk.clickTicketActionForNewTab('Jira ITSM-123');
+        { what: `Step 4 the ticket action 'Jira ${KEY}' is offered`, expected: `'Jira ${KEY}' in the header Actions menu`, actual: `${offered ? 'offered' : 'not offered'} - Actions menu ${JSON.stringify(menuItems)}`,
+          passed: offered, difference: `no 'Jira ${KEY}' in the header Actions menu (${menuItems.join(', ') || 'empty'})` },
+      ], `${TC} - Step 4 Jira action`, ['[role="menu"]']);
+      if (offered) {
+        const opened = await desk.clickTicketActionForNewTab(`Jira ${KEY}`);
         await recordChecks(page, testInfo, checks, [
-          { what: "Step 4 the 'Jira ITSM-123' action opens the issue in a new tab", expected: `a new tab on ${GOOD}`, actual: opened ? `new tab on ${opened}` : 'no new tab', passed: opened === GOOD, difference: opened ? `opened ${opened}` : 'no tab opened' },
+          { what: `Step 4 the 'Jira ${KEY}' action opens the issue in a new tab`, expected: `a new tab on ${GOOD}`, actual: opened ? `new tab on ${opened}` : 'no new tab', passed: opened === GOOD, difference: opened ? `opened ${opened}` : 'no tab opened' },
         ], `${TC} - Step 4 Jira action opened`, ['header']);
-      }
+      } else await desk.closeOpenMenu().catch(() => {});
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Steps to reproduce - Jira reference set');
     });
 
