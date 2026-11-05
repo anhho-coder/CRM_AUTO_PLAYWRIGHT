@@ -1143,6 +1143,45 @@ export class SupportDeskPageMig extends BasePage {
     return row ? row.value : '';
   }
 
+  static readonly PANEL_SECTION_ROW = '[data-pw-verify="panel-section-row"]';
+
+  /**
+   * The side panel as its sections, top to bottom: each section's heading (the `.section-header` text - "Overview", "Ticket",
+   * "Customer", "Classification" expected by TC-UI-015_B; "Overview", "More Details", "Customer Tickets (N)" drawn on 2026-11-04)
+   * and its rows (caption + the value its control shows, '' for an empty control's "Set <label>..." / "+ Add" placeholder). Only captions INSIDE the panel are read - the conversation's "7 months ago" tooltips use
+   * the same caption markup. A collapsed section lists no rows; rows FF hides while empty are not listed. Tags every row for
+   * the verify shot - PANEL_SECTION_ROW. Reads only.
+   */
+  async getSidePanelSections(): Promise<Array<{ heading: string; rows: Array<{ label: string; value: string }> }>> {
+    await this.page.locator('.section-header').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    return this.page.evaluate(() => {
+      document.querySelectorAll('[data-pw-verify="panel-section-row"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const tops = (Array.from(document.querySelectorAll('.section-header')) as HTMLElement[]).filter((h) => h.offsetParent !== null);
+      let root: HTMLElement | null = tops[0] || null;
+      while (root && !tops.every((h) => root!.contains(h))) root = root.parentElement;
+      if (!root) return [];
+      // a section can hold sub-sections headed by a small uppercase caption ("More Details" > Ticket / Customer /
+      // Classification, measured 2026-11-04) - its textContent is the caption as written, CSS draws it uppercase
+      const subs = (Array.from(root.querySelectorAll('div.uppercase.text-xs.font-medium')) as HTMLElement[]).filter((h) => h.offsetParent !== null && !h.closest('.section-header'));
+      const heads = [...tops, ...subs].sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+      const caps = (Array.from(root.querySelectorAll('span[data-grace-area-trigger]')) as HTMLElement[]).filter((c) => c.getBoundingClientRect().height > 0);
+      const out: Array<{ heading: string; rows: Array<{ label: string; value: string }> }> = heads.map((h) => ({ heading: (subs.includes(h) ? h.textContent || '' : h.innerText || '').replace(/\s+/g, ' ').trim(), rows: [] }));
+      for (const cap of caps) {
+        const idx = heads.reduce((acc, h, i) => (h.compareDocumentPosition(cap) & Node.DOCUMENT_POSITION_FOLLOWING ? i : acc), -1);
+        if (idx < 0) continue;
+        const row = cap.parentElement?.parentElement as HTMLElement | null;
+        const cell = row && row.children.length > 1 ? (row.children[1] as HTMLElement) : null;
+        let value = '';
+        if (cell) { const ctl = cell.querySelector('input, textarea') as HTMLInputElement | null; value = ctl ? ctl.value : (cell.innerText || ''); }
+        value = value.replace(/\s+/g, ' ').trim();
+        if (row) row.setAttribute('data-pw-verify', 'panel-section-row');
+        // "Set <label>..." (empty control) and "+ Add" (empty tag list, measured 2026-11-04 on Tags) are placeholders, not values
+        out[idx].rows.push({ label: (cap.textContent || '').replace(/\s+/g, ' ').trim(), value: /^Set .*\.\.\.$/.test(value) || /^\+\s*Add$/.test(value) ? '' : value });
+      }
+      return out;
+    });
+  }
+
   /** Whether the side-panel row `label` is drawn. */
   async isSidePanelRowShown(label: string): Promise<boolean> {
     return (await this.getSidePanelRows()).some((r) => r.label === label);
@@ -1571,6 +1610,25 @@ export class SupportDeskPageMig extends BasePage {
     console.log(`  - Quick filter All = "${text}"`);
   }
 
+  /** The quick filter "All" box's current text. */
+  async getListAllBoxValue(): Promise<string> {
+    return (await this.page.locator('input[placeholder="All"]').first().inputValue({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => '')) || '';
+  }
+
+  /**
+   * Keyboard only: empty the quick filter "All" box (select all + Delete) and press Enter, then wait for the list. Like
+   * searchListAll(), FF saves the result in the user's own default view.
+   */
+  async clearListAllBox(): Promise<void> {
+    const box = this.page.locator('input[placeholder="All"]').first();
+    await box.focus({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.press('Control+A');
+    await box.press('Delete');
+    await box.press('Enter');
+    await this.wait(CommonUtils.waitTimes.extraLong);
+    console.log(`  - Quick filter All emptied (box now "${await this.getListAllBoxValue()}")`);
+  }
+
   /**
    * Clear every filter of the list - the X beside the "Filter N" button (e.g. the user's own status != Closed). SAVED in the
    * user's own default view like a quick search. No-op when no filter is set.
@@ -1703,6 +1761,104 @@ export class SupportDeskPageMig extends BasePage {
       if (el) el.setAttribute('data-pw-verify', 'list-counter');
       return !!el;
     });
+  }
+
+  /**
+   * Side panel text row `label` (placeholder "Set <label>..."): type `value` with fill() (a click can be swallowed by a toast
+   * lying over the panel, measured 2026-11-04) and leave the box with Tab - FF saves on blur. Returns the toasts FF showed and
+   * the value the box holds afterwards. Tags the newest toast for the verify shot - MESSAGE.
+   */
+  async setSidePanelTextAndBlur(label: string, value: string): Promise<{ toasts: string[]; value: string }> {
+    const box = this.page.getByPlaceholder(`Set ${label}...`).first();
+    await box.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.fill(value, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await box.press('Tab');
+    // a toast lives a few seconds: poll for it right after the blur (a fixed wait read it after it had gone, measured 2026-11-04)
+    const toastLoc = this.page.locator('[data-sonner-toast], [role="status"], .toast');
+    let toasts: string[] = [];
+    for (let i = 0; i < 20 && !toasts.length; i++) {
+      toasts = (await toastLoc.allInnerTexts().catch(() => [] as string[])).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      if (!toasts.length) await this.wait(CommonUtils.waitTimes.short);
+    }
+    await this.page.evaluate(() => document.querySelectorAll('[data-pw-verify="message"]').forEach((e) => e.removeAttribute('data-pw-verify')));
+    // tag the DRAWN toast (markVisibleMessage: the visible box enclosing the text) - a screen-reader live region
+    // ([role=status], zero size) carries the same text
+    if (toasts.length) await this.markVisibleMessage(toasts[toasts.length - 1].slice(0, 40)).catch(() => {});
+    const now = (await box.inputValue().catch(() => '')) || '';
+    console.log(`  - ${label} = "${value}" + Tab -> toasts ${JSON.stringify(toasts)}, box now "${now}"`);
+    return { toasts, value: now };
+  }
+
+  /**
+   * Every place on the ticket page that offers an action named `name` (e.g. "Jira ITSM-123"): the header Actions menu entries
+   * and any visible link / button with that text. Returns the menu entries read (the menu is closed again) and how many
+   * elements carry the name. Reads only.
+   */
+  async findTicketAction(name: string): Promise<{ menuItems: string[]; found: number }> {
+    await this.openHeaderActionsMenu().catch(() => {});
+    const menuItems = await this.getHeaderMenuItems().catch(() => [] as string[]);
+    await this.closeOpenMenu().catch(() => {});
+    const found = await this.page.locator('a, button, [role="menuitem"]').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(name)}\\s*$`) }).count();
+    return { menuItems, found: found + (menuItems.includes(name) ? 1 : 0) };
+  }
+
+  /** Click the visible link / button (or the header Actions menu entry) named `name`; returns the URL of the tab it opens ('' when none). */
+  async clickTicketActionForNewTab(name: string): Promise<string> {
+    const rx = new RegExp(`^\\s*${escapeRegExp(name)}\\s*$`);
+    let target = this.page.locator('a, button, [role="menuitem"]').filter({ hasText: rx }).first();
+    if (!(await target.count())) { await this.openHeaderActionsMenu().catch(() => {}); target = this.page.locator('[role="menuitem"], [role="menu"] *').filter({ hasText: rx }).first(); }
+    if (!(await target.count())) return '';
+    const popup = this.page.waitForEvent('popup', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+    await target.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const p = await popup;
+    if (!p) return '';
+    const url = p.url();
+    await p.close().catch(() => {});
+    return url;
+  }
+
+  static readonly CONVERSATION_HIT = '[data-pw-verify="conversation-hit"]';
+
+  /**
+   * Whether the ticket page draws `fragment` (whitespace-normalised) in its conversation - the page itself OR an e-mail body,
+   * which FF draws inside an iframe (page innerText does not reach it, measured 2026-11-04). Tags the iframe / the block that
+   * holds it for the verify shot - CONVERSATION_HIT. Reads only.
+   */
+  async markConversationText(fragment: string): Promise<{ found: boolean; where: string }> {
+    const want = fragment.replace(/\s+/g, ' ').trim();
+    await this.page.evaluate(() => document.querySelectorAll('[data-pw-verify="conversation-hit"]').forEach((e) => e.removeAttribute('data-pw-verify')));
+    const inMain = await this.page.evaluate((w) => {
+      const leaves = Array.from(document.querySelectorAll<HTMLElement>('body *')).filter((e) => e.offsetParent !== null && e.children.length <= 3 && (e.innerText || '').replace(/\s+/g, ' ').includes(w));
+      const hit = leaves.sort((a, b) => (a.innerText || '').length - (b.innerText || '').length)[0];
+      if (hit) hit.setAttribute('data-pw-verify', 'conversation-hit');
+      return !!hit;
+    }, want);
+    if (inMain) return { found: true, where: 'page' };
+    for (const f of this.page.frames()) {
+      if (f === this.page.mainFrame()) continue;
+      const text = await f.evaluate(() => (document.body ? document.body.innerText : '')).catch(() => '');
+      if (!text.replace(/\s+/g, ' ').includes(want)) continue;
+      const el = await f.frameElement().catch(() => null);
+      if (el) await el.evaluate((e) => (e as HTMLElement).setAttribute('data-pw-verify', 'conversation-hit')).catch(() => {});
+      return { found: true, where: `iframe ${f.url().slice(0, 60)}` };
+    }
+    return { found: false, where: '' };
+  }
+
+  static readonly LIST_ROW = '[data-pw-verify="list-row"]';
+
+  /** Tag the list rows of the tickets `names` (their row links /helpdesk/tickets/<name>) for the verify shot - LIST_ROW. Returns how many. */
+  async markListRows(names: string[]): Promise<number> {
+    return this.page.evaluate((ns) => {
+      document.querySelectorAll('[data-pw-verify="list-row"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      let n = 0;
+      for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href^="/helpdesk/tickets/"]'))) {
+        const name = ((a.getAttribute('href') || '').match(/^\/helpdesk\/tickets\/(\d+)/) || [])[1];
+        if (!name || !ns.includes(name) || a.offsetParent === null || a.hasAttribute('data-pw-verify')) continue;
+        a.setAttribute('data-pw-verify', 'list-row'); n++;
+      }
+      return n;
+    }, names).catch(() => 0);
   }
 
   /** READ-ONLY, as the signed-in user: the filters of preset view `name` as a list of [field, op, value] (a dict form is converted). */

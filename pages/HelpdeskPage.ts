@@ -2621,6 +2621,142 @@ export class HelpdeskPage extends BasePage {
     await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
     await this.wait(CommonUtils.waitTimes.long);
   }
+
+  // ─── Form layout + search box (CRM-11859 Helpdesk A/B batch 3) ─────────────────────────────
+
+  static readonly FORM_LAYOUT_ROW = '[data-pw-verify="odoo-layout-row"]';
+
+  /**
+   * The open form's VISIBLE field rows in screen order, outside the notebook: caption, field name, the value Odoo draws
+   * (a checkbox reads Yes / No, the priority stars read the title of the highest checked star or "Low", many2many tags
+   * are joined with ", "), the column of its inner group (left / right) and its section (the text of the nearest
+   * horizontal separator above it, '' for the head of the form). `widgets` lists every visible field widget of the row with
+   * its own value - a row can carry a second, caption-less field (Area + Sub Area, measured 2026-11-04). A field Odoo hides
+   * (attrs invisible, or empty in read mode) is not listed. Tags every row it returns for the verify shot - FORM_LAYOUT_ROW.
+   * Reads only.
+   */
+  async readFormLayout(): Promise<Array<{ label: string; name: string; value: string; column: 'left' | 'right'; section: string; widgets: Array<{ name: string; value: string }> }>> {
+    await this.page.locator('.o_form_view .o_form_sheet').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    return this.page.evaluate(() => {
+      document.querySelectorAll('[data-pw-verify="odoo-layout-row"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const sheet = document.querySelector('.o_form_view .o_form_sheet') as HTMLElement;
+      const mid = sheet.getBoundingClientRect().left + sheet.getBoundingClientRect().width / 2;
+      const seps = (Array.from(sheet.querySelectorAll('.o_horizontal_separator')) as HTMLElement[]).filter((s) => s.offsetParent !== null && !s.closest('.o_notebook'));
+      const shown = (e: Element | null) => !!e && (e as HTMLElement).offsetParent !== null && !e.closest('.o_invisible_modifier');
+      const sp = (s: string) => s.replace(/\s+/g, ' ').trim();
+      const valueOf = (el: HTMLElement): string => {
+        const box = el.querySelector('input[type="checkbox"]') as HTMLInputElement | null || (el.matches('input[type="checkbox"]') ? el as HTMLInputElement : null);
+        const stars = Array.from(el.querySelectorAll('.o_priority_star')) as HTMLElement[];
+        if (box) return box.checked ? 'Yes' : 'No';
+        if (stars.length) { const on = stars.filter((s) => s.getAttribute('aria-checked') === 'true'); return on.length ? (on[on.length - 1].getAttribute('title') || '') : 'Low'; }
+        const tags = Array.from(el.querySelectorAll('.badge .o_badge_text, .o_tag_badge_text')) as HTMLElement[];
+        if (tags.length) return tags.map((t) => sp(t.innerText || '')).join(', ');
+        return sp(el.innerText || (el as HTMLInputElement).value || (el.querySelector('input, textarea') as HTMLInputElement | null)?.value || '');
+      };
+      const out: Array<{ label: string; name: string; value: string; column: 'left' | 'right'; section: string; widgets: Array<{ name: string; value: string }> }> = [];
+      for (const lab of Array.from(sheet.querySelectorAll('td.o_td_label label.o_form_label')) as HTMLElement[]) {
+        if (lab.closest('.o_notebook') || !shown(lab)) continue;
+        const tr = lab.closest('tr') as HTMLElement;
+        const cell = tr.querySelector(':scope > td:not(.o_td_label)') as HTMLElement | null;
+        if (!cell) continue;
+        const widgets = (Array.from(cell.querySelectorAll('.o_field_widget[name]')) as HTMLElement[])
+          .filter((w) => shown(w) && !w.parentElement?.closest('.o_field_widget[name]'))
+          .map((w) => ({ name: w.getAttribute('name') || '', value: valueOf(w) }));
+        if (!widgets.length) continue;
+        const sec = seps.filter((s) => s.compareDocumentPosition(lab) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+        tr.setAttribute('data-pw-verify', 'odoo-layout-row');
+        out.push({ label: sp(lab.innerText || ''), name: widgets[0].name, value: widgets.map((w) => w.value).filter(Boolean).join(' '),
+          column: lab.getBoundingClientRect().left < mid ? 'left' : 'right', section: sec ? sp(sec.innerText || '') : '', widgets });
+      }
+      return out;
+    });
+  }
+
+  /**
+   * Type `text` into the control-panel search box and pick the autocomplete entry "Search <option> for: <text>" (e.g. All),
+   * then wait for the list. Returns the autocomplete entries it offered. THROWS when the option is not offered.
+   */
+  async searchWithOption(text: string, option: string): Promise<string[]> {
+    const input = this.page.locator('.o_searchview_input').first();
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('');
+    // typed key by key: Odoo 12 opens the autocomplete on keyup - fill() alone drew no entry (measured 2026-11-04)
+    await input.pressSequentially(text, { delay: 60 });
+    const item = this.page.locator('.o_searchview_autocomplete li').filter({ hasText: new RegExp(`^\\s*Search ${escapeRegExp(option)} for:\\s*${escapeRegExp(text)}\\s*$`) }).first();
+    await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const offered = (await this.page.locator('.o_searchview_autocomplete li').allInnerTexts().catch(() => [])).map((t) => t.replace(/\s+/g, ' ').trim());
+    if (!(await item.count())) throw new Error(`HelpdeskPage.searchWithOption: "Search ${option} for: ${text}" not offered (offered: ${JSON.stringify(offered)})`);
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.savingPage).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Search box: "${text}" -> "Search ${option} for: ${text}" (offered ${JSON.stringify(offered)}); facets ${JSON.stringify(await this.getSearchFacets())}`);
+    return offered;
+  }
+
+  /** JSON-RPC call_kw as the signed-in user. THROWS with Odoo's own error text. */
+  private async callKwOverRpc(model: string, method: string, args: unknown[], kwargs: Record<string, unknown> = {}): Promise<unknown> {
+    const res = await this.page.evaluate(async ([m, f, a, k]) => {
+      const r = await fetch('/web/dataset/call_kw', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ jsonrpc: '2.0', method: 'call', params: { model: m, method: f, args: a, kwargs: k } }) });
+      const j = await r.json();
+      return j.error ? { error: String((j.error.data || {}).message || j.error.message) } : { result: j.result };
+    }, [model, method, args, kwargs] as [string, string, unknown[], Record<string, unknown>]);
+    if ('error' in res) throw new Error(`HelpdeskPage ${model}.${method}: ${res.error}`);
+    return res.result;
+  }
+
+  /** SET-UP over RPC: create a helpdesk.ticket with `values`; returns its id. For a spec's own probe tickets only. */
+  async createTicketOverRpc(values: Record<string, unknown>): Promise<number> {
+    return Number(await this.callKwOverRpc('helpdesk.ticket', 'create', [values]));
+  }
+
+  /** SET-UP over RPC: write `values` on the spec's own probe ticket `id`. THROWS with Odoo's message (e.g. a close gate). */
+  async writeTicketOverRpc(id: number, values: Record<string, unknown>): Promise<void> {
+    await this.callKwOverRpc('helpdesk.ticket', 'write', [[id], values]);
+  }
+
+  /**
+   * READ-ONLY, bounded (one ticket, limit 1): the ticket's FIRST e-mail or comment - the oldest mail.message on it - with its
+   * author, date (UTC) and body as plain text (whitespace collapsed). null when the ticket holds none.
+   */
+  async readFirstMailOverRpc(ticketId: number): Promise<{ id: number; author: string; date: string; text: string } | null> {
+    const rows = (await this.callKwOverRpc('mail.message', 'search_read', [[['model', '=', 'helpdesk.ticket'], ['res_id', '=', ticketId], ['message_type', 'in', ['email', 'comment']]]],
+      { fields: ['id', 'author_id', 'email_from', 'date', 'body'], order: 'id asc', limit: 1 })) as Array<Record<string, unknown>>;
+    if (!rows.length) return null;
+    const r = rows[0];
+    const text = await this.page.evaluate((html) => (new DOMParser().parseFromString(html, 'text/html').body.textContent || '').replace(/\s+/g, ' ').trim(), String(r.body || ''));
+    return { id: Number(r.id), author: Array.isArray(r.author_id) ? String(r.author_id[1]) : String(r.email_from || ''), date: String(r.date || ''), text };
+  }
+
+  /** Read mode: the text and href of the URL widget of field `name` (e.g. jira_edit_mode_field draws the key, links the URL). Tags it - FORM_FIELD. */
+  async readFieldLink(name: string): Promise<{ text: string; href: string; target: string }> {
+    const a = this.page.locator(`.o_form_view a.o_field_widget[name="${name}"], .o_form_view .o_field_widget[name="${name}"] a`).first();
+    await a.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    await a.evaluate((e) => { document.querySelectorAll('[data-pw-verify="odoo-field"]').forEach((x) => x.removeAttribute('data-pw-verify')); ((e.closest('tr') as HTMLElement | null) || (e as HTMLElement)).setAttribute('data-pw-verify', 'odoo-field'); });
+    return { text: ((await a.innerText()) || '').trim(), href: (await a.getAttribute('href')) || '', target: (await a.getAttribute('target')) || '' };
+  }
+
+  /**
+   * Click the URL widget of field `name` and return the URL of the tab it opens ('' when none opens within the wait). The
+   * caller routes the target host to an abort when the address must not be reached (no outside call).
+   */
+  async clickFieldLinkForNewTab(name: string): Promise<string> {
+    const a = this.page.locator(`.o_form_view a.o_field_widget[name="${name}"], .o_form_view .o_field_widget[name="${name}"] a`).first();
+    await a.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const popup = this.page.waitForEvent('popup', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+    await a.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const p = await popup;
+    if (!p) return '';
+    await p.waitForLoadState('domcontentloaded', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const url = p.url();
+    await p.close().catch(() => {});
+    return url;
+  }
+
+  /** READ-ONLY: the ids of `model` rows matching `domain` (bounded by `limit`). */
+  async searchIdsOverRpc(model: string, domain: unknown[], limit: number): Promise<number[]> {
+    return (await this.callKwOverRpc(model, 'search', [domain], { limit })) as number[];
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

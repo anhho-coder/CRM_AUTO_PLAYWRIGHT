@@ -44,8 +44,10 @@ const TICKET_LINKED_ROWS: ReadonlyArray<{ doctype: string; field: string }> = [
 const TICKET_ASSIGNMENT_ROWS: ReadonlyArray<{ doctype: string; field: string; extra: unknown[][] }> = [
   { doctype: 'ToDo', field: 'reference_name', extra: [['reference_type', '=', 'HD Ticket']] },
   { doctype: 'HD Notification', field: 'reference_ticket', extra: [] },
-  { doctype: 'Communication', field: 'reference_name', extra: [['reference_doctype', '=', 'HD Ticket']] },
+  // Email Queue BEFORE Communication: a queued mail links its Communication, which then refuses the delete (LinkExistsError,
+  // measured 2026-11-04 on a closed probe's satisfaction mail)
   { doctype: 'Email Queue', field: 'reference_name', extra: [['reference_doctype', '=', 'HD Ticket']] },
+  { doctype: 'Communication', field: 'reference_name', extra: [['reference_doctype', '=', 'HD Ticket']] },
 ];
 
 async function clearTicketLinkedRows(api: APIRequestContext, ticket: string, log: string[], since?: string): Promise<void> {
@@ -63,12 +65,36 @@ async function clearTicketLinkedRows(api: APIRequestContext, ticket: string, log
     if (rows.length > 50) throw new Error(`${rows.length}+ ${g.doctype} rows point at ticket ${ticket} - more than this run creates; nothing deleted`);
     for (const row of rows) {
       if (String(row[g.field]) !== ticket) throw new Error(`${g.doctype} ${row.name} points at "${row[g.field]}", not ${ticket} - not deleted`);
-      const d = await api.delete(`/api/resource/${encodeURIComponent(g.doctype)}/${encodeURIComponent(row.name)}`);
-      if (![200, 202].includes(d.status())) throw new Error(`${g.doctype} ${row.name}: DELETE answered HTTP ${d.status()} ${(await d.text()).slice(0, 200)}`);
+      await deleteRowAndItsTicketLinkers(api, g.doctype, row.name, ticket, log);
       log.push(`${g.doctype} ${row.name} (linked to ticket ${ticket}): deleted`);
     }
     if (!rows.length) log.push(`${g.doctype}: none linked to ticket ${ticket}`);
   }
+}
+
+/**
+ * DELETE one row; when Frappe refuses it because another row links it (LinkExistsError, e.g. the NK Rating of a closed
+ * ticket links the satisfaction mail's Communication - measured 2026-11-04), that linking row is deleted first - only when
+ * one of its own fields holds this ticket's number - and the DELETE is retried (bounded).
+ */
+async function deleteRowAndItsTicketLinkers(api: APIRequestContext, doctype: string, name: string, ticket: string, log: string[]): Promise<void> {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const d = await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(name)}`);
+    if ([200, 202].includes(d.status())) return;
+    const text = (await d.text()).replace(/\\+"/g, '"').replace(/<[^>]+>/g, '');
+    const m = text.match(/is linked with ([A-Za-z][A-Za-z0-9 ]*?) ([A-Za-z0-9][A-Za-z0-9-]*)\s*"/);
+    if (d.status() !== 417 || !m) throw new Error(`${doctype} ${name}: DELETE answered HTTP ${d.status()} ${text.slice(0, 600)}`);
+    const [, linkDoctype, linkName] = m;
+    const lr = await api.get(`/api/resource/${encodeURIComponent(linkDoctype)}/${encodeURIComponent(linkName)}`);
+    if (lr.status() !== 200) throw new Error(`${linkDoctype} ${linkName} (links ${doctype} ${name}): lookup answered HTTP ${lr.status()}`);
+    const linkRow: Record<string, unknown> = (await lr.json()).data || {};
+    const refs = Object.entries(linkRow).filter(([, v]) => String(v) === ticket).map(([k]) => k);
+    if (!refs.length) throw new Error(`${linkDoctype} ${linkName} links ${doctype} ${name} but holds no field = ticket ${ticket} - not deleted`);
+    const dd = await api.delete(`/api/resource/${encodeURIComponent(linkDoctype)}/${encodeURIComponent(linkName)}`);
+    if (![200, 202].includes(dd.status())) throw new Error(`${linkDoctype} ${linkName}: DELETE answered HTTP ${dd.status()} ${(await dd.text()).slice(0, 300)}`);
+    log.push(`${linkDoctype} ${linkName} (field ${refs.join(', ')} = ticket ${ticket}; it linked ${doctype} ${name}): deleted`);
+  }
+  throw new Error(`${doctype} ${name}: still linked after 5 linked-row deletes - nothing more deleted`);
 }
 
 /**
@@ -203,6 +229,61 @@ export async function createSupportTicketAsAdmin(
 }
 
 /**
+ * SET-UP, as Administrator in a separate API context: write `values` on this run's OWN probe ticket `name`. The ticket is
+ * re-read first and its subject must equal `subject` (the run marker) - any other ticket is refused. Returns the fields of
+ * `values` as the server stored them. THROWS with the server's message (e.g. a close gate).
+ */
+export async function updateSupportTicketAsAdmin(
+  baseUrl: string,
+  admin: { username: string; password: string },
+  name: string,
+  subject: string,
+  values: Record<string, unknown>
+): Promise<Record<string, unknown>> {
+  const api = await request.newContext({ baseURL: baseUrl.replace(/\/$/, ''), ignoreHTTPSErrors: true });
+  try {
+    const lg = await api.post('/api/method/login', { data: { usr: admin.username, pwd: admin.password } });
+    if (lg.status() !== 200) throw new Error(`Administrator login refused: HTTP ${lg.status()}`);
+    const g = await api.get(`/api/resource/HD Ticket/${encodeURIComponent(name)}`);
+    const doc = (await g.json()).data || {};
+    if (doc.subject !== subject) throw new Error(`ticket ${name} has subject "${doc.subject}", not this run's "${subject}" - not changed`);
+    const u = await api.put(`/api/resource/HD Ticket/${encodeURIComponent(name)}`, { data: values });
+    if (u.status() !== 200) throw new Error(`ticket ${name}: update answered HTTP ${u.status()} ${(await u.text()).replace(/\\"/g, '"').slice(0, 400)}`);
+    const d = (await u.json()).data || {};
+    return Object.fromEntries(Object.keys(values).map((k) => [k, d[k]]));
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
+ * SET-UP, as Administrator: assign this run's OWN probe ticket `name` (subject must equal `subject`) to `user`, the way the
+ * Desk assigns (frappe.desk.form.assign_to.add -> a ToDo). The ToDo is created during the run, so deleteSupportProbeAsAdmin
+ * with `since` removes it. Returns the ticket's `_assign` after the call.
+ */
+export async function assignSupportTicketAsAdmin(
+  baseUrl: string,
+  admin: { username: string; password: string },
+  name: string,
+  subject: string,
+  user: string
+): Promise<string> {
+  const api = await request.newContext({ baseURL: baseUrl.replace(/\/$/, ''), ignoreHTTPSErrors: true });
+  try {
+    const lg = await api.post('/api/method/login', { data: { usr: admin.username, pwd: admin.password } });
+    if (lg.status() !== 200) throw new Error(`Administrator login refused: HTTP ${lg.status()}`);
+    const g = await api.get(`/api/resource/HD Ticket/${encodeURIComponent(name)}`);
+    if (((await g.json()).data || {}).subject !== subject) throw new Error(`ticket ${name} is not this run's "${subject}" - not assigned`);
+    const a = await api.post('/api/method/frappe.desk.form.assign_to.add', { data: { doctype: 'HD Ticket', name, assign_to: JSON.stringify([user]) } });
+    if (a.status() !== 200) throw new Error(`ticket ${name}: assign answered HTTP ${a.status()} ${(await a.text()).slice(0, 300)}`);
+    const r = await api.get(`/api/resource/HD Ticket/${encodeURIComponent(name)}`);
+    return String(((await r.json()).data || {})._assign || '');
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
  * READ-ONLY, as Administrator (an agent's REST read of Communication came back empty - measured 2026-11-04): the ticket's
  * review flags and the replies it SENT since `since`, with their Approval Status.
  */
@@ -255,6 +336,43 @@ export async function readTicketEmailQueueAsAdmin(
       out.push({ ...row, recipients: (doc.recipients || []).map((x: { recipient: string }) => x.recipient) });
     }
     return out;
+  } finally {
+    await api.dispose();
+  }
+}
+
+/**
+ * TEARDOWN, as Administrator: delete the rows of `doctype` whose `field` CONTAINS this run's unique `marker` (deny-list - e.g.
+ * the HD Saved Reply a spec saved under the title 'QA code test <marker>'). Counts first: more than `max` matches stops the
+ * cleanup with an error and deletes nothing. Each row is re-checked before its delete. Returns a log line per row.
+ */
+export async function deleteRunRowsByMarkerAsAdmin(
+  baseUrl: string,
+  admin: { username: string; password: string },
+  doctype: string,
+  field: string,
+  marker: string,
+  max: number
+): Promise<string[]> {
+  if (!marker || marker.length < 12) throw new Error(`refusing a marker shorter than 12 characters ("${marker}")`);
+  const api = await request.newContext({ baseURL: baseUrl.replace(/\/$/, ''), ignoreHTTPSErrors: true });
+  const enc = (o: unknown) => encodeURIComponent(JSON.stringify(o));
+  const log: string[] = [];
+  try {
+    const lg = await api.post('/api/method/login', { data: { usr: admin.username, pwd: admin.password } });
+    if (lg.status() !== 200) throw new Error(`Administrator login refused: HTTP ${lg.status()}`);
+    const r = await api.get(`/api/resource/${encodeURIComponent(doctype)}?fields=${enc(['name', field])}&filters=${enc([[field, 'like', `%${marker}%`]])}&limit_page_length=${max + 1}`);
+    if (r.status() !== 200) throw new Error(`${doctype} lookup answered HTTP ${r.status()}`);
+    const rows: Array<Record<string, string>> = (await r.json()).data || [];
+    if (rows.length > max) throw new Error(`${rows.length} ${doctype} rows carry "${marker}" - more than this run creates (${max}); nothing deleted`);
+    for (const row of rows) {
+      if (!String(row[field] || '').includes(marker)) throw new Error(`${doctype} ${row.name}: ${field} "${row[field]}" lacks the marker - not deleted`);
+      const d = await api.delete(`/api/resource/${encodeURIComponent(doctype)}/${encodeURIComponent(row.name)}`);
+      if (![200, 202].includes(d.status())) throw new Error(`${doctype} ${row.name}: DELETE answered HTTP ${d.status()} ${(await d.text()).slice(0, 200)}`);
+      log.push(`${doctype} "${row.name}": deleted`);
+    }
+    if (!rows.length) log.push(`${doctype}: none carries "${marker}"`);
+    return log;
   } finally {
     await api.dispose();
   }
