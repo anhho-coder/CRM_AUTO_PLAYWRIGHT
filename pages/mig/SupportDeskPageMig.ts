@@ -2379,6 +2379,214 @@ export class SupportDeskPageMig extends BasePage {
     if (rows.length > 1000) throw new Error('SupportDeskPageMig.listMigratedMeetings: 1000+ rows - more than one page');
     return rows;
   }
+
+  // ------------------------------------------------------------------ sidebar Reporting (CRM-11859 REP cases)
+  // Measured 2026-11-05: the Reporting folder's entries draw their report in an IFRAME of the agent app -
+  // /nk_report?report=<key> (pivot / graph, nakivo_helpdesk/js/nk_report.js) or, for Message History,
+  // /assets/nakivo_helpdesk/nakivo_messages.html. captureVerifyEvidence outlines the TOP document only, so the iframe is
+  // tagged (REPORT_FRAME) and the elements read inside it get an outline of their own (outlineInReportFrame).
+
+  /**
+   * READ-ONLY, as the signed-in user: the roles of `email` (frappe.core.doctype.user.user.get_roles?uid=). The own User
+   * record read over /api/resource carries NO roles for a non-admin (measured 2026-11-05: [] for Julia).
+   */
+  async getMyRoles(email: string): Promise<string[]> {
+    const res = await this.page.evaluate(async (e) => {
+      const r = await fetch(`/api/method/frappe.core.doctype.user.user.get_roles?uid=${encodeURIComponent(e)}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, email);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.getMyRoles(${email}): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return JSON.parse(res.body).message || [];
+  }
+
+  /** READ-ONLY REST, as the signed-in user: the names of up to `limit` records of `doctype` (e.g. 'HD Team'). */
+  async listDocNamesOverRest(doctype: string, limit = 200): Promise<string[]> {
+    const res = await this.page.evaluate(async ([dt, n]) => {
+      const q = new URLSearchParams({ fields: JSON.stringify(['name']), limit_page_length: String(n) });
+      const r = await fetch(`/api/resource/${encodeURIComponent(String(dt))}?${q.toString()}`, { headers: { Accept: 'application/json' } });
+      return { status: r.status, body: await r.text() };
+    }, [doctype, limit] as [string, number]);
+    if (res.status !== 200) throw new Error(`SupportDeskPageMig.listDocNamesOverRest(${doctype}): HTTP ${res.status} ${res.body.slice(0, 300)}`);
+    return (JSON.parse(res.body).data || []).map((d: { name: string }) => d.name);
+  }
+
+  /** The iframe that draws the open report (tagged by openReportingEntry). */
+  static readonly REPORT_FRAME = '[data-pw-verify="nk-report-frame"]';
+
+  /** The report iframe on screen whose address contains `part` (e.g. 'report=ticket_analysis'), once its body has content. */
+  async reportFrame(part: string): Promise<Frame> {
+    for (let i = 0; i < 60; i++) {
+      const f = this.page.frames().find((x) => x.url().includes(part));
+      if (f && ((await f.locator('body').innerText().catch(() => '')).trim().length > 20)) return f;
+      await this.wait(500);
+    }
+    throw new Error(`SupportDeskPageMig.reportFrame: no report frame "${part}" drew content`);
+  }
+
+  /**
+   * Sidebar "Reporting" (opened when its entries are hidden) > `entry`; waits for the report iframe whose address contains
+   * `framePart` to draw its table, chart or message, and tags that iframe. Returns the frame.
+   */
+  async openReportingEntry(entry: string, framePart: string): Promise<Frame> {
+    const item = this.page.locator(`button[aria-label="${entry}"]`).last();
+    if (!(await item.isVisible().catch(() => false))) {
+      await this.sidebarItem('Reporting').click({ timeout: CommonUtils.waitTimes.abnormalWait });
+      await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    }
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const f = await this.reportFrame(framePart);
+    await f.locator('table.nk-pivot, .nk-chart svg, .nk-msg.err, #grid, table').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.page.evaluate((part) => {
+      document.querySelectorAll('[data-pw-verify="nk-report-frame"]').forEach((e) => e.removeAttribute('data-pw-verify'));
+      const fr = Array.from(document.querySelectorAll('iframe')).find((x) => (x.getAttribute('src') || '').includes(part));
+      if (fr) fr.setAttribute('data-pw-verify', 'nk-report-frame');
+    }, framePart);
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Opened sidebar Reporting > ${entry} (${f.url()})`);
+    return f;
+  }
+
+  /**
+   * An nk_report screen: title, help banner, period message, active mode, the field each axis is grouped by (the open
+   * "Total" head's title), the head values under it, the measure names, the totals, the period selects and the graph-mode
+   * state (chart type, Stacked). Reads only.
+   */
+  async readNkReport(f: Frame): Promise<{
+    title: string; help: string; message: string; mode: string; rowsField: string; colsField: string; rowHeads: string[]; colHeads: string[];
+    measures: string[]; rowTotal: boolean; colTotal: boolean; dateField: string; timeRange: string; chart: string; stacked: boolean | null; xLabels: string[];
+    legend: string[]; datasets: number; grandTotal: string;
+  }> {
+    return f.evaluate(() => {
+      const txt = (e: Element | null) => ((e as HTMLElement | null)?.innerText || '').replace(/\s+/g, ' ').trim();
+      const segs = Array.from(document.querySelectorAll('.nk-bar .nk-seg'));
+      const sel = (title: string) => document.querySelector(`select.nk-sel[title="${title}"]`) as HTMLSelectElement | null;
+      const measures: string[] = [];
+      document.querySelectorAll('table.nk-pivot thead th.nk-measure').forEach((th) => { const t = txt(th); if (t && !measures.includes(t)) measures.push(t); });
+      const stackedBtn = Array.from(document.querySelectorAll('.nk-bar button.nk-btn')).find((b) => txt(b) === 'Stacked');
+      return {
+        title: txt(document.querySelector('.nk-title h1')),
+        help: txt(document.querySelector('#helpdeskReportNote, .nk-help')),
+        message: txt(document.querySelector('.nk-msg')),
+        mode: txt(segs[0]?.querySelector('.nk-btn.on') || null),
+        rowsField: document.querySelector('table.nk-pivot tbody th.nk-rows.open')?.getAttribute('title') || '',
+        colsField: document.querySelector('table.nk-pivot thead th.nk-cols.open')?.getAttribute('title') || '',
+        rowHeads: Array.from(document.querySelectorAll('table.nk-pivot tbody tr:not(.nk-total) th.nk-rows')).map(txt),
+        colHeads: Array.from(document.querySelectorAll('table.nk-pivot thead tr:first-child th.nk-cols.closed')).map(txt),
+        measures,
+        rowTotal: !!document.querySelector('table.nk-pivot tbody tr.nk-total'),
+        colTotal: !!document.querySelector('table.nk-pivot thead th.nk-cols.open') && txt(document.querySelector('table.nk-pivot thead th.nk-cols.open')) === 'Total',
+        dateField: sel('Date field')?.selectedOptions[0]?.text || '',
+        timeRange: sel('Time range')?.selectedOptions[0]?.text || '',
+        chart: txt(segs[1]?.querySelector('.nk-btn.on') || null),
+        stacked: stackedBtn ? stackedBtn.classList.contains('on') : null,
+        xLabels: Array.from(document.querySelectorAll('.nk-chart .x.axis text, .nk-chart .x-axis text')).map((e) => (e.textContent || '').trim()).filter(Boolean),
+        // frappe-charts cuts a long legend label to 15 characters + '...' (measured 2026-11-05)
+        legend: Array.from(document.querySelectorAll('.nk-chart .chart-legend .legend-dataset-label')).map((e) => (e.textContent || '').trim()),
+        datasets: document.querySelectorAll('.nk-chart g.dataset-units').length,
+        grandTotal: txt(document.querySelector('table.nk-pivot tbody tr.nk-total td.nk-tcol')),
+      };
+    });
+  }
+
+  /** Switch an nk_report between its Pivot and Graph modes (the toolbar's first segment) and wait for it to draw. */
+  async switchNkMode(f: Frame, mode: 'Pivot' | 'Graph'): Promise<void> {
+    await f.locator('.nk-bar .nk-seg').first().locator('button').filter({ hasText: new RegExp(`^${mode}$`) }).click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await f.locator(mode === 'Pivot' ? 'table.nk-pivot' : '.nk-chart svg').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.medium);
+    console.log(`  - Report switched to ${mode}`);
+  }
+
+  /** Pick an nk_report "Time range" (option value, e.g. 'last_month') and wait for the report to run again. */
+  async setNkTimeRange(f: Frame, value: string): Promise<void> {
+    await f.locator('select.nk-sel[title="Time range"]').selectOption(value, { timeout: CommonUtils.waitTimes.abnormalWait });
+    await f.locator('.nk-msg').filter({ hasNotText: /Loading/ }).first().waitFor({ state: 'attached', timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Report time range set to ${value}: ${await f.locator('.nk-msg').innerText().catch(() => '')}`);
+  }
+
+  /** The entries of an nk_report toolbar dropdown ('Measures', 'Filters', 'Group By'): text and checked state (opens, reads, closes). */
+  async readNkMenu(f: Frame, label: 'Measures' | 'Filters' | 'Group By'): Promise<Array<{ text: string; on: boolean }>> {
+    const btn = f.locator('.nk-bar .nk-dd > button.nk-btn').filter({ hasText: new RegExp(`^${label}\\s*▾`) }).first();
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const menu = f.locator('.nk-menu.open').first();
+    await menu.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const items = await menu.locator('.nk-item').evaluateAll((els) => els.map((e) => ({
+      text: Array.from(e.childNodes).filter((n) => !(n as HTMLElement).classList?.contains('nk-check')).map((n) => n.textContent || '').join('').replace(/\s+/g, ' ').trim(),
+      on: e.classList.contains('on'),
+    })));
+    await btn.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return items;
+  }
+
+  /**
+   * Click the first non-total value cell of an nk_report pivot and read the drill-down it opens (Odoo's "list of the
+   * cell's records"): the cell value, its row / column heads, the modal's "<n> record(s)" count, its column heads, the
+   * number of rows and the first ticket link. `opened` false when no modal appears.
+   */
+  async clickFirstNkCell(f: Frame): Promise<{ value: string; row: string; col: string; opened: boolean; countText: string; head: string[]; rows: number; firstLink: string; firstId: string; stages: string[] }> {
+    const cell = f.locator('table.nk-pivot tbody tr:not(.nk-total) td.nk-cell:not(.nk-tcol)').filter({ hasText: /[1-9]/ }).first();
+    await cell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const where = await cell.evaluate((td) => {
+      const tr = td.closest('tr') as HTMLTableRowElement;
+      const idx = Array.from(tr.querySelectorAll('td')).indexOf(td as HTMLTableCellElement);
+      const cols = Array.from(td.closest('table')!.querySelectorAll('thead tr:first-child th.nk-cols')).map((h) => (h as HTMLElement).innerText.trim());
+      return { row: (tr.querySelector('th') as HTMLElement).innerText.trim(), col: cols[idx] || '' };
+    });
+    const value = (await cell.innerText()).trim();
+    await cell.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const modal = f.locator('.nk-shade .nk-modal').first();
+    const opened = await modal.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).then(() => true).catch(() => false);
+    if (!opened) return { value, ...where, opened, countText: '', head: [], rows: 0, firstLink: '', firstId: '', stages: [] };
+    await f.locator('.nk-shade table.nk-list tbody tr').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const m = await modal.evaluate((el) => {
+      const head = Array.from(el.querySelectorAll('table.nk-list thead th')).map((th) => (th as HTMLElement).innerText.trim());
+      const si = head.indexOf('Stage');
+      return {
+        countText: ((el.querySelector('.nk-modal-head b') as HTMLElement | null)?.innerText || '').trim(),
+        head,
+        rows: el.querySelectorAll('table.nk-list tbody tr').length,
+        firstLink: (el.querySelector('table.nk-list tbody a') as HTMLAnchorElement | null)?.getAttribute('href') || '',
+        firstId: ((el.querySelector('table.nk-list tbody a') as HTMLElement | null)?.innerText || '').trim(),
+        stages: si < 0 ? [] : Array.from(el.querySelectorAll('table.nk-list tbody tr')).map((tr) => ((tr.children[si] as HTMLElement | undefined)?.innerText || '').trim()),
+      };
+    });
+    return { value, ...where, opened, ...m };
+  }
+
+  /** Click the first ticket ID of the open drill-down list; returns the address the new tab (or this tab) lands on. */
+  async openFirstDrillTicket(f: Frame): Promise<string> {
+    const a = f.locator('.nk-shade table.nk-list tbody a').first();
+    const popup = this.page.waitForEvent('popup', { timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => null);
+    await a.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const p = await popup;
+    if (!p) { await this.wait(CommonUtils.waitTimes.long); return this.page.url(); }
+    await p.waitForLoadState('domcontentloaded', { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    await p.waitForURL('**/helpdesk/tickets/**', { timeout: CommonUtils.waitTimes.pageLoad }).catch(() => {});
+    const url = p.url();
+    await p.close().catch(() => {});
+    return url;
+  }
+
+  /**
+   * Outline elements INSIDE a report iframe (captureVerifyEvidence reaches the top document only): each selector gets the
+   * colour of its own verdict; the previous outlines of this helper are removed first. Returns how many elements were hit.
+   */
+  async outlineInReportFrame(f: Frame, marks: Array<{ selector: string; passed: boolean }>): Promise<number> {
+    return f.evaluate((ms) => {
+      document.querySelectorAll('[data-pw-frame-outline]').forEach((e) => { (e as HTMLElement).style.outline = ''; (e as HTMLElement).style.outlineOffset = ''; e.removeAttribute('data-pw-frame-outline'); });
+      let n = 0;
+      for (const m of ms) {
+        document.querySelectorAll(m.selector).forEach((e) => {
+          const h = e as HTMLElement;
+          h.style.outline = `3px solid ${m.passed ? '#1a9641' : '#e03131'}`;
+          h.style.outlineOffset = '1px';
+          h.setAttribute('data-pw-frame-outline', '1');
+          n++;
+        });
+      }
+      return n;
+    }, marks);
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

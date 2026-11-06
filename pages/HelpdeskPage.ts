@@ -2757,6 +2757,202 @@ export class HelpdeskPage extends BasePage {
   async searchIdsOverRpc(model: string, domain: unknown[], limit: number): Promise<number[]> {
     return (await this.callKwOverRpc(model, 'search', [domain], { limit })) as number[];
   }
+
+  /** READ-ONLY: `fields` of up to `limit` `model` rows matching `domain`, as the signed-in user. */
+  async searchReadOverRpc(model: string, domain: unknown[], fields: string[], limit: number): Promise<Array<Record<string, unknown>>> {
+    return (await this.callKwOverRpc(model, 'search_read', [domain], { fields, limit })) as Array<Record<string, unknown>>;
+  }
+
+  /** READ-ONLY: whether the signed-in user holds the group with XML id `xmlid` (res.users.has_group). */
+  async hasGroupOverRpc(xmlid: string): Promise<boolean> {
+    return Boolean(await this.callKwOverRpc('res.users', 'has_group', [xmlid]));
+  }
+
+  // ------------------------------------------------------------------ Helpdesk > Reporting (CRM-11859 REP cases)
+
+  // Odoo 12 DOM on pre-production (measured 2026-11-06, explore helpdesk-rep-20261106-odoo12-report-dom): .o_content sits
+  // directly under body - NOT inside .o_action_manager; graph = div.o_graph > .o_graph_container > .o_graph_svg_container >
+  // svg.nvd3-svg; pivot = div.o_pivot > table, whose ROW heads are td.o_pivot_header_cell_* (only the column heads are th).
+  /** The report view on screen (pivot table, graph, or Odoo's empty-state), for captureVerifyEvidence. */
+  static readonly REPORT_VIEW = '.o_content .o_pivot table, .o_content .o_graph_svg_container, .o_content .o_view_nocontent';
+  /** The graph drawing (nvd3 svg). */
+  static readonly GRAPH_VIEW = '.o_content .o_graph_svg_container';
+  /** The pivot header block (column heads + measure row) and the row heads. */
+  static readonly PIVOT_HEAD = '.o_pivot thead';
+  static readonly PIVOT_ROW_HEADS = '.o_pivot tbody .o_pivot_header_cell_opened, .o_pivot tbody .o_pivot_header_cell_closed';
+  /** The help banner Odoo draws above a report (report_help_note - the FF copy keeps the same id). */
+  static readonly REPORT_HELP = '#helpdeskReportNote, .o_content .alert';
+  /** The view switcher and the graph-mode buttons of the control panel. */
+  static readonly REPORT_SWITCHER = '.o_cp_switch_buttons, .o_cp_buttons';
+
+  /**
+   * Helpdesk top menu "Reporting" > `entry` (exact text), then wait until the report draws a pivot table, a graph or
+   * Odoo's empty-state. A big pivot of every ticket takes up to a minute on pre-production (measured 2026-11-05).
+   */
+  async openReportingEntry(entry: string): Promise<void> {
+    await this.dismissErrorDialog();
+    const menu = this.page.locator('.o_menu_sections > li > a').filter({ hasText: /^\s*Reporting\s*$/ }).first();
+    await menu.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await menu.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const item = this.page.locator('.o_menu_sections .dropdown-menu.show a').filter({ hasText: new RegExp(`^\\s*${escapeRegExp(entry)}\\s*$`) }).first();
+    await item.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const before = this.page.url();
+    await item.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    // the address changes first - without this the wait below can match the PREVIOUS screen's table
+    await this.page.waitForURL((u) => u.href !== before && /action=\d+/.test(u.href), { timeout: CommonUtils.waitTimes.pageLoad });
+    await this.page.locator('.o_content .o_pivot table, .o_content svg.nvd3-svg, .o_content .o_view_nocontent').first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.waitForLoadingSpinnerToHide(CommonUtils.waitTimes.pageLoad).catch(() => {});
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Opened Helpdesk > Reporting > ${entry} -> ${this.page.url()}`);
+  }
+
+  /** The Reporting dropdown entries in screen order (opens the menu, reads, closes it). Reads only. */
+  async getReportingMenuEntries(): Promise<string[]> {
+    const menu = this.page.locator('.o_menu_sections > li > a').filter({ hasText: /^\s*Reporting\s*$/ }).first();
+    await menu.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const items = this.page.locator('.o_menu_sections .dropdown-menu.show a');
+    await items.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const out = (await items.allInnerTexts()).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    await menu.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return out;
+  }
+
+  /** The report screen: breadcrumb title, the view the switcher marks active, the search facets and the help banner. */
+  async readReportScreen(): Promise<{ title: string; activeView: string; views: string[]; facets: string[]; help: string }> {
+    return this.page.evaluate(() => {
+      const txt = (e: Element | null) => ((e as HTMLElement | null)?.innerText || '').replace(/\s+/g, ' ').trim();
+      const views = Array.from(document.querySelectorAll('.o_cp_switch_buttons button')).map((b) => (b.getAttribute('aria-label') || '').replace(/^View\s+/i, '').toLowerCase());
+      const active = document.querySelector('.o_cp_switch_buttons button.active');
+      const help = Array.from(document.querySelectorAll('#helpdeskReportNote, .o_content .alert')).find((e) => (e as HTMLElement).offsetParent !== null) || null;
+      return {
+        title: txt(document.querySelector('.o_control_panel .breadcrumb li:last-child')),
+        // an action with ONE view draws no switcher: the view is read from the controller instead
+        activeView: active ? (active.getAttribute('aria-label') || '').replace(/^View\s+/i, '').toLowerCase()
+          : document.querySelector('.o_content .o_pivot') ? 'pivot' : document.querySelector('.o_content .o_graph') ? 'graph' : '',
+        views,
+        facets: Array.from(document.querySelectorAll('.o_searchview_facet')).map(txt).filter(Boolean),
+        help: txt(help),
+      };
+    });
+  }
+
+  /** Switch the report to its pivot or graph view with the control-panel switcher and wait for it to draw. */
+  async switchReportView(view: 'pivot' | 'graph'): Promise<void> {
+    // the tooltip of the switcher button clicked last ("View pivot") stays up while the mouse rests on it and covers its
+    // neighbour - move the mouse off the control panel first (measured 2026-11-06, REP-006_A)
+    await this.page.mouse.move(960, 700);
+    await this.page.locator('.tooltip.show').first().waitFor({ state: 'hidden', timeout: CommonUtils.waitTimes.medium }).catch(() => {});
+    await this.page.locator(`.o_cp_switch_buttons button.o_cp_switch_${view}`).first().click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.page.locator(view === 'pivot' ? '.o_content .o_pivot table, .o_content .o_view_nocontent' : '.o_content svg.nvd3-svg, .o_content .o_view_nocontent').first()
+      .waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.pageLoad });
+    await this.wait(CommonUtils.waitTimes.long);
+    console.log(`  - Report switched to the ${view} view`);
+  }
+
+  /**
+   * The pivot on screen: the column heads under the "Total" column head, the row heads under the "Total" row head, the
+   * measure names (one per measure, in order), and whether both totals are drawn. Odoo 12 prints no group-by field name in
+   * the table, so the caller decides which field a head list comes from by its VALUES. Reads only.
+   */
+  async readOdooPivot(): Promise<{ colHeads: string[]; rowHeads: string[]; measures: string[]; colTotal: boolean; rowTotal: boolean; empty: boolean }> {
+    return this.page.evaluate(() => {
+      const txt = (e: Element) => ((e as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+      const table = document.querySelector('.o_content .o_pivot table');
+      if (!table) return { colHeads: [], rowHeads: [], measures: [], colTotal: false, rowTotal: false, empty: true };
+      const headRows = Array.from(table.querySelectorAll('thead tr'));
+      const measureRow = table.querySelector('thead tr .o_pivot_measure_row')?.closest('tr') || null;
+      const measures: string[] = [];
+      for (const th of Array.from(measureRow?.querySelectorAll('th') || [])) { const t = txt(th); if (t && !measures.includes(t)) measures.push(t); }
+      const colHeadRows = headRows.filter((r) => r !== measureRow && r !== headRows[0]);
+      return {
+        colHeads: colHeadRows.length ? Array.from(colHeadRows[0].querySelectorAll('th.o_pivot_header_cell_closed, th.o_pivot_header_cell_opened')).map(txt) : [],
+        rowHeads: Array.from(table.querySelectorAll('tbody .o_pivot_header_cell_opened, tbody .o_pivot_header_cell_closed')).map(txt).filter((t, i) => i > 0 || t !== 'Total'),
+        measures,
+        colTotal: !!headRows[0] && Array.from(headRows[0].querySelectorAll('th.o_pivot_header_cell_opened')).some((th) => txt(th) === 'Total'),
+        rowTotal: txt(table.querySelector('tbody tr:first-child .o_pivot_header_cell_opened') || document.createElement('i')) === 'Total',
+        empty: false,
+      };
+    });
+  }
+
+  /** The graph on screen: chart mode (bar / line / pie button marked active), nvd3's Grouped / Stacked control, legend and x labels. */
+  async readOdooGraph(): Promise<{ mode: string; stacked: boolean | null; legend: string[]; xLabels: string[] }> {
+    return this.page.evaluate(() => {
+      const active = document.querySelector('.o_graph_button.active');
+      const mode = !active ? '' : active.classList.contains('fa-bar-chart-o') ? 'bar' : active.classList.contains('fa-area-chart') ? 'line' : active.classList.contains('fa-pie-chart') ? 'pie' : active.className;
+      // nvd3 draws "Grouped" / "Stacked" as legend-like controls: the chosen one has a filled symbol (fill-opacity 1)
+      const ctl = Array.from(document.querySelectorAll('.nv-controlsWrap .nv-series')).map((g) => ({ name: (g.textContent || '').trim(), on: /fill-opacity:\s*1/.test((g.querySelector('.nv-legend-symbol') as SVGElement | null)?.getAttribute('style') || '') }));
+      const st = ctl.find((c) => c.name === 'Stacked');
+      return {
+        mode,
+        stacked: st ? st.on : null,
+        legend: Array.from(document.querySelectorAll('.nv-legendWrap .nv-series')).map((g) => (g.textContent || '').trim()).filter(Boolean),
+        xLabels: Array.from(document.querySelectorAll('.nv-x .tick text')).map((g) => (g.textContent || '').trim()).filter(Boolean),
+      };
+    });
+  }
+
+  /** The measures of the OPEN report's MEASURES dropdown: every entry and the selected ones (opens it, reads, closes it). */
+  async readReportMeasuresMenu(): Promise<{ all: string[]; selected: string[] }> {
+    const toggle = this.page.locator('.o_cp_buttons button.dropdown-toggle').filter({ hasText: /measures/i }).first();
+    await toggle.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const items = this.page.locator('.o_pivot_measures_list .dropdown-item, .o_graph_measures_list .dropdown-item');
+    await items.first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const out = await items.evaluateAll((els) => els.map((e) => ({ t: ((e as HTMLElement).innerText || '').trim(), on: e.classList.contains('selected') })));
+    await toggle.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return { all: out.map((o) => o.t), selected: out.filter((o) => o.on).map((o) => o.t) };
+  }
+
+  /** The entries of the search view's Group By dropdown, in screen order (opens it, reads, closes it). */
+  async getGroupByMenuEntries(): Promise<string[]> {
+    const toggle = this.page.locator('.o_search_options .o_dropdown_toggler_btn').filter({ hasText: /group by/i }).first();
+    await toggle.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    const menu = this.page.locator('.o_group_by_menu').first();
+    await menu.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const out = (await menu.locator('a.dropdown-item, .o_menu_item a').allInnerTexts().catch(() => [])).map((t) => t.replace(/\s+/g, ' ').trim()).filter(Boolean);
+    await toggle.click({ timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    return out;
+  }
+
+  /** The "Search <field> for: <text>" entries the search box offers for `text` (typed key by key; nothing is chosen). */
+  async getSearchFieldOptions(text: string): Promise<string[]> {
+    const input = this.page.locator('.o_searchview_input').first();
+    await input.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await input.fill('');
+    await input.pressSequentially(text, { delay: 60 });
+    await this.page.locator('.o_searchview_autocomplete li').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait }).catch(() => {});
+    const offered = (await this.page.locator('.o_searchview_autocomplete li').allInnerTexts().catch(() => [])).map((t) => t.replace(/\s+/g, ' ').trim());
+    await input.fill('');
+    await this.page.keyboard.press('Escape').catch(() => {});
+    return offered.map((o) => (o.match(/^Search (.+?) for:/) || [])[1]).filter((o): o is string => !!o);
+  }
+
+  /**
+   * Click the first non-empty body cell of the pivot (a value cell, not a total) and report what happened: the breadcrumb
+   * and address before / after and the list a drill-down would open. Odoo 12 opens nothing for a pivot whose arch says
+   * disable_linking. Reads only.
+   */
+  async clickFirstPivotValueCell(): Promise<{ value: string; row: string; col: string; urlBefore: string; urlAfter: string; crumbsAfter: string[]; listTotal: number | null }> {
+    const cell = this.page.locator('.o_pivot tbody tr:not(:first-child) td.o_pivot_cell_value:not(.o_empty)').first();
+    await cell.waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.abnormalWait });
+    const where = await cell.evaluate((td) => {
+      const tr = td.closest('tr') as HTMLTableRowElement;
+      const idx = Array.from(tr.children).indexOf(td) - 1;
+      const heads = Array.from(td.closest('table')!.querySelectorAll('thead tr')).map((r) => Array.from(r.querySelectorAll('th.o_pivot_header_cell_closed')).map((h) => (h as HTMLElement).innerText.trim()));
+      const lvl = heads.find((h) => h.length) || [];
+      return { row: ((tr.querySelector('.o_pivot_header_cell_opened, .o_pivot_header_cell_closed') as HTMLElement | null)?.innerText || '').trim(), col: lvl[idx] || '' };
+    });
+    const value = (await cell.innerText()).trim();
+    const urlBefore = this.page.url();
+    await cell.click({ timeout: CommonUtils.waitTimes.abnormalWait });
+    await this.wait(CommonUtils.waitTimes.long);
+    await this.page.locator('.o_list_view').first().waitFor({ state: 'visible', timeout: CommonUtils.waitTimes.medium }).catch(() => {});
+    const crumbsAfter = (await this.page.locator('.o_control_panel .breadcrumb li').allInnerTexts()).map((t) => t.trim());
+    const list = await this.page.locator('.o_list_view').count();
+    const listTotal = list ? await this.getPagerTotal().catch(() => null) : null;
+    return { value, ...where, urlBefore, urlAfter: this.page.url(), crumbsAfter, listTotal };
+  }
 }
 
 /** Escape a string for use inside a RegExp source. */

@@ -106,6 +106,59 @@ export const users = {
     password: pw('support_l1_giang_support_mig'),
     displayName: 'Giang Le',
   },
+  // ── CRM-11859 Helpdesk A/B role accounts (tester, 2026-11-05) - one name per ROLE, the same person on both systems ──
+  // Helpdesk Manager (was "qa-mgr"; also the "CS manager" of the Reporting cases): pre-prod helpdesk.group_helpdesk_manager,
+  // FF role Agent Manager. Julia Petrenko - the pre-prod login is 'julia.Petrenko@nakivo.com' (capital P, res.users 11; Odoo
+  // 12 matches the login case-sensitively). Own secret key support_manager_julia_preprod (tester, 2026-11-06).
+  helpdesk_manager_julia_preprod: {
+    username: 'julia.Petrenko@nakivo.com',
+    password: pw('support_manager_julia_preprod'),
+    displayName: 'Julia Petrenko',
+  },
+  helpdesk_manager_julia_support_mig: {
+    username: 'julia.petrenko@nakivo.com',
+    password: pw('support_manager_julia_support_mig'),
+    displayName: 'Julia Petrenko',
+  },
+  // Helpdesk User only (was "qa-l1"): pre-prod helpdesk.group_helpdesk_user and nothing helpdesk-wise above it - not
+  // Manager, not "Hotsite concept enabling", not "L1 engineers can view message report", no Message Delete group; FF role
+  // Agent only. Faye Nguyen - the FF password was set equal to her pre-prod one on 2026-11-05, so both reuse that secret.
+  helpdesk_user_only_faye_preprod: {
+    username: 'faye.nguyen@nakivo.com',
+    password: pw('accountance_ic_faye'),
+    displayName: 'Faye Nguyen',
+  },
+  helpdesk_user_only_faye_support_mig: {
+    username: 'faye.nguyen@nakivo.com',
+    password: pw('accountance_ic_faye'),
+    displayName: 'Faye Nguyen',
+  },
+  // L1 Engineer (was "qa-l1b"): pre-prod Helpdesk / User + "L1 engineers can view message report" (every L1 engineer holds
+  // it), not Manager; FF Agent + NK L1 Message Report. Vy Chau - the tester set the pre-prod password on 2026-11-05; the FF
+  // password was set to the same value. Secret key `l1_engineer_vy` (add it to the Jenkins crm-users-secrets file too).
+  l1_engineer_vy_preprod: {
+    username: 'vy.chau@nakivo.com',
+    password: pw('l1_engineer_vy'),
+    displayName: 'Vy Chau',
+  },
+  l1_engineer_vy_support_mig: {
+    username: 'vy.chau@nakivo.com',
+    password: pw('l1_engineer_vy'),
+    displayName: 'Vy Chau',
+  },
+  // Message Delete Manager (was "user of the message-delete group"): pre-prod "Message Delete / Manager"
+  // (message_delete.group_allmessages_user - "this user can delete all messages and notifications"); FF role NK Message
+  // Delete. Pre-prod = Anh Ho (granted by the tester 2026-11-05), FF = Administrator (role added 2026-11-05).
+  message_delete_manager_anh_preprod: {
+    username: 'anh.ho@nakivo.com',
+    password: pw('admin_crm'),
+    displayName: 'Anh Ho',
+  },
+  message_delete_manager_admin_support_mig: {
+    username: 'Administrator',
+    password: pw('admin_support_mig'),
+    displayName: 'Administrator',
+  },
   admin_crm: {
     username: 'anh.ho@nakivo.com',
     password: pw('admin_crm'),

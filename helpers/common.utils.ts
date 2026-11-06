@@ -213,10 +213,19 @@ export class CommonUtils {
     attachmentName: string
   ): Promise<void> {
     let expanded = false;
+    const restore = () => page.evaluate(() => {
+      const w = window as unknown as { __ssRestore?: { el: HTMLElement; css: string }[]; __ssContentH?: { el: HTMLElement; h: number }[] };
+      (w.__ssRestore || []).forEach((t) => { t.el.style.cssText = t.css; });
+      delete w.__ssRestore;
+      delete w.__ssContentH;
+    }).catch(() => {});
     try {
       // 1) Expand Odoo's inner scroll containers so the full form (not just one viewport) renders.
       expanded = await page.evaluate(() => {
         try {
+          // .o_content heights BEFORE the expansion - see the collapse check below
+          (window as unknown as { __ssContentH?: { el: HTMLElement; h: number }[] }).__ssContentH =
+            Array.from(document.querySelectorAll<HTMLElement>('.o_content')).map((el) => ({ el, h: el.getBoundingClientRect().height }));
           const selectors = [
             'html', 'body',
             '.o_web_client', '.o_action_manager', '.o_content', '.o_main_content',
@@ -245,6 +254,17 @@ export class CommonUtils {
       if (expanded) {
         // Let the layout reflow to its full height before the capture.
         await page.waitForTimeout(CommonUtils.waitTimes.short);
+        // A pivot / graph view controller is position:absolute inside .o_content: once .o_content is height:auto it
+        // collapses to 0px and the report vanishes from the shot (TC-REP-006_A 2026-11-06: 1920x948 -> 1920x0, a blank
+        // pivot and graph under a PASS/FAIL banner). An expansion that SHRINKS .o_content is undone: the shot is the screen.
+        const collapsed = await page.evaluate(() =>
+          ((window as unknown as { __ssContentH?: { el: HTMLElement; h: number }[] }).__ssContentH || [])
+            .some(({ el, h }) => el.isConnected && el.getBoundingClientRect().height < h - 1)).catch(() => false);
+        if (collapsed) {
+          await restore();
+          expanded = false;
+          await page.waitForTimeout(CommonUtils.waitTimes.short);
+        }
       }
 
       const screenshot = await page.screenshot({ fullPage: true });
@@ -261,14 +281,8 @@ export class CommonUtils {
     } catch (err) {
       console.log(`⚠️ Screenshot skipped (${attachmentName}): ${err instanceof Error ? err.message : String(err)}`);
     } finally {
-      if (expanded) {
-        // 2) Restore the original inline styles so the tweak never leaks into the test flow.
-        await page.evaluate(() => {
-          const w = window as unknown as { __ssRestore?: { el: HTMLElement; css: string }[] };
-          (w.__ssRestore || []).forEach((t) => { t.el.style.cssText = t.css; });
-          delete w.__ssRestore;
-        }).catch(() => {});
-      }
+      // 2) Restore the original inline styles so the tweak never leaks into the test flow.
+      if (expanded) await restore();
     }
   }
 

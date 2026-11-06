@@ -122,6 +122,16 @@ export class LoginPage extends BasePage {
   }
 
   /**
+   * Log in a BACKEND user who has no CRM app (e.g. a Helpdesk-only manager) - the standard login() waits for the CRM menu,
+   * which such a user never gets. Success = the Odoo web client's top bar is drawn and the URL has left /web/login.
+   */
+  async loginBackendUser(email: string, password: string, timeout: number = CommonUtils.waitTimes.login) {
+    await this.loginPortalUser(email, password, timeout);
+    await this.page.locator('.o_main_navbar').first().waitFor({ state: 'visible', timeout });
+    if (/\/web\/login/.test(this.page.url())) throw new Error(`login of ${email} did not leave /web/login`);
+  }
+
+  /**
    * Dismiss location permission dialog if it appears
    * Handles the "Know your location" popup that may appear after login
    */
