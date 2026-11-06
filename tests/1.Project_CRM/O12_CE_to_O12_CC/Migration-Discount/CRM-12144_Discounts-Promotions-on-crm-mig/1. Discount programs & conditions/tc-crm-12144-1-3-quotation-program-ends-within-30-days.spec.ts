@@ -16,12 +16,12 @@ import {
   signInMig,
   createEndCustomerCompanyMig,
   createOpportunityForCompanyMig,
+  openCrmMigWebClient,
   openDealElementFromOpportunity,
   saveDealElement,
   teardownDiscountRunMig,
   sweepDiscountRunsMig,
   MIG_ACTION_TIMEOUT,
-  PROGRAM_EDITOR_MANUAL_REASON,
   baselineDetails,
 } from '@helpers/discount-mig.helper';
 
@@ -30,33 +30,36 @@ import {
  *  CRM-12144_1.3 - Pick a program that ends within the next 30 days on a quotation   (crm-mig)
  * ================================================================================================
  * Test Case ID     : CRM-12144_1.3
- * Jira             : N/A - not yet imported to Xray (master "Migration - Discount" row 20, Jira link empty)
+ * Jira             : CRM-13878 (master "Migration - Discount" row 20)
  * Automation-Type  : new
  * Automation-Date  : 2026-10-21
  * Revised          : 2026-10-27 - program-editor steps reworded to the Kanban path (New program > Save; card >
  *                    Delete), master row 20 updated the same day - the CRM-12144_5.3 standard (tester 2026-10-27)
+ *                    2026-11-05 - UN-SKIPPED by the tester (2026-11-05) under the 2026-10-27 rule "QA may create a
+ *                    test Discount program (then teardown); never edit an existing program"
+ *                    2026-11-06 - Step 1 runs the ARCHIVED action, as the development team answered on CRM-12144
+ *                    (Nathan Do, 2026-11-05: "open the archived action ... and click Run Manually"); the list's default
+ *                    "All" filter lists it - there is no "Archived" entry in Filters - so the search keeps that facet;
+ *                    Step 1 reworded the same day on master row 20 and CRM-13878
  * Baseline         : Discount_1.3 (Jira CRM-13766; tests/1.Project_CRM/10.Sales_Module/Discount/1. Discount programs & conditions/
  *                    tc-discount-1-3-quotation-program-ends-within-30-days.spec.ts) - assertions ported unchanged
  * Spec             : [Migration] Discounts (Promotions) v6, page 222532591 - IS-CRM-FUNC-0074-01, IS-CRM-FUNC-0076
- * Source version   : master row CRM-12144_1.3 as read 2026-10-21 (pre-condition order re-synced 2026-10-30) - re-check before trusting this spec
+ * Source version   : master row CRM-12144_1.3 as read 2026-10-21 (pre-condition order re-synced 2026-10-30, Step 1 re-synced 2026-11-06) - re-check before trusting this spec
  * Host             : crm-mig (https://crm-mig.nakivo.site, db nakivoCE) + Program editor (https://discount-crm-mig.nakivo.site)
  * Run as           : Program editor = users.admin_discount_mig (QA's named account, CRM-12467 row 1.7);
  *                    Step 1 = Administration / Settings user users.admin_crm_mig (Anh Ho);
  *                    CRM side = Salesperson - Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas_crm_mig)
  *
- * MANUAL ONLY - chỉ run manual (tester, 2026-10-22). Program-table edits belong to the development team: QI p.3 + p.28
- *   (TC-14 to TC-18 at QA's request); Nathan, CRM-12467 2026-10-20: QA runs only TC-13 and TC-19.
- *   The whole describe block is skipped by test.skip(true, PROGRAM_EDITOR_MANUAL_REASON) at
- *   describe level, so its beforeEach / afterEach / afterAll hooks do not run either (nothing is logged in to crm-mig).
- *   It never runs in automation: run the manual TC by hand, the development team doing the Program-editor steps.
- *   Manual steps (labelled [MANUAL ONLY ...] in STEP):
- *     - Pre-condition 4 : create the program QA-Disc-<timestamp> (Kanban: New program) with Valid to = today + 10 at 23:59:59 (UTC), Save
- *     - Step 7          : Clean-up - Delete the program QA-Disc-<timestamp> on its Kanban card and confirm
- *   Not a program-table write (so not labelled MANUAL): Step 1 "Run Manually" of the scheduled action
- *   "NAKIVO Promotion: sync catalogue from Discount Service" on crm-mig - it runs only when the spec is unskipped.
- *   Reason: PROGRAM_EDITOR_MANUAL_REASON = "chỉ run manual - program-table edits in the Program editor are the
- *           development team's: QI p.3 (except TC-13) and p.28 (TC-14 to TC-18 at QA's request); Nathan,
- *           CRM-12467 2026-10-20: QA runs only TC-13 and TC-19"
+ * Program-editor writes: the run creates ONE program of its own, QA-Disc-<timestamp> (Pre-condition 4), and deletes it
+ *   at Step 7 - or in afterEach / afterAll when the run stops earlier (deny-list: only the name this run created).
+ *   Rule (tester 2026-10-27): QA may create a test Discount program and must delete it; an existing program is never
+ *   edited (DiscountProgramEditorPageMig refuses any name that does not start with QA-Disc-). Each Save / Archive /
+ *   Delete publishes a new rule version (versions are permanent history).
+ *   Valid to: the Program editor's date picker sets a DAY only (no time input, read 2026-11-05) - the master's
+ *   "today + 10 at 23:59:59 (UTC)" is entered as that date; the time part is not typed.
+ *   Step 1 also runs, on crm-mig, the scheduled action "NAKIVO Promotion: sync catalogue from Discount Service"
+ *   (Run Manually) as the Administration / Settings user - not a program-table write. The action is archived
+ *   (Active = Off) on crm-mig; Run Manually does not reactivate it.
  *
  * Summary
  * -------
@@ -66,7 +69,7 @@ import {
  *
  * Command to run
  * --------------
- *   npx playwright test --grep "CRM-12144_1\.3:" --project=chromium   (always skipped - chỉ run manual)
+ *   npx playwright test --grep "CRM-12144_1\.3:" --project=chromium
  *
  * ------------------------------------------------------------------------------------------------
  *  Source manual TC (CRM-12144_1.3, master "Migration - Discount" row 20) - verbatim, ASCII
@@ -97,7 +100,7 @@ import {
  *  Login to crm-mig as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user
  *
  *  Executed Steps:
- *  1. As the administrator, open Settings > Technical > Scheduled Actions (developer mode), open "NAKIVO Promotion: sync catalogue from Discount Service" and click Run Manually
+ *  1. As the administrator, open Settings > Technical > Scheduled Actions (developer mode), keep the default "All" filter (it also lists archived actions; Filters has no "Archived" entry), search "NAKIVO Promotion: sync catalogue from Discount Service", open it and click Run Manually - the action is archived on crm-mig and stays archived
  *  2. As the salesperson, Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment
  *  3. On Order Lines, add A2160B with Ordered Qty 1, click Save, then click New quotation
  *  4. Read the quotation's Validity
@@ -131,16 +134,16 @@ const STEP = {
   pre1: 'Pre-condition 1: Login to the Program editor (https://discount-crm-mig.nakivo.site) with a named Program editor account (held by the development team)',
   pre2: 'Pre-condition 2: Login to crm-mig (https://crm-mig.nakivo.site) as a salesperson in Sales / User: Own Documents Only (e.g. Thomas Semerich)',
   pre3: 'Pre-condition 3: On crm-mig, create a new company in Contacts with: Name = Disc-Cust-<timestamp>, Type = end customer (no Reseller, no Distributor), Pricelist = Public Pricelist (USD)',
-  pre4: 'Pre-condition 4: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-Cust-<timestamp>, Valid to = <a day within the next 30 days> 23:59:59 (UTC); Click Save and confirm the new version is the active one (top bar: Version N / active)',
+  pre4: 'Pre-condition 4: In the Program editor, open Discount Programs (Kanban view), click New program and enter: Promo code = QA-<timestamp>, Program name = QA-Disc-<timestamp>, Reward = 5.0 %, Applies to = Whole order, For = (empty - the For field shows only for Specific products), Advanced (customer condition) = customer name is Disc-Cust-<timestamp>, Valid to = <a day within the next 30 days> 23:59:59 (UTC); Click Save and confirm the new version is the active one (top bar: Version N / active)',
   pre5: 'Pre-condition 5: On crm-mig, create a new opportunity in CRM > Pipeline (LIST view - the kanban quick-create card lacks these fields) with: Name = Disc-Opp-<timestamp>, Customer = Disc-Cust-<timestamp>',
   pre6: 'Pre-condition 6: Login to crm-mig (https://crm-mig.nakivo.site) as an Administration / Settings user (e.g. Anh Ho); the development team runs this part when QA has no such user',
-  s1: 'Step 1: As the administrator, open Settings > Technical > Scheduled Actions (developer mode), open "NAKIVO Promotion: sync catalogue from Discount Service" and click Run Manually',
+  s1: 'Step 1: As the administrator, open Settings > Technical > Scheduled Actions (developer mode), keep the default "All" filter (it also lists archived actions; Filters has no "Archived" entry), search "NAKIVO Promotion: sync catalogue from Discount Service", open it and click Run Manually - the action is archived on crm-mig and stays archived',
   s2: 'Step 2: As the salesperson, Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment',
   s3: 'Step 3: On Order Lines, add A2160B with Ordered Qty 1, click Save, then click New quotation',
   s4: "Step 4: Read the quotation's Validity",
   s5: 'Step 5: Pick QA-Disc-<timestamp> in Promotion',
   s6: 'Step 6: Clear Promotion',
-  s7: 'Step 7: [MANUAL ONLY - chỉ run manual: Program-editor table edit = development team, QI p.3] Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
+  s7: 'Step 7: Clean-up: in the Program editor, open the card QA-Disc-<timestamp> on Discount Programs (Kanban view), click Delete and confirm the deletion',
   verify: 'Verification',
 } as const;
 
@@ -181,8 +184,6 @@ const stamp = (d: Date, hms: string) => `${d.getUTCFullYear()}-${pad(d.getUTCMon
 const mdy = (d: Date) => `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
 
 test.describe(`${TC} - Pick a program that ends within the next 30 days on a quotation (crm-mig)`, () => {
-  test.skip(true, PROGRAM_EDITOR_MANUAL_REASON); // chỉ run manual
-
   let run: DiscountRun;
 
   test.beforeEach(async ({ context, page }) => {
@@ -255,9 +256,9 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
 
     await test.step(STEP.pre4, async () => {
       console.log(`\n--- ${STEP.pre4} ---`);
-      // Program-editor write: chỉ run manual - DiscountProgramEditorPageMig refuses it
-      const versionBefore = await editor.getActiveVersionNumber(); // Kanban top bar, before Save
-      await editor.createProgramOnKanban({
+      // Program-editor write: the run's OWN program (QA-Disc-<timestamp>) - DiscountProgramEditorPageMig refuses any other name
+      // versionBefore = the Kanban top bar read by the page object before Save (the page is still on crm-mig here)
+      const { versionBefore } = await editor.createProgramOnKanban({
         'Promo code': promoCode,
         'Program name': programName,
         Reward: '5.0',
@@ -276,6 +277,7 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
 
     await test.step(STEP.pre5, async () => {
       console.log(`\n--- ${STEP.pre5} ---`);
+      await openCrmMigWebClient(page); // the program was saved on the Program editor - back on crm-mig first
       await createOpportunityForCompanyMig(page, run, SALES);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - opportunity created');
     });
@@ -289,11 +291,19 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
     // ================= Steps =================
     await test.step(STEP.s1, async () => {
       console.log(`\n--- ${STEP.s1} ---`);
+      // The action is ARCHIVED on crm-mig; the development team's answer (CRM-12144, Nathan Do, 2026-11-05): run the
+      // archived action with Run Manually. The list's default "All" filter lists archived actions too (its Filters menu
+      // has no "Archived" entry, read 2026-11-06), so the name is typed WITHOUT clearing that facet - the inherited
+      // openScheduledAction() deletes it with Backspace and then finds no row.
       const scheduled = new ScheduledActionPageMig(page);
-      const opened = await scheduled.openScheduledAction(SYNC_ACTION);
-      if (!opened) throw new Error(`Scheduled action "${SYNC_ACTION}" did not open on crm-mig - the catalogue sync cannot be run`);
-      const ran = await scheduled.clickRunManually();
-      if (!ran) throw new Error(`Scheduled action "${SYNC_ACTION}": RUN MANUALLY was not available on crm-mig`);
+      if (!(await scheduled.openScheduledActionsList())) throw new Error('The Scheduled Actions list did not open on crm-mig');
+      const listed = await scheduled.countListedActionsNamed(SYNC_ACTION);
+      if (listed !== 1) throw new Error(`Scheduled action "${SYNC_ACTION}": ${listed} rows on the list with the "All" filter kept, expected 1`);
+      if (!(await scheduled.openListedAction(SYNC_ACTION))) throw new Error(`Scheduled action "${SYNC_ACTION}" did not open on crm-mig`);
+      console.log(`  - Active marker before the run: "${await scheduled.readActiveMarker()}"`);
+      const { ran, error } = await scheduled.clickRunManuallyStrict();
+      if (!ran) throw new Error(`Scheduled action "${SYNC_ACTION}": Run Manually did not run - ${error}`);
+      console.log(`  - Active marker after the run : "${await scheduled.readActiveMarker()}"`);
       await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Step 1 - sync catalogue from Discount Service run manually');
     });
 
@@ -346,7 +356,7 @@ test.describe(`${TC} - Pick a program that ends within the next 30 days on a quo
       console.log(`\n--- ${STEP.s7} ---`);
       await quotationPage.discardChanges().catch(() => {}); // the quotation's edits first (as the baseline's Step 7)
       console.log('  - Quotation edits discarded; the run records are removed by the teardown');
-      // Program-editor write: chỉ run manual - refused by DiscountProgramEditorPageMig
+      // Program-editor write: the run's OWN program only
       await editor.deleteProgramOnKanban(programName);
       forgetEditorRow(programName);
     });
