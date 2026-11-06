@@ -55,6 +55,13 @@ import {
  * Expected RED on rule v55 (not weakened): step 5 - Aiva on CRM-13848 (2026-11-03): "Rule version 55 counts every
  *   non-reward line"; the program form's own hint under Minimum quantity reads "All order lines" (read 2026-11-03).
  *
+ * BLOCKED by CRM-14435 - SKIPPED (tester decision 2026-11-06)
+ * -----------------------------------------------------------
+ * Step 5 failed on every run since the spec v7 re-sync (2026-11-03, 2026-11-05): the minimum quantity counts the
+ * A2165B line the program's Products condition does not list. Filed as CRM-14435 (Open) and recorded as the defect of
+ * this TC on Test Execution CRM-13537. The whole describe block is skipped by test.skip(true, BLOCKED_BY) at describe
+ * level; the expected results are kept unchanged. Remove the skip and re-run once CRM-14435 is fixed.
+ *
  * Summary
  * -------
  * A 5 % order program QA-Disc-<timestamp> (Minimum quantity 3, Products = A2160B) is not offered at 2 x A2160B, still not
@@ -116,6 +123,8 @@ import {
  */
 
 const TC = 'CRM-12144_1.6';
+const BLOCKED_BY =
+  'Minimum quantity counts every order line on crm-mig, including a product the Products condition does not list (Step 5); expected result kept, see header - blocked by CRM-14435';
 // Teardown back ON 2026-11-05: the teardown-off run of 2026-11-05 kept opportunity 100005869 and program
 // QA-Disc-6479628090 for CRM-14435 (A3); they are removed by hand once the bug is reproduced
 const SKIP_CLEANUP = false; // true = keep the run's records for debugging (crm-mig rule: never leave it true)
@@ -167,6 +176,8 @@ async function removeEditorRows(page: Page): Promise<void> {
 }
 
 test.describe(`${TC} - Reach a program's minimum quantity exactly (crm-mig)`, () => {
+  // Blocked by CRM-14435: Minimum quantity counts every order line on crm-mig - remove when it is fixed
+  test.skip(true, BLOCKED_BY); // CRM-14435 (Open)
   let run: DiscountRun;
 
   test.beforeEach(async ({ context, page }) => {
@@ -205,7 +216,7 @@ test.describe(`${TC} - Reach a program's minimum quantity exactly (crm-mig)`, ()
     }
   });
 
-  test(`${TC}: Reach a program's minimum quantity exactly`, baselineDetails(TC), async ({ page }, testInfo) => {
+  test(`${TC}: Reach a program's minimum quantity exactly [CRM-14435]`, baselineDetails(TC), async ({ page }, testInfo) => {
     test.setTimeout(config.timeouts.test);
     await page.setViewportSize({ width: 1920, height: 1080 });
     const editor = new DiscountProgramEditorPageMig(page);
