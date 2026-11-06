@@ -1,0 +1,239 @@
+import { test } from '@playwright/test';
+import { users } from '@config/users.config';
+import { config } from '@config/test.config';
+import { DealElementPage } from '@pages';
+import { CommonUtils } from '@helpers/common.utils';
+import {
+  DISCOUNT_BASELINE,
+  DISCOUNT_HIGHLIGHT,
+  DiscountRun,
+  Check,
+  newDiscountRun,
+  signIn,
+  createEndCustomerCompany,
+  createOpportunityForCompany,
+  openDealElementFromOpportunity,
+  recordChecks,
+  printVerifyAndAssert,
+  teardownDiscountRun,
+  ProgramOwner,
+} from '@helpers/discount-baseline.helper';
+
+/**
+ * ================================================================================================
+ *  Discount_1.6 - Reach a program's minimum quantity exactly   (pre-production BASELINE)
+ * ================================================================================================
+ * Test Case ID     : Discount_1.6
+ * Automation-Type  : new
+ * Automation-Date  : 2026-10-21
+ * Mirrors          : CRM-12144_1.6 (crm-mig manual TC, master "Migration - Discount") - same steps, same expected
+ *                    results, run on the reference system so crm-mig can be ported 1:1
+ * Jira             : CRM-13769
+ * Revised          : 2026-11-04 - spec v7 IS-CRM-FUNC-0074-04 ("The minimum quantity is compared against the total quantity
+ *                    of the order's products that meet the program's required-products condition", CRM-13848 A3): the
+ *                    program gets Products = A2160B and steps 4-7 add A2165B (outside Products) before the minimum is
+ *                    reached - mirrors CRM-12144_1.6 as re-synced on 2026-11-03 (master "Migration - Discount" row 23)
+ * Spec             : [Migration] Discounts (Promotions) v7, page 222532591 - IS-CRM-FUNC-0074-04
+ * Source version   : master "Sales module" row 125 / Jira CRM-13769 as updated on 2026-11-04 - re-check before trusting this spec
+ * Host             : pre-production (http://pre-production.nakivo.site, Odoo 12 EE = the reference system)
+ * Run as           : Program editor = CRM administrator (users.admin_crm) over JSON-RPC (ProgramOwner);
+ *                    Salesperson = Sales / User: Own Documents Only (Thomas Semerich, users.sale_ic_thomas)
+ *
+ * Adaptations to the reference system (reason)
+ *   - "Program editor" -> sale.coupon.program record created over JSON-RPC by ProgramOwner (Min qty >= 3, Based on
+ *     Products = Internal Reference in A2160B).
+ *
+ * Summary
+ * -------
+ * A 5 % order program with Products = A2160B and Min qty >= 3 is not offered at 2 x A2160B, still not offered once
+ * 1 x A2165B (outside Products) brings the order to 3 units, and is offered at 3 x A2160B.
+ *
+ * Command to run
+ * --------------
+ *   npx playwright test --grep "Discount_1\.6:" --project=chromium
+ *
+ * ------------------------------------------------------------------------------------------------
+ *  Source manual TC (CRM-12144_1.6, adapted to the reference system)
+ * ------------------------------------------------------------------------------------------------
+ *  Pre-conditions
+ *    1. Program: 5 %, scope order, customer = Disc-Cust-<timestamp>, Min qty >= 3, Products = Internal Reference in A2160B
+ *    2. Company Disc-Cust-<timestamp> (end customer, Public Pricelist USD); salesperson login
+ *    3. Opportunity Disc-Opp-<timestamp> for that company
+ *  Steps
+ *    1. Open the opportunity and click DEAL ELEMENT (payment terms rule)
+ *    2. On Order Lines, add A2160B with Ordered Qty 2
+ *    3. Open the Promotion list
+ *         -> Expected: the list does not contain the program (2 units of A2160B, below the minimum of 3)
+ *    4. Add A2165B with Ordered Qty 1 (a product the program's Products condition does not list)
+ *    5. Open the Promotion list
+ *         -> Expected: the list does not contain the program: the order holds 3 units, but only the 2 units of A2160B
+ *            meet the program's Products condition, and the minimum quantity counts only those (IS-CRM-FUNC-0074-04)
+ *    6. Change the Ordered Qty of A2160B to 3
+ *    7. Open the Promotion list
+ *         -> Expected: the list contains the program (3 units of A2160B = the minimum exactly)
+ *    8. Clean-up
+ * ================================================================================================
+ */
+
+const TC = 'Discount_1.6';
+const PROGRAM_PREFIX = 'AUTO-Discount-1.6';
+
+/** Step labels - one source of truth for the test.step() label AND the stdout banner. */
+const STEP = {
+  pre1: 'Pre-condition 1: Program editor login - the CRM administrator (users.admin_crm) over JSON-RPC, the program owner of the reference system',
+  pre2: 'Pre-condition 2: [program owner, JSON-RPC] Create the program AUTO-Discount-1.6-<timestamp>: 5 %, scope order, customer = Disc-Cust-<timestamp>, Min qty >= 3, Products = Internal Reference in A2160B',
+  pre3: 'Pre-condition 3: Login to pre-production (Odoo 12 EE, the reference system) as the salesperson in Sales / User: Own Documents Only (Thomas Semerich)',
+  pre4: 'Pre-condition 4: Contacts > Create a new end-customer company Disc-Cust-<timestamp> with Pricelist = Public Pricelist_USD',
+  pre5: 'Pre-condition 5: CRM > Pipeline (LIST view) > Create a new opportunity Disc-Opp-<timestamp> whose Company is Disc-Cust-<timestamp>',
+  s1: 'Step 1: Open the opportunity and click DEAL ELEMENT; if Payment Terms is empty, set Payment Terms = Immediate Payment',
+  s2: 'Step 2: On Order Lines, add A2160B with Ordered Qty 2',
+  s3: 'Step 3: Open the Promotion list',
+  s4: 'Step 4: Add A2165B with Ordered Qty 1 (a product the program\'s Products condition does not list)',
+  s5: 'Step 5: Open the Promotion list',
+  s6: 'Step 6: Change the Ordered Qty of A2160B to 3',
+  s7: 'Step 7: Open the Promotion list',
+  s8: '[done by the afterEach teardown] Step 8: Clean-up: as the CRM administrator, archive the program, then delete it (Odoo refuses to delete an active program)',
+  verify: 'Verification',
+} as const;
+
+// Teardown back ON 2026-11-05: the teardown-off run of 2026-11-05 kept opportunity 1104028 and program 53 as the
+// reference for CRM-14435 (A3); they are removed by hand once the bug is reproduced
+const SKIP_CLEANUP = false; // true = keep the run's records for debugging
+const SALES = users.sale_ic_thomas;
+/** The program's Products condition, and a product outside it (spec v7 IS-CRM-FUNC-0074-04). */
+const LISTED = 'A2160B';
+
+test.describe(`${TC} - Reach a program's minimum quantity exactly (pre-prod baseline of CRM-12144_1.6)`, () => {
+  let run: DiscountRun;
+  let openedOwner: ProgramOwner | undefined;
+
+  test.beforeEach(async ({ context, page }) => {
+    await context.clearCookies();
+    await page.waitForTimeout(CommonUtils.waitTimes.standard);
+    run = newDiscountRun();
+    openedOwner = undefined;
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - start').catch(() => {});
+    if (openedOwner) {
+      await openedOwner.close().catch(() => {});
+      openedOwner = undefined;
+    }
+    if (!SKIP_CLEANUP) await teardownDiscountRun(page, run, testInfo);
+    else console.log(`\n[cleanup] TEARDOWN OFF - KEPT on pre-production: ${JSON.stringify({ company: run.company, partnerId: run.partnerId, opp: run.opp, leadId: run.leadId, urlOpp: run.urlOpp, saleOrderIds: run.saleOrderIds, programIds: run.programIds })}`);
+    await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'afterEach - teardown done').catch(() => {});
+  });
+
+  test(`${TC}: Reach a program's minimum quantity exactly`, async ({ page }, testInfo) => {
+    test.setTimeout(config.timeouts.test);
+    await page.setViewportSize({ width: 1920, height: 1080 });
+    const dealElementPage = new DealElementPage(page);
+    const checks: Check[] = [];
+    const programName = `${PROGRAM_PREFIX}-${run.ts}`;
+
+    const owner = await ProgramOwner.open();
+    openedOwner = owner;
+
+    // ================= Pre-conditions =================
+    await test.step(STEP.pre1, async () => {
+      console.log(`\n--- ${STEP.pre1} ---`);
+      console.log(`  - Program editor : ${users.admin_crm.username} (${users.admin_crm.displayName}), JSON-RPC session opened`);
+    });
+
+    await test.step(STEP.pre2, async () => {
+      console.log(`\n--- ${STEP.pre2} ---`);
+      await owner.createProgram(run, {
+        name: programName,
+        percent: 5,
+        scope: 'order',
+        customerName: run.company,
+        minQty: 3,
+        products: [LISTED],
+      });
+    });
+
+    await test.step(STEP.pre3, async () => {
+      console.log(`\n--- ${STEP.pre3} ---`);
+      console.log(`  - Login : ${SALES.username} (${SALES.displayName})`);
+      await signIn(page, SALES);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 3 - signed in as the salesperson');
+    });
+
+    await test.step(STEP.pre4, async () => {
+      console.log(`\n--- ${STEP.pre4} ---`);
+      await createEndCustomerCompany(page, run, SALES);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 4 - company created');
+    });
+
+    await test.step(STEP.pre5, async () => {
+      console.log(`\n--- ${STEP.pre5} ---`);
+      await createOpportunityForCompany(page, run, SALES);
+      await CommonUtils.captureAndAttachScreenshot(page, testInfo, 'Pre-condition 5 - opportunity created');
+    });
+
+    // ================= Steps =================
+    await test.step(STEP.s1, async () => {
+      console.log(`\n--- ${STEP.s1} ---`);
+      await openDealElementFromOpportunity(page);
+    });
+
+    await test.step(STEP.s2, async () => {
+      console.log(`\n--- ${STEP.s2} ---`);
+      await dealElementPage.addOrderLineStrict(DISCOUNT_BASELINE.noProgramProduct, 2);
+      await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '42.00');
+    });
+
+    await test.step(STEP.s3, async () => {
+      console.log(`\n--- ${STEP.s3} ---`);
+      const options = await dealElementPage.getPromotionOptions('', { keepOpen: true });
+      await recordChecks(page, testInfo, checks, [
+        { what: 'Step 3 - 2 units of A2160B (below the minimum of 3): the Promotion list does not contain the program', expected: `not ${programName}`, actual: options.join(' | ') || '(empty)', passed: !options.includes(programName) },
+      ], `${TC} - Step 3 Promotion list at 2 x A2160B`, [DISCOUNT_HIGHLIGHT.promotionList]);
+      await dealElementPage.closePromotionList();
+    });
+
+    await test.step(STEP.s4, async () => {
+      console.log(`\n--- ${STEP.s4} ---`);
+      await dealElementPage.addOrderLineStrict(DISCOUNT_BASELINE.supportProduct, 1);
+      const subtotal = await dealElementPage.waitForOrderLineCell(1, 'Subtotal', '445.00');
+      console.log(`  - A2165B line Subtotal : ${subtotal}`);
+    });
+
+    await test.step(STEP.s5, async () => {
+      console.log(`\n--- ${STEP.s5} ---`);
+      const options = await dealElementPage.getPromotionOptions('', { keepOpen: true });
+      await recordChecks(page, testInfo, checks, [
+        { what: 'Step 5 - 3 units on the order, only the 2 units of A2160B meet the Products condition: the Promotion list does not contain the program', expected: `not ${programName}`, actual: options.join(' | ') || '(empty)', passed: !options.includes(programName) },
+      ], `${TC} - Step 5 Promotion list at 2 x A2160B + 1 x A2165B`, [DISCOUNT_HIGHLIGHT.promotionList]);
+      await dealElementPage.closePromotionList();
+    });
+
+    await test.step(STEP.s6, async () => {
+      console.log(`\n--- ${STEP.s6} ---`);
+      await dealElementPage.changeQtyInRow(DISCOUNT_BASELINE.noProgramProduct, 3);
+      await dealElementPage.waitForOrderLineCell(0, 'Subtotal', '63.00');
+    });
+
+    await test.step(STEP.s7, async () => {
+      console.log(`\n--- ${STEP.s7} ---`);
+      const options = await dealElementPage.getPromotionOptions('', { keepOpen: true });
+      await recordChecks(page, testInfo, checks, [
+        { what: 'Step 7 - 3 units of A2160B (the minimum exactly): the Promotion list contains the program', expected: programName, actual: options.join(' | ') || '(empty)', passed: options.includes(programName) },
+      ], `${TC} - Step 7 Promotion list at 3 x A2160B`, [DISCOUNT_HIGHLIGHT.promotionList]);
+      await dealElementPage.closePromotionList();
+    });
+
+    await test.step(STEP.s8, async () => {
+      console.log(`\n--- ${STEP.s8} ---`);
+      console.log(SKIP_CLEANUP
+        ? `  - TEARDOWN OFF (tester 2026-11-05): program ${programName} and the run's records are KEPT`
+        : `  - Program ${programName} and the run's records are removed by the teardown`);
+    });
+
+    await test.step(STEP.verify, async () => {
+      console.log(`\n--- ${STEP.verify} ---`);
+      printVerifyAndAssert(checks);
+    });
+  });
+});
